@@ -45,6 +45,7 @@
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossHints.h"
 #include "rando/CrossEntrance.h"
+#include "rando/MasterQuestSeed.h"
 #include "gui/ComboGenProgress.h"
 #include "ComboExtract.h"
 #include "ComboSettingsImport.h"
@@ -1149,6 +1150,20 @@ static FnSetInt SOH_SetComboFormLogicCredit = nullptr;
 static void Combo_PushFormLogicCredit(bool on) {
     if (SOH_SetComboFormLogicCredit)
         SOH_SetComboFormLogicCredit(on ? 1 : 0);
+}
+// Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
+// follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.
+static FnDumpData SOH_DumpComboMasterQuestDungeons = nullptr;
+static FnTakeStr SOH_SetComboMasterQuestDungeons = nullptr;
+static nlohmann::json Combo_DumpMasterQuestDungeons() {
+    if (!SOH_DumpComboMasterQuestDungeons)
+        return nullptr;
+    return ComboRando::MasterQuestFromDump(SOH_DumpComboMasterQuestDungeons());
+}
+static void Combo_PushMasterQuestDungeons(const nlohmann::json& seed) {
+    const std::string stored = ComboRando::StoredMasterQuestText(seed);
+    if (SOH_SetComboMasterQuestDungeons && !stored.empty())
+        SOH_SetComboMasterQuestDungeons(stored.c_str());
 }
 static void (*SOH_SetComboMirrorStart)(uint32_t) = nullptr;
 // Owner ruling 2026-11-12: under Unified Inventory OOT starts with what MM starts with. The mask comes from the MM
@@ -2495,6 +2510,10 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
             consolidated["unifiedInventory"] = true;
         if (g_genFormLogicCredit) // seed-bound: logic credited the Zora / Goron forms
             consolidated["formLogicCredit"] = true;
+        // Seed-bound: the MQ dungeons logic was filled against, so a reload plays the same layout.
+        const nlohmann::json mqDungeons = Combo_DumpMasterQuestDungeons();
+        if (mqDungeons.is_array())
+            consolidated[ComboRando::kMasterQuestKey] = mqDungeons;
         if (j.contains("sharedStartingMm"))
             consolidated["sharedStartingMm"] = j["sharedStartingMm"]; // MM copies OOT starts with (mirror base)
         consolidated["playthrough"] = ComboRando::PlaythroughLines(playthroughJson);
@@ -3126,6 +3145,7 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
             SOH_RestoreRandoSettings(ootSettings.c_str());
         if (SOH_SetComboRandoSeed)
             SOH_SetComboRandoSeed(masterSeed);
+        Combo_PushMasterQuestDungeons(j); // after the seed push, which unpins; before the prep that rolls the set
         // MM too: MM_InitRandoSaveFile writes finalSeed (junk/trap variety, clock-shuffle roll) from
         // the combo seed — without this a reloaded seed gets finalSeed=0 and diverges from the author.
         if (MM_SetComboRandoSeed)
@@ -3725,6 +3745,8 @@ int main(int argc, char** argv) {
     Combo_MM_Rando_GetCrossExits = (FnDumpData)GetSym(mmModule, "Combo_MM_Rando_GetCrossExits");
     SOH_SetComboUnifiedInventory = (FnSetInt)GetSym(sohModule, "SOH_SetComboUnifiedInventory");
     SOH_SetComboFormLogicCredit = (FnSetInt)GetSym(sohModule, "SOH_SetComboFormLogicCredit");
+    SOH_SetComboMasterQuestDungeons = (FnTakeStr)GetSym(sohModule, "SOH_SetComboMasterQuestDungeons");
+    SOH_DumpComboMasterQuestDungeons = (FnDumpData)GetSym(sohModule, "SOH_DumpComboMasterQuestDungeons");
     SOH_SetComboMirrorStart = (void (*)(uint32_t))GetSym(sohModule, "SOH_SetComboMirrorStart");
     SOH_BottleShelfGetState = (FnShelfGet)GetSym(sohModule, "SOH_BottleShelfGetState");
     SOH_ComboSharedHealthEnabled = (int (*)(void))GetSym(sohModule, "SOH_ComboSharedHealthEnabled");

@@ -40,6 +40,7 @@
 
 #include "rando/CrossWorldRando.h"
 #include "rando/CrossEntrance.h"
+#include "rando/MasterQuestSeed.h"
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossForeign.h" // BuildForeignArray (foreign enrichment parity with RunComboFill)
 #include "rando/CrossHints.h"
@@ -245,6 +246,14 @@ static int Run(int argc, char** argv) {
         if (SOH_SetComboFormLogicCredit)
             SOH_SetComboFormLogicCredit(on ? 1 : 0);
     };
+    // Seed-bound Master Quest dungeons: pushed right after each SOH_SetSeed (which unpins), before the dump's prep.
+    auto SOH_SetComboMasterQuestDungeons = Sym<FnTakeStr>(soh, "SOH_SetComboMasterQuestDungeons");
+    auto SOH_DumpComboMasterQuestDungeons = Sym<FnDump>(soh, "SOH_DumpComboMasterQuestDungeons");
+    auto pushMasterQuestDungeons = [&](const nlohmann::json& seed) {
+        const std::string stored = ComboRando::StoredMasterQuestText(seed);
+        if (SOH_SetComboMasterQuestDungeons && !stored.empty())
+            SOH_SetComboMasterQuestDungeons(stored.c_str());
+    };
     // Owner ruling 2026-11-12: under Unified Inventory OOT starts with what MM starts with (SharedItems.h).
     auto pushMirrorStart = [&](bool unified, const nlohmann::json& mmSettings) {
         if (SOH_SetComboMirrorStart)
@@ -363,6 +372,7 @@ static int Run(int argc, char** argv) {
             }
             if (SOH_SetSeed)
                 SOH_SetSeed(masterSeed);
+            pushMasterQuestDungeons(spoiler);
             if (MM_SetSeed)
                 MM_SetSeed(masterSeed);
             if (SOH_SetComboGoal)
@@ -896,6 +906,11 @@ static int Run(int argc, char** argv) {
                         consolidated["unifiedInventory"] = true;
                     if (formLogicCredit)
                         consolidated["formLogicCredit"] = true;
+                    if (SOH_DumpComboMasterQuestDungeons) {
+                        auto mq = ComboRando::MasterQuestFromDump(SOH_DumpComboMasterQuestDungeons());
+                        if (mq.is_array())
+                            consolidated[ComboRando::kMasterQuestKey] = mq;
+                    }
                     if (fillSpoiler.contains("sharedStartingMm"))
                         consolidated["sharedStartingMm"] = fillSpoiler["sharedStartingMm"];
                     // ComboShip: suffix cross-game item-name collisions in the placements (parity with
