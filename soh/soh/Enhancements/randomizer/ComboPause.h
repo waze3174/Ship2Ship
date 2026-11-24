@@ -91,6 +91,14 @@ enum ComboMmItem {
 // counterparts check a mask call this at the same decision (e.g. the Stone Mask: COMBO_MM_STONE_MASK()).
 int Combo_MmMaskIs(int mmItem);
 #define COMBO_MM_STONE_MASK() Combo_MmMaskIs(COMBO_MM_ITEM_MASK_STONE)
+// MM's B-action masks (Blast, Bremen, Kamaro's): while one is worn and B holds a sword or nothing, B runs the mask's
+// action and shows MM's label for it ("Explode", "March", "Dance"). Returns that label's MM texture path, drawn through
+// a "mm" bracket; NULL = B is B.
+const char* Combo_MaskBActionLabel(void);
+// 1 while the Blast Mask's cooldown greys out B (only with a sword on B).
+int Combo_BlastMaskCoolingDown(void);
+// Frames for a new Blast Mask cooldown: MM's 310, or 2S2H's "Blast Mask Cooldown" when it is set lower.
+int Combo_BlastMaskCooldown(void);
 int Combo_PauseLiveMmItem(int item);                         // the MM item id a foreign id names right now, -1 = none
 int Combo_PauseForeignBottleAction(int item);                // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
 int Combo_PauseSetForeignBottle(int foreignId, int ootItem); // write the new content into MM's slot; 1 = done

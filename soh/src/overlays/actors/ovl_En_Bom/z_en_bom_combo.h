@@ -27,6 +27,10 @@ extern s16 gComboPowderKegTimer; // MM gSaveContext.powderKegTimer (frames; 0 = 
 // True for a Powder Keg (also before its Init ran). Only Gorons may lift one (that rule lives in the player code).
 s32 EnBom_ComboIsKeg(Actor* bomb);
 
+// MM's Blast Mask (MM Player_ProcessItemButtons, ITEM_F0): an MM bomb at `pos` (Link's head) with its fuse at 0, so it
+// explodes on its first update. NULL when it couldn't be spawned.
+EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos);
+
 // Hooks from z_en_bom.c. Each returns true when it handled the actor (vanilla code is skipped).
 s32 EnBom_ComboInit(EnBom* this, PlayState* play);
 s32 EnBom_ComboDestroy(EnBom* this, PlayState* play);
