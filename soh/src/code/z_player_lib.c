@@ -15,7 +15,8 @@ static s32 sComboDekuHeadPushed = false; // head matrix saved before the bubble 
 #endif
 #ifdef COMBO_BUILD
 #include "soh/Enhancements/randomizer/ComboForms.h"
-#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus (MM masks worn in Hyrule)
+#include "soh/Enhancements/randomizer/ComboPause.h"   // ComboShip: merged pause menus (MM masks worn in Hyrule)
+#include "soh/Enhancements/randomizer/ComboMmItems.h" // ComboShip: the Bremen march (no sword blade in hand)
 // ComboShip: a Goron in Hyrule shrugs off heat and lava like the Goron Tunic (MM Gorons are heat-proof).
 #define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
 // ...and a Zora breathes underwater like the Zora Tunic.
@@ -2798,7 +2799,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
         Math_Vec3f_Copy(&this->leftHandPos, D_80160000);
 #ifdef COMBO_BUILD
-        if (Combo_GfsInHand(this) && (this->actor.scale.y >= 0.0f) && (*dList != NULL)) {
+        if (Combo_GfsInHand(this) && !Combo_BremenMarching() && (this->actor.scale.y >= 0.0f) && (*dList != NULL)) {
             // MM's Great Fairy's Sword blade in the closed fist, as MM draws its split hand + sword
             // (CosmeticEditor sHeldItemSplits: gLinkHumanGreatFairysSwordDL in the hand's own space). OOT's child hand
             // shares MM's human hand space; the adult hand is larger (grip offset/scale from screenshots).
