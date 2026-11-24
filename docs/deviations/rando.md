@@ -2690,7 +2690,7 @@ process) and every reload. Without the fix the set that logic was filled against
   display lists resolve through `CrossRMRegistry` directly in the interpreter. MM's own scene paths do contain
   `/nonmq/`, so a soh-side caller that loaded an MM scene or room asset would be rewritten; none exists.
 
-## Save modes: vanilla OoT, Normal and Master Quest (ComboShip Ultimate)
+## Save modes: vanilla OoT and Majora's Mask (ComboShip Ultimate)
 
 A save slot has a mode, stored in its `file{N}.combosav` container as `combo.mode`
 (`combo/rando/ComboMode.h`):
@@ -2700,21 +2700,28 @@ A save slot has a mode, stored in its `file{N}.combosav` container as `combo.mod
 ```
 
 - An absent key is a combo randomizer slot, exactly as before the setting. A vanilla `ootmm` is read as a randomizer
-  slot (a vanilla save has one game).
+  slot (a vanilla save has one game). A vanilla Majora's Mask slot is `{ "game": "mm", "kind": "vanilla" }`
+  (`ComboMode::VanillaMm()`, `IsVanillaMm()`).
 - A new randomizer slot records `game` from its seed's `games` (the Games setting). `quest` only means something for a
   vanilla OoT slot.
 - The launcher's helpers: `Combo_GetSlotMode(slot)` and `Combo_SetSlotMode(slot, mode)` for a slot's stored mode, and
-  `Combo_ActiveSlotIsVanillaOot()` for the loaded slot (`g_activeMode`, set by `LoadComboCompletion`). A copied slot
-  copies its mode; an erased slot loses it.
+  `g_activeMode` for the loaded slot (set by `LoadComboCompletion`). A copied slot copies its mode; an erased slot
+  loses it. Presets are CVars and never touch a slot: the mode is written only by `Combo_SetSlotMode`, at creation.
 
 ### The quest carousel is the picker
 
-Under `COMBO_BUILD` the OoT file select offers Normal, Master Quest and Randomizer (`z_file_choose.c`,
-`SohFileSelect_IsQuestHidden`). Normal needs `oot.o2r` and Master Quest needs `oot-mq.o2r`
+Under `COMBO_BUILD` the OoT file select offers Normal, Master Quest, Randomizer and Majora's Mask, in that order
+(`z_file_choose.c`, `SohFileSelect_IsQuestHidden`). Normal needs `oot.o2r` and Master Quest needs `oot-mq.o2r`
 (`ResourceMgr_GameHasOriginal` / `ResourceMgr_GameHasMasterQuest`, plus SoH's own File Select "Hide" options);
-Randomizer is always offered and is the default selection. Boss Rush and Speedrun stay out. `Sram_InitSave` no longer
-forces the randomizer quest. The launcher reads the new save's quest with `SOH_GetNewSaveQuest` inside the new-save
-callback, and `Combo_OnOOTSaveInit` branches on it.
+Randomizer and Majora's Mask are always offered, and Randomizer is the default selection. Boss Rush and Speedrun stay
+out. `Sram_InitSave` no longer forces the randomizer quest. The launcher reads the new save's quest with
+`SOH_GetNewSaveQuest` inside the new-save callback, and `Combo_OnOOTSaveInit` branches on it.
+
+The fourth choice is `QUEST_COMBO_MM` (6, `soh/include/z64save.h`), a value that exists only in the file select's
+`questType[]` and in `gComboNewSaveQuest` (what `SOH_GetNewSaveQuest` returns). It never reaches
+`gSaveContext.ship.quest.id`: `QUEST_SAVE_ID()` stores the OoT half of the slot as a Normal Quest file, so no SoH code
+sees a quest it doesn't know, and the OoT half of a vanilla MM slot is a plain vanilla save that is never played.
+Normal and Master Quest are still `QUEST_NORMAL` and `QUEST_MASTER`; the carousel steps over 3-5 (hidden).
 
 ### A vanilla OoT slot
 
@@ -2746,6 +2753,41 @@ callback, and `Combo_OnOOTSaveInit` branches on it.
 
 Not changed: Anchor. A vanilla slot has no cross items, and the launcher still pumps Anchor packets into MM's dormant
 save, which can belong to another slot.
+
+### A vanilla Majora's Mask slot
+
+- Creation: `Combo_InitVanillaMmSlot` shares `Combo_InitVanillaSlot` with the OoT one (drops the seed and shared state,
+  stores the mode, `LoadComboCompletion`, clears the foreign map), then `MM_InitVanillaSaveFile`
+  (`BenPort.cpp`) -> `SaveManager_InitVanillaNewSaveForSlot` (`SaveManager.cpp`): `Sram_InitNewSave`, the OoT-entered
+  name, a valid `newf`, `SAVETYPE_VANILLA`, and nothing granted. This is what MM's own file select writes
+  (`Sram_InitSave`); its `OnSaveInit` hooks are not run, since they turn a file into a randomizer save when
+  `gRando.Enabled` is set. The slot's last game is set to MM, so the OoT load that follows creation goes straight into
+  MM (`Combo_OnOOTSaveLoad` -> `Combo_ResumeMMIfLastSavedThere`). Both ROMs are still needed.
+- The launcher tells MM which kind of MM save the loaded slot has (`MM_SetComboVanillaSlot`, pushed by
+  `LoadComboCompletion`), and `Combo_LoadMMSaveFile`'s save-type check expects `SAVETYPE_VANILLA` then, `SAVETYPE_RANDO`
+  otherwise. A vanilla MM save has `IS_RANDO` false, so no randomizer hook is registered when MM fires `OnSaveLoad`.
+- First arrival (`title_setup.c`, `Combo_StartVanillaOpening` in `z_sram_NES.c`): a vanilla slot whose opening
+  (`isFirstCycle`, "opening_flag") hasn't been played starts the way `Sram_OpenSave` starts a new file, at
+  `ENTRANCE(CUTSCENE, 0)`. 2S2H's own Skip Intro Sequence hook then sends it to South Clock Town as it does anywhere;
+  with the enhancement off MM's intro plays. After the opening, and for owl saves, the usual combo arrival applies.
+  Not run: whether the intro plays correctly under the hot-swap launcher.
+- Nothing crosses from Hyrule (`Combo_HandOffToMM`, `Combo_HandOffToOot`): adult Link, the Link-state push, the OoT
+  form, mask and button layout and shared health are cleared or skipped, in both directions. MM's own forms stay. The
+  watched-transformation merge with the shared record (`ComboSharedHealth.cpp`) now skips a one-game slot, since the
+  record can hold another slot's. The Games gates (Clock Tower, owl warp, warp songs, merged pause, shared health,
+  Lost Woods link) apply as for any MM-only slot.
+- Reset or an owl-save quit returns to OoT's file select, as MM-start seeds do.
+- Loading in either order (combo, vanilla OoT, vanilla MM): `LoadComboCompletion` resets the per-slot launcher state
+  and re-pushes the mode and kind first; a vanilla slot clears the foreign map and doesn't peek MM's save.
+
+### Slot labels
+
+The OoT file select draws the mode on each file in the small quest label box (the disk label drawn for MQ, rando and
+speedrun files): `COMBO` combo randomizer, `OOTR` OoT randomizer, `MMR` MM randomizer, `MQ` OoT Master Quest,
+`MM` vanilla Majora's Mask; a vanilla Normal Quest file has none. The launcher answers per file through
+`SOH_SetSlotModeLabelCallback` (`ComboModeLabel`, static strings); the box fits about four capitals, and longer text
+shrinks to fit. A vanilla MM slot's hearts, deaths and quest items on the file select are the empty OoT half's, not
+MM's.
 
 ## Lost Woods link (ComboShip Ultimate)
 
