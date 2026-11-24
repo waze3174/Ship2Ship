@@ -1732,6 +1732,7 @@ EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos) {
         return NULL;
     }
     bomb->timer = 0;
+    bomb->comboBlastMask = true;
     // MM EnBom_Init (z_en_bom.c:171-173) puts the blast sphere on the bomb. OOT's EnBom sets it only in its body draw
     // (Collider_UpdateSpheres), which a bomb with its fuse at 0 never reaches: it explodes on its first update, before
     // its first draw. Without this the blast sits at the world origin and hits nothing near Link.
@@ -1741,6 +1742,54 @@ EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos) {
     // MM: the Blast Mask's bomb is an MM bomb (BOMB_EXPLOSIVE_TYPE_BOMB: DMG_EXPLOSIVES, 2).
     CROSS_MM_TAG_TOUCHER(&bomb->explosionColliderItems[0].info.toucher, CROSS_MM_TAG_EXPLOSIVES, 2);
     return bomb;
+}
+
+// MM's blast is a radius-100 sphere at Link's head from its first frame (MM EnBom_Explode), so it reaches his raised
+// shield whenever it reaches his body, and his damage check takes the shield's bounce first (MM func_80834600). MM also
+// keeps the shield up through the guard reaction (Player_Action_19). OOT's blast grows from radius 8 to 72 over nine
+// frames: it can reach his body before his shield, and again once OOT's standing guard reaction lowers the shield.
+// So while his shield is up a hit on his body is the shield's, and a blast his shield took no longer touches him.
+
+static EnBom* EnBom_ComboBlastMaskHitting(Collider* collider) {
+    EnBom* bomb = (EnBom*)collider->ac;
+
+    if (!(collider->acFlags & AC_HIT) || (bomb == NULL) || (bomb->actor.id != ACTOR_EN_BOM) || !bomb->comboBlastMask) {
+        return NULL;
+    }
+    return bomb;
+}
+
+// The shield quad that Link's last draw registered (Player_UpdateShieldCollider's two callers in z_player_lib.c).
+static s32 EnBom_ComboShieldRaised(Player* player) {
+    if (!(player->stateFlags1 & PLAYER_STATE1_SHIELDING)) {
+        return false;
+    }
+    if (player->rightHandType == PLAYER_MODELTYPE_RH_SHIELD) {
+        return player->actor.scale.y >= 0.0f;
+    }
+    return (player->rightHandType != PLAYER_MODELTYPE_RH_FF) && Player_IsChildWithHylianShield(player);
+}
+
+s32 EnBom_ComboBlastMaskShielded(PlayState* play, Player* player) {
+    EnBom* onShield;
+    EnBom* blast;
+
+    if (player != GET_PLAYER(play)) {
+        return false;
+    }
+    onShield = EnBom_ComboBlastMaskHitting(&player->shieldQuad.base);
+    blast = (onShield != NULL) ? onShield : EnBom_ComboBlastMaskHitting(&player->cylinder.base);
+    if (blast == NULL) {
+        return false;
+    }
+    if (blast->comboBlastGuarded) {
+        return true;
+    }
+    if (onShield != NULL) {
+        blast->comboBlastGuarded = true;
+        return false; // OOT's guard reaction to the bounce
+    }
+    return EnBom_ComboShieldRaised(player);
 }
 
 // ---------------------------------------------------------------------------------------------------------------
