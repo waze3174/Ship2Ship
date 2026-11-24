@@ -2613,3 +2613,25 @@ Features that change the rules of play are off until the player turns them on in
   The launcher pushes the setting with `SOH_SetComboFormLogicCredit` before each oracle pass; a seed without the
   key was generated without credit.
 - `gCombo.LinkSettings` (the camera / ocarina-stick link between the two games' settings) defaults to off.
+
+## Master Quest dungeons in combo seeds (ComboShip Ultimate)
+
+SoH's `FinalizeSettings` rolls the MQ dungeons from the shared rando RNG, which the combo paths never seed, and it runs
+on every prep: each generation attempt (`SOH_PrepRandoContext`), the oracle's lazy init (`EnsureOracleInit`, once per
+process) and every reload. Without the fix the set that logic was filled against could differ from the one the reload
+(and so the new save, which stores the context's set) used.
+
+- The set is pinned in `soh/soh/Enhancements/randomizer/ComboMasterQuest.cpp`. `SOH_SetComboRandoSeed` unpins;
+  `SOH_DumpRandoStaticData` pins the roll its prep made, so the oracle's later `FinalizeSettings` reuses it;
+  `Context::FinalizeSettings` applies the pinned set right after its own roll (`RSK_MQ_DUNGEON_COUNT` follows it).
+- The seed stores it as `masterQuestDungeons`, an array of dungeon names (native SoH's spoiler key and format). A
+  reload and the `comborando` validator push it with `SOH_SetComboMasterQuestDungeons` after the seed push. A seed
+  without the key pushes nothing and rolls as before.
+- With only one of `oot.o2r` / `oot-mq.o2r` loaded, `FinalizeSettings` forces vanilla or all-MQ (as native SoH does) and
+  the stored set is ignored with a warning; the headless validator picks the archives from the files on disk.
+- The OOT save stores its own MQ set (`SaveManager.cpp`, `masterQuestDungeons`), so a slot keeps the layout it was
+  created with.
+- `ResourceMgr_GetResourceByNameHandlingMQ` rewrites `/nonmq/` to `/mq/` while OOT is in an MQ scene. Routed foreign
+  assets (`__OTR__@mm:`) are objects, animations and audio, none of which have a `/nonmq/` component, and routed
+  display lists resolve through `CrossRMRegistry` directly in the interpreter. MM's own scene paths do contain
+  `/nonmq/`, so a soh-side caller that loaded an MM scene or room asset would be rewritten; none exists.
