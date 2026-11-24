@@ -167,3 +167,9 @@ extern "C" COMBO_EXPORT int SOH_ComboAmmoBag(int ootItem, int* cap, int* kind) {
 extern "C" int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap) {
     return ComboHealth::DormantAmmo(sRt, ComboHealth::kGameMm, kind, mmCount, mmCap);
 }
+
+// An MM ammo item used in Hyrule (MM's Deku Stick or Deku Nut) spends from the shared count when sharing is on, the
+// mirror of Termina's Combo_SharedOotAmmoSpend. 0 = sharing is off (spend from MM's save).
+extern "C" int Combo_SharedMmAmmoSpend(int kind, int change, int mmCount) {
+    return ComboHealth::SpendDormantAmmo(sRt, ComboHealth::kGameMm, kind, change, mmCount) ? 1 : 0;
+}
