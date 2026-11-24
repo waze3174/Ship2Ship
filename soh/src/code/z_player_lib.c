@@ -1,9 +1,29 @@
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: MM transformations in Hyrule
+#endif
 #include "global.h"
+#include <string.h>
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/gameplay_field_keep/gameplay_field_keep.h"
 #include "objects/object_link_boy/object_link_boy.h"
 #include "objects/object_link_child/object_link_child.h"
 #include "overlays/actors/ovl_Demo_Effect/z_demo_effect.h"
+#ifdef COMBO_BUILD
+#include "overlays/actors/ovl_En_Arrow/z_en_arrow.h" // ComboShip: MM's Deku Bubble held at Deku Link's mouth
+#include "overlays/actors/ovl_En_Boom/z_en_boom.h"   // ComboShip: MM's Zora fins (arm fins hide while thrown)
+static s32 sComboDekuHeadPushed = false; // head matrix saved before the bubble squash (popped after the head)
+#endif
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h"
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus (MM masks worn in Hyrule)
+// ComboShip: a Goron in Hyrule shrugs off heat and lava like the Goron Tunic (MM Gorons are heat-proof).
+#define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
+// ...and a Zora breathes underwater like the Zora Tunic.
+#define COMBO_WATER_PROOF() (Combo_OotForm() == COMBO_FORM_ZORA)
+#else
+#define COMBO_WATER_PROOF() 0
+#define COMBO_HEAT_PROOF() 0
+#endif
 
 #include <libultraship/bridge/resourcebridge.h>
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -13,6 +33,9 @@
 
 #include <stdlib.h>
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+static Color_RGB8 sComboTunicEnv = { 30, 105, 27 }; // last tunic env colour Player_DrawImpl set
+#endif
 
 typedef struct {
     /* 0x00 */ u8 flag;
@@ -473,6 +496,54 @@ void Player_SetBootData(PlayState* play, Player* this) {
     }
 
     bootRegs = sBootData[currentBoots];
+#ifdef COMBO_BUILD
+    {
+        // ComboShip (forms audit 2026-11-13): a transformed Link moves on MM's own row for its form (mm z_player_lib.c
+        // D_801BFE14 via D_801BFF90 / func_80123140), not on OOT's Kokiri boots — Goron gravity -140, Deku REG(38)
+        // 1000, Fierce Deity run limit 1000, the sinking Goron's row in water. MM's REG(39) has no OOT reader and is
+        // dropped; the rest is the same register in both games.
+        static s16 sComboFormRegs[][17] = {
+            /* FD */ { 200, 666, 200, 700, 366, 200, 600, 175, 800, 1000, -100, 600, 590, 800, 125, 300, 65 },
+            /* Goron */ { 200, 1000, 300, 700, 550, 270, 700, 200, 800, 600, -140, 600, 590, 750, 125, 200, 130 },
+            /* Goron in water (PLAYER_BOOTS_7) */
+            { 80, 800, 150, 700, 480, 270, 600, 50, 800, 300, -40, 400, 540, 270, 25, 0, 80 },
+            /* Zora (land = underwater row) */
+            { 200, 1000, 300, 700, 550, 270, 700, 300, 800, 600, -100, 600, 590, 750, 125, 200, 130 },
+            /* Deku */ { 200, 1000, 300, 700, 550, 270, 600, 1000, 800, 600, -100, 600, 590, 750, 125, 200, 130 },
+        };
+        s32 row = -1;
+
+        if ((Combo_OotForm() != COMBO_FORM_HUMAN) && (this->actor.id == ACTOR_PLAYER)) {
+            // MM func_80123140 has no iron-boots override (OOT's REG(27) 500 / REG(48) 100 above): every form starts
+            // from 2000 / 370, so the sunk Zora (OOT iron boots standing in for PLAYER_BOOTS_ZORA_UNDERWATER) turns
+            // like MM's, not like iron-booted Link.
+            REG(27) = 2000;
+            REG(48) = 370;
+        }
+        switch (Combo_OotForm()) {
+            case COMBO_FORM_FIERCE_DEITY:
+                row = 0;
+                REG(27) = 1200;
+                break;
+            case COMBO_FORM_GORON:
+                row = (this->stateFlags1 & PLAYER_STATE1_IN_WATER) ? 2 : 1;
+                REG(48) = 200;
+                break;
+            case COMBO_FORM_ZORA:
+                // MM: PLAYER_BOOTS_ZORA_UNDERWATER in water steps one row on (currentBoots++), onto the row labelled
+                // PLAYER_BOOTS_GORON (gravity -140, REG(38) 200) -- the same values as the port's Goron row.
+                row = ((this->currentBoots == PLAYER_BOOTS_IRON) && (this->stateFlags1 & PLAYER_STATE1_IN_WATER)) ? 1
+                                                                                                                   : 3;
+                break;
+            case COMBO_FORM_DEKU:
+                row = 4;
+                break;
+        }
+        if ((row >= 0) && (this->actor.id == ACTOR_PLAYER)) {
+            bootRegs = sComboFormRegs[row];
+        }
+    }
+#endif
     REG(19) = bootRegs[0];
     REG(30) = bootRegs[1];
     REG(32) = bootRegs[2];
@@ -527,11 +598,49 @@ s32 Player_CheckHostileLockOn(Player* this) {
 }
 
 s32 Player_IsChildWithHylianShield(Player* this) {
+#ifdef COMBO_BUILD
+    if (Combo_OotForm() != COMBO_FORM_HUMAN) {
+        return false; // a form guards its own way (MM Player_ActionHandler_11), never crouched behind a shield
+    }
+#endif
     return gSaveContext.linkAge != 0 && (this->currentShield == PLAYER_SHIELD_HYLIAN);
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: MM's Great Fairy's Sword in Link's hand in Hyrule. It rides OOT's Biggoron item action (two-handed
+// swing, reach, giant-sword damage), but it is MM's sword: MM's model, no durability, the B sword stays sheathed.
+s32 gComboGfsInHand = false;
+s16 gComboBlastMaskTimer = 0; // ComboShip: MM's blastMaskTimer for the Blast Mask worn in Hyrule (z_player.c ticks it)
+#include "ComboGfsGrip.h" // adult grip for MM's GFS blade, shared with MM's adult-in-Termina draw
+static Vec3f sComboGfsAdultGrip = { COMBO_GFS_ADULT_GRIP_X, COMBO_GFS_ADULT_GRIP_Y, COMBO_GFS_ADULT_GRIP_Z };
+#define kComboGfsAdultScale COMBO_GFS_ADULT_SCALE
+s32 Combo_GfsInHand(Player* this) {
+    return gComboGfsInHand && (this->heldItemAction == PLAYER_IA_SWORD_BIGGORON);
+}
+
+// ComboShip (owner 2026-11-14: "make sure the double helix sword works in OOT"): Fierce Deity's B is always MM's
+// Double Helix Sword (MM gives the form ITEM_SWORD_DEITY on B whatever the human owns). It rides OOT's two-handed
+// sword action -- MM's Deity sword is two-handed too, damage 4 / 8 (mm z_player.c D_8085D09C[SWORD_TWO_HANDED]),
+// exactly OOT's Biggoron's Sword -- and like MM's it never breaks. His MM hand model carries the blade.
+s32 Combo_FdSword(Player* this) {
+    return (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY) && (this->heldItemAction == PLAYER_IA_SWORD_BIGGORON);
+}
+
+// A two-handed sword with no durability: MM's Great Fairy's Sword or Fierce Deity's Double Helix.
+s32 Combo_UnbreakableTwoHander(Player* this) {
+    return Combo_GfsInHand(this) || Combo_FdSword(this);
+}
+#endif
+
 s32 Player_ActionToModelGroup(Player* this, s32 itemAction) {
     s32 modelGroup = sActionModelGroups[itemAction];
+#ifdef COMBO_BUILD
+    if ((itemAction == PLAYER_IA_SWORD_BIGGORON) && gComboGfsInHand) {
+        // MM's PLAYER_MODELGROUP_TWO_HAND_SWORD: closed left hand (MM's blade drawn in it), B sword kept sheathed,
+        // two-handed animations (anim type 3) — OOT's model group 10 is exactly that.
+        return PLAYER_MODELGROUP_10;
+    }
+#endif
 
     if ((modelGroup == PLAYER_MODELGROUP_SWORD_AND_SHIELD) && Player_IsChildWithHylianShield(this)) {
         // child, using kokiri sword with hylian shield equipped
@@ -681,6 +790,17 @@ void Player_SetEquipmentData(PlayState* play, Player* this) {
         this->currentShield = SHIELD_EQUIP_TO_PLAYER(CUR_EQUIP_VALUE(EQUIP_TYPE_SHIELD));
         this->currentTunic = TUNIC_EQUIP_TO_PLAYER(CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC));
         this->currentBoots = BOOTS_EQUIP_TO_PLAYER(CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS));
+#ifdef COMBO_BUILD
+        // ComboShip (owner 2026-11-14: "boots and tunics don't affect transformations"): equipping boots or a tunic
+        // while transformed changes the save, not the transformed Link -- he keeps no boots and no tunic (MM's forms
+        // have neither). Human Link gets them back (Combo_FormBoots in z_player.c restores from the save).
+        if (Combo_OotForm() != COMBO_FORM_HUMAN) {
+            this->currentBoots = PLAYER_BOOTS_KOKIRI;
+            if (Combo_OotForm() != COMBO_FORM_FIERCE_DEITY) { // owner: Fierce Deity is human -- he keeps the tunic
+                this->currentTunic = PLAYER_TUNIC_KOKIRI;
+            }
+        }
+#endif
         this->currentSwordItemId = B_BTN_ITEM;
         Player_SetModelGroup(this, Player_ActionToModelGroup(this, this->heldItemAction));
         Player_SetBootData(play, this);
@@ -688,7 +808,16 @@ void Player_SetEquipmentData(PlayState* play, Player* this) {
 }
 
 void Player_UpdateBottleHeld(PlayState* play, Player* this, s32 item, s32 itemAction) {
-    Inventory_UpdateBottleItem(play, item, this->heldItemButton);
+#ifdef COMBO_BUILD
+    // ComboShip (MM items in Hyrule): an MM bottle on this button lives in MM's save; drinking / pouring / catching
+    // changes MM's own slot (the button keeps its foreign id, which now names the new content).
+    if ((this->heldItemButton >= 0) &&
+        Combo_PauseIsForeign(gSaveContext.equips.buttonItems[this->heldItemButton]) &&
+        Combo_PauseSetForeignBottle(gSaveContext.equips.buttonItems[this->heldItemButton], item)) {
+        gSaveContext.buttonStatus[(this->heldItemButton >= 4) ? (this->heldItemButton + 1) : this->heldItemButton] = BTN_ENABLED;
+    } else
+#endif
+        Inventory_UpdateBottleItem(play, item, this->heldItemButton);
 
     if (item != ITEM_BOTTLE) {
         this->heldItemId = item;
@@ -778,6 +907,13 @@ s32 Player_IsBurningStickInRange(PlayState* play, Vec3f* pos, f32 xzRange, f32 y
 s32 Player_GetStrength(void) {
     s32 strengthUpgrade = CUR_UPG_VALUE(UPG_STRENGTH);
 
+#ifdef COMBO_BUILD
+    // ComboShip (form moves as items): Goron Link lifts what the Golden Gauntlets lift (bomb flowers, silver rocks,
+    // the giant blocks), as MM's Goron hauls powder kegs and boulders.
+    if ((Combo_OotForm() == COMBO_FORM_GORON) && CVarGetInteger("gCombo.Forms.ItemAnalogs", 1)) {
+        return PLAYER_STR_GOLD_G;
+    }
+#endif
     if (CVarGetInteger(CVAR_ENHANCEMENT("ToggleStrength"), 0) &&
         CVarGetInteger(CVAR_ENHANCEMENT("StrengthDisabled"), 0)) {
         return PLAYER_STR_NONE;
@@ -877,6 +1013,11 @@ s32 Player_HoldsTwoHandedWeapon(Player* this) {
 }
 
 s32 Player_HoldsBrokenKnife(Player* this) {
+#ifdef COMBO_BUILD
+    if (Combo_UnbreakableTwoHander(this)) {
+        return false; // MM's Great Fairy's Sword / Fierce Deity's Double Helix never break
+    }
+#endif
     return (this->heldItemAction == PLAYER_IA_SWORD_BIGGORON) && (gSaveContext.swordHealth <= 0.0f);
 }
 
@@ -931,8 +1072,15 @@ s32 Player_GetEnvironmentalHazard(PlayState* play) {
 
     if (play->roomCtx.curRoom.behaviorType2 == ROOM_BEHAVIOR_TYPE2_3) { // Room is hot
         envHazard = PLAYER_ENV_HAZARD_HOTROOM - 1;
-    } else if ((this->underwaterTimer > 80) &&
-               ((this->currentBoots == PLAYER_BOOTS_IRON) || (this->underwaterTimer >= 300))) { // Deep underwater
+    } else if (((this->underwaterTimer > 80) &&
+                ((this->currentBoots == PLAYER_BOOTS_IRON) || (this->underwaterTimer >= 300)))
+#ifdef COMBO_BUILD
+               // The sunk Zora: his breath timer never runs (MM: no breath for the Zora), so OOT's "deep" test never
+               // passed and the floor rule (C buttons: hookshot / longshot usable) never applied to him.
+               || ((Combo_OotForm() == COMBO_FORM_ZORA) && (this->currentBoots == PLAYER_BOOTS_IRON) &&
+                   (this->stateFlags1 & PLAYER_STATE1_IN_WATER))
+#endif
+    ) { // Deep underwater
         envHazard = ((this->currentBoots == PLAYER_BOOTS_IRON) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))
                         ? (PLAYER_ENV_HAZARD_UNDERWATER_FLOOR - 1)
                         : (PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1);
@@ -949,12 +1097,12 @@ s32 Player_GetEnvironmentalHazard(PlayState* play) {
         if ((triggerEntry->flag != 0) && !(gSaveContext.textTriggerFlags & triggerEntry->flag) &&
             (((envHazard == (PLAYER_ENV_HAZARD_HOTROOM - 1)) &&
               (this->currentTunic != PLAYER_TUNIC_GORON && CVarGetInteger(CVAR_CHEAT("SuperTunic"), 0) == 0 &&
-               CVarGetInteger(CVAR_ENHANCEMENT("DisableTunicWarningText"), 0) == 0)) ||
+               !COMBO_HEAT_PROOF() && CVarGetInteger(CVAR_ENHANCEMENT("DisableTunicWarningText"), 0) == 0)) ||
              (((envHazard == (PLAYER_ENV_HAZARD_UNDERWATER_FLOOR - 1)) ||
                (envHazard == (PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1))) &&
               (this->currentBoots == PLAYER_BOOTS_IRON) &&
               (this->currentTunic != PLAYER_TUNIC_ZORA && CVarGetInteger(CVAR_CHEAT("SuperTunic"), 0) == 0 &&
-               CVarGetInteger(CVAR_ENHANCEMENT("DisableTunicWarningText"), 0) == 0)))) {
+               !COMBO_WATER_PROOF() && CVarGetInteger(CVAR_ENHANCEMENT("DisableTunicWarningText"), 0) == 0)))) {
             Message_StartTextbox(play, triggerEntry->textId, NULL);
             gSaveContext.textTriggerFlags |= triggerEntry->flag;
         }
@@ -1085,6 +1233,9 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
     if (GameInteractor_Should(VB_APPLY_TUNIC_COLOR, true, data, color)) {
         gDPSetEnvColor(POLY_OPA_DISP++, color->r, color->g, color->b, 0);
     }
+#ifdef COMBO_BUILD
+    sComboTunicEnv = *color; // ComboShip: restored after an MM mask that sets its own env colour (Blast Mask)
+#endif
 
     // If we have a custom link model, always use the most detailed LOD
     if (Player_IsCustomLinkModel()) {
@@ -1093,9 +1244,48 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
 
     sDListsLodOffset = lod * 2;
 
-    SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, data, lod);
+#ifdef COMBO_BUILD
+    // ComboShip (owner ask 2026-11-12): a Majora's Mask form in Hyrule draws the form's MM body (ComboForms.cpp).
+    // Not the pause screen's Link: he previews the human's equipment, and his data is a u8[2] of sword and shield, not
+    // an actor -- read as one, "id == ACTOR_PLAYER" held whenever neither was equipped, the form's override then
+    // treated the array as a Player and pausing as Zora crashed (owner 2026-11-14, Gerudo Valley / the hideout).
+    extern s32 Player_OverrideLimbDrawPause(PlayState * play, s32 limbIndex, Gfx * *dList, Vec3f * pos, Vec3s * rot,
+                                            void* arg);
+    const s32 comboForm =
+        (overrideLimbDraw != Player_OverrideLimbDrawPause) && Combo_OotFormDrawActive(data);
+    if (comboForm) {
+        POLY_OPA_DISP = (Gfx*)Combo_OotFormDrawPrep(POLY_OPA_DISP, eyeIndex, mouthIndex);
+        skeleton = Combo_OotFormLimbs(&dListCount);
+        overrideLimbDraw = (OverrideLimbDrawOpa)Combo_OotFormWrapOverride((void*)overrideLimbDraw);
+        lod = 0;
+    }
+#else
+    const s32 comboForm = 0;
+#endif
+#ifdef COMBO_BUILD
+    extern s32 gComboGoronBall;
+    extern s16 Combo_ZoraBarrierStrength(void);
+    if (comboForm && (Combo_OotForm() == COMBO_FORM_ZORA) && (Combo_ZoraBarrierStrength() != 0)) {
+        // MM Player_Draw: the barrier shell, stood up and lifted to Link's middle, before the body
+        OPEN_DISPS(play->state.gfxCtx);
+        gSPClearGeometryMode(POLY_XLU_DISP++, G_CULL_BOTH);
+        CLOSE_DISPS(play->state.gfxCtx);
+        Matrix_Push();
+        Matrix_RotateX(-M_PI / 2.0f, MTXMODE_APPLY);
+        Matrix_Translate(0.0f, 0.0f, -1800.0f, MTXMODE_APPLY);
+        Combo_ZoraBarrierDraw(play, Combo_ZoraBarrierStrength());
+        Matrix_Pop();
+    }
+    if (comboForm && gComboGoronBall && (Combo_OotForm() == COMBO_FORM_GORON)) {
+        Combo_OotFormDrawBall(play, ((Actor*)data)->shape.rot.y); // curled up and rolling (only ever as a Goron)
+    } else if (comboForm && (Combo_OotForm() == COMBO_FORM_GORON) &&
+               (((Player*)data)->stateFlags1 & PLAYER_STATE1_SHIELDING) && Combo_GoronGuardDraw(play)) {
+        // MM: the Goron's guard is its own skeleton (gLinkGoronShieldingSkel), drawn instead of the body
+    } else
+#endif
+        SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, data, lod);
 
-    if (!GameInteractor_InvisibleLinkActive() &&
+    if (!comboForm && !GameInteractor_InvisibleLinkActive() &&
         ((CVarGetInteger(CVAR_ENHANCEMENT("FirstPersonGauntlets"), 0) && LINK_IS_ADULT) ||
          (overrideLimbDraw != Player_OverrideLimbDrawGameplayFirstPerson)) &&
         (overrideLimbDraw != Player_OverrideLimbDrawGameplayCrawling) &&
@@ -1186,15 +1376,43 @@ void func_8008F87C(PlayState* play, Player* this, SkelAnime* skelAnime, Vec3f* p
         (Player_ActionToMagicSpell(this, this->itemAction) < 0)) {
         s32 pad;
 
+        Vec3f* shinPos = &D_80126038[gSaveContext.linkAge];
+        f32 footX = D_80126050[gSaveContext.linkAge];
+
         sp7C = D_80126058[gSaveContext.linkAge];
         sp78 = D_80126060[gSaveContext.linkAge];
         sp74 = D_80126068[gSaveContext.linkAge] - this->unk_6C4;
+#ifdef COMBO_BUILD
+        {
+            // ComboShip: MM Player_AdjustSingleLeg measures each form's own leg (D_801C08C0 shin, D_801C08FC foot,
+            // D_801C0910 / D_801C0924 lengths, D_801C0938 sole). Measuring the Deku's short legs with child Link's
+            // made the IK see his feet under the floor and lift them (owner 2026-11-15: "his feet float").
+            // Indexed by ComboForm (human = OOT's own above).
+            static Vec3f sFormShin[COMBO_FORM_MAX] = {
+                { 0.0f, 0.0f, 0.0f }, { 1156.0f, 0.0f, 0.0f }, { 1406.0f, 0.0f, 0.0f },
+                { 408.0f, 0.0f, 0.0f }, { 1304.0f, 0.0f, 0.0f },
+            };
+            static const f32 sFormFoot[COMBO_FORM_MAX] = { 0.0f, 1056.0f, 1506.0f, 359.0f, 1265.0f };
+            static const f32 sFormLenA[COMBO_FORM_MAX] = { 0.0f, 133.63359f, 197.68358f, 16.646399f, 170.0416f };
+            static const f32 sFormLenB[COMBO_FORM_MAX] = { 0.0f, 22.120003f, -29.12001f, 3.7582989f, 10.019104f };
+            static const f32 sFormSole[COMBO_FORM_MAX] = { 0.0f, 4.0f, 1.0f, 1.0f, 5.0f };
+            const int form = Combo_OotFormDrawActive(this) ? Combo_OotForm() : COMBO_FORM_HUMAN;
+
+            if ((form > COMBO_FORM_HUMAN) && (form < COMBO_FORM_MAX)) {
+                shinPos = &sFormShin[form];
+                footX = sFormFoot[form];
+                sp7C = sFormLenA[form];
+                sp78 = sFormLenB[form];
+                sp74 = sFormSole[form] - this->unk_6C4;
+            }
+        }
+#endif
 
         Matrix_Push();
         Matrix_TranslateRotateZYX(pos, rot);
         Matrix_MultVec3f(&sZeroVec, &spA4);
-        Matrix_TranslateRotateZYX(&D_80126038[gSaveContext.linkAge], &skelAnime->jointTable[shinLimbIndex]);
-        Matrix_Translate(D_80126050[gSaveContext.linkAge], 0.0f, 0.0f, MTXMODE_APPLY);
+        Matrix_TranslateRotateZYX(shinPos, &skelAnime->jointTable[shinLimbIndex]);
+        Matrix_Translate(footX, 0.0f, 0.0f, MTXMODE_APPLY);
         Matrix_MultVec3f(&sZeroVec, &sp98);
         Matrix_MultVec3f(&D_80126070, &footprintPos);
         Matrix_Pop();
@@ -1295,7 +1513,21 @@ s32 Player_OverrideLimbDrawGameplayCommon(PlayState* play, s32 limbIndex, Gfx** 
         sRightHandType = this->rightHandType;
         D_80160000 = &this->meleeWeaponInfo[2].base;
 
-        if (!LINK_IS_ADULT) {
+#ifdef COMBO_BUILD
+        // ComboShip: a Majora's Mask form scales the animation's root translation by its own body's factor, as MM does
+        // (ageProperties->unk_08: Deku 0.3, Goron 0.74, Zora / Fierce Deity 1.0). OOT hardcodes child = 0.64 here.
+        if (Combo_OotForm() != COMBO_FORM_HUMAN) {
+            const f32 rootScale = this->ageProperties->unk_08;
+            if (!(this->skelAnime.movementFlags & 4) || (this->skelAnime.movementFlags & 1)) {
+                pos->x *= rootScale;
+                pos->z *= rootScale;
+            }
+            if (!(this->skelAnime.movementFlags & 4) || (this->skelAnime.movementFlags & 2)) {
+                pos->y *= rootScale;
+            }
+        } else
+#endif
+            if (!LINK_IS_ADULT) {
             if (!(this->skelAnime.movementFlags & 4) || (this->skelAnime.movementFlags & 1)) {
                 pos->x *= 0.64f;
                 pos->z *= 0.64f;
@@ -1308,7 +1540,21 @@ s32 Player_OverrideLimbDrawGameplayCommon(PlayState* play, s32 limbIndex, Gfx** 
 
         pos->y -= this->unk_6C4;
 
-        if (this->unk_6C2 != 0) {
+#ifdef COMBO_BUILD
+        extern s32 Combo_ZoraSwimRootTransform(s16 * pitch, s16 * roll);
+        s16 comboPitch, comboRoll;
+        if (Combo_ZoraSwimRootTransform(&comboPitch, &comboRoll)) {
+            // MM Player_OverrideLimbDrawGameplayCommon, Zora + PLAYER_STATE3_8000: the fast swim tilts the body by
+            // its pitch about a point 200 above the root and barrel-rolls it
+            Matrix_Translate(pos->x, ((Math_CosS(comboPitch) - 1.0f) * 200.0f) + pos->y, pos->z, MTXMODE_APPLY);
+            Matrix_RotateX(comboPitch * (M_PI / 0x8000), MTXMODE_APPLY);
+            Matrix_RotateZ(comboRoll * (M_PI / 0x8000), MTXMODE_APPLY);
+            Matrix_RotateZYX(rot->x, rot->y, rot->z, MTXMODE_APPLY);
+            pos->x = pos->y = pos->z = 0.0f;
+            rot->x = rot->y = rot->z = 0;
+        } else
+#endif
+            if (this->unk_6C2 != 0) {
             Matrix_Translate(pos->x, ((Math_CosS(this->unk_6C2) - 1.0f) * 200.0f) + pos->y, pos->z, MTXMODE_APPLY);
             Matrix_RotateX(this->unk_6C2 * (M_PI / 0x8000), MTXMODE_APPLY);
             Matrix_RotateZYX(rot->x, rot->y, rot->z, MTXMODE_APPLY);
@@ -1336,6 +1582,26 @@ s32 Player_OverrideLimbDrawGameplayCommon(PlayState* play, s32 limbIndex, Gfx** 
             rot->x += this->headLimbRot.z;
             rot->y -= this->headLimbRot.y;
             rot->z += this->headLimbRot.x;
+#ifdef COMBO_BUILD
+            {
+                // ComboShip: Deku Link's head puffs and tilts with the bubble he's blowing (MM z_player_lib.c head
+                // limb, PLAYER_FORM_DEKU): translate/rotate, save the matrix (restored after the head's post-limb, as
+                // MM's func_80125340 / func_8012536C), squash by the bubble's size, roll by it.
+                Vec3f squash;
+                s16 rollZ;
+                s16 upperX;
+                if ((Combo_OotForm() == COMBO_FORM_DEKU) && (this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) &&
+                    EnArrow_ComboBubbleHeadPose(this->heldActor, &squash, &rollZ, &upperX)) {
+                    Matrix_TranslateRotateZYX(pos, rot);
+                    Matrix_Push();
+                    sComboDekuHeadPushed = true;
+                    pos->x = pos->y = pos->z = 0.0f;
+                    rot->x = rot->y = 0;
+                    Matrix_Scale(squash.x, squash.y, squash.z, MTXMODE_APPLY);
+                    rot->z = rollZ;
+                }
+            }
+#endif
         } else if (limbIndex == PLAYER_LIMB_L_HAND) {
             if (CVarGetInteger(CVAR_COSMETIC("Link.SwordScale.Changed"), 0)) {
                 f32 scale = CVarGetFloat(CVAR_COSMETIC("Link.SwordScale.Value"), 1.0f);
@@ -1352,8 +1618,21 @@ s32 Player_OverrideLimbDrawGameplayCommon(PlayState* play, s32 limbIndex, Gfx** 
             if (this->upperLimbRot.y != 0) {
                 Matrix_RotateY(this->upperLimbRot.y * (M_PI / 0x8000), MTXMODE_APPLY);
             }
-            if (this->upperLimbRot.x != 0) {
-                Matrix_RotateX(this->upperLimbRot.x * (M_PI / 0x8000), MTXMODE_APPLY);
+            {
+                s16 upperRotX = this->upperLimbRot.x;
+#ifdef COMBO_BUILD
+                // ComboShip: Deku Link leans back as the bubble grows (MM: rotX += bubble size * -470).
+                Vec3f squash;
+                s16 rollZ;
+                s16 upperX;
+                if ((Combo_OotForm() == COMBO_FORM_DEKU) && (this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) &&
+                    EnArrow_ComboBubbleHeadPose(this->heldActor, &squash, &rollZ, &upperX)) {
+                    upperRotX += upperX;
+                }
+#endif
+                if (upperRotX != 0) {
+                    Matrix_RotateX(upperRotX * (M_PI / 0x8000), MTXMODE_APPLY);
+                }
             }
             if (this->upperLimbRot.z != 0) {
                 Matrix_RotateZ(this->upperLimbRot.z * (M_PI / 0x8000), MTXMODE_APPLY);
@@ -1786,7 +2065,697 @@ Vec3f sLeftRightFootLimbModelFootPos[] = {
     { 200.0f, 200.0f, 0.0f },
 };
 
+#ifdef COMBO_BUILD
+extern s32 gComboGoronPunchLimb; // z_player.c: the Goron fist (or butt) whose matrix carries the hit quads
+
+// ComboShip: the Zora's forearm fins, MM func_80126BD0 (the default pose; the swim/instrument poses come with those
+// moves). MM draws them as their own models on the forearms: tucked (0.4, 0.6, 0.7) normally, full size while held
+// ready to throw, gone while that fin is in flight. The Zora's left jab / right combo jab hit from these fins (MM
+// D_801C0A00 over D_801C09DC, under the fin's scale), not from the fists.
+s32 gComboZoraFinBlure[2] = { TOTAL_EFFECT_COUNT, TOTAL_EFFECT_COUNT }; // z_player.c Player_Init / Player_Destroy
+s16 Combo_ZoraRollVel(void);                                             // z_player.c: MM unk_B8A
+
+// MM func_80124618: a keyframed scale (frame, percent xyz) at curFrame.
+typedef struct {
+    s16 frame;
+    Vec3s pct;
+} ComboScaleKey;
+static void Combo_KeyframeScale(ComboScaleKey* keys, f32 curFrame, Vec3f* out) {
+    s32 currentFrame = curFrame;
+    f32 start;
+    f32 progress;
+    s16 next;
+
+    do {
+        next = keys[1].frame;
+        keys++;
+    } while (next < currentFrame);
+
+    start = keys[-1].frame;
+    progress = (curFrame - start) / (next - start);
+    out->x = (keys[-1].pct.x + (keys->pct.x - keys[-1].pct.x) * progress) * 0.01f;
+    out->y = (keys[-1].pct.y + (keys->pct.y - keys[-1].pct.y) * progress) * 0.01f;
+    out->z = (keys[-1].pct.z + (keys->pct.z - keys[-1].pct.z) * progress) * 0.01f;
+}
+
+static s32 Combo_AnimIs(Player* this, const char* mmAnim) {
+    const char* anim = (const char*)this->skelAnime.animation;
+    return (anim != NULL) && (strcmp(anim, mmAnim) == 0);
+}
+
+// MM func_80126BD0's second half: the Zora's swim fins (their own models, sized by the fast swim's poses) and the
+// blur trail each one draws while in water (MM func_80126440 with no collider -> EffectBlure_AddVertex).
+static void Combo_ZoraSwimFin(PlayState* play, Player* this, s32 side) {
+    static const char* const sSwimFinDL[2] = { "objects/object_link_zora/object_link_zora_DL_010868",
+                                               "objects/object_link_zora/object_link_zora_DL_010978" };
+    static Vec3f sTip[2] = { { 5400.0f, 1700.0f, 1800.0f }, { 5400.0f, 1700.0f, -1800.0f } };   // MM D_801C0AC4
+    static Vec3f sBase[2] = { { 5250.0f, 570.0f, 2400.0f }, { 5250.0f, 570.0f, -2400.0f } };    // MM D_801C0ADC
+    static ComboScaleKey sRollIn[] = { { 0, { 0, 0, 0 } }, { 17, { 50, 50, 50 } } };             // MM D_801C05C8
+    static ComboScaleKey sToWait[] = { { 0, { 100, 100, 100 } }, { 5, { 100, 100, 100 } }, { 9, { 0, 0, 0 } } }; // D_801C05F0
+    static WeaponInfo sInfo[2];
+    Vec3f scale;
+    Vec3f tip;
+    Vec3f base;
+    s32 add;
+
+    if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_waterroll")) {
+        Combo_KeyframeScale(sRollIn, this->skelAnime.curFrame, &scale);
+        sToWait[0].pct.x = sToWait[0].pct.y = sToWait[0].pct.z = 50; // MM writes its own table
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_swimtowait")) {
+        Combo_KeyframeScale(sToWait, this->skelAnime.curFrame, &scale);
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_fishswim")) {
+        scale.x = (ABS(Combo_ZoraRollVel()) * 0.00003f) + 0.5f;
+        scale.y = scale.z = scale.x;
+        sToWait[0].pct.x = sToWait[0].pct.y = sToWait[0].pct.z = (s16)(scale.x * 100.0f);
+    } else {
+        return;
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    Matrix_Push();
+    Matrix_Scale(scale.x, scale.y, scale.z, MTXMODE_APPLY);
+    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL(sSwimFinDL[side]));
+    Matrix_MultVec3f(&sTip[side], &tip);
+    Matrix_MultVec3f(&sBase[side], &base);
+    // MM func_80126440(play, NULL, ...): the first frame (or any move) of the fin's edge counts
+    add = !sInfo[side].active || (sInfo[side].tip.x != tip.x) || (sInfo[side].tip.y != tip.y) ||
+          (sInfo[side].tip.z != tip.z) || (sInfo[side].base.x != base.x) || (sInfo[side].base.y != base.y) ||
+          (sInfo[side].base.z != base.z);
+    sInfo[side].tip = tip;
+    sInfo[side].base = base;
+    sInfo[side].active = true;
+    if (add && (this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (gComboZoraFinBlure[side] != TOTAL_EFFECT_COUNT)) {
+        EffectBlure_AddVertex(Effect_GetByIndex(gComboZoraFinBlure[side]), &tip, &base);
+    }
+    Matrix_Pop();
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// MM Player_PostLimbDrawGameplay, PLAYER_LIMB_TORSO: the Goron's drums and the Deku's pipes while it plays (the
+// instrument grows in over the start animation by MM's keyframes, then holds). Owner 2026-11-14: "get the instruments
+// visible ... for all transformations in OOT".
+static void Combo_FormInstrumentDraw(PlayState* play, Player* this, s32 limbIndex) {
+    static ComboScaleKey sGoronStart[] = { { 0, { 0, 0, 0 } },      { 6, { 0, 0, 0 } },        { 7, { 60, 60, 50 } },
+                                           { 8, { 120, 130, 100 } }, { 9, { 100, 120, 80 } }, { 11, { 100, 100, 100 } },
+                                           { 13, { 100, 100, 100 } } };                                    // D_801C0428
+    static ComboScaleKey sDekuBase[] = { { 0, { 0, 0, 0 } },       { 5, { 0, 0, 0 } },        { 7, { 100, 100, 100 } },
+                                         { 9, { 110, 110, 110 } }, { 11, { 100, 100, 100 } } };           // D_801C0340
+    static ComboScaleKey sDekuPipes[] = { { 0, { 0, 0, 0 } },      { 4, { 0, 0, 0 } },      { 6, { 120, 150, 60 } },
+                                          { 8, { 130, 80, 160 } }, { 9, { 100, 100, 100 } }, { 10, { 90, 100, 90 } },
+                                          { 11, { 100, 100, 100 } } };                                    // D_801C0368
+    static const char* const sDrums[] = {
+        "objects/object_link_goron/object_link_goron_DL_010590", "objects/object_link_goron/object_link_goron_DL_010368",
+        "objects/object_link_goron/object_link_goron_DL_010140", "objects/object_link_goron/object_link_goron_DL_00FF18",
+        "objects/object_link_goron/object_link_goron_DL_00FCF0",
+    };
+    static const char* const sPipes[] = {
+        "objects/object_link_nuts/object_link_nuts_DL_007A28", "objects/object_link_nuts/object_link_nuts_DL_0077D0",
+        "objects/object_link_nuts/object_link_nuts_DL_007548", "objects/object_link_nuts/object_link_nuts_DL_007900",
+        "objects/object_link_nuts/object_link_nuts_DL_0076A0",
+    };
+    static Vec3f sDrumScale = { 1.0f, 1.0f, 1.0f }; // MM unk_AF0[1]
+    static f32 sPipeBase = 1.0f;                    // MM arr_AF0[0]
+    static Vec3f sPipeScale = { 1.0f, 1.0f, 1.0f }; // MM arr_AF0[1..5] (one value each in MM, equal here)
+    s32 i;
+
+    // MM draws the drums in torso space and the pipes in HEAD space (Player_PostLimbDrawGameplay, PLAYER_LIMB_HEAD).
+    // Note by note (z_player.c Combo_FormInstrumentUpdate, MM func_8085255C): each drum squashes on its own timer
+    // (D_801C0510) while the Goron sits on pg_gakkiwait, all pulse together while a song plays back; each pipe pops
+    // on its own note.
+    extern f32 gComboDrumTimer[5];
+    extern f32 gComboPipeScale[5];
+    extern Vec3f gComboDrumAll;
+    static ComboScaleKey sDrumHit[] = { { 0, { 100, 100, 100 } }, { 4, { 100, 100, 100 } }, { 5, { 90, 110, 100 } },
+                                        { 6, { 110, 105, 100 } }, { 8, { 100, 100, 100 } } }; // D_801C0510
+    if ((Combo_OotForm() == COMBO_FORM_GORON) && (limbIndex == PLAYER_LIMB_TORSO)) {
+        const s32 start = Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_gakkistart");
+        const s32 wait = Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_gakkiwait");
+        const s32 play_ = Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_gakkiplay");
+        Vec3f drum[5];
+        if (!start && !wait && !play_) {
+            return;
+        }
+        if (wait) {
+            for (i = 0; i < 5; i++) {
+                Combo_KeyframeScale(sDrumHit, gComboDrumTimer[i], &drum[i]);
+            }
+        } else {
+            if (start) {
+                Combo_KeyframeScale(sGoronStart, this->skelAnime.curFrame, &sDrumScale);
+            } else {
+                sDrumScale = gComboDrumAll; // a song played back: all together (MM unk_AF0[1] <- D_801C0490)
+            }
+            for (i = 0; i < 5; i++) {
+                drum[i] = sDrumScale;
+            }
+        }
+        OPEN_DISPS(play->state.gfxCtx);
+        Matrix_Push();
+        Matrix_Scale(sDrumScale.x, sDrumScale.y, sDrumScale.z, MTXMODE_APPLY);
+        gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+        gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL("objects/object_link_goron/object_link_goron_DL_00FC18"));
+        Matrix_Pop();
+        for (i = 0; i < ARRAY_COUNT(sDrums); i++) {
+            Matrix_Push();
+            Matrix_Scale(drum[i].x, drum[i].y, drum[i].z, MTXMODE_APPLY);
+            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL(sDrums[i]));
+            Matrix_Pop();
+        }
+        CLOSE_DISPS(play->state.gfxCtx);
+    } else if ((Combo_OotForm() == COMBO_FORM_DEKU) && (limbIndex == PLAYER_LIMB_HEAD)) {
+        const s32 start = Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pn_gakkistart");
+        if (!start && !Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pn_gakkiplay")) {
+            return;
+        }
+        if (start) {
+            Vec3f base;
+
+            Combo_KeyframeScale(sDekuBase, this->skelAnime.curFrame, &base);
+            sPipeBase = base.x;
+            Combo_KeyframeScale(sDekuPipes, this->skelAnime.curFrame, &sPipeScale);
+            for (i = 0; i < 5; i++) {
+                gComboPipeScale[i] = sPipeScale.x; // MM: arr_AF0[1..5] all take the start key's x
+            }
+        }
+        OPEN_DISPS(play->state.gfxCtx);
+        Matrix_Push();
+        Matrix_Scale(sPipeBase, sPipeBase, sPipeBase, MTXMODE_APPLY);
+        gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+        gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL("objects/object_link_nuts/object_link_nuts_DL_007390"));
+        Matrix_Pop();
+        for (i = 0; i < ARRAY_COUNT(sPipes); i++) {
+            const f32 k = gComboPipeScale[i];
+            Matrix_Push();
+            Matrix_Scale(k, k, k, MTXMODE_APPLY);
+            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL(sPipes[i]));
+            Matrix_Pop();
+        }
+        CLOSE_DISPS(play->state.gfxCtx);
+    }
+}
+
+
+// MM func_8012669C for the forms: entry [0] is the swing's trail line (MM's white melee blur, which the Goron doesn't
+// draw) and the line the wall tests follow; [1] and [2] are the hit quads, armed only once the swing is live
+// (meleeWeaponState >= 1, not during the windup). Matrix = the limb (or the scaled fin) the move hits from.
+static void Combo_FormMeleeLimb(PlayState* play, Player* this, const Vec3f* tips, const Vec3f* bases) {
+    Vec3f tip;
+    Vec3f base;
+    s32 q;
+
+    Matrix_MultVec3f(&tips[0], &tip);
+    Matrix_MultVec3f(&bases[0], &base);
+    if (func_80090480(play, NULL, &this->meleeWeaponInfo[0], &tip, &base) && (Combo_OotForm() != COMBO_FORM_GORON) &&
+        !CVarGetInteger(CVAR_ENHANCEMENT("DisableLinkSwordTrail"), 0)) {
+        EffectBlureShip_ChangeType(Effect_GetByIndex(this->meleeWeaponEffectIndex), TRAIL_TYPE_SWORDS);
+        EffectBlure_AddVertex(Effect_GetByIndex(this->meleeWeaponEffectIndex), &this->meleeWeaponInfo[0].tip,
+                              &this->meleeWeaponInfo[0].base);
+    }
+    if (this->meleeWeaponState >= 1) {
+        for (q = 1; q < 3; q++) {
+            Matrix_MultVec3f(&tips[q], &tip);
+            Matrix_MultVec3f(&bases[q], &base);
+            func_80090480(play, &this->meleeWeaponQuads[q - 1], &this->meleeWeaponInfo[q], &tip, &base);
+        }
+    }
+}
+
+static void Combo_ZoraArmFin(PlayState* play, Player* this, s32 side) {
+    static const char* const sFinDL[2] = { "objects/object_link_zora/object_link_zora_DL_00CC38",
+                                           "objects/object_link_zora/object_link_zora_DL_00CDA0" };
+    static const Vec3f sFinTip[3] = { { -2500.0f, 1400.0f, 1100.0f },
+                                      { -2900.0f, 1000.0f, 1500.0f },
+                                      { -2100.0f, 1800.0f, 700.0f } }; // MM D_801C0A00
+    static const Vec3f sFinBase[3] = { { 900.0f, 300.0f, 100.0f },
+                                       { 1300.0f, 700.0f, -300.0f },
+                                       { 500.0f, -100.0f, 500.0f } }; // MM D_801C09DC
+    Vec3f scale;
+
+    if ((Combo_OotForm() != COMBO_FORM_ZORA) || (this->rightHandType == PLAYER_MODELTYPE_RH_HOOKSHOT)) {
+        return;
+    }
+    if (this->stateFlags1 & PLAYER_STATE1_BOOMERANG_THROWN) {
+        Actor* fin = this->boomerangActor;
+        if (fin == NULL) {
+            return;
+        }
+        if (((fin->params - COMBO_ZORA_FIN_LEFT) == side) ||
+            ((fin->child != NULL) && ((fin->child->params - COMBO_ZORA_FIN_LEFT) == side))) {
+            return; // this arm's fin is out
+        }
+    }
+    if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_fishswim") ||
+        Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_gakkiplay")) {
+        Combo_ZoraSwimFin(play, this, side); // MM: the resting fins are not drawn in the fast swim or on the guitar
+        return;
+    }
+    // MM func_80126BD0: the arm fins grow, shrink and pop by the animation's own keyframes.
+    if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_gakkistart")) {
+        static ComboScaleKey sKeys[] = { { 0, { 100, 100, 100 } }, { 9, { 100, 100, 100 } }, { 10, { 150, 150, 150 } },
+                                         { 12, { 0, 0, 0 } },      { 14, { 0, 0, 0 } } }; // D_801C0580
+        Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale);
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_waterroll")) {
+        static ComboScaleKey sKeys[] = { { 0, { 100, 100, 100 } },
+                                         { 6, { 100, 100, 100 } },
+                                         { 7, { 0, 0, 0 } },
+                                         { 17, { 0, 0, 0 } } }; // D_801C05A8
+        Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale);
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_swimtowait")) {
+        static ComboScaleKey sKeys[] = { { 0, { 0, 0, 0 } }, { 5, { 0, 0, 0 } }, { 9, { 100, 100, 100 } } }; // D_801C05D8
+        Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale);
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_bladeon")) {
+        static ComboScaleKey sKeys[] = { { 0, { 40, 60, 70 } },    { 3, { 40, 60, 70 } },    { 4, { 75, 90, 85 } },
+                                         { 5, { 110, 120, 100 } }, { 7, { 100, 100, 100 } }, { 8, { 100, 100, 100 } } };
+        Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale); // D_801C07F0
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_jumpAT")) {
+        static ComboScaleKey sKeys[] = { { 0, { 100, 100, 100 } }, { 7, { 100, 100, 100 } }, { 12, { 40, 60, 70 } } };
+        Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale); // D_801C0820
+    } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_jumpATend")) {
+        static ComboScaleKey sKeys[] = { { 0, { 40, 60, 70 } }, { 7, { 40, 60, 70 } }, { 12, { 100, 100, 100 } } };
+        Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale); // D_801C0838
+    } else if (this->heldItemAction == PLAYER_IA_BOOMERANG) {
+        scale.x = scale.y = scale.z = 1.0f;
+    } else {
+        scale.x = 0.4f;
+        scale.y = 0.6f;
+        scale.z = 0.7f;
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    Matrix_Push();
+    Matrix_Scale(scale.x, scale.y, scale.z, MTXMODE_APPLY);
+    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL(sFinDL[side]));
+    if ((this->meleeWeaponState != 0) &&
+        (gComboGoronPunchLimb == ((side == 0) ? PLAYER_LIMB_L_FOREARM : PLAYER_LIMB_R_FOREARM))) {
+        Combo_FormMeleeLimb(play, this, sFinTip, sFinBase);
+    }
+    Matrix_Pop();
+    CLOSE_DISPS(play->state.gfxCtx);
+    Combo_ZoraSwimFin(play, this, side);
+}
+#endif
+#ifdef COMBO_BUILD
+// ComboShip (merged pause menus): MM's Bunny Hood worn in Hyrule. Its display list reads the two ears' matrices from
+// segment 0x0B, which MM fills every frame from a little spring (mm z_player_lib.c Player_UpdateBunnyEars /
+// Player_DrawBunnyHood); without them the ears are drawn with whatever 0x0B holds (a spike to the sky). Ported 1:1;
+// the spring steps once per game frame.
+#define COMBO_MM_ITEM_MASK_BUNNY 0x39
+#define COMBO_MM_ITEM_MASK_BLAST 0x47
+static void Combo_DrawMmBunnyEars(PlayState* play, Player* player) {
+    static Vec3s sRot;
+    static Vec3s sAngVel;
+    static u32 sLastFrame = 0xFFFFFFFF;
+    Mtx* mtx = Graph_Alloc(play->state.gfxCtx, 2 * sizeof(Mtx));
+    Vec3s earRot;
+
+    if (sLastFrame != play->gameplayFrames) {
+        Vec3s force;
+        s16 angle = player->actor.world.rot.y - player->actor.shape.rot.y;
+
+        sLastFrame = play->gameplayFrames;
+        sAngVel.x -= sAngVel.x >> 3;
+        sAngVel.y -= sAngVel.y >> 3;
+        sAngVel.x += -sRot.x >> 2;
+        sAngVel.y += -sRot.y >> 2;
+        force.x =
+            (s32)(player->actor.speedXZ * -200.0f * Math_CosS(angle) * (Rand_CenteredFloat(2.0f) + 10.0f)) & 0xFFFF;
+        force.y =
+            (s32)(player->actor.speedXZ * 100.0f * Math_SinS(angle) * (Rand_CenteredFloat(2.0f) + 10.0f)) & 0xFFFF;
+        sAngVel.x += force.x >> 2;
+        sAngVel.y += force.y >> 2;
+        sAngVel.x = CLAMP(sAngVel.x, -0x1770, 0x1770);
+        sAngVel.y = CLAMP(sAngVel.y, -0x1770, 0x1770);
+        sRot.x += sAngVel.x;
+        sRot.y += sAngVel.y;
+        sRot.z = (sRot.x < 0) ? (sRot.x >> 1) : 0;
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gSPSegment(POLY_OPA_DISP++, 0x0B, mtx);
+    Matrix_Push();
+    earRot.x = sRot.y + 0x3E2;
+    earRot.y = sRot.z + 0xDBE;
+    earRot.z = sRot.x - 0x348A;
+    Matrix_SetTranslateRotateYXZ(97.0f, -1203.0f, -240.0f, &earRot);
+    MATRIX_TOMTX(mtx++);
+    earRot.x = sRot.y - 0x3E2;
+    earRot.y = -sRot.z - 0xDBE;
+    earRot.z = sRot.x - 0x348A;
+    Matrix_SetTranslateRotateYXZ(97.0f, -1203.0f, 240.0f, &earRot);
+    MATRIX_TOMTX(mtx);
+    Matrix_Pop();
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// ComboShip (merged pause menus): MM's Great Fairy's Mask worn in Hyrule. Its three hair strands read six matrices
+// from segment 0x0B, which MM computes every frame from a small hair simulation (mm z_player_lib.c
+// Player_DrawGreatFairysMask / func_80127DA4 / func_80128388 / func_80127B64). Ported 1:1, including MM's reaction to
+// a stray fairy nearby (ACTORCTX_FLAG_3 -> gComboStrayFairyNear, set by MM stray fairies at randomizer checks in Hyrule
+// and by containers holding one: z_en_item00_combo_strayfairy.c / ComboStrayFairy.cpp): the strands float instead of
+// hanging and shed sparkles (Player_DrawStrayFairyParticles). MM's Math_Atan2S_XY is OOT's Math_Atan2S.
+#define COMBO_MM_ITEM_MASK_GREAT_FAIRY 0x40
+typedef struct {
+    Vec3f pos;
+    Vec3f vel;
+    s16 yaw;
+    s16 pitch;
+} ComboHairNode;
+typedef struct {
+    f32 length;
+    s16 restYaw;
+    s16 restPitch;
+    Vec3f unused;
+    f32 unused2;
+    s16 maxYaw;
+    s16 maxPitch;
+} ComboHairLink;
+static ComboHairNode sComboHair[3][3];
+static ComboHairLink sComboHairLinks[3] = {
+    { 0.0f, 0x0000, 0x8000, { 0.0f, 0.0f, 0.0f }, 0.0f, 0x0000, 0x0000 },
+    { 16.8f, 0x0000, 0x0000, { 0.0f, 0.0f, 0.0f }, 20.0f, 0x1388, 0x1388 },
+    { 30.0f, 0x0000, 0x0000, { 0.0f, 0.0f, 0.0f }, 20.0f, 0x1F40, 0x2EE0 },
+};
+
+extern s32 gComboStrayFairyNear; // z_en_item00_combo_strayfairy.c: MM's ACTORCTX_FLAG_3
+
+// MM Player_DrawStrayFairyParticles (D_801C0BE0 / D_801C0BEC / D_801C0BF8 / D_801C0BFC)
+static void Combo_MmDrawStrayFairyParticles(PlayState* play, Vec3f* arg1) {
+    static Vec3f sVel = { 0.0f, 0.3f, 0.0f };
+    static Vec3f sAccel = { 0.0f, -0.025f, 0.0f };
+    static Color_RGBA8 sPrim = { 250, 100, 100, 0 };
+    static Color_RGBA8 sEnv = { 0, 0, 100, 0 };
+    Vec3f pos;
+    f32 sign;
+
+    sVel.y = Rand_ZeroFloat(0.07f) + -0.1f;
+    sAccel.y = Rand_ZeroFloat(0.1f) + 0.04f;
+    if (Rand_ZeroOne() < 0.5f) {
+        sign = -1.0f;
+    } else {
+        sign = 1.0f;
+    }
+    sVel.x = (Rand_ZeroFloat(0.2f) + 0.1f) * sign;
+    sAccel.x = 0.1f * sign;
+    if (Rand_ZeroOne() < 0.5f) {
+        sign = -1.0f;
+    } else {
+        sign = 1.0f;
+    }
+    sVel.z = (Rand_ZeroFloat(0.2f) + 0.1f) * sign;
+    sAccel.z = 0.1f * sign;
+    pos.x = arg1->x;
+    pos.y = Rand_ZeroFloat(15.0f) + arg1->y;
+    pos.z = arg1->z;
+    EffectSsKiraKira_SpawnDispersed(play, &pos, &sVel, &sAccel, &sPrim, &sEnv, -50, 11);
+}
+
+static void Combo_MmHairStep(PlayState* play, ComboHairNode* node, ComboHairLink* link, s32 count, Vec3f* root,
+                             Vec3f* dir, u32* frameBits) {
+    ComboHairNode* next = &node[1];
+    Vec3f diff;
+    Vec3f offset;
+    f32 f22, f28, f24, f20, f0;
+    f32 gravity = -1.0f;
+    s16 s0, s2;
+    s32 i;
+
+    Math_Vec3f_Copy(&node->pos, root);
+    Math_Vec3f_Diff(dir, root, &diff);
+    node->yaw = Math_Atan2S(diff.z, diff.x);
+    node->pitch = Math_Atan2S(sqrtf(SQ(diff.x) + SQ(diff.z)), diff.y);
+    link++;
+    for (i = 1; i < count; i++) {
+        if (gComboStrayFairyNear) { // MM: play->actorCtx.flags & ACTORCTX_FLAG_3
+            if (*frameBits & 0x20) {
+                gravity = -0.2f;
+            } else {
+                gravity = 0.2f;
+            }
+            *frameBits += 0x16;
+            if (!(*frameBits & 1)) {
+                Combo_MmDrawStrayFairyParticles(play, &next->pos);
+            }
+        }
+        Math_Vec3f_Sum(&next->pos, &next->vel, &next->pos);
+        f0 = Math_Vec3f_DistXYZAndStoreDiff(&node->pos, &next->pos, &diff);
+        f28 = f0 - link->length;
+        if (f0 == 0.0f) {
+            diff.x = 0.0f;
+            diff.y = link->length;
+            diff.z = 0.0f;
+        }
+        f20 = sqrtf(SQ(diff.x) + SQ(diff.z));
+        if (f20 > 4.0f) {
+            next->yaw = Math_Atan2S(diff.z, diff.x);
+            s2 = next->yaw - node->yaw;
+            if (ABS(s2) > 0x4000) {
+                next->yaw = (s16)(next->yaw + 0x8000);
+                f20 = -f20;
+            }
+        }
+        next->pitch = Math_Atan2S(f20, diff.y);
+        s2 = next->yaw - node->yaw;
+        s2 = CLAMP(s2, -link->maxYaw, link->maxYaw);
+        next->yaw = node->yaw + s2;
+        s0 = next->pitch - node->pitch;
+        s0 = CLAMP(s0, -link->maxPitch, link->maxPitch);
+        next->pitch = node->pitch + s0;
+
+        f20 = Math_CosS(next->pitch) * link->length;
+        offset.x = Math_SinS(next->yaw) * f20;
+        offset.z = Math_CosS(next->yaw) * f20;
+        offset.y = Math_SinS(next->pitch) * link->length;
+        Math_Vec3f_Sum(&node->pos, &offset, &next->pos);
+        next->vel.x *= 0.9f;
+        next->vel.z *= 0.9f;
+        f22 = Math_CosS(s0) * f28;
+        f24 = Math_SinS(s0) * f28;
+        next->vel.y += gravity;
+        if (gComboStrayFairyNear) {
+            next->vel.y = CLAMP(next->vel.y, -0.8f, 0.8f);
+        } else {
+            f20 = Math_SinS(node->pitch);
+            next->vel.y += (((f22 * Math_CosS(node->pitch)) + (f24 * f20)) * 0.2f);
+            next->vel.y = CLAMP(next->vel.y, -2.0f, 4.0f);
+        }
+        f20 = (f24 * Math_CosS(node->pitch)) - (Math_SinS(node->pitch) * f22);
+        f22 = Math_CosS(s2) * f20;
+        f24 = Math_SinS(s2) * f20;
+        f20 = Math_SinS(node->yaw);
+        next->vel.x += (((f24 * Math_CosS(node->yaw)) - (f22 * f20)) * 0.1f);
+        next->vel.x = CLAMP(next->vel.x, -4.0f, 4.0f);
+        f20 = Math_SinS(node->yaw);
+        next->vel.z += (((f22 * Math_CosS(node->yaw)) + (f24 * f20)) * -0.1f);
+        next->vel.z = CLAMP(next->vel.z, -4.0f, 4.0f);
+        node++;
+        next++;
+        link++;
+    }
+}
+
+static void Combo_DrawMmGreatFairyHair(PlayState* play, Player* player) {
+    static const Vec3f kTip = { 0.0f, 20.0f, 0.0f };
+    static const Vec3f kRoots[3] = { { 174.0f, -1269.0f, -1.0f },
+                                     { 401.0f, -729.0f, -701.0f },
+                                     { 401.0f, -729.0f, 699.0f } };
+    static const Vec3f kDirs[3] = { { 74.0f, -1269.0f, -1.0f },
+                                    { 301.0f, -729.0f, -701.0f },
+                                    { 301.0f, -729.0f, 699.0f } };
+    static s32 sWorn = false;
+    Mtx* mtx = Graph_Alloc(play->state.gfxCtx, 6 * sizeof(Mtx));
+    Vec3f root, dir;
+    u32 frameBits = play->gameplayFrames; // MM sp6C
+    s32 i, j;
+
+    if (!sWorn) { // MM func_80127B64, when the mask's object loads: every node at the head, at rest
+        for (i = 0; i < 3; i++) {
+            for (j = 0; j < 3; j++) {
+                Math_Vec3f_Copy(&sComboHair[i][j].pos, &player->bodyPartsPos[PLAYER_BODYPART_HEAD]);
+                sComboHair[i][j].vel.x = sComboHair[i][j].vel.y = sComboHair[i][j].vel.z = 0.0f;
+                sComboHair[i][j].yaw = sComboHair[i][j].pitch = 0;
+            }
+        }
+        sWorn = true;
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gSPSegment(POLY_OPA_DISP++, 0x0B, mtx);
+    Matrix_MultVec3f((Vec3f*)&kTip, &sComboHairLinks[1].unused);
+    { // Math_Vec3f_Lerp(head, waist, 0.2f) (MM writes it into the table; nothing reads it back)
+        Vec3f* h = &player->bodyPartsPos[PLAYER_BODYPART_HEAD];
+        Vec3f* w = &player->bodyPartsPos[PLAYER_BODYPART_WAIST];
+        sComboHairLinks[2].unused.x = h->x + (w->x - h->x) * 0.2f;
+        sComboHairLinks[2].unused.y = h->y + (w->y - h->y) * 0.2f;
+        sComboHairLinks[2].unused.z = h->z + (w->z - h->z) * 0.2f;
+    }
+    for (i = 0; i < 3; i++) {
+        Matrix_MultVec3f((Vec3f*)&kRoots[i], &root);
+        Matrix_MultVec3f((Vec3f*)&kDirs[i], &dir);
+        Combo_MmHairStep(play, sComboHair[i], sComboHairLinks, 3, &root, &dir, &frameBits);
+        frameBits += 11;
+        Matrix_Push();
+        Matrix_Translate(kRoots[i].x, kRoots[i].y, kRoots[i].z, MTXMODE_APPLY);
+        for (j = 1; j < 3; j++) { // MM func_80128388: node j against link j - 1
+            Vec3f t = { sComboHairLinks[j - 1].length * 100.0f, 0.0f, 0.0f };
+            Vec3s r;
+            r.x = 0;
+            r.z = sComboHairLinks[j - 1].restPitch + (s16)(sComboHair[i][j].pitch - sComboHair[i][j - 1].pitch);
+            r.y = sComboHairLinks[j - 1].restYaw + (s16)(sComboHair[i][j].yaw - sComboHair[i][j - 1].yaw);
+            Matrix_TranslateRotateZYX(&t, &r);
+            MATRIX_TOMTX(mtx++);
+        }
+        Matrix_Pop();
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// ComboShip (merged pause menus): MM's Circus Leader's Mask worn in Hyrule cries: two tears (MM gEffBubbleDL with
+// gEffBubble1Tex) grow under the eyes and, when full, drop off as bubbles. Ported 1:1 from mm z_player_lib.c:
+// the tear growth from func_801229FC (D_801F59C8 += Rand_S16Offset(4, 23) + speedXZ * 50; MM's player->speedXZ is
+// OOT's linearVelocity), stepped once per game frame here, and Player_DrawCircusLeadersMask (D_801C0B90 positions in
+// head-limb space, D_801F59B0 / D_801F59C8 state). OOT's Effect_Ss_Dt_Bubble lacks MM's colour profile 3, so the
+// bubble is spawned with that profile's colours (prim 255,255,255,255 / env 150,150,150,0) as a custom colour.
+static void Combo_DrawMmCircusLeaderTears(PlayState* play, Player* player) {
+    static Vec3f sTearOffsets[2] = { // MM D_801C0B90
+        { 950.0f, -800.0f, 300.0f },
+        { 950.0f, -800.0f, -300.0f },
+    };
+    static Vec3f sTearPos[2];  // MM D_801F59B0
+    static s32 sTearGrowth[2]; // MM D_801F59C8
+    static u32 sLastFrame = 0xFFFFFFFF;
+    static Vec3f sBubbleVelocity = { 0.0f, 0.0f, 0.0f };
+    static Vec3f sBubbleAccel = { 0.0f, 0.0f, 0.0f };
+    static Color_RGBA8 sBubblePrim = { 255, 255, 255, 255 }; // MM Effect_Ss_Dt_Bubble sPrimColors[3]
+    static Color_RGBA8 sBubbleEnv = { 150, 150, 150, 0 };    // MM Effect_Ss_Dt_Bubble sEnvColors[3]
+    const void* tearDL = Combo_MmDL("objects/gameplay_keep/gEffBubbleDL");
+    s32 i;
+
+    if (sLastFrame != play->gameplayFrames) { // MM func_801229FC (Player_Update), once per game frame
+        sLastFrame = play->gameplayFrames;
+        for (i = 0; i < 2; i++) {
+            sTearGrowth[i] += Rand_S16Offset(4, 23) + (s32)(fabsf(player->linearVelocity) * 50.0f);
+        }
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    for (i = 0; i < 2; i++) {
+        f32 scaleY = (sTearGrowth[i] / 400.0f) * 0.1f;
+
+        Matrix_MultVec3f(&sTearOffsets[i], &sTearPos[i]);
+        sTearPos[i].y += -10.0f * scaleY;
+
+        if (sTearGrowth[i] < 400) {
+            f32 scaleXZ = CLAMP_MAX(scaleY, 0.05f);
+
+            Matrix_Push();
+            Matrix_Translate(sTearPos[i].x, sTearPos[i].y, sTearPos[i].z, MTXMODE_NEW);
+            Matrix_Scale(scaleXZ, scaleY, scaleXZ, MTXMODE_APPLY);
+            gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_PUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            // Plain path: resolved by MM's ResourceManager while the routed MM gEffBubbleDL below loads it.
+            gSPSegment(POLY_XLU_DISP++, 0x08, (uintptr_t) "__OTR__objects/gameplay_keep/gEffBubble1Tex");
+            gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 255, 255, 255, 255);
+            gDPSetEnvColor(POLY_XLU_DISP++, 150, 150, 150, 0);
+            if (tearDL != NULL) {
+                gSPDisplayList(POLY_XLU_DISP++, tearDL);
+            }
+            gSPPopMatrix(POLY_XLU_DISP++, G_MTX_MODELVIEW);
+            Matrix_Pop();
+        } else {
+            f32 speedXZ = sqrtf(SQ(player->actor.velocity.x) + SQ(player->actor.velocity.z));
+            s16 yaw = speedXZ * 2000.0f;
+            f32 spread;
+
+            sBubbleVelocity.y = speedXZ * 0.4f;
+            sBubbleAccel.y = -0.3f;
+            if (yaw > 0x3E80) {
+                yaw = 0x3E80;
+            }
+            yaw = player->actor.focus.rot.y + ((i != 0) ? yaw : -yaw);
+            spread = speedXZ * 0.2f;
+            spread = CLAMP_MAX(spread, 4.0f);
+            sBubbleVelocity.x = -Math_SinS(yaw) * spread;
+            sBubbleVelocity.z = -Math_CosS(yaw) * spread;
+            EffectSsDtBubble_SpawnCustomColor(play, &sTearPos[i], &sBubbleVelocity, &sBubbleAccel, &sBubblePrim,
+                                              &sBubbleEnv, 20, 20, 0);
+            sTearGrowth[i] -= 400;
+        }
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+#endif
+
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Vec3s* rot, void* thisx) {
+#ifdef COMBO_BUILD
+    {
+        // MM's transformation models: the mask in hand, the mask on the face, the head glow (z_player.c)
+        extern void Combo_TransformDrawLimb(PlayState * play, Player * this, s32 limbIndex);
+        if ((thisx != NULL) && (((Actor*)thisx)->id == ACTOR_PLAYER)) {
+            Combo_TransformDrawLimb(play, (Player*)thisx, limbIndex);
+        }
+    }
+    if ((Combo_OotForm() == COMBO_FORM_GORON) && (thisx != NULL) && (((Actor*)thisx)->id == ACTOR_PLAYER) &&
+        ((limbIndex == PLAYER_LIMB_L_HAND) || (limbIndex == PLAYER_LIMB_R_HAND))) {
+        // MM Player_PostLimbDrawGameplay -> func_80127488: the red flash on the punching fist by the punch's frame
+        // (D_801C0778 for pg_punchA's left fist, D_801C07AC for pg_punchB's right), leaving the fist afterimage.
+        static const u8 sPunchA[] = { 0, 0, 0, 0, 0, 100, 200, 255, 255, 255, 200, 100 };
+        static const u8 sPunchB[] = { 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 100, 200, 255, 255, 255, 200, 100, 0 };
+        const char* anim = (const char*)((Player*)thisx)->skelAnime.animation;
+        const s32 frame = (s32)((Player*)thisx)->skelAnime.curFrame;
+        const s32 left = limbIndex == PLAYER_LIMB_L_HAND;
+        if ((anim != NULL) && (strcmp(anim, left ? "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_punchA"
+                                                 : "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_punchB") == 0)) {
+            const s32 count = left ? ARRAY_COUNT(sPunchA) : ARRAY_COUNT(sPunchB);
+            Combo_GoronPunchFist(play, (frame >= 0) && (frame < count) ? (left ? sPunchA : sPunchB)[frame] : 0);
+        }
+    }
+    if ((gComboGoronPunchLimb != 0) && (limbIndex == gComboGoronPunchLimb) && (thisx != NULL) &&
+        (((Actor*)thisx)->id == ACTOR_PLAYER) && (limbIndex != PLAYER_LIMB_L_FOREARM) &&
+        (limbIndex != PLAYER_LIMB_R_FOREARM)) {
+        // ComboShip: a form's punch/kick hits from the limb itself, with MM's own hit shapes (mm z_player_lib.c:
+        // Goron fists D_801C09B8 over D_801C0970, Goron butt D_801C0A90 over D_801C0A6C, Zora kick D_801C0A48 over
+        // D_801C0A24, Zora fists = a bare-hand sword length of 0 + 1200 over D_801C0970). Quad 0 and 1 are MM's
+        // entries [1] and [2].
+        // MM's [0] entries are the trail / wall-test line (Combo_FormMeleeLimb).
+        static const Vec3f sFistBase[3] = { { 0.0f, 400.0f, 0.0f },
+                                            { 0.0f, 1400.0f, -1000.0f },
+                                            { 0.0f, -400.0f, 1000.0f } }; // MM D_801C0970
+        static const Vec3f sGoronFistTip[3] = { { 0.0f, 750.0f, 750.0f },
+                                                { 1500.0f, 1500.0f, 1500.0f },
+                                                { -2500.0f, -2000.0f, -3000.0f } }; // MM D_801C09B8
+        static const Vec3f sGoronButtTip[3] = { { -400.0f, 1800.0f, 0.0f },
+                                                { 5000.0f, 8000.0f, 4000.0f },
+                                                { 5000.0f, -500.0f, -4000.0f } }; // MM D_801C0A90
+        static const Vec3f sGoronButtBase[3] = { { -400.0f, 800.0f, 0.0f },
+                                                 { -5000.0f, -500.0f, -4000.0f },
+                                                 { -5000.0f, 8000.0f, 4000.0f } }; // MM D_801C0A6C
+        static const Vec3f sZoraKickTip[3] = { { 2000.0f, 0.0f, 0.0f },
+                                               { 2800.0f, -800.0f, -800.0f },
+                                               { 2800.0f, 800.0f, 800.0f } }; // MM D_801C0A48
+        static const Vec3f sZoraKickBase[3] = { { 0.0f, 0.0f, 0.0f },
+                                                { -800.0f, 800.0f, 800.0f },
+                                                { -800.0f, -800.0f, -800.0f } }; // MM D_801C0A24
+        Player* punchingPlayer = (Player*)thisx;
+        if (limbIndex == PLAYER_LIMB_WAIST) {
+            Combo_FormMeleeLimb(play, punchingPlayer, sGoronButtTip, sGoronButtBase);
+        } else if (limbIndex == PLAYER_LIMB_R_SHIN) {
+            Combo_FormMeleeLimb(play, punchingPlayer, sZoraKickTip, sZoraKickBase);
+        } else {
+            Combo_FormMeleeLimb(play, punchingPlayer, sGoronFistTip, sFistBase);
+        }
+        if (Combo_DebugEnv("COMBO_DEBUG_FORM_B")) {
+            const Vec3f* p = &punchingPlayer->actor.world.pos;
+            Combo_DebugLog("[ComboShip] hit limb %d trail tip (%.0f %.0f %.0f) rel link, state %d AT %d\n", limbIndex,
+                           punchingPlayer->meleeWeaponInfo[0].tip.x - p->x,
+                           punchingPlayer->meleeWeaponInfo[0].tip.y - p->y,
+                           punchingPlayer->meleeWeaponInfo[0].tip.z - p->z, punchingPlayer->meleeWeaponState,
+                           (punchingPlayer->meleeWeaponQuads[0].base.atFlags & AT_ON) != 0);
+        }
+    }
+#endif
     Player* this = (Player*)thisx;
 
     if (*dList != NULL) {
@@ -1794,10 +2763,47 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
     }
 
     if (limbIndex == PLAYER_LIMB_L_HAND) {
+#ifdef COMBO_BUILD
+        {
+            // MM func_80128640: the limb drew the Zora's guitar (ComboForms.cpp); the hand holding it is its own model
+            // (owner 2026-11-14: "zora guitar makes the hand holding the guitar dissapear").
+            extern int Combo_ZoraGuitarOut(void* player);
+            if ((this->actor.id == ACTOR_PLAYER) && Combo_ZoraGuitarOut(this)) {
+                OPEN_DISPS(play->state.gfxCtx);
+                gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx),
+                          G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+                gSPDisplayList(POLY_OPA_DISP++,
+                               (Gfx*)Combo_MmDL("objects/object_link_zora/object_link_zora_DL_00E088"));
+                CLOSE_DISPS(play->state.gfxCtx);
+            }
+        }
+#endif
         MtxF sp14C;
         Actor* hookedActor;
 
         Math_Vec3f_Copy(&this->leftHandPos, D_80160000);
+#ifdef COMBO_BUILD
+        if (Combo_GfsInHand(this) && (this->actor.scale.y >= 0.0f) && (*dList != NULL)) {
+            // MM's Great Fairy's Sword blade in the closed fist, as MM draws its split hand + sword
+            // (CosmeticEditor sHeldItemSplits: gLinkHumanGreatFairysSwordDL in the hand's own space). OOT's child hand
+            // shares MM's human hand space; the adult hand is larger (grip offset/scale from screenshots).
+            OPEN_DISPS(play->state.gfxCtx);
+            Matrix_Push();
+            if (LINK_IS_ADULT) {
+                Matrix_Translate(sComboGfsAdultGrip.x, sComboGfsAdultGrip.y, sComboGfsAdultGrip.z, MTXMODE_APPLY);
+                Matrix_Scale(kComboGfsAdultScale, kComboGfsAdultScale, kComboGfsAdultScale, MTXMODE_APPLY);
+            }
+            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+            gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmDL("objects/object_link_child/gLinkHumanGreatFairysSwordDL"));
+            // MM's blade DL sets its own environment colour, which the limbs drawn after the hand (torso, sheath)
+            // then inherited: the tunic came out black (owner 2026-11-14). Put the tunic colour back, as after the
+            // Blast Mask.
+            gDPPipeSync(POLY_OPA_DISP++);
+            gDPSetEnvColor(POLY_OPA_DISP++, sComboTunicEnv.r, sComboTunicEnv.g, sComboTunicEnv.b, 0);
+            Matrix_Pop();
+            CLOSE_DISPS(play->state.gfxCtx);
+        }
+#endif
 
         if (this->itemAction == PLAYER_IA_DEKU_STICK) {
             Vec3f sp124[3];
@@ -1823,7 +2829,14 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             gSPDisplayList(POLY_OPA_DISP++, gLinkChildLinkDekuStickDL);
 
             CLOSE_DISPS(play->state.gfxCtx);
-        } else if ((this->actor.scale.y >= 0.0f) && (this->meleeWeaponState != 0)) {
+        } else if ((this->actor.scale.y >= 0.0f) &&
+                   (this->meleeWeaponState != 0)
+#ifdef COMBO_BUILD
+                   // ComboShip: Goron/Zora/Deku attacks carry no sword; this left-hand sword path would overwrite
+                   // the form's own hit quads (and draw a sword trail). Fierce Deity keeps OOT's sword.
+                   && ((Combo_OotForm() == COMBO_FORM_HUMAN) || (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY))
+#endif
+        ) {
             Vec3f spE4[3];
 
             if (Player_HoldsBrokenKnife(this)) {
@@ -1838,6 +2851,14 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             func_800906D4(play, this, spE4);
         } else if ((*dList != NULL) && (this->leftHandType == PLAYER_MODELTYPE_LH_BOTTLE)) {
             Color_RGB8* bottleColor = &sBottleColors[Player_ActionToBottle(this, this->itemAction)];
+#ifdef COMBO_BUILD
+            // ComboShip: an MM bottle shows MM's content colour (MM sPlayerBottleColors), e.g. a Zora egg or gold dust.
+            Color_RGB8 comboMmColor;
+            if ((this->heldItemButton >= 0) &&
+                Combo_PauseMmBottleColor(gSaveContext.equips.buttonItems[this->heldItemButton], &comboMmColor.r)) {
+                bottleColor = &comboMmColor;
+            }
+#endif
 
             OPEN_DISPS(play->state.gfxCtx);
 
@@ -1852,7 +2873,12 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
         if (this->actor.scale.y >= 0.0f) {
             if (!Player_HoldsHookshot(this) && ((hookedActor = this->heldActor) != NULL)) {
-                if (this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) {
+                if ((this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE)
+#ifdef COMBO_BUILD
+                    // ComboShip: Deku Link's bubble sits at his mouth (head limb below), not in his hand.
+                    && (Combo_OotForm() != COMBO_FORM_DEKU)
+#endif
+                ) {
                     Matrix_MultVec3f(&sLeftHandArrowVec3, &hookedActor->world.pos);
                     Matrix_RotateZYX(0x69E8, -0x5708, 0x458E, MTXMODE_APPLY);
                     Matrix_Get(&sp14C);
@@ -1880,8 +2906,13 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 
         if (this->rightHandType == PLAYER_MODELTYPE_RH_FF) {
             Matrix_Get(&this->shieldMf);
-        } else if ((this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT) ||
-                   (this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT_2)) {
+        } else if (((this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT) ||
+                    (this->rightHandType == PLAYER_MODELTYPE_RH_BOW_SLINGSHOT_2))
+#ifdef COMBO_BUILD
+                   // ComboShip: a form holds no bow or slingshot (the Deku blows bubbles), so no string.
+                   && ((Combo_OotForm() == COMBO_FORM_HUMAN) || (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY))
+#endif
+        ) {
             s32 stringModelToUse = gSaveContext.linkAge;
             if (CVarGetInteger(CVAR_ENHANCEMENT("BowSlingshotAmmoFix"), 0) ||
                 CVarGetInteger(CVAR_ENHANCEMENT("EquipmentAlwaysVisible"), 0)) {
@@ -1974,6 +3005,42 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             }
         }
     } else if (this->actor.scale.y >= 0.0f) {
+#ifdef COMBO_BUILD
+        if ((limbIndex == PLAYER_LIMB_L_FOREARM) || (limbIndex == PLAYER_LIMB_R_FOREARM)) {
+            Combo_ZoraArmFin(play, this, (limbIndex == PLAYER_LIMB_L_FOREARM) ? 0 : 1);
+        }
+        if ((limbIndex == PLAYER_LIMB_TORSO) || (limbIndex == PLAYER_LIMB_HEAD)) {
+            Combo_FormInstrumentDraw(play, this, limbIndex);
+        }
+#endif
+#ifdef COMBO_BUILD
+        if ((limbIndex == PLAYER_LIMB_HAT) && (Combo_OotForm() == COMBO_FORM_DEKU)) {
+            // ComboShip: MM's white trail off the tip of Deku Link's hat while he spins (MM Player_PostLimbDrawGameplay,
+            // PLAYER_LIMB_HAT with PLAYER_STATE3_100000: hat-space x 3000 -> 2300 into the melee weapon trail).
+            extern s32 Combo_DekuSpinCameraYaw(s16 * outYaw);
+            static s32 sComboHatTrail = false;
+            s16 spinYaw;
+            if (Combo_DekuSpinCameraYaw(&spinYaw)) {
+                static Vec3f sHatTip = { 3000.0f, 0.0f, 0.0f };
+                static Vec3f sHatBase = { 2300.0f, 0.0f, 0.0f };
+                Vec3f tip;
+                Vec3f base;
+                Matrix_MultVec3f(&sHatTip, &tip);
+                Matrix_MultVec3f(&sHatBase, &base);
+                if (!sComboHatTrail) {
+                    EffectBlureShip_ChangeType(Effect_GetByIndex(this->meleeWeaponEffectIndex), TRAIL_TYPE_SWORDS);
+                }
+                sComboHatTrail = true;
+                if (func_80090480(play, NULL, &this->meleeWeaponInfo[0], &tip, &base)) {
+                    EffectBlure_AddVertex(Effect_GetByIndex(this->meleeWeaponEffectIndex),
+                                          &this->meleeWeaponInfo[0].tip, &this->meleeWeaponInfo[0].base);
+                }
+            } else if (sComboHatTrail) {
+                sComboHatTrail = false;
+                this->meleeWeaponInfo[0].active = false; // spin over: the next trail starts fresh
+            }
+        }
+#endif
         if (limbIndex == PLAYER_LIMB_SHEATH) {
             if ((this->rightHandType != PLAYER_MODELTYPE_RH_SHIELD) &&
                 (this->rightHandType != PLAYER_MODELTYPE_RH_FF)) {
@@ -1986,6 +3053,93 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             }
         } else if (limbIndex == PLAYER_LIMB_HEAD) {
             Matrix_MultVec3f(&sPlayerFocusOffsetFromHead, &this->actor.focus.pos);
+#ifdef COMBO_BUILD
+            // ComboShip: the bubble Deku Link is blowing hangs off his snout (MM D_801C0EA0, head limb space).
+            if ((Combo_OotForm() == COMBO_FORM_DEKU) && (this->stateFlags1 & PLAYER_STATE1_READY_TO_FIRE) &&
+                (this->heldActor != NULL) && (this->heldActor->id == ACTOR_EN_ARROW) &&
+                (this->heldActor->params == ARROW_COMBO_DEKU_BUBBLE)) {
+                static Vec3f sDekuMouth = { 1300.0f, -400.0f, 0.0f };
+                Actor* bubble = this->heldActor;
+                MtxF mouthMf;
+
+                Matrix_Push();
+                Matrix_MultVec3f(&sDekuMouth, &bubble->world.pos);
+                Matrix_RotateZYX(0, 0x4000, 0, MTXMODE_APPLY);
+                Matrix_Get(&mouthMf);
+                Matrix_MtxFToYXZRotS(&mouthMf, &bubble->world.rot, 0);
+                bubble->shape.rot = bubble->world.rot;
+                Matrix_Pop();
+            }
+            if (sComboDekuHeadPushed) {
+                Matrix_Pop();
+                sComboDekuHeadPushed = false;
+            }
+            // ComboShip (merged pause menus): an MM mask worn in Hyrule is MM's own model on the head limb, drawn as
+            // MM's z_player_lib.c draws it (head limb space, D_801C0B20), routed to MM's ResourceManager.
+            if ((Combo_OotForm() == COMBO_FORM_HUMAN) && (this->actor.id == ACTOR_PLAYER)) {
+                const void* mmMask = Combo_PauseWornMmMaskDL();
+                if (mmMask != NULL) {
+                    if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_BUNNY) {
+                        Combo_DrawMmBunnyEars(play, this); // the ears' two matrices (segment 0x0B), as MM sets them
+                    } else if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_GREAT_FAIRY) {
+                        Combo_DrawMmGreatFairyHair(play, this); // the hair's six matrices (segment 0x0B)
+                    } else if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_CIRCUS_LEADER) {
+                        Combo_DrawMmCircusLeaderTears(play, this); // MM Player_DrawCircusLeadersMask (XLU tears)
+                    }
+                    OPEN_DISPS(play->state.gfxCtx);
+                    if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_COUPLE) {
+                        // MM Player_DrawCouplesMask: AnimatedMat_DrawOpa(object_mask_meoto_Matanimheader_001CD8). MM's
+                        // gSegments[0xA] = maskObjectSegment is N64 object addressing; resources are by path here.
+                        Combo_MmAnimatedMat(play, "objects/object_mask_meoto/object_mask_meoto_Matanimheader_001CD8",
+                                            1.0f, 1); // AnimatedMat_DrawOpa
+                    }
+                    if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_BLAST) {
+                        // MM's Blast Mask list calls segment 0x09 (Player_DrawBlastMask). Not exploding: D_801C0BC0.
+                        // After a blast (blastMaskTimer running): MM's scorched overlay (Matanimheader_0011F8 scroll +
+                        // DL_000440) fading out over the last 10 frames, and the mask drawn see-through (D_801C0BD0).
+                        static Gfx sComboBlastIdle[] = {
+                            gsDPSetEnvColor(0, 0, 0, 255),
+                            gsSPEndDisplayList(),
+                        };
+                        static Gfx sComboBlastXlu[] = {
+                            gsDPSetRenderMode(AA_EN | Z_CMP | Z_UPD | IM_RD | CLR_ON_CVG | CVG_DST_WRAP | ZMODE_XLU |
+                                                  FORCE_BL | G_RM_FOG_SHADE_A,
+                                              AA_EN | Z_CMP | Z_UPD | IM_RD | CLR_ON_CVG | CVG_DST_WRAP | ZMODE_XLU |
+                                                  FORCE_BL | GBL_c2(G_BL_CLR_IN, G_BL_A_IN, G_BL_CLR_MEM, G_BL_1MA)),
+                            gsSPEndDisplayList(),
+                        };
+                        if (gComboBlastMaskTimer != 0) {
+                            const s32 alpha =
+                                (gComboBlastMaskTimer <= 10) ? (s32)((gComboBlastMaskTimer / 10.0f) * 255) : 255;
+                            const void* scorch =
+                                Combo_MmDL("objects/object_mask_bakuretu/object_mask_bakuretu_DL_000440");
+                            Combo_MmAnimatedMat(
+                                play, "objects/object_mask_bakuretu/object_mask_bakuretu_Matanimheader_0011F8", 1.0f,
+                                1); // AnimatedMat_DrawOpa
+                            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx),
+                                      G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+                            gDPSetEnvColor(POLY_OPA_DISP++, 0, 0, 0, (u8)alpha);
+                            if (scorch != NULL) {
+                                gSPDisplayList(POLY_OPA_DISP++, scorch);
+                            }
+                            gSPSegment(POLY_OPA_DISP++, 0x09, sComboBlastXlu);
+                            gDPSetEnvColor(POLY_OPA_DISP++, 0, 0, 0, (u8)(255 - alpha));
+                        } else {
+                            gSPSegment(POLY_OPA_DISP++, 0x09, sComboBlastIdle);
+                        }
+                    }
+                    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx),
+                              G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+                    gSPDisplayList(POLY_OPA_DISP++, mmMask);
+                    if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_BLAST) {
+                        // The mask leaves its env colour (black) set; OOT draws the rest of Link's limbs with the
+                        // tunic colour in env, so put it back.
+                        gDPSetEnvColor(POLY_OPA_DISP++, sComboTunicEnv.r, sComboTunicEnv.g, sComboTunicEnv.b, 0);
+                    }
+                    CLOSE_DISPS(play->state.gfxCtx);
+                }
+            }
+#endif
         } else {
             Vec3f* vec = &sLeftRightFootLimbModelFootPos[(gSaveContext.linkAge)];
 

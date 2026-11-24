@@ -4,6 +4,31 @@
 #include "textures/do_action_static/do_action_static.h"
 #include "textures/icon_item_static/icon_item_static.h"
 #include "soh_assets.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h"
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus (foreign items on buttons)
+#include "soh/Enhancements/randomizer/ComboPicto.h" // ComboShip: MM's Pictograph Box in Hyrule
+// A button's icon: OOT's own, or NULL for a foreign (MM) item, which Interface_DrawItemIconTexture draws from MM.
+#define COMBO_BTN_ICON(btn)                                            \
+    (Combo_PauseIsForeign(gSaveContext.equips.buttonItems[btn]) ? NULL \
+                                                                : gItemIcons[gSaveContext.equips.buttonItems[btn]])
+// ComboShip: a Goron in Hyrule shrugs off heat and lava like the Goron Tunic (MM Gorons are heat-proof).
+// ComboShip (merged pause menus): an MM mask on a button follows OOT's mask rules. OOT's masks are trade items, so
+// scenes that grey out everything else (Market, Temple of Time, houses, shops: restrictions.all) keep them usable and
+// scenes that restrict trade items grey them out; an MM mask (foreign id) gets the same treatment.
+#define COMBO_TRADE_LIKE(item) \
+    ((((item) >= ITEM_WEIRD_EGG) && ((item) <= ITEM_CLAIM_CHECK)) || Combo_PauseIsForeignMask(item))
+#define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
+// ...and a Zora breathes underwater like the Zora Tunic.
+#define COMBO_WATER_PROOF() (Combo_OotForm() == COMBO_FORM_ZORA)
+#define COMBO_TUNIC_COUNTS() ((Combo_OotForm() == COMBO_FORM_HUMAN) || (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY)) // tunics help the human bodies (owner: FD is human)
+#else
+#define COMBO_WATER_PROOF() 0
+#define COMBO_HEAT_PROOF() 0
+#define COMBO_TUNIC_COUNTS() 1
+#define COMBO_TRADE_LIKE(item) (((item) >= ITEM_WEIRD_EGG) && ((item) <= ITEM_CLAIM_CHECK))
+#define COMBO_BTN_ICON(btn) gItemIcons[gSaveContext.equips.buttonItems[btn]]
+#endif
 
 #include "soh/Enhancements/gameplaystats.h"
 #include "soh/Enhancements/custom-message/CustomMessageInterfaceAddon.h"
@@ -950,6 +975,16 @@ void func_80083108(PlayState* play) {
                         }
 
                         gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+#ifdef COMBO_BUILD
+                    } else if (Combo_PauseIsForeign(gSaveContext.equips.buttonItems[i]) &&
+                               (Combo_PauseForeignForm(gSaveContext.equips.buttonItems[i]) == COMBO_FORM_ZORA)) {
+                        // MM Player_UseItem: in the water the Zora Mask is the one item that works, on and off
+                        // (owner 2026-11-14: "let me equip and dequip zora mask while in water just like MM").
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+#endif
                     } else if (Player_GetEnvironmentalHazard(play) == 2) {
                         if ((gSaveContext.equips.buttonItems[i] != ITEM_HOOKSHOT) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_LONGSHOT)) {
@@ -1144,8 +1179,7 @@ void func_80083108(PlayState* play) {
 
                 if (interfaceCtx->restrictions.tradeItems != 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
-                        if ((gSaveContext.equips.buttonItems[i] >= ITEM_WEIRD_EGG) &&
-                            (gSaveContext.equips.buttonItems[i] <= ITEM_CLAIM_CHECK)) {
+                        if (COMBO_TRADE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (!GameInteractor_Should(VB_DISABLE_TRADE_ITEM_BUTTON, true,
                                                        gSaveContext.equips.buttonItems[i])) {
                                 gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
@@ -1161,8 +1195,7 @@ void func_80083108(PlayState* play) {
                     }
                 } else if (interfaceCtx->restrictions.tradeItems == 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
-                        if ((gSaveContext.equips.buttonItems[i] >= ITEM_WEIRD_EGG) &&
-                            (gSaveContext.equips.buttonItems[i] <= ITEM_CLAIM_CHECK)) {
+                        if (COMBO_TRADE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;
                             }
@@ -1276,8 +1309,7 @@ void func_80083108(PlayState* play) {
                             !((gSaveContext.equips.buttonItems[i] >= ITEM_SHIELD_DEKU) && // Never disable equipment
                               (gSaveContext.equips.buttonItems[i] <=
                                ITEM_BOOTS_HOVER)) && // (tunics/boots) on C-buttons
-                            !((gSaveContext.equips.buttonItems[i] >= ITEM_WEIRD_EGG) &&
-                              (gSaveContext.equips.buttonItems[i] <= ITEM_CLAIM_CHECK))) {
+                            !COMBO_TRADE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if ((play->sceneNum != SCENE_TREASURE_BOX_SHOP) ||
                                 (gSaveContext.equips.buttonItems[i] != ITEM_LENS)) {
                                 if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_ENABLED) {
@@ -1305,8 +1337,7 @@ void func_80083108(PlayState* play) {
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_TIME) &&
                             !((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
                               (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) &&
-                            !((gSaveContext.equips.buttonItems[i] >= ITEM_WEIRD_EGG) &&
-                              (gSaveContext.equips.buttonItems[i] <= ITEM_CLAIM_CHECK))) {
+                            !COMBO_TRADE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;
                             }
@@ -1315,6 +1346,33 @@ void func_80083108(PlayState* play) {
                         }
                     }
                 }
+#ifdef COMBO_BUILD
+                // ComboShip: MM's own button rules for MM items on OOT buttons (mm z_parameter.c
+                // Interface_UpdateButtonsPart2, C buttons ~3392 and D-pad ~3539):
+                //  - Giant's Mask: disabled unless play->sceneId == SCENE_INISIE_BS (Twinmold's arena). Hyrule has no
+                //    such scene, so it is always greyed out.
+                //  - Pictograph Box: only MM's per-scene pictoBox column restricts it and it is exempt from
+                //    restrictions.all; OOT's scene table has no pictoBox column, so it is always usable.
+                for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
+                    s32 comboMmItem;
+
+                    if (!Combo_PauseIsForeign(gSaveContext.equips.buttonItems[i])) {
+                        continue;
+                    }
+                    comboMmItem = Combo_PauseLiveMmItem(gSaveContext.equips.buttonItems[i]);
+                    if (comboMmItem == COMBO_MM_ITEM_MASK_GIANT) {
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] != BTN_DISABLED) {
+                            gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_DISABLED;
+                            sp28 = 1;
+                        }
+                    } else if (comboMmItem == COMBO_MM_ITEM_PICTOGRAPH_BOX) {
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    }
+                }
+#endif
             }
         }
     }
@@ -1577,7 +1635,35 @@ void Rando_Inventory_SwapAgeEquipment(void) {
     }
 }
 
+#ifdef COMBO_BUILD
+static void Inventory_SwapAgeEquipmentImpl(void);
+// ComboShip: one button layout for both ages (owner 2026-11-13: "the equips match up, but not between ages"; one item
+// pool, both Links use everything). The age swap still trades the B sword and the worn equipment per age as vanilla
+// does; C-left/down/right and the D-pad keep what they had.
 void Inventory_SwapAgeEquipment(void) {
+    u8 items[ARRAY_COUNT(gSaveContext.equips.buttonItems)];
+    u8 slots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
+    s32 i;
+
+    for (i = 1; i < ARRAY_COUNT(items); i++) {
+        items[i] = gSaveContext.equips.buttonItems[i];
+    }
+    for (i = 0; i < ARRAY_COUNT(slots); i++) {
+        slots[i] = gSaveContext.equips.cButtonSlots[i];
+    }
+    Inventory_SwapAgeEquipmentImpl();
+    for (i = 1; i < ARRAY_COUNT(items); i++) {
+        gSaveContext.equips.buttonItems[i] = items[i];
+    }
+    for (i = 0; i < ARRAY_COUNT(slots); i++) {
+        gSaveContext.equips.cButtonSlots[i] = slots[i];
+    }
+}
+
+static void Inventory_SwapAgeEquipmentImpl(void) {
+#else
+void Inventory_SwapAgeEquipment(void) {
+#endif
     s16 i;
     u16 shieldEquipValue;
 
@@ -3275,7 +3361,12 @@ void Interface_UpdateMagicBar(PlayState* play) {
             break;
 
         case MAGIC_STATE_CONSUME:
-            if (!Flags_GetRandomizerInf(RAND_INF_HAS_INFINITE_MAGIC_METER)) {
+            if (!Flags_GetRandomizerInf(RAND_INF_HAS_INFINITE_MAGIC_METER)
+#ifdef COMBO_BUILD
+                // ComboShip: MM's Chateau Romani drunk in Hyrule: MM skips the drain (WEEKEVENTREG_DRANK_CHATEAU_ROMANI)
+                && !Combo_ChateauActive()
+#endif
+            ) {
                 gSaveContext.magic -= 2;
                 if (gSaveContext.magic <= 0) {
                     gSaveContext.magic = 0;
@@ -3373,7 +3464,10 @@ void Interface_UpdateMagicBar(PlayState* play) {
 
                 interfaceCtx->unk_230--;
                 if (interfaceCtx->unk_230 == 0) {
-                    gSaveContext.magic--;
+#ifdef COMBO_BUILD
+                    if (!Combo_ChateauActive()) // ComboShip: MM's Chateau Romani: the Lens costs nothing either
+#endif
+                        gSaveContext.magic--;
                     interfaceCtx->unk_230 = 80;
                 }
             }
@@ -4668,8 +4762,25 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
         ItemIconPos[3][1] = ItemIconPos_ori[3][1];
     }
 
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): a foreign item on this button wears MM's own icon, from MM's ResourceManager.
+    const bool comboForeign = (button != 0) && Combo_PauseIsForeign(gSaveContext.equips.buttonItems[button]);
+    if (comboForeign) {
+        texture = (void*)Combo_PauseIconTex(gSaveContext.equips.buttonItems[button]);
+        if (texture == NULL) {
+            texture = gItemIcons[ITEM_STICK]; // MM's save not resident: draw nothing visible
+            gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, 0);
+        }
+        gSPComboRMPush(OVERLAY_DISP++, "mm");
+    }
+#endif
     gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+#ifdef COMBO_BUILD
+    if (comboForeign) {
+        gSPComboRMPop(OVERLAY_DISP++);
+    }
+#endif
 
     gSPWideTextureRectangle(OVERLAY_DISP++, ItemIconPos[button][0] << 2, ItemIconPos[button][1] << 2,
                             (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
@@ -5560,7 +5671,7 @@ void Interface_Draw(PlayState* play) {
         if (gSaveContext.equips.buttonItems[1] < 0xF0) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cLeftAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[1]], 1);
+            Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(1), 1);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5573,7 +5684,7 @@ void Interface_Draw(PlayState* play) {
         if (gSaveContext.equips.buttonItems[2] < 0xF0) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cDownAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[2]], 2);
+            Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(2), 2);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5586,7 +5697,7 @@ void Interface_Draw(PlayState* play) {
         if (gSaveContext.equips.buttonItems[3] < 0xF0) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->cRightAlpha);
             gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-            Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[3]], 3);
+            Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(3), 3);
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5652,7 +5763,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[4] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadUpAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[4]], 4);
+                Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(4), 4);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5663,7 +5774,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[5] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadDownAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[5]], 5);
+                Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(5), 5);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5674,7 +5785,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[6] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadLeftAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[6]], 6);
+                Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(6), 6);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5685,7 +5796,7 @@ void Interface_Draw(PlayState* play) {
             if (gSaveContext.equips.buttonItems[7] < 0xF0) {
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->dpadRightAlpha);
                 gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
-                Interface_DrawItemIconTexture(play, gItemIcons[gSaveContext.equips.buttonItems[7]], 7);
+                Interface_DrawItemIconTexture(play, COMBO_BTN_ICON(7), 7);
                 gDPPipeSync(OVERLAY_DISP++);
                 gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                                   PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -5787,7 +5898,21 @@ void Interface_Draw(PlayState* play) {
             pauseCtx->cursorVtx[18].v.ob[1] = pauseCtx->cursorVtx[19].v.ob[1] = svar2 =
                 pauseCtx->cursorVtx[svar3].v.ob[1] - WREG(90) / 10;
 
-            if (pauseCtx->equipTargetItem < 0xBF) {
+#ifdef COMBO_BUILD
+            if (Combo_PauseIsForeign(pauseCtx->equipTargetItem)) {
+                // ComboShip (merged pause menus): an MM item flies to its button with MM's own icon.
+                const void* comboIcon = Combo_PauseIconTex(pauseCtx->equipTargetItem);
+                gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255,
+                                (comboIcon != NULL) ? pauseCtx->equipAnimAlpha : 0);
+                gSPVertex(OVERLAY_DISP++, &pauseCtx->cursorVtx[16], 4, 0);
+                gSPComboRMPush(OVERLAY_DISP++, "mm");
+                gDPLoadTextureBlock(OVERLAY_DISP++, comboIcon != NULL ? comboIcon : gItemIcons[ITEM_STICK],
+                                    G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                                    G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+                gSPComboRMPop(OVERLAY_DISP++);
+            } else
+#endif
+                if (pauseCtx->equipTargetItem < 0xBF) {
                 // Normal Equip (icon goes from the inventory slot to the C button when equipping it)
                 gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, pauseCtx->equipAnimAlpha);
                 gSPVertex(OVERLAY_DISP++, &pauseCtx->cursorVtx[16], 4, 0);
@@ -6399,6 +6524,11 @@ void Interface_Draw(PlayState* play) {
         }
     }
 
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Pictograph Box HUD (focus frame, photo) — MM Interface_Draw ~9440.
+    Combo_PictoInterfaceDraw(play);
+#endif
+
     if (pauseCtx->debugState == 3) {
         FlagSet_Update(play);
     }
@@ -6561,6 +6691,12 @@ void Interface_Update(PlayState* play) {
     }
 
     if ((play->pauseCtx.state == 0) && (play->pauseCtx.debugState == 0)) {
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Pictograph Box (MM Interface_UpdateButtonsPart1's picto branches run whatever the textbox
+        // state is and replace the rest of the button logic while the box is in use).
+        if ((play->gameOverCtx.state == GAMEOVER_INACTIVE) && Combo_PictoInterfaceUpdate(play)) {
+        } else
+#endif
         if ((gSaveContext.minigameState == 1) || (gSaveContext.sceneLayer < 4) ||
             ((play->sceneNum == SCENE_LON_LON_RANCH) && (gSaveContext.sceneLayer == 4))) {
             if ((msgCtx->msgMode == MSGMODE_NONE) ||
@@ -6693,13 +6829,15 @@ void Interface_Update(PlayState* play) {
     sEnvHazard = Player_GetEnvironmentalHazard(play);
 
     if (sEnvHazard == PLAYER_ENV_HAZARD_HOTROOM) {
-        if (CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_GORON ||
-            CVarGetInteger(CVAR_CHEAT("SuperTunic"), 0) != 0) {
+        // ComboShip (owner 2026-11-14): a tunic only helps human Link -- a transformed Link keeps just his form's own
+        // nature (the Goron shrugs off heat, the Zora breathes water), never the tunic's.
+        if (((CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_GORON) && COMBO_TUNIC_COUNTS()) ||
+            CVarGetInteger(CVAR_CHEAT("SuperTunic"), 0) != 0 || COMBO_HEAT_PROOF()) {
             sEnvHazard = PLAYER_ENV_HAZARD_NONE;
         }
     } else if ((Player_GetEnvironmentalHazard(play) >= 2) && (Player_GetEnvironmentalHazard(play) < 5)) {
-        if (CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_ZORA ||
-            CVarGetInteger(CVAR_CHEAT("SuperTunic"), 0) != 0) {
+        if (((CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_ZORA) && COMBO_TUNIC_COUNTS()) ||
+            CVarGetInteger(CVAR_CHEAT("SuperTunic"), 0) != 0 || COMBO_WATER_PROOF()) {
             sEnvHazard = PLAYER_ENV_HAZARD_NONE;
         }
     }

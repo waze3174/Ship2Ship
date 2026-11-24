@@ -9,6 +9,9 @@
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -195,6 +198,10 @@ void EnVm_Wait(EnVm* this, PlayState* play) {
             dist = this->beamSightRange - this->actor.xzDistToPlayer;
 
             if (this->actor.xzDistToPlayer <= this->beamSightRange && ABS(headRot) <= 0x2710 && pitch >= 0xE38 &&
+#ifdef COMBO_BUILD
+                // ComboShip: MM's Stone Mask (MM En_Vm z_en_vm.c:218) — never locks on while it is worn
+                !COMBO_MM_STONE_MASK() &&
+#endif
                 this->actor.yDistToPlayer <= 80.0f && this->actor.yDistToPlayer >= -160.0f) {
                 Math_SmoothStepToS(&this->beamRot.x, pitch, 10, 0xFA0, 0);
                 if (Math_SmoothStepToS(&this->headRotY, this->actor.yawTowardsPlayer - this->actor.shape.rot.y, 1,
@@ -278,6 +285,13 @@ void EnVm_Attack(EnVm* this, PlayState* play) {
         }
     }
 
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Stone Mask (MM En_Vm z_en_vm.c:290-291) — cut the beam; MM zeroes the timer there too, so the
+    // shutdown sticks even if the mask comes off mid-fade.
+    if (COMBO_MM_STONE_MASK()) {
+        this->timer = 0;
+    }
+#endif
     if (this->beamRot.x < 0xAAA || this->timer == 0) {
         Math_SmoothStepToF(&this->beamScale.x, 0.0f, 1.0f, 0.03f, 0.0f);
         this->unk_260 = 0;

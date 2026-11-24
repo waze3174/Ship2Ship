@@ -33,6 +33,16 @@ extern "C" int gMMComboOracleOotSoaring;
 
 namespace Rando {
 
+#ifdef COMBO_BUILD
+// ComboShip entrance randomizer (Rando/Entrances/ComboEntrances.cpp).
+namespace Entrances {
+s32 LogicTarget(s32 entrance);
+bool HasOverrides();
+bool CrossIsExit(s32 dest);
+void CrossReached(s32 dest);
+} // namespace Entrances
+#endif
+
 namespace Logic {
 
 // Time slice enum - 45 granular time points throughout MM's 3-day cycle

@@ -934,4 +934,105 @@ inline bool ComboForeignTexAnim_Run(PlayState* play, const char* game, const cha
     return true;
 }
 
+// ---- Per-actor instances (XLU flex class only: MM's stray fairy as a live EnElforg in Hyrule). The item draw
+// above shares ONE SkelAnime per skeleton (MM's DrawStrayFairy pattern); a ported actor owns its SkelAnime the way
+// MM's EnElforg does (its own animation phase, its own facing limb). These load through the same caches, so an
+// item draw and an actor of the same skeleton share the loaded resources.
+
+// Load (once) the skeleton/animation `info` describes and init the CALLER's SkelAnime on its own joint table (used
+// as the morph table too, as EnElforg_Init passes this->jointTable twice). `tableCount` must equal info->limbCount.
+// Returns 1 on success, 0 when anything is missing (the caller keeps its fallback).
+inline int32_t ComboForeignAnim_InitInstance(const CwItemAnimDrawInfo* info, const char* game, PlayState* play,
+                                             SkelAnime* skelAnime, Vec3s* jointTable, int32_t tableCount) {
+    if (info == NULL || game == NULL || play == NULL || skelAnime == NULL || jointTable == NULL ||
+        info->skelPath == NULL || info->animPath == NULL || info->opa || !info->xlu ||
+        tableCount != info->limbCount || Ship::CrossRMRegistry::Get(game) == nullptr) {
+        return 0;
+    }
+    CfaEnsureTeardownHook();
+    std::string skelKey = std::string(info->skelPath) + "|" + info->animPath;
+    auto skelIt = sCfaSkelCache.find(skelKey);
+    if (skelIt == sCfaSkelCache.end()) {
+        // Same entry ComboForeignAnim_Draw would build for this XLU item (shared SkelAnime included).
+        skelIt = sCfaSkelCache.emplace(skelKey, CfaSkelEntry{}).first;
+        CfaSkelEntry& e = skelIt->second;
+        if (auto rm = Ship::CrossRMRegistry::Get(game)) {
+            {
+                Ship::ResourceManagerScope rmScope(rm);
+                e.skelRes = rm->LoadResource(info->skelPath);
+                e.animRes = rm->LoadResource(info->animPath);
+            }
+            FlexSkeletonHeader* skel = e.skelRes ? (FlexSkeletonHeader*)e.skelRes->GetRawPointer() : NULL;
+            AnimationHeader* anim = e.animRes ? (AnimationHeader*)e.animRes->GetRawPointer() : NULL;
+            if (skel != NULL && anim != NULL && info->limbCount > 0 && (s32)skel->sh.limbCount + 1 == info->limbCount) {
+                e.jointTable.resize(info->limbCount);
+                SkelAnime_InitFlex(play, &e.skelAnime, skel, anim, e.jointTable.data(), e.jointTable.data(),
+                                   info->limbCount);
+                e.ok = true;
+            }
+        }
+    }
+    CfaSkelEntry& entry = skelIt->second;
+    if (!entry.ok) {
+        return 0;
+    }
+    SkelAnime_InitFlex(play, skelAnime, (FlexSkeletonHeader*)entry.skelRes->GetRawPointer(),
+                       (AnimationHeader*)entry.animRes->GetRawPointer(), jointTable, jointTable, tableCount);
+    return 1;
+}
+
+// Draw a per-actor instance at the CURRENT model matrix, as MM's EnElforg_Draw does after its setup: XLU setup, the
+// described texanim (per-area colours), then the caller's billboard/matrix work is already applied, then DrawFlex with
+// `hiddenLimb` nulled (EnElforg_OverrideLimbDraw hides one of the two heads by facing). The caller updates its own
+// SkelAnime (SkelAnime_Update in its actor update), never this function. Returns 1 on success.
+inline int32_t ComboForeignAnim_DrawInstance(const CwItemAnimDrawInfo* info, const char* game, PlayState* play,
+                                             SkelAnime* skelAnime, int32_t hiddenLimb, MtxF* billboard) {
+    if (info == NULL || game == NULL || play == NULL || skelAnime == NULL || skelAnime->skeleton == NULL ||
+        Ship::CrossRMRegistry::Get(game) == nullptr) {
+        return 0;
+    }
+    CfaTexAnimEntry* texAnim = nullptr;
+    if (info->texAnimPath != NULL) {
+        auto taIt = sCfaTexAnimCache.find(info->texAnimPath);
+        if (taIt == sCfaTexAnimCache.end()) {
+            taIt = sCfaTexAnimCache.emplace(info->texAnimPath, CfaTexAnimEntry{}).first;
+            CfaTexAnimEntry& e = taIt->second;
+            if (auto rm = Ship::CrossRMRegistry::Get(game)) {
+                Ship::ResourceManagerScope rmScope(rm);
+                e.res = rm->LoadResource(info->texAnimPath);
+                e.mat = e.res ? (const CfaMatEntry*)e.res->GetRawPointer() : nullptr;
+                e.ok = CfaValidateTexAnim(e.mat);
+            }
+        }
+        texAnim = &taIt->second;
+        if (!texAnim->ok) {
+            return 0;
+        }
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    CFA_SETUP_XLU(play->state.gfxCtx);
+    int32_t writtenSegs[kMaxMatEntries];
+    int32_t writtenSegCount = 0;
+    if (texAnim != nullptr) {
+        CfaDrawTexAnim(play, texAnim->mat, play->gameplayFrames, writtenSegs, &writtenSegCount, /*bindOpa*/ false);
+    }
+    if (billboard != NULL) {
+        Matrix_Mult(billboard, MTXMODE_APPLY); // EnElforg_Draw: Matrix_Mult(&play->billboardMtxF, MTXMODE_APPLY)
+    }
+    sCfaCurrentGame = game;
+    gSPComboRMPush(POLY_XLU_DISP++, game);
+    POLY_XLU_DISP = SkelAnime_DrawFlex(play, skelAnime->skeleton, skelAnime->jointTable, skelAnime->dListCount,
+                                       CfaOverrideLimbDraw, NULL, (CFA_LIMB_ARG)(intptr_t)hiddenLimb, POLY_XLU_DISP);
+    gSPComboRMPop(POLY_XLU_DISP++);
+    if (writtenSegCount > 0) {
+        Gfx* empty = CfaEmptyDL(play);
+        for (int32_t i = 0; i < writtenSegCount; i++) {
+            gSPSegment(POLY_XLU_DISP++, writtenSegs[i], (uintptr_t)empty);
+        }
+    }
+    CLOSE_DISPS(play->state.gfxCtx);
+    return 1;
+}
+
 #endif /* COMBO_FOREIGN_ANIM_H */

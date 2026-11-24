@@ -10,6 +10,12 @@
 #include "2s2h/BenGui/HudEditor.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+// ComboShip (merged pause menus): mm/2s2h/Rando/MiscBehavior/ComboPause.cpp + z_kaleido_combo.c.
+#include "2s2h/Rando/MiscBehavior/ComboPause.h"
+void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play);
+void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play);
+#endif
 
 s16 sEquipState = EQUIP_STATE_MAGIC_ARROW_GROW_ORB;
 
@@ -259,6 +265,13 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     u16 i;
     u16 j;
 
+#ifdef COMBO_BUILD
+    if (Combo_MmPauseTab() != COMBO_MM_PAUSE_TAB_TERMINA) {
+        KaleidoScope_ComboDrawForeignItemSelect(play); // ComboShip: the Hyrule tab is OOT's page, drawn as OOT does
+        return;
+    }
+#endif
+
     OPEN_DISPS(play->state.gfxCtx);
 
     Gfx_SetupDL42_Opa(play->state.gfxCtx);
@@ -397,6 +410,15 @@ void KaleidoScope_UpdateItemCursor(PlayState* play) {
     s16 oldCursorPoint;
     s16 moveCursorResult;
     s16 pad2;
+
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): the prism's Hyrule faces are OOT's pages (item page, equipment page), driven
+    // by OOT's cursor rules.
+    if (Combo_MmPauseTab() != COMBO_MM_PAUSE_TAB_TERMINA) {
+        KaleidoScope_ComboUpdateForeignItemCursor(play);
+        return;
+    }
+#endif
 
     pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_WHITE;
     pauseCtx->nameColorSet = PAUSE_NAME_COLOR_SET_WHITE;
@@ -1530,7 +1552,7 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
             pauseCtx->equipAnimShrinkRate = equipAnimShrinkRate;
         }
 
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             pauseCtx->equipAnimScale = 0;
             pauseCtx->equipAnimShrinkRate = 0;

@@ -79,6 +79,13 @@ void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
         Actor_SetSpeeds(&this->actor, 20.0f);
         this->actor.parent = &GET_PLAYER(play)->actor;
         this->timer = 26;
+#ifdef COMBO_BUILD
+        // ComboShip: OOT's Hookshot in Termina flies OOT's 13 frames (OOT ArmsHook_Wait: Hookshot 13, Longshot 26;
+        // MM's own hookshot is as long as OOT's Longshot).
+        if (GET_PLAYER(play)->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) {
+            this->timer = 13;
+        }
+#endif
     }
 }
 
@@ -336,7 +343,17 @@ void ArmsHook_Draw(Actor* thisx, PlayState* play) {
         func_80122868(play, player);
 
         MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx);
+#ifdef COMBO_BUILD
+        // ComboShip: OOT's Hookshot / Longshot draw OOT's tip and chain (OOT ArmsHook_Draw: gLinkAdultHookshotTipDL /
+        // gLinkAdultHookshotChainDL, the same transforms).
+        const s32 comboOot = (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ||
+                             (player->heldItemAction == PLAYER_IA_COMBO_OOT_LONGSHOT);
+        gSPDisplayList(POLY_OPA_DISP++,
+                       comboOot ? (Gfx*)"__OTR__@oot:objects/object_link_boy/gLinkAdultHookshotTipDL"
+                                : object_link_child_DL_01D960);
+#else
         gSPDisplayList(POLY_OPA_DISP++, object_link_child_DL_01D960);
+#endif
         Matrix_Translate(this->actor.world.pos.x, this->actor.world.pos.y, this->actor.world.pos.z, MTXMODE_NEW);
         Math_Vec3f_Diff(&player->rightHandWorld.pos, &this->actor.world.pos, &sp68);
         sp48 = SQXZ(sp68);
@@ -346,7 +363,12 @@ void ArmsHook_Draw(Actor* thisx, PlayState* play) {
         f0 = sqrtf(SQ(sp68.y) + sp48);
         Matrix_Scale(0.015f, 0.015f, f0 * 0.01f, MTXMODE_APPLY);
         MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx);
+#ifdef COMBO_BUILD
+        gSPDisplayList(POLY_OPA_DISP++, comboOot ? (Gfx*)"__OTR__@oot:objects/object_link_boy/gLinkAdultHookshotChainDL"
+                                                 : gHookshotChainDL);
+#else
         gSPDisplayList(POLY_OPA_DISP++, gHookshotChainDL);
+#endif
         func_801229A0(play, player);
 
         CLOSE_DISPS(play->state.gfxCtx);

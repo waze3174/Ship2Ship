@@ -7,6 +7,9 @@
 #include "z_en_st.h"
 #include "objects/object_st/object_st.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -691,6 +694,13 @@ s32 EnSt_IsCloseToPlayer(EnSt* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
     f32 yDist;
 
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Stone Mask (MM En_St z_en_st.c:431-436, func_808A5F28) — with it worn MM's Skulltula never
+    // drops and climbs back up if it was down; "player not in range" gives exactly that at every caller here.
+    if (COMBO_MM_STONE_MASK()) {
+        return false;
+    }
+#endif
     if (this->takeDamageSpinTimer != 0) {
         // skull is spinning from damage.
         return false;

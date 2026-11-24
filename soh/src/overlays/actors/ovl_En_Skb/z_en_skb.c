@@ -3,6 +3,18 @@
 #include "objects/object_skb/object_skb.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Captain's Hat (Combo_MmMaskIs)
+// ComboShip: MM's STALCHILD_ANIM_12 (gStalchildIdleAnim, "babestl_kaiwa", MM z_en_skb.c:80), routed to MM's
+// ResourceManager. MM's gStalchildSkel and OOT's have the same 19 limbs in the same order (root, pelvis, root-legs,
+// R thigh/shin/foot, L thigh/shin/foot, ribcage, head, jaw, R arm x3, L arm x3, spine) and the same 20-entry joint
+// tables, so the MM animation drives OOT's skeleton directly.
+static const ALIGN_ASSET(2) char sComboMmStalchildIdleAnim[] = "__OTR__@mm:objects/object_skb/gStalchildIdleAnim";
+// MM STALCHILD_ANIM_11 (gStalchildSaluteAnim, ANIMMODE_ONCE, -4.0): the salute when Link talks to it.
+static const ALIGN_ASSET(2) char sComboMmStalchildSaluteAnim[] =
+    "__OTR__@mm:objects/object_skb/gStalchildSaluteAnim";
+u16 Combo_MmTextPrepare(u16 mmTextId); // ComboMmText.cpp: MM's own message (MM's table), OOT's textbox
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -194,7 +206,12 @@ void func_80AFCD60(EnSkb* this) {
     if (IS_DAY && !CVarGetInteger(CVAR_ENHANCEMENT("RandomizedEnemies"), 0)) {
         func_80AFCF48(this);
     } else if (Actor_IsFacingPlayer(&this->actor, 0x11C7) &&
-               (this->actor.xzDistToPlayer < (60.0f + (this->actor.params * 6.0f)))) {
+               (this->actor.xzDistToPlayer < (60.0f + (this->actor.params * 6.0f)))
+#ifdef COMBO_BUILD
+               // ComboShip: MM's Captain's Hat (MM En_Skb z_en_skb.c:297) — no attack while it is worn
+               && !Combo_MmMaskIs(COMBO_MM_ITEM_MASK_CAPTAIN)
+#endif
+    ) {
         func_80AFD33C(this);
     } else {
         func_80AFD0A4(this);
@@ -257,11 +274,94 @@ void func_80AFD0A4(EnSkb* this) {
     EnSkb_SetupAction(this, EnSkb_Advance);
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: MM's Captain's Hat — MM's friendly wait (func_8099504C / func_80995068, MM z_en_skb.c:349-377).
+// MM offers talk here: first 0x13F6 then (event) 0x13F7, afterwards 0x13F8, saluting (STALCHILD_ANIM_11) — MM's own
+// lines from MM's message table (Combo_MmTextPrepare), shown in OOT's textbox.
+static void EnSkb_ComboCaptainWait(EnSkb* this, PlayState* play);
+static void EnSkb_ComboSalute(EnSkb* this) {
+    Animation_Change(&this->skelAnime, (AnimationHeader*)sComboMmStalchildSaluteAnim, 1.0f, 0.0f,
+                     Animation_GetLastFrame((void*)sComboMmStalchildSaluteAnim), ANIMMODE_ONCE, -4.0f);
+}
+// MM func_80995190 / func_80995244: the talk, then back to the walk (which turns it friendly again while the hat is on).
+static void EnSkb_ComboCaptainTalk(EnSkb* this, PlayState* play) {
+    SkelAnime_Update(&this->skelAnime);
+    switch (Message_GetState(&play->msgCtx)) {
+        case TEXT_STATE_EVENT:
+            if (Message_ShouldAdvance(play)) {
+                const u16 id = Combo_MmTextPrepare(0x13F7);
+                if (id != 0) {
+                    Message_StartTextbox(play, id, &this->actor);
+                }
+                EnSkb_ComboSalute(this);
+            }
+            break;
+        case TEXT_STATE_DONE:
+            if (Message_ShouldAdvance(play)) {
+                this->actor.flags &= ~(ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY);
+                this->actor.flags |= (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE);
+                func_80AFD0A4(this); // MM func_80995244, walking type: func_80995A30
+            }
+            break;
+        default:
+            break;
+    }
+}
+
+static void EnSkb_ComboCaptainWait(EnSkb* this, PlayState* play) {
+    // MM's EnSkb_Update runs SkelAnime_Update after every action (MM z_en_skb.c:1072); OOT's leaves it to each action.
+    SkelAnime_Update(&this->skelAnime);
+    if (Actor_ProcessTalkRequest(&this->actor, play)) {
+        // MM func_80995068: the first talk 0x13F6, later ones 0x13F8 (with the salute)
+        const u16 id = Combo_MmTextPrepare(this->comboTalked ? 0x13F8 : 0x13F6);
+        if (id != 0) {
+            Message_StartTextbox(play, id, &this->actor);
+        }
+        if (this->comboTalked) {
+            EnSkb_ComboSalute(this);
+        }
+        this->comboTalked = 1;
+        this->actor.speedXZ = 0.0f;
+        EnSkb_SetupAction(this, EnSkb_ComboCaptainTalk);
+        return;
+    }
+    if (!Combo_MmMaskIs(COMBO_MM_ITEM_MASK_CAPTAIN)) {
+        // MM z_en_skb.c:368-373, flag writes verbatim: MM sets then clears ACTOR_FLAG_ATTENTION_ENABLED, so a
+        // Stalchild that was friendly is hostile again but no longer lock-on-able — MM's own behaviour, kept.
+        this->actor.flags |= (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE);
+        this->actor.flags &= ~(ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY);
+        this->actor.naviEnemyId = 0x55; // MM: hintId = TATL_HINT_ID_STALCHILD (0x55, the same id as OOT's)
+        this->actor.colChkInfo.mass = MASS_HEAVY;
+        func_80AFD0A4(this); // MM func_80995A30: walk again
+    } else if (!(this->collider.base.acFlags & AC_HIT)) {
+        Actor_OfferTalk(&this->actor, play, 100.0f); // MM: talk offered within 100 units
+    }
+}
+#endif
+
 void EnSkb_Advance(EnSkb* this, PlayState* play) {
     s32 thisKeyFrame;
     s32 prevKeyFrame;
     f32 playSpeed;
     Player* player = GET_PLAYER(play);
+
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Captain's Hat (MM En_Skb z_en_skb.c:586-594, top of the walk func_80995A8C) — the Stalchild
+    // stops hunting Link, turns friendly and stands in MM's idle (STALCHILD_ANIM_12).
+    if (Combo_MmMaskIs(COMBO_MM_ITEM_MASK_CAPTAIN)) {
+        this->actor.flags &= ~(ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE);
+        this->actor.flags |= (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY);
+        this->actor.naviEnemyId = 0xFF; // MM: hintId = TATL_HINT_ID_NONE (0xFF, OOT's "no Navi text" default)
+        this->actor.colChkInfo.mass = MASS_HEAVY;
+        // MM sAnimationInfo[STALCHILD_ANIM_12] = { idle, 1.0f, 0.0f, 0.0f (-> last frame), ANIMMODE_LOOP, -4.0 }
+        Animation_Change(&this->skelAnime, (AnimationHeader*)sComboMmStalchildIdleAnim, 1.0f, 0.0f,
+                         Animation_GetLastFrame((void*)sComboMmStalchildIdleAnim), ANIMMODE_LOOP, -4.0f);
+        // MM func_8099504C
+        this->actor.speedXZ = 0.0f;
+        EnSkb_SetupAction(this, EnSkb_ComboCaptainWait);
+        return;
+    }
+#endif
 
     if ((this->breakFlags != 0) && ((play->gameplayFrames & 0xF) == 0)) {
         this->headlessYawOffset = Rand_CenteredFloat(50000.0f);

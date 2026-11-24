@@ -207,7 +207,20 @@ void FindReachableRegions(RandoRegionId currentRegion, std::set<RandoRegionId>& 
         // Set global time for check evaluation
         gCurrentRegionTime = currentTime;
 
+#ifdef COMBO_BUILD
+        // ComboShip (entrance randomizer, full-coop-sync §B1): the exit leads wherever the shuffle sent it.
+        const s32 comboTarget = Rando::Entrances::LogicTarget(exitId);
+        // §B2: a crossed door leads into Hyrule — not an MM edge; record that this age can take it.
+        if (Rando::Entrances::CrossIsExit(comboTarget)) {
+            gCurrentRegionTime = currentTime;
+            if (regionExit.condition())
+                Rando::Entrances::CrossReached(comboTarget);
+            continue;
+        }
+        RandoRegionId connectedRegionId = GetRegionIdFromEntrance(comboTarget);
+#else
         RandoRegionId connectedRegionId = GetRegionIdFromEntrance(exitId);
+#endif
         if (regionExit.condition()) {
             auto& targetRegion = Regions[connectedRegionId];
             RegionTimeState incomingState = { .timeSlices = currentTime,

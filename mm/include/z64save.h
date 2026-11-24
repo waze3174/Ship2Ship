@@ -409,6 +409,9 @@ typedef struct ShipSaveInfo {
     RandoSaveInfo rando;
     u8 bombArrowsEquipped;
     u8 persistentBunnyHood;
+#ifdef COMBO_BUILD
+    RespawnData comboFaroresWind; // ComboShip: OOT's Farore's Wind warp point in Termina (OOT respawn[TOP] / fw)
+#endif
 } ShipSaveInfo;
 // #endregion
 

@@ -9,6 +9,9 @@
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <assert.h>
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -576,7 +579,12 @@ void EnRr_UpdateBodySegments(EnRr* this, PlayState* play) {
 void EnRr_Approach(EnRr* this, PlayState* play) {
     Math_SmoothStepToS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 0xA, 0x1F4, 0);
     this->actor.world.rot.y = this->actor.shape.rot.y;
-    if ((this->actionTimer == 0) && (this->actor.xzDistToPlayer < 160.0f)) {
+    if ((this->actionTimer == 0) &&
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Rr z_en_rr.c:576) — no reach for Link while it is worn
+        !COMBO_MM_STONE_MASK() &&
+#endif
+        (this->actor.xzDistToPlayer < 160.0f)) {
         EnRr_SetupReach(this);
     } else if ((this->actor.xzDistToPlayer < 400.0f) && (this->actor.speedXZ == 0.0f)) {
         EnRr_SetSpeed(this, 2.0f);
@@ -586,6 +594,13 @@ void EnRr_Approach(EnRr* this, PlayState* play) {
 void EnRr_Reach(EnRr* this, PlayState* play) {
     Math_SmoothStepToS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 0xA, 0x1F4, 0);
     this->actor.world.rot.y = this->actor.shape.rot.y;
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Stone Mask (MM En_Rr z_en_rr.c:587-590) — abandon the reach and go back to neutral
+    if (COMBO_MM_STONE_MASK()) {
+        EnRr_SetupNeutral(this);
+        return;
+    }
+#endif
     switch (this->reachState) {
         case REACH_EXTEND:
             if (this->actionTimer == 0) {

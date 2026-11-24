@@ -3,6 +3,34 @@
 
 #define FLAGS 0
 
+#ifdef COMBO_BUILD
+// ComboShip: MM's Great Fairy's Sword in Hyrule spins on OOT's Biggoron Sword action (swordType 2, so OOT's giant
+// damage flags give the damage credit), with MM's own ENMTHUNDER_TYPE_GREAT_FAIRYS_SWORD look: spin scale 4 / great 6
+// (OOT Biggoron 4 / 8), MM's single spin-charge dust (EFF_DUST_TYPE_SPIN_ATTACK_CHARGE = OOT type 2), MM's charge
+// aura on the hand (2S2H TwoHandedSwordSpinAttack's two-handed aura when that option is on) and MM's spin sounds.
+#include "soh/Enhancements/randomizer/ComboForms.h"
+#include <libultraship/bridge/consolevariablebridge.h>
+s32 Combo_GfsInHand(Player* this); // z_player_lib.c
+s32 Combo_FdSword(Player* this);    // z_player_lib.c
+#include "rando/CrossDamageTags.h"
+#define COMBO_BEAM_GREAT 2   // MM ENMTHUNDER_SUBTYPE_SWORDBEAM_GREAT
+#define COMBO_BEAM_REGULAR 3 // MM ENMTHUNDER_SUBTYPE_SWORDBEAM_REGULAR
+void EnMThunder_ComboSwordBeam(EnMThunder* this, PlayState* play);
+static void Combo_ThunderSfx(EnMThunder* this, Player* player, u16 sfxId) {
+    if (!this->comboGfs || !Combo_GuestPlaySfx(sfxId)) { // MM AudioSfx_PlaySfx at the player's projectedPos
+        Audio_PlaySfxGeneral(sfxId, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
+                             &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+    }
+}
+#define COMBO_THUNDER_SFX(sfxId) Combo_ThunderSfx(this, player, sfxId)
+#define COMBO_GFS_SCALE(oot, mm) (this->comboGfs ? (mm) : (oot))
+#else
+#define COMBO_THUNDER_SFX(sfxId)                                                                           \
+    Audio_PlaySfxGeneral(sfxId, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale, \
+                         &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb)
+#define COMBO_GFS_SCALE(oot, mm) (oot)
+#endif
+
 void EnMThunder_Init(Actor* thisx, PlayState* play);
 void EnMThunder_Destroy(Actor* thisx, PlayState* play);
 void EnMThunder_Update(Actor* thisx, PlayState* play);
@@ -67,6 +95,9 @@ void EnMThunder_Init(Actor* thisx, PlayState* play2) {
     Collider_InitCylinder(play, &this->collider);
     Collider_SetCylinder(play, &this->collider, &this->actor, &sCylinderInit);
     this->swordType = (this->actor.params & 0xFF) - 1;
+#ifdef COMBO_BUILD
+    this->comboGfs = (this->swordType == 2) && Combo_GfsInHand(player);
+#endif
     Lights_PointNoGlowSetInfo(&this->lightInfo, this->actor.world.pos.x, this->actor.world.pos.y,
                               this->actor.world.pos.z, 255, 255, 255, 0);
     this->lightNode = LightContext_InsertLight(play, &play->lightCtx, &this->lightInfo);
@@ -87,23 +118,44 @@ void EnMThunder_Init(Actor* thisx, PlayState* play2) {
         if (!gSaveContext.isMagicAcquired || (gSaveContext.magicState != MAGIC_STATE_IDLE) ||
             (((this->actor.params & 0xFF00) >> 8) &&
              !(Magic_RequestChange(play, (this->actor.params & 0xFF00) >> 8, MAGIC_CONSUME_NOW)))) {
-            Audio_PlaySfxGeneral(NA_SE_IT_ROLLING_CUT, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
-                                 &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
-            Audio_PlaySfxGeneral(NA_SE_IT_SWORD_SWING_HARD, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
-                                 &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+            COMBO_THUNDER_SFX(NA_SE_IT_ROLLING_CUT);
+            COMBO_THUNDER_SFX(NA_SE_IT_SWORD_SWING_HARD);
             Actor_Kill(&this->actor);
             return;
         }
 
         player->stateFlags2 &= ~PLAYER_STATE2_SPIN_ATTACKING;
+#ifdef COMBO_BUILD
+        if (Combo_FdSword(player) && (player->meleeWeaponAnimation < PLAYER_MWA_SPIN_ATTACK_1H)) {
+            // MM EnMThunder_Init: a plain (not spin) swing = Fierce Deity's sword beam. MM picks GREAT when the
+            // great spin was learned (WEEKEVENTREG_RECEIVED_GREAT_SPIN_ATTACK); OOT's Link always knows it.
+            // isCharging stays false (MM), so Destroy does not Magic_Reset: the beam's magic is spent by Player.
+            this->comboBeam = COMBO_BEAM_GREAT;
+            player->unk_858 = 1.0f;
+            this->isUsingMagic = 0;
+            this->actor.shape.rot.x = -this->actor.world.rot.x;
+            this->attackStrength = 2; // neither of OOT's spin looks
+            this->targetScale = 12;
+            this->followPlayerTimer = 1;
+            // MM: DMG_SWORD_BEAM, 3. OOT has no beam bit: the Biggoron spin bit is what OOT's grass / switches read,
+            // MM's reaction for each enemy comes from the tag (CrossDamageMap.h).
+            this->collider.info.toucher.dmgFlags = sSpinAttackDmgFlags[this->swordType];
+            this->collider.info.toucher.damage = 3;
+            CROSS_MM_TAG_TOUCHER(&this->collider.info.toucher, CROSS_MM_TAG_SWORD_BEAM, 3);
+            EnMThunder_SetupAction(this, EnMThunder_ComboSwordBeam);
+            COMBO_THUNDER_SFX(NA_SE_IT_ROLLING_CUT_LV1);
+            this->spinAttackTimer = 1.0f;
+            this->actor.child = NULL;
+            return;
+        }
+#endif
         this->isUsingMagic = 1;
         this->collider.info.toucher.dmgFlags = sSpinAttackDmgFlags[this->swordType];
         this->attackStrength = 1;
         this->targetScale = ((this->swordType == 1) ? 2 : 4);
         EnMThunder_SetupAction(this, EnMThunder_SpinAttacking);
         this->followPlayerTimer = 8;
-        Audio_PlaySfxGeneral(NA_SE_IT_ROLLING_CUT_LV1, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
-                             &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+        COMBO_THUNDER_SFX(NA_SE_IT_ROLLING_CUT_LV1);
         this->spinAttackTimer = 1.0f;
     } else {
         EnMThunder_SetupAction(this, EnMThunder_ChargingSpinAttack);
@@ -132,10 +184,8 @@ void EnMThunder_EmptySpinAttack(EnMThunder* this, PlayState* play) {
 
     if (player->stateFlags2 & PLAYER_STATE2_SPIN_ATTACKING) {
         if (player->meleeWeaponAnimation >= 0x18) {
-            Audio_PlaySfxGeneral(NA_SE_IT_ROLLING_CUT, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
-                                 &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
-            Audio_PlaySfxGeneral(NA_SE_IT_SWORD_SWING_HARD, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
-                                 &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+            COMBO_THUNDER_SFX(NA_SE_IT_ROLLING_CUT);
+            COMBO_THUNDER_SFX(NA_SE_IT_SWORD_SWING_HARD);
         }
 
         Actor_Kill(&this->actor);
@@ -183,10 +233,8 @@ void EnMThunder_ChargingSpinAttack(EnMThunder* this, PlayState* play) {
 
         if (player->unk_858 <= 0.15f) {
             if ((player->unk_858 >= 0.1f) && (player->meleeWeaponAnimation >= 0x18)) {
-                Audio_PlaySfxGeneral(NA_SE_IT_ROLLING_CUT, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale,
-                                     &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
-                Audio_PlaySfxGeneral(NA_SE_IT_SWORD_SWING_HARD, &player->actor.projectedPos, 4,
-                                     &gSfxDefaultFreqAndVolScale, &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+                COMBO_THUNDER_SFX(NA_SE_IT_ROLLING_CUT);
+                COMBO_THUNDER_SFX(NA_SE_IT_SWORD_SWING_HARD);
             }
             Actor_Kill(&this->actor);
             return;
@@ -202,13 +250,12 @@ void EnMThunder_ChargingSpinAttack(EnMThunder* this, PlayState* play) {
             } else {
                 this->collider.info.toucher.dmgFlags = sJumpAttackDmgFlags[this->swordType];
                 this->attackStrength = 0;
-                this->targetScale = ((this->swordType == 1) ? 4 : 8);
+                this->targetScale = COMBO_GFS_SCALE(((this->swordType == 1) ? 4 : 8), 6); // MM GFS great: 6
             }
 
             EnMThunder_SetupAction(this, EnMThunder_SpinAttacking);
             this->followPlayerTimer = 8;
-            Audio_PlaySfxGeneral(sSfxIds[this->attackStrength], &player->actor.projectedPos, 4,
-                                 &gSfxDefaultFreqAndVolScale, &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+            COMBO_THUNDER_SFX(sSfxIds[this->attackStrength]);
             this->spinAttackTimer = 1.0f;
             return;
         }
@@ -227,7 +274,7 @@ void EnMThunder_ChargingSpinAttack(EnMThunder* this, PlayState* play) {
         if (this->actor.child == NULL) {
             Actor_SpawnAsChild(&play->actorCtx, &this->actor, play, ACTOR_EFF_DUST, this->actor.world.pos.x,
                                this->actor.world.pos.y, this->actor.world.pos.z, 0, this->actor.shape.rot.y, 0,
-                               this->swordType + 2);
+                               COMBO_GFS_SCALE(this->swordType + 2, 2)); // MM: EFF_DUST_TYPE_SPIN_ATTACK_CHARGE
         }
         this->dimmingIntensity += ((((player->unk_858 - 0.15f) * 1.5f) - this->dimmingIntensity) * 0.5f);
 
@@ -301,6 +348,48 @@ void EnMThunder_SpinAttacking(EnMThunder* this, PlayState* play) {
     }
 }
 
+#ifdef COMBO_BUILD
+// MM EnMThunder_SwordBeam_Attack (lightColorFrac = spinAttackTimer, alphaFrac = spinAttackAlpha, scaleTarget =
+// targetScale, timer = followPlayerTimer; func_808B5EEC = EnMThunder_UpdateSpinAttack).
+void EnMThunder_ComboSwordBeam(EnMThunder* this, PlayState* play) {
+    f32 step;
+
+    if (this->spinAttackTimer > (9.0f / 10.0f)) {
+        this->spinAttackAlpha = 1.0f;
+    } else {
+        this->spinAttackAlpha = this->spinAttackTimer * (10.0f / 9.0f);
+    }
+
+    if (Math_StepToF(&this->spinAttackTimer, 0.0f, 0.05f)) {
+        Actor_Kill(&this->actor);
+    } else {
+        step = -80.0f * Math_CosS(this->actor.world.rot.x);
+
+        this->actor.world.pos.x += step * Math_SinS(this->actor.shape.rot.y);
+        this->actor.world.pos.z += step * Math_CosS(this->actor.shape.rot.y);
+        this->actor.world.pos.y += -80.0f * Math_SinS(this->actor.world.rot.x);
+
+        Math_SmoothStepToF(&this->actor.scale.x, this->targetScale, 0.6f, 2.0f, 0.0f);
+        Actor_SetScale(&this->actor, this->actor.scale.x);
+
+        this->collider.dim.radius = this->actor.scale.x * 5.0f;
+        this->collider.dim.pos.x =
+            (Math_SinS(this->actor.shape.rot.y) * -5.0f * this->actor.scale.x) + this->actor.world.pos.x;
+        this->collider.dim.pos.y = this->actor.world.pos.y;
+        this->collider.dim.pos.z =
+            (Math_CosS(this->actor.shape.rot.y) * -5.0f * this->actor.scale.z) + this->actor.world.pos.z;
+
+        CollisionCheck_SetAT(play, &play->colChkCtx, &this->collider.base);
+    }
+
+    if (this->followPlayerTimer > 0) {
+        this->followPlayerTimer--;
+    }
+
+    EnMThunder_UpdateSpinAttack(this, play);
+}
+#endif
+
 void EnMThunder_Update(Actor* thisx, PlayState* play) {
     EnMThunder* this = (EnMThunder*)thisx;
     f32 blueRadius;
@@ -328,6 +417,24 @@ void EnMThunder_Draw(Actor* thisx, PlayState* play2) {
     Matrix_Scale(0.02f, 0.02f, 0.02f, MTXMODE_APPLY);
     gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
+#ifdef COMBO_BUILD
+    if (this->comboBeam != 0) {
+        // MM EnMThunder_Draw, ENMTHUNDER_SUBTYPE_SWORDBEAM_*: MM's gameplay_keep beam
+        gSPSegment(POLY_XLU_DISP++, 0x08,
+                   Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 0, 0, 16, 64, 1, 0,
+                                      0x1FF - ((u16)(s32)(this->spinTrailTexScroll * 10.0f) & 0x1FF), 32, 128, 0, 0, 0,
+                                      -10));
+        if (this->comboBeam == COMBO_BEAM_GREAT) {
+            gDPSetPrimColor(POLY_XLU_DISP++, 0, 0x80, 0, 255, 255, (u8)(this->spinAttackAlpha * 255.0f));
+            gDPSetEnvColor(POLY_XLU_DISP++, 200, 200, 200, 128);
+        } else {
+            gDPSetPrimColor(POLY_XLU_DISP++, 0, 0x80, 170, 255, 255, (u8)(this->spinAttackAlpha * 255.0f));
+            gDPSetEnvColor(POLY_XLU_DISP++, 0, 100, 255, 128);
+        }
+        gSPDisplayList(POLY_XLU_DISP++, (Gfx*)"__OTR__@mm:objects/gameplay_keep/gSwordBeamDL");
+        goto comboBeamDone; // MM's hand aura below draws at chargingAlpha 0 for a beam (never charged)
+    }
+#endif
     switch (this->attackStrength) {
         case 0:
         case 1:
@@ -377,6 +484,19 @@ void EnMThunder_Draw(Actor* thisx, PlayState* play2) {
             Matrix_RotateX(16384.0f, MTXMODE_APPLY);
             break;
         case 2:
+#ifdef COMBO_BUILD
+            if (this->comboGfs) {
+                // MM EnMThunder_Draw: the GFS charge aura on the hand (Kokiri-size), or 2S2H's two-handed one
+                Matrix_Translate(0.0f, 220.0f, 0.0f, MTXMODE_APPLY);
+                if (CVarGetInteger("gEnhancements.Equipment.TwoHandedSwordSpinAttack", 0)) {
+                    Matrix_Scale(-1.7f, -1.0f, -0.6f, MTXMODE_APPLY);
+                } else {
+                    Matrix_Scale(-0.7f, -0.6f, -0.4f, MTXMODE_APPLY);
+                }
+                Matrix_RotateX(16384.0f, MTXMODE_APPLY);
+                break;
+            }
+#endif
             Matrix_Translate(200.0f, 350.0f, 0.0f, MTXMODE_APPLY);
             Matrix_Scale(-1.8f, -1.4f, -0.7f, MTXMODE_APPLY);
             Matrix_RotateX(16384.0f, MTXMODE_APPLY);
@@ -428,5 +548,8 @@ void EnMThunder_Draw(Actor* thisx, PlayState* play2) {
 
     gSPDisplayList(POLY_XLU_DISP++, gSpinAttackChargingDL);
 
+#ifdef COMBO_BUILD
+comboBeamDone:;
+#endif
     CLOSE_DISPS(play->state.gfxCtx);
 }

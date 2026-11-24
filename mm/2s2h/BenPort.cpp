@@ -2082,7 +2082,37 @@ extern "C" int ResourceMgr_OTRSigCheck(char* imgData) {
 // Load animation with explicit alt asset path checking.
 // When Alt Assets is OFF: use original path directly (O2R or vanilla)
 // When Alt Assets is ON: try alt/ prefix first, fall back to regular path if not found or invalid
+#ifdef COMBO_BUILD
+// ComboShip (OOT items in Termina): "__OTR__@oot:..." animations come from OOT's resident ResourceManager, the mirror
+// of soh's "@mm:" routing (soh ResourceManagerHelpers.cpp Combo_LoadRoutedAnim). OOT's LinkAnimationHeader has MM's
+// PlayerAnimationHeader layout (frame count, then the frame-data pointer) and the same 22 joints + face word, so MM's
+// player plays OOT's item animations (hammer swings, boomerang throws, spell casts) directly. Loaded once, pinned.
+static AnimationHeaderCommon* Combo_LoadOotRoutedAnim(const char* path) {
+    static auto& sLoaded = *new std::unordered_map<std::string, std::shared_ptr<Ship::IResource>>();
+    static const std::string kPrefix = "__OTR__@oot:";
+    const std::string full(path);
+    auto it = sLoaded.find(full);
+    if (it == sLoaded.end()) {
+        std::shared_ptr<Ship::IResource> res;
+        if (auto rm = Ship::CrossRMRegistry::Get("oot")) {
+            try {
+                Ship::ResourceManagerScope scope(rm); // the header's frame data nested-loads through the active RM
+                res = rm->LoadResource("__OTR__" + full.substr(kPrefix.size()));
+            } catch (...) { res.reset(); }
+        }
+        if (res == nullptr)
+            SPDLOG_ERROR("[ComboShip] OOT animation '{}' not found", full);
+        it = sLoaded.emplace(full, res).first;
+    }
+    return it->second ? (AnimationHeaderCommon*)it->second->GetRawPointer() : nullptr;
+}
+#endif
+
 extern "C" AnimationHeaderCommon* ResourceMgr_LoadAnimByName(const char* path) {
+#ifdef COMBO_BUILD
+    if (path != nullptr && strncmp(path, "__OTR__@oot:", 12) == 0)
+        return Combo_LoadOotRoutedAnim(path);
+#endif
     bool isAlt = ResourceMgr_IsAltAssetsEnabled();
 
     if (isAlt) {
@@ -3053,8 +3083,16 @@ extern "C" COMBO_EXPORT void MM_SetComboSaveIO(ComboRando::FnComboReadSave r, Co
 
 // ComboShip: receive the consolidated combo spoiler (foreign map + cross-hints), pushed once per
 // save-load; store the blob and invalidate MM's lookup caches so they rebuild from it. Idempotent.
+namespace Rando::Entrances {
+void LoadFromSeed(const nlohmann::json& seed); // Rando/Entrances/ComboEntrances.cpp
+}
+
 extern "C" COMBO_EXPORT void MM_LoadComboRando(const char* json) {
     ComboRando::Combo_SetForeignJson(json);
+    // ComboShip (§B1): the slot's MM entrance layout rides in the seed; an absent block clears it.
+    try {
+        Rando::Entrances::LoadFromSeed(json ? nlohmann::json::parse(json) : nlohmann::json::object());
+    } catch (...) { Rando::Entrances::LoadFromSeed(nlohmann::json::object()); }
     Rando::MiscBehavior::InvalidateComboForeignCache();
 }
 
@@ -3203,6 +3241,15 @@ extern "C" COMBO_EXPORT const char* MM_DumpRandoSettings(void) {
             si.push_back(name);
     }
     j["gRando.StartingItems"] = si;
+    // ComboShip (full-coop-sync task 1.4): the Saria's Song hint priority list is another JSON config
+    // block read at slot-bind (Combo hint data); without it a joiner's hints use their local list.
+    nlohmann::json sp = nlohmann::json::array();
+    for (RandoItemId rid : Rando::GetSariaPriorityItemsFromConfig()) {
+        const char* name = Rando::StaticData::Items[rid].spoilerName;
+        if (name && name[0])
+            sp.push_back(name);
+    }
+    j["gRando.SariaPriority"] = sp;
     cached = j.dump();
     return cached.c_str();
 }
@@ -3236,8 +3283,31 @@ extern "C" COMBO_EXPORT void MM_RestoreRandoSettings(const char* json) {
             }
             Rando::SetStartingItemsInConfig(items);
         }
+        // ComboShip (full-coop-sync task 1.4): Saria priority list — authoritative from the snapshot; an
+        // older snapshot without it gets the default list rather than this machine's local one.
+        {
+            std::vector<RandoItemId> items;
+            if (j.contains("gRando.SariaPriority") && j["gRando.SariaPriority"].is_array()) {
+                for (auto& n : j["gRando.SariaPriority"]) {
+                    auto rid = Rando::StaticData::GetItemIdFromName(n.get<std::string>().c_str());
+                    if (rid > RI_UNKNOWN && rid < RI_MAX)
+                        items.push_back(rid);
+                }
+            } else {
+                items = Rando::GetDefaultSariaPriorityItems();
+            }
+            Rando::SetSariaPriorityItemsInConfig(items);
+        }
+        // ComboShip (full-coop-sync task 1.4): the snapshot is authoritative, as in SOH_RestoreRandoSettings:
+        // pre-clear every option so a key missing from an older snapshot reads as its default, not as this
+        // machine's local value.
+        for (auto& [id, opt] : Rando::StaticData::Options) {
+            if (opt.cvar && opt.cvar[0])
+                CVarClear(opt.cvar);
+        }
         for (auto it = j.begin(); it != j.end(); ++it) {
-            if (it.key() == "gRando.StartingItems" || it.key() == "gRando.ExcludedChecks")
+            if (it.key() == "gRando.StartingItems" || it.key() == "gRando.ExcludedChecks" ||
+                it.key() == "gRando.SariaPriority")
                 continue;
             if (it.value().is_string())
                 CVarSetString(it.key().c_str(), it.value().get<std::string>().c_str());
@@ -3970,11 +4040,23 @@ static void GiveItemForOracle(RandoItemId ri) {
     }
 }
 
+// ComboShip cross-game entrances (Rando/Entrances/ComboEntrances.cpp).
+namespace Rando::Entrances {
+bool CrossParseOwned(const std::string& name);
+void CrossResetOwned();
+bool CrossNoRoot();
+std::set<RandoRegionId> CrossRoots(char tag);
+void CrossSetTag(char tag);
+void CrossClearReached();
+bool CrossActive();
+} // namespace Rando::Entrances
+
 extern "C" COMBO_EXPORT void Combo_MM_Rando_Reset(void) {
     // ComboShip: MM's region graph + static data are built by the eager boot
     // (MM_BootForCombo -> ShipInit::InitAll), so the oracle needs no lazy init here.
-    gMMComboOracleOotSoaring = 0; // ComboShip (teleport songs): the input belongs to one query
-    if (!sMM_OracleActive) {      // snapshot the REAL live context only on the first Reset of a fill
+    gMMComboOracleOotSoaring = 0;        // ComboShip (teleport songs): the input belongs to one query
+    Rando::Entrances::CrossResetOwned(); // ComboShip (cross-game entrances): arrivals belong to one query
+    if (!sMM_OracleActive) {             // snapshot the REAL live context only on the first Reset of a fill
         memcpy(&sMM_OracleSavedContext, &gSaveContext, sizeof(SaveContext));
         sMM_OracleSavedRegionTime = gCurrentRegionTime;
         sMM_OracleActive = true;
@@ -4102,6 +4184,8 @@ extern "C" COMBO_EXPORT void Combo_MM_Rando_SetOwnedItems(const char* itemNamesJ
                 gMMComboOracleOotSoaring = 1;
                 continue;
             }
+            if (Rando::Entrances::CrossParseOwned(name.get<std::string>()))
+                continue; // cross-game entrance arrival (age-tagged) / no-root marker
             auto it = nameToId.find(name.get<std::string>());
             if (it != nameToId.end()) {
                 GiveItemForOracle(it->second);
@@ -4265,9 +4349,16 @@ extern "C" int Combo_MM_BombchuBagShared(void) {
     return (gMMComboSharedMask >> ComboRando::SF_BOMBCHU_BAG) & 1;
 }
 
+// Shared bottles (Rando/MiscBehavior/ComboBottleShelf.cpp): pooled family.
+int Combo_MM_BottlesFound();
+int Combo_MM_BottlesHeld();
+void Combo_MM_BottlesAddMirrored();
+
 extern "C" COMBO_EXPORT int MM_GetSharedTier(int family) try {
     if (family < 0 || family >= ComboRando::SF_COUNT)
         return 0;
+    if (family == ComboRando::SF_BOTTLES)
+        return Combo_MM_BottlesFound();
     switch (static_cast<ComboRando::SharedFamily>(family)) {
         case ComboRando::SF_BOW:
             return CUR_UPG_VALUE(UPG_QUIVER);
@@ -4294,6 +4385,10 @@ extern "C" COMBO_EXPORT int MM_GetSharedTier(int family) try {
             return CHECK_QUEST_ITEM(QUEST_SONG_EPONA) ? 1 : 0;
         case ComboRando::SF_SONG_OF_STORMS:
             return CHECK_QUEST_ITEM(QUEST_SONG_STORMS) ? 1 : 0;
+        case ComboRando::SF_OCARINA:
+            return INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME ? 1 : 0;
+        case ComboRando::SF_SONG_OF_TIME:
+            return CHECK_QUEST_ITEM(QUEST_SONG_TIME) ? 1 : 0;
         case ComboRando::SF_GORON_MASK:
             return INV_CONTENT(ITEM_MASK_GORON) != ITEM_NONE ? 1 : 0;
         case ComboRando::SF_ZORA_MASK:
@@ -4336,6 +4431,14 @@ extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
         return;
     const auto& def = ComboRando::SharedFamilyByIndex(family);
     tier = std::min(tier, def.mmTierCap);
+    if (family == ComboRando::SF_BOTTLES) {
+        // Pooled: `tier` is the shared TOTAL; hold that many (mirrored empties fill slots, then the shelf).
+        while (Combo_MM_BottlesHeld() < tier)
+            Combo_MM_BottlesAddMirrored();
+        if (gSaveContext.fileNum != 0xFF)
+            SaveManager_SaveCurrentForCombo(); // persist dormant grants too, like the bombchu-bag poke
+        return;
+    }
     for (;;) {
         const int cur = MM_GetSharedTier(family);
         if (cur >= tier)
@@ -4384,6 +4487,12 @@ extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
                 break;
             case ComboRando::SF_SONG_OF_STORMS:
                 base = RI_SONG_STORMS;
+                break;
+            case ComboRando::SF_OCARINA:
+                base = RI_OCARINA;
+                break;
+            case ComboRando::SF_SONG_OF_TIME:
+                base = RI_SONG_TIME;
                 break;
             case ComboRando::SF_GORON_MASK:
                 base = RI_MASK_GORON;
@@ -4497,6 +4606,19 @@ extern "C" COMBO_EXPORT const char* Combo_MM_Rando_GetReachableChecks(void) {
 
     std::set<RandoRegionId> reachable = { RR_MAX };
     auto timeStates = Rando::Logic::InitializeRegionTimeStates(RR_MAX);
+    // ComboShip (cross-game entrances): Termina entered only through crossed doors (portal not yet open) has no
+    // save-warp root; every owned arrival (either age) is a root of the main search.
+    if (Rando::Entrances::CrossActive()) {
+        if (Rando::Entrances::CrossNoRoot())
+            reachable.clear();
+        for (char tag : { 'c', 'a' })
+            for (RandoRegionId r : Rando::Entrances::CrossRoots(tag))
+                reachable.insert(r);
+        for (RandoRegionId r : reachable)
+            Rando::Logic::EnsureRegionTimeState(timeStates, r);
+    }
+    Rando::Entrances::CrossSetTag(0);
+    const bool comboCrossVerbose = Rando::Entrances::CrossActive() && std::getenv("COMBO_PT_VERBOSE");
 
     // ComboShip: mirror GlitchlessLogic's reachability fixpoint (Rando/Logic/GlitchlessLogic.cpp).
     // Crawling region connections alone isn't enough — MM's logic is event-gated (raising Woodfall,
@@ -4540,6 +4662,18 @@ extern "C" COMBO_EXPORT const char* Combo_MM_Rando_GetReachableChecks(void) {
         }
     }
 
+    if (comboCrossVerbose) {
+        std::string names;
+        for (char tag : { 'c', 'a' })
+            for (RandoRegionId r : Rando::Entrances::CrossRoots(tag)) {
+                auto it = Rando::Logic::Regions.find(r);
+                names += std::string(1, tag) + ":" +
+                         (it != Rando::Logic::Regions.end() && it->second.name ? it->second.name : "?") + "(" +
+                         std::to_string((int)r) + ") ";
+            }
+        fprintf(stderr, "[cross/mm] noRoot=%d roots: %s-> reachable regions %zu\n",
+                (int)Rando::Entrances::CrossNoRoot(), names.c_str(), reachable.size());
+    }
     nlohmann::json out = nlohmann::json::array();
     for (RandoRegionId regionId : reachable) {
         auto regIt = Rando::Logic::Regions.find(regionId);
@@ -4586,6 +4720,26 @@ extern "C" COMBO_EXPORT const char* Combo_MM_Rando_GetReachableChecks(void) {
             sMMComboCrossOut |= ComboRando::CW_MM_OUT_OWL;
     }
     gMMComboOracleOotSoaring = 0;
+
+    // ComboShip (cross-game entrances): which crossed doors each AGE reaches. Link keeps his age in Termina, so a
+    // door reached only from adult arrivals sends him back adult. Events/flags are settled by the main search above;
+    // these passes only walk the graph from each age's roots.
+    Rando::Entrances::CrossClearReached();
+    if (Rando::Entrances::CrossActive()) {
+        for (char tag : { 'c', 'a' }) {
+            std::set<RandoRegionId> roots = Rando::Entrances::CrossRoots(tag);
+            if (roots.empty())
+                continue;
+            std::set<RandoRegionId> seen = roots;
+            auto ts = Rando::Logic::InitializeRegionTimeStates(RR_MAX);
+            for (RandoRegionId r : roots)
+                Rando::Logic::EnsureRegionTimeState(ts, r);
+            Rando::Entrances::CrossSetTag(tag);
+            for (RandoRegionId r : std::set<RandoRegionId>(roots))
+                Rando::Logic::FindReachableRegions(r, seen, ts);
+            Rando::Entrances::CrossSetTag(0);
+        }
+    }
 
     buf = out.dump();
     return buf.c_str();

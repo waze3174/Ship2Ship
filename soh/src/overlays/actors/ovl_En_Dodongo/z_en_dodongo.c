@@ -3,6 +3,9 @@
 #include "overlays/actors/ovl_En_Bombf/z_en_bombf.h"
 #include "objects/object_dodongo/object_dodongo.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -561,7 +564,12 @@ void EnDodongo_Walk(EnDodongo* this, PlayState* play) {
         }
     }
 
-    if (Math_Vec3f_DistXZ(&this->actor.home.pos, &player->actor.world.pos) < 400.0f) {
+    if ((Math_Vec3f_DistXZ(&this->actor.home.pos, &player->actor.world.pos) < 400.0f)
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Dodongo z_en_dodongo.c:597) — no chase / fire while it is worn
+        && !COMBO_MM_STONE_MASK()
+#endif
+    ) {
         Math_SmoothStepToS(&this->actor.world.rot.y, this->actor.yawTowardsPlayer, 1, 0x1F4, 0);
         this->actor.flags |= ACTOR_FLAG_ATTENTION_ENABLED;
         if ((this->actor.xzDistToPlayer < 100.0f) && (yawDiff < 0x1388) && (this->actor.yDistToPlayer < 60.0f)) {
@@ -569,7 +577,12 @@ void EnDodongo_Walk(EnDodongo* this, PlayState* play) {
         }
     } else {
         this->actor.flags &= ~ACTOR_FLAG_ATTENTION_ENABLED;
-        if ((Math_Vec3f_DistXZ(&this->actor.world.pos, &this->actor.home.pos) > 150.0f) || (this->retreatTimer != 0)) {
+        if ((Math_Vec3f_DistXZ(&this->actor.world.pos, &this->actor.home.pos) > 150.0f) || (this->retreatTimer != 0)
+#ifdef COMBO_BUILD
+            // ComboShip: MM's Stone Mask (MM En_Dodongo z_en_dodongo.c:608) — head back home
+            || COMBO_MM_STONE_MASK()
+#endif
+        ) {
             s16 yawToHome = Math_Vec3f_Yaw(&this->actor.world.pos, &this->actor.home.pos);
 
             Math_SmoothStepToS(&this->actor.world.rot.y, yawToHome, 1, 0x1F4, 0);
@@ -604,7 +617,12 @@ void EnDodongo_SweepTail(EnDodongo* this, PlayState* play) {
     s16 yawDiff1 = this->actor.yawTowardsPlayer - this->actor.shape.rot.y;
 
     if (SkelAnime_Update(&this->skelAnime)) {
-        if ((this->timer != 0) || (ABS(yawDiff1) < 0x4000)) {
+        if ((this->timer != 0) || (ABS(yawDiff1) < 0x4000)
+#ifdef COMBO_BUILD
+            // ComboShip: MM's Stone Mask (MM En_Dodongo z_en_dodongo.c:403) — no tail sweep while it is worn
+            || COMBO_MM_STONE_MASK()
+#endif
+        ) {
             this->sphElements[2].info.toucherFlags = TOUCH_NONE;
             this->sphElements[1].info.toucherFlags = TOUCH_NONE;
             this->colliderBody.base.atFlags = AT_NONE;
@@ -612,8 +630,16 @@ void EnDodongo_SweepTail(EnDodongo* this, PlayState* play) {
             this->sphElements[1].info.toucher.dmgFlags = 0;
             this->sphElements[2].info.toucher.damage = 0;
             this->sphElements[1].info.toucher.damage = 0;
-            EnDodongo_SetupBreatheFire(this);
-            this->timer = Rand_S16Offset(5, 10);
+#ifdef COMBO_BUILD
+            // ComboShip: MM's Stone Mask (MM En_Dodongo z_en_dodongo.c:398/841) — walk off instead of breathing fire
+            if (COMBO_MM_STONE_MASK()) {
+                EnDodongo_SetupWalk(this);
+            } else
+#endif
+            {
+                EnDodongo_SetupBreatheFire(this);
+                this->timer = Rand_S16Offset(5, 10);
+            }
         } else {
             s16 yawDiff2 = this->actor.yawTowardsPlayer - this->actor.shape.rot.y;
             AnimationHeader* animation;

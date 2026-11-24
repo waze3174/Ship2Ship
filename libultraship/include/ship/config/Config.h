@@ -177,6 +177,15 @@ class Config {
      */
     nlohmann::json GetNestedJson();
 
+#ifdef COMBO_BUILD
+    /**
+     * @brief ComboShip: raw access to one flattened entry (dot-notation key), for the CVar persist
+     * shadow (ConsoleVariable::ShadowPersist). GetRaw returns false when the key is absent.
+     */
+    bool GetRaw(const std::string& key, nlohmann::json& out);
+    void SetRaw(const std::string& key, const nlohmann::json& value);
+#endif
+
     /**
      * @brief Adds a ConfigVersionUpdater instance to the list to be run later via RunVersionUpdates
      *

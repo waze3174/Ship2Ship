@@ -190,6 +190,18 @@ class ConsoleVariable {
     /** @brief Loads CVars from the backing JSON config file, overwriting in-memory values. */
     void Load();
 
+#ifdef COMBO_BUILD
+    /**
+     * @brief ComboShip: freeze what the config FILE holds for a scalar CVar. Until UnshadowPersist, Save()
+     * writes the captured on-disk entry (or keeps it absent) instead of the live value, so a session
+     * overlay (a co-op room's world settings) can change the in-memory CVar without ever being persisted.
+     * Re-shadowing an already-shadowed name keeps the first capture.
+     */
+    void ShadowPersist(const char* name);
+    void UnshadowPersist(const char* name);
+    bool IsShadowed(const char* name);
+#endif
+
   protected:
     void LoadFromPath(std::string path,
                       nlohmann::detail::iteration_proxy<nlohmann::detail::iter_impl<nlohmann::json>> items);
@@ -209,5 +221,12 @@ class ConsoleVariable {
         }
     };
     std::unordered_map<std::string, std::shared_ptr<CVar>, TransparentStringHash, TransparentStringEqual> mVariables;
+#ifdef COMBO_BUILD
+    struct PersistShadow {
+        bool present = false;
+        nlohmann::json value;
+    };
+    std::unordered_map<std::string, PersistShadow> mPersistShadow; // ComboShip: see ShadowPersist
+#endif
 };
 } // namespace Ship

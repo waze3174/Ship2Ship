@@ -247,6 +247,8 @@ typedef enum {
     // ComboShip (teleport songs): Song of Soaring in OOT
     TEXT_COMBO_SOARING_NO_MARK = 0x9216,
     TEXT_COMBO_SOARING_CONFIRM = 0x9217,
+    // ComboShip (MM items in Hyrule): a Majora's Mask message shown in OOT's textbox (ComboMmText.cpp)
+    TEXT_COMBO_MM_TEXT = 0x9218,
 #endif
 } TextIDs;
 

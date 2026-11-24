@@ -7,8 +7,10 @@
 #pragma once
 
 #include "CrossForeign.h" // ComboRando::DataDir
+#include "CrossEntrance.h"
 
 #include <algorithm>
+#include <cstdlib>
 #include <chrono>
 #include <filesystem>
 #include <fstream>
@@ -47,8 +49,8 @@ inline void ApplySharedMirror(uint32_t sharedMask, const std::vector<std::string
         if (!(sharedMask & (1u << i)))
             continue;
         const auto& def = SharedFamilyByIndex(i);
-        if (!def.mmHasItem)
-            continue; // nothing to push; MM logic doesn't need it
+        if (!def.mmHasItem || def.pooled)
+            continue; // nothing to push / pooled families mirror via ApplyPooledMirror
         size_t k = static_cast<size_t>(std::count(ootOwned.begin(), ootOwned.end(), std::string(def.ootName)));
         size_t target = std::min<size_t>(k, static_cast<size_t>(def.mmTierCap));
         for (size_t n = given[i]; n < target; ++n)
@@ -176,7 +178,8 @@ using ReachSet = std::shared_ptr<const std::unordered_set<std::string>>;
 struct ReachResult {
     ReachSet reach;
     bool portalOpen = true;
-    uint32_t crossOut = 0; // cross-game teleport-song bits
+    uint32_t crossOut = 0;          // cross-game teleport-song bits
+    std::vector<std::string> doors; // cross-game entrances reached ("D:c"/"D:a"), cached like portalOpen
 };
 
 // Memo key for an owned-item MULTISET: reachability depends on which items and HOW MANY (1 vs 2
@@ -203,6 +206,7 @@ inline ReachResult QueryReachableMemo(const OracleFns& o, const std::vector<std:
     ReachResult r{ std::make_shared<const std::unordered_set<std::string>>(QueryReachable(o, owned)), false };
     r.portalOpen = OraclePortalOpen(o);
     r.crossOut = OracleCrossOut(o);
+    r.doors = ReadCrossExitsFor(o);
     memo.emplace(std::move(key), r);
     return r;
 }
@@ -308,24 +312,31 @@ inline RequirednessResult PareDownPlaythrough(const std::string& spoilerJson, co
         // Latched: MM stays open once OOT can reach the Happy Mask Shop. Ungated (NO_LOGIC) = open,
         // and an MM start (#135) roots MM from the beginning.
         bool portalOpen = !portalGated || mmStart;
-        CrossWarpLatch crossLatch; // cross-game teleport songs
+        CrossWarpLatch crossLatch;    // cross-game teleport songs
+        CrossEntranceLatch doorLatch; // cross-game entrances
         size_t sharedGiven[SF_COUNT] = { 0 };
+        PooledMirrorState pooledGiven;
         for (;;) {
             auto ootQ = QueryReachableMemo(ootOracle, ootOwned, ootMemo);
             ootReach = ootQ.reach;
             portalOpen = portalOpen || ootQ.portalOpen;
             // Shared Items: same mirror as the fill and RunPlaythrough.
             ApplySharedMirror(sharedMask, ootOwned, mmOwned, sharedGiven);
+            ApplyPooledMirror(sharedMask, ootOwned, mmOwned, pooledGiven);
             uint32_t mmCrossOut = 0;
-            if (portalOpen) {
-                auto mmQ = QueryReachableMemo(mmOracle, mmOwned, mmMemo);
+            std::vector<std::string> mmDoors;
+            if (portalOpen || HasMmCrossArrival(mmOwned)) {
+                auto mmQ = QueryReachableMemo(mmOracle, portalOpen ? mmOwned : MmOwnedNoRoot(mmOwned), mmMemo);
                 mmReach = mmQ.reach;
                 mmCrossOut = mmQ.crossOut;
+                mmDoors = mmQ.doors;
             } else {
                 mmReach = kEmptyReach;
             }
             // A new cross ability changes what is reachable: re-query before testing the goal.
-            if (ApplyCrossWarps(ootQ.crossOut, mmCrossOut, portalOpen, mmStart, ootOwned, mmOwned, crossLatch))
+            const bool warps =
+                ApplyCrossWarps(ootQ.crossOut, mmCrossOut, portalOpen, mmStart, ootOwned, mmOwned, crossLatch);
+            if (ApplyCrossEntrances(ootQ.doors, mmDoors, ootOwned, mmOwned, doorLatch) || warps)
                 continue;
             // Test the goal per sphere and stop at the first win: we only break when the goal IS met
             // and never un-credit an item, so an early win is final regardless of oracle monotonicity.
@@ -482,21 +493,38 @@ inline PlaythroughResult RunPlaythrough(const std::string& spoilerJson, const Or
     // MM start (#135) roots MM from the beginning.
     bool portalOpen = !portalGated || mmStart;
     size_t sharedGiven[SF_COUNT] = { 0 };
-    CrossWarpLatch crossLatch; // cross-game teleport
+    PooledMirrorState pooledGiven;
+    CrossWarpLatch crossLatch;    // cross-game teleport
+    CrossEntranceLatch doorLatch; // cross-game entrances
     for (int sphere = 0; sphere < kMaxSpheres; ++sphere) {
         auto ootReach = queryReachable(ootOracle, ownedOot);
         // Portal bit belongs to the OOT query just made; read it before crediting any MM check.
         portalOpen = portalOpen || OraclePortalOpen(ootOracle);
         ApplySharedMirror(sharedMask, ownedOot, ownedMm, sharedGiven);
+        ApplyPooledMirror(sharedMask, ownedOot, ownedMm, pooledGiven);
         uint32_t ootCrossOut = OracleCrossOut(ootOracle);
-        auto mmReach = portalOpen ? queryReachable(mmOracle, ownedMm) : std::unordered_set<std::string>{};
-        // Cross-game teleport: settle what each side now does for the other inside this sphere
-        while (ApplyCrossWarps(ootCrossOut, portalOpen ? OracleCrossOut(mmOracle) : 0u, portalOpen, mmStart, ownedOot,
-                               ownedMm, crossLatch)) {
+        std::vector<std::string> ootDoors = ReadOotCrossExits(), mmDoors;
+        auto queryMm = [&]() {
+            const bool q = portalOpen || HasMmCrossArrival(ownedMm);
+            auto r = !q           ? std::unordered_set<std::string>{}
+                     : portalOpen ? queryReachable(mmOracle, ownedMm)
+                                  : queryReachable(mmOracle, MmOwnedNoRoot(ownedMm));
+            mmDoors = q ? ReadMmCrossExits() : std::vector<std::string>{};
+            return r;
+        };
+        auto mmReach = queryMm();
+        // Cross-game teleport + crossed doors: settle what each side now does for the other inside this sphere
+        for (;;) {
+            const bool warps = ApplyCrossWarps(ootCrossOut, portalOpen ? OracleCrossOut(mmOracle) : 0u, portalOpen,
+                                               mmStart, ownedOot, ownedMm, crossLatch);
+            const bool doors = ApplyCrossEntrances(ootDoors, mmDoors, ownedOot, ownedMm, doorLatch);
+            if (!warps && !doors)
+                break;
             ootReach = queryReachable(ootOracle, ownedOot);
             portalOpen = portalOpen || OraclePortalOpen(ootOracle);
             ootCrossOut = OracleCrossOut(ootOracle);
-            mmReach = portalOpen ? queryReachable(mmOracle, ownedMm) : std::unordered_set<std::string>{};
+            ootDoors = ReadOotCrossExits();
+            mmReach = queryMm();
         }
         bool canGanon = ootReach.count(kOotGanon) > 0;
         bool canMajora = mmReach.count(kMmWin) > 0;
@@ -562,14 +590,29 @@ inline PlaythroughResult RunPlaythrough(const std::string& spoilerJson, const Or
     size_t everSharedGiven[SF_COUNT] = { 0 };
     ApplySharedMirror(sharedMask, allOot, allMm, everSharedGiven);
     uint32_t everOotCrossOut = OracleCrossOut(ootOracle);
-    auto everReachMm = everPortalOpen ? queryReachable(mmOracle, allMm) : std::unordered_set<std::string>{};
+    std::vector<std::string> everOotDoors = ReadOotCrossExits(), everMmDoors;
+    auto everQueryMm = [&]() {
+        const bool q = everPortalOpen || HasMmCrossArrival(allMm);
+        auto r = !q               ? std::unordered_set<std::string>{}
+                 : everPortalOpen ? queryReachable(mmOracle, allMm)
+                                  : queryReachable(mmOracle, MmOwnedNoRoot(allMm));
+        everMmDoors = q ? ReadMmCrossExits() : std::vector<std::string>{};
+        return r;
+    };
+    auto everReachMm = everQueryMm();
     CrossWarpLatch everCrossLatch;
-    while (ApplyCrossWarps(everOotCrossOut, everPortalOpen ? OracleCrossOut(mmOracle) : 0u, everPortalOpen, mmStart,
-                           allOot, allMm, everCrossLatch)) {
+    CrossEntranceLatch everDoorLatch;
+    for (;;) {
+        const bool warps = ApplyCrossWarps(everOotCrossOut, everPortalOpen ? OracleCrossOut(mmOracle) : 0u,
+                                           everPortalOpen, mmStart, allOot, allMm, everCrossLatch);
+        const bool doors = ApplyCrossEntrances(everOotDoors, everMmDoors, allOot, allMm, everDoorLatch);
+        if (!warps && !doors)
+            break;
         everReachOot = queryReachable(ootOracle, allOot);
         everPortalOpen = everPortalOpen || OraclePortalOpen(ootOracle);
         everOotCrossOut = OracleCrossOut(ootOracle);
-        everReachMm = everPortalOpen ? queryReachable(mmOracle, allMm) : std::unordered_set<std::string>{};
+        everOotDoors = ReadOotCrossExits();
+        everReachMm = everQueryMm();
     }
     result.ganonReachable = everReachOot.count(kOotGanon) > 0;
     result.majoraReachable = everReachMm.count(kMmWin) > 0;
@@ -610,6 +653,8 @@ inline PlaythroughResult RunPlaythrough(const std::string& spoilerJson, const Or
             log << "    " << (got ? "  " : "! ") << p.check << "  <-  " << p.item
                 << (p.checkGame != p.itemGame ? (p.itemGame == GAME_OOT ? "  (OOT item)" : "  (MM item)") : "")
                 << (got ? "" : "   [UNREACHABLE]") << "\n";
+            if (!got && std::getenv("COMBO_PT_VERBOSE")) // diagnostics: which checks a failed replay never reached
+                std::cerr << "[PLAYTHROUGH] unreachable " << tag << ": " << p.check << " <- " << p.item << "\n";
         }
         log << "  " << tag << ": " << reached << " reachable, " << missing << " unreachable\n";
         reachedOut = reached;
@@ -632,6 +677,8 @@ inline PlaythroughResult RunPlaythrough(const std::string& spoilerJson, const Or
         std::cout << "[PLAYTHROUGH] full sphere log -> " << (dir / "slot0.playthrough.txt").string() << "\n";
     }
 
+    if (std::getenv("COMBO_PT_VERBOSE"))
+        std::cerr << log.str();
     std::cout << "[PLAYTHROUGH] seed '" << seedLabel << "' - " << (beatableSphere >= 0 ? "BEATABLE" : "NOT beatable")
               << (beatableSphere >= 0 ? (" at sphere " + std::to_string(beatableSphere)) : "") << "\n";
     std::cout << "[PLAYTHROUGH] collected " << collected.size() << " items across "

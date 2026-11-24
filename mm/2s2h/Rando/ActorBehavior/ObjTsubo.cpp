@@ -335,7 +335,12 @@ void IdentifyPot(Actor* actor, bool* should) {
 
 void ObjTsubo_RandoDraw(Actor* actor, PlayState* play) {
     if (!CVarGetInteger("gRando.CSMC", 0)) {
+#ifdef COMBO_BUILD
+        // ComboShip: an unchecked shuffled one shows the "?" model, like OOT randomizer.
+        Gfx_DrawDListOpa(play, (Gfx*)gPotRandomDL);
+#else
         Gfx_DrawDListOpa(play, (Gfx*)gPotMajorDL);
+#endif
         return;
     }
 

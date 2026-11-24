@@ -1,0 +1,65 @@
+// mm/2s2h/Rando/MiscBehavior/ComboPause.h — ComboShip: merged pause menus, MM as the host. C API for the fenced
+// seams in MM's kaleido overlay, z_parameter.c and z_player.c. See ComboPause.cpp and combo/menu/ComboPauseABI.h.
+#ifndef COMBO_PAUSE_MM_H
+#define COMBO_PAUSE_MM_H
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+struct PlayState;
+
+// Which page an "item" face of the prism shows.
+enum ComboMmPauseTab {
+    COMBO_MM_PAUSE_TAB_TERMINA = 0,  // MM's own item page
+    COMBO_MM_PAUSE_TAB_HYRULE,       // OOT's item page (OOT slots 0-23)
+    COMBO_MM_PAUSE_TAB_HYRULE_EQUIP, // OOT's equipment page
+    COMBO_MM_PAUSE_TAB_COUNT,
+};
+
+// The hexagonal prism: MM's pause cube with six faces (page-turn order, R = +1).
+enum ComboMmPauseFace {
+    COMBO_MM_PAUSE_FACE_TERMINA = 0, // MM's item page
+    COMBO_MM_PAUSE_FACE_HYRULE,      // OOT's item page
+    COMBO_MM_PAUSE_FACE_MAP,
+    COMBO_MM_PAUSE_FACE_QUEST,
+    COMBO_MM_PAUSE_FACE_MASKS,
+    COMBO_MM_PAUSE_FACE_EQUIP, // OOT's equipment page
+    COMBO_MM_PAUSE_FACE_COUNT,
+};
+// The equipment face's cursor "items" for the name panel (u16 cursorItem, never a real item id).
+#define COMBO_MM_PAUSE_EQUIP_CURSOR_BASE 0x200
+
+int Combo_MmPauseTab(void);
+int Combo_MmPauseFace(void);
+int Combo_MmPauseFacePage(int face);
+int Combo_MmPauseFaceTab(int face);
+void Combo_MmPauseSetDrawTab(int tab);
+int Combo_MmPausePrismTurn(int dir);
+int Combo_MmPausePrismArrive(struct PlayState* play);
+void Combo_MmPausePrismSync(int pageIndex);
+float Combo_MmPausePrismHeading(int turning, int opening, float progress);
+const char* const* Combo_MmPausePageTexs(void); // OOT's page tiles on a Hyrule face (NULL on Termina)
+
+// The Hyrule equipment face.
+int Combo_MmPauseEquipItem(int gridSlot); // OOT item in the 4x4 grid (row*4 + col), 0xFF = empty
+int Combo_MmPauseEquipEquipped(int row);  // the column (1-3) that row has equipped, 0 = none
+const char* Combo_MmPauseOotIconTex(int ootItem);
+void Combo_MmPauseEquipUse(int gridSlot);
+int Combo_MmPauseIsForeignName(int item);
+
+int Combo_MmPauseIsForeign(int item);
+unsigned char Combo_MmPauseSlotItem(int ootSlot); // foreign id of a Hyrule-tab slot, ITEM_NONE when empty
+int Combo_MmPauseSlotAmmo(int ootSlot);           // OOT's ammo digits for that slot, -1 = none
+const char* Combo_MmPauseIconTex(int item);       // OOT icon (inside an "oot" bracket)
+const char* Combo_MmPauseNameTex(int item);       // OOT name plate (inside an "oot" bracket)
+int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
+int Combo_MmPauseUseItem(int item); // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
+int Combo_MmPauseForeignSlot(int item);  // OOT slot behind a foreign id, -1 = not foreign
+int Combo_MmPauseOotItemAt(int ootSlot); // OOT's item in that OOT slot (live), 0xFF = empty
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif

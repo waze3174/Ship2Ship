@@ -25,6 +25,14 @@ static Vtx sCycleCircleVtx[] = {
     VTX(56, -24, 0, 48 << 5, 48 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
 };
 
+#ifdef COMBO_BUILD
+#include "ComboPause.h" // ComboShip: merged pause menus (the Hyrule tab)
+// ComboShip (shared bottles): bottle slots cycle through the Bottle Shelf (ComboBottleShelf.cpp).
+bool Combo_MM_BottleCycleSlot(int slot);
+uint8_t Combo_MM_BottleCyclePeek(bool next);
+void Combo_MM_BottleCycleStep(int slot, bool next);
+#endif
+
 static int sCycleActiveAnimTimer = 0;
 static int sCurrentItemCyclingSlot = SLOT_NONE;
 static int sCurrentAnimatingSlot = SLOT_NONE;
@@ -203,11 +211,60 @@ void DrawItemCycleExtras(PlayState* play, u8 slot, u8 canCycle, u8 leftItem, u8 
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+// ComboShip (shared bottles): bottle slots cycle through the Bottle Shelf. Helpers live outside the hook macros
+// (a lambda passed to COND_HOOK can't hold preprocessor directives); non-combo builds get no-op stubs.
+#ifdef COMBO_BUILD
+static bool ComboKaleido_IsBottleCycle(int slot) {
+    return Combo_MM_BottleCycleSlot(slot);
+}
+static void ComboKaleido_BottleItems(int slot, std::vector<u8>& items) {
+    if (!Combo_MM_BottleCycleSlot(slot))
+        return;
+    // Current bottle + both shelf ends: more than two entries opens cycle mode like the trade slots.
+    items.clear();
+    items.push_back(gSaveContext.save.saveInfo.inventory.items[slot]);
+    items.push_back(Combo_MM_BottleCyclePeek(false));
+    items.push_back(Combo_MM_BottleCyclePeek(true));
+}
+static void ComboKaleido_BottleStep(PauseContext* pauseCtx, int slot, bool next) {
+    Combo_MM_BottleCycleStep(slot, next);
+    pauseCtx->cursorItem[PAUSE_ITEM] = gSaveContext.save.saveInfo.inventory.items[slot];
+}
+static void ComboKaleido_DrawBottleCycles() {
+    for (int bottleSlot = SLOT_BOTTLE_1; bottleSlot <= SLOT_BOTTLE_6; ++bottleSlot) {
+        if (Combo_MM_BottleCycleSlot(bottleSlot))
+            DrawItemCycleExtras(gPlayState, bottleSlot, true, Combo_MM_BottleCyclePeek(false),
+                                Combo_MM_BottleCyclePeek(true));
+    }
+}
+#else
+static bool ComboKaleido_IsBottleCycle(int) {
+    return false;
+}
+static void ComboKaleido_BottleItems(int, std::vector<u8>&) {
+}
+static void ComboKaleido_BottleStep(PauseContext*, int, bool) {
+}
+static void ComboKaleido_DrawBottleCycles() {
+}
+#endif
+
+// ComboShip (merged pause menus): is MM's own item page showing? A helper, because MSVC rejects preprocessor
+// directives inside the COND_HOOK macro's arguments.
+static bool ComboOnTerminaTab() {
+#ifdef COMBO_BUILD
+    return Combo_MmPauseTab() == COMBO_MM_PAUSE_TAB_TERMINA;
+#else
+    return true;
+#endif
+}
+
 void Rando::MiscBehavior::InitKaleidoItemPage() {
     COND_HOOK(OnKaleidoUpdate, IS_RANDO, [](PauseContext* pauseCtx) {
         InterfaceContext* interfaceCtx = &gPlayState->interfaceCtx;
 
-        if ((pauseCtx->state != PAUSE_STATE_MAIN)) {
+        // ComboShip (merged pause menus): the Hyrule tab is OOT's page; MM's cycling rules stay off it.
+        if ((pauseCtx->state != PAUSE_STATE_MAIN) || ((pauseCtx->pageIndex == PAUSE_ITEM) && !ComboOnTerminaTab())) {
             sCycleActiveAnimTimer = 0;
             sCurrentItemCyclingSlot = SLOT_NONE;
             sCurrentAnimatingSlot = SLOT_NONE;
@@ -229,9 +286,10 @@ void Rando::MiscBehavior::InitKaleidoItemPage() {
         }
 
         u16 slot = pauseCtx->cursorSlot[PAUSE_ITEM];
+        const bool comboBottle = ComboKaleido_IsBottleCycle(slot);
 
         if ((pauseCtx->debugEditor != DEBUG_EDITOR_NONE) || (pauseCtx->mainState != PAUSE_MAIN_STATE_IDLE) ||
-            (slot != SLOT_TRADE_COUPLE && slot != SLOT_TRADE_DEED && slot != SLOT_TRADE_KEY_MAMA)) {
+            (slot != SLOT_TRADE_COUPLE && slot != SLOT_TRADE_DEED && slot != SLOT_TRADE_KEY_MAMA && !comboBottle)) {
             if (sPrevKaleidoCursorSlot == SLOT_TRADE_DEED || sPrevKaleidoCursorSlot == SLOT_TRADE_KEY_MAMA ||
                 sPrevKaleidoCursorSlot == SLOT_TRADE_COUPLE) {
                 // Reset A button back to Info when going away from a cycle-able item
@@ -245,6 +303,7 @@ void Rando::MiscBehavior::InitKaleidoItemPage() {
         }
 
         std::vector<u8> availableItems = BuildAvailableItemsList(slot);
+        ComboKaleido_BottleItems(slot, availableItems);
         u16 itemId = pauseCtx->cursorItem[PAUSE_ITEM];
         CycleDirection direction = CYCLE_NONE;
 
@@ -327,6 +386,10 @@ void Rando::MiscBehavior::InitKaleidoItemPage() {
         }
 
         // Change the item
+        if (comboBottle && direction != CYCLE_NONE) {
+            ComboKaleido_BottleStep(pauseCtx, slot, direction == CYCLE_RIGHT);
+            direction = CYCLE_NONE;
+        }
         if (direction != CYCLE_NONE) {
             // Get new item an update Kaleido info panel text
             u8 newItem = direction == CYCLE_LEFT ? GetPreviousListEntry(availableItems, itemId)
@@ -356,6 +419,9 @@ void Rando::MiscBehavior::InitKaleidoItemPage() {
     });
 
     COND_ID_HOOK(AfterKaleidoDrawPage, PAUSE_ITEM, IS_RANDO, [](PauseContext* pauseCtx, u16 pauseIndex) {
+        if (!ComboOnTerminaTab()) {
+            return; // ComboShip (merged pause menus): no MM cycle extras over OOT's page
+        }
         std::vector<u8> availableDeedItems = BuildAvailableItemsList(SLOT_TRADE_DEED);
         std::vector<u8> availableKeyMamaItems = BuildAvailableItemsList(SLOT_TRADE_KEY_MAMA);
         std::vector<u8> availableCoupleItems = BuildAvailableItemsList(SLOT_TRADE_COUPLE);
@@ -373,5 +439,6 @@ void Rando::MiscBehavior::InitKaleidoItemPage() {
         DrawItemCycleExtras(gPlayState, SLOT_TRADE_COUPLE, true,
                             GetPreviousListEntry(availableCoupleItems, currentCoupleItem),
                             GetNextListEntry(availableCoupleItems, currentCoupleItem));
+        ComboKaleido_DrawBottleCycles();
     });
 }

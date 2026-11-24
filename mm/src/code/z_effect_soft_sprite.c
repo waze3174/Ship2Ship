@@ -171,11 +171,21 @@ void EffectSs_Insert(PlayState* play, EffectSs* effectSs) {
     }
 }
 
+#ifdef COMBO_BUILD
+// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): an effect spawned while an enemy we own updates is replayed on
+// teammates' mirrors of it. Observe only.
+void MmCoop_EffectSpawn(s32 type, s32 priority, void* initParams);
+#endif
+
 void EffectSs_Spawn(PlayState* play, s32 type, s32 priority, void* initData) {
     s32 index;
     u32 overlaySize;
     EffectSsOverlay* overlayEntry = &gEffectSsOverlayTable[type];
     EffectSsProfile* profile;
+
+#ifdef COMBO_BUILD
+    MmCoop_EffectSpawn(type, priority, initData);
+#endif
 
     if (EffectSs_FindSlot(priority, &index) != 0) {
         // Abort because we couldn't find a suitable slot to add this effect in

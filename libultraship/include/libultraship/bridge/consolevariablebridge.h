@@ -160,6 +160,16 @@ API_EXPORT void CVarLoad();
  */
 API_EXPORT void CVarSave();
 
+#ifdef COMBO_BUILD
+/**
+ * @brief ComboShip: keep the config file's entry for @p name (or its absence) on every save until
+ * CVarUnshadowPersist, so a session overlay never persists. See ConsoleVariable::ShadowPersist.
+ */
+API_EXPORT void CVarShadowPersist(const char* name);
+API_EXPORT void CVarUnshadowPersist(const char* name);
+API_EXPORT int32_t CVarIsShadowed(const char* name);
+#endif
+
 #ifdef __cplusplus
 };
 #endif

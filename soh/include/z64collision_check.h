@@ -62,6 +62,10 @@ typedef struct {
     /* 0x00 */ u32 dmgFlags; // Toucher damage type flags.
     /* 0x04 */ u8 effect; // Damage Effect (Knockback, Fire, etc.)
     /* 0x05 */ u8 damage; // Damage or Stun Timer
+    // ComboShip: the MM damage type an MM form attack carries (MM DMG_* bit index + 1; 0 = an OOT attack), and the
+    // attack's MM AT damage. Lives in the old padding (size unchanged). See combo/rando/CrossDamageMap.h.
+    /* 0x06 */ u8 comboMmDmg;
+    /* 0x07 */ u8 comboMmAtDamage;
 } ColliderTouch; // size = 0x08
 
 typedef struct {

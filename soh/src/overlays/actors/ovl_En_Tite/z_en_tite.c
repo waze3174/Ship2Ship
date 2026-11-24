@@ -10,6 +10,9 @@
 #include "vt.h"
 #include "objects/object_tite/object_tite.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -247,7 +250,12 @@ void EnTite_Idle(EnTite* this, PlayState* play) {
     }
     if (this->vIdleTimer > 0) {
         this->vIdleTimer--;
-    } else if ((this->actor.xzDistToPlayer < 300.0f) && (this->actor.yDistToPlayer <= 80.0f)) {
+    } else if (
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Tite z_en_tite.c:298) — Link goes unnoticed while it is worn
+        !COMBO_MM_STONE_MASK() &&
+#endif
+        (this->actor.xzDistToPlayer < 300.0f) && (this->actor.yDistToPlayer <= 80.0f)) {
         EnTite_SetupTurnTowardPlayer(this);
     }
 }
@@ -321,6 +329,12 @@ void EnTite_Attack(EnTite* this, PlayState* play) {
                 break;
             case TEKTITE_LANDED:
                 // Get ready to begin another lunge if more lunges are queued, otherwise start turning
+#ifdef COMBO_BUILD
+                // ComboShip: MM's Stone Mask (MM En_Tite z_en_tite.c:401) — after landing an attack, go idle
+                if (COMBO_MM_STONE_MASK()) {
+                    EnTite_SetupIdle(this);
+                } else
+#endif
                 if (this->vQueuedJumps != 0) {
                     this->vQueuedJumps--;
                     this->vAttackState = TEKTITE_BEGIN_LUNGE;
@@ -477,6 +491,12 @@ void EnTite_TurnTowardPlayer(EnTite* this, PlayState* play) {
 
     // Idle if player is far enough away from the tektite, move or attack if almost facing player
     this->actor.shape.rot.y = this->actor.world.rot.y;
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Stone Mask (MM En_Tite z_en_tite.c:464) — give up turning toward Link, go idle
+    if (COMBO_MM_STONE_MASK()) {
+        EnTite_SetupIdle(this);
+    } else
+#endif
     if ((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f)) {
         EnTite_SetupIdle(this);
     } else if (Actor_IsFacingPlayer(&this->actor, 3640)) {
@@ -561,6 +581,12 @@ void EnTite_MoveTowardPlayer(EnTite* this, PlayState* play) {
         }
 
         // Idle or turn if player is too far away, otherwise keep jumping
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Tite z_en_tite.c:527) — stop hopping after Link, go idle
+        if (COMBO_MM_STONE_MASK()) {
+            EnTite_SetupIdle(this);
+        } else
+#endif
         if (((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f))) {
             EnTite_SetupIdle(this);
         } else if (((this->actor.xzDistToPlayer <= 180.0f)) && ((this->actor.yDistToPlayer <= 80.0f))) {
@@ -655,6 +681,12 @@ void EnTite_Recoil(EnTite* this, PlayState* play) {
          ((this->actor.params == TEKTITE_BLUE) && (this->actor.bgCheckFlags & 0x20)))) {
         this->actor.world.rot.y = this->actor.shape.rot.y;
         this->collider.base.atFlags &= ~AT_HIT;
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Tite z_en_tite.c:571) — after recoiling, go idle
+        if (COMBO_MM_STONE_MASK()) {
+            EnTite_SetupIdle(this);
+        } else
+#endif
         if ((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f) &&
             (ABS(this->actor.shape.rot.x) < 4000) && (ABS(this->actor.shape.rot.z) < 4000) &&
             ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
@@ -727,6 +759,11 @@ void EnTite_Stunned(EnTite* this, PlayState* play) {
             EnTite_SetupDeathCry(this);
         } else if (this->flipState == TEKTITE_FLIPPED) {
             EnTite_SetupFlipUpright(this);
+#ifdef COMBO_BUILD
+        } else if (COMBO_MM_STONE_MASK()) {
+            // ComboShip: MM's Stone Mask (MM En_Tite z_en_tite.c:616) — once the stun wears off, go idle
+            EnTite_SetupIdle(this);
+#endif
         } else if (((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f) &&
                     (ABS(this->actor.shape.rot.x) < 4000) && (ABS(this->actor.shape.rot.z) < 4000)) &&
                    ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||

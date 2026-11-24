@@ -21,13 +21,115 @@ extern "C" PlayState* gPlayState;
 
 #ifdef COMBO_BUILD
 #include "rando/CrossWarpLogic.h" // ComboShip (teleport songs): cross-game warp input bits
+
+#ifdef COMBO_BUILD
+bool ComboUnifiedItemIsTimeless(RandomizerGet item); // ComboUnifiedInventory.cpp
+#endif
 // Set by Combo_SOH_Rando_SetOwnedItems for the combined fill's oracle queries; 0 everywhere else.
 extern "C" int gComboOracleCrossIn;
+#endif
+
+#ifdef COMBO_BUILD
+// ComboShip (plan Part C1, owner rulings 2026-11-14): MM's Zora / Goron Masks worn in Hyrule as abilities the logic
+// may route through. The Zora sinks and walks the bottom (Iron Boots), never needs breath (Zora Tunic) and dives
+// (scales); the Goron is heat-proof (Goron Tunic) and its punch / pound breaks what the Megaton Hammer breaks. Fierce
+// Deity is credited nothing (owner: "really just for boss rooms"). The oracle learns which masks are owned from the
+// pseudo items "@combo:form:zora" / "@combo:form:goron" (ComboPlaythrough.h pushes them from MM's owned list).
+//
+// Soundness: a transformed Link can only use masks, the ocarina and (Zora) the hookshots (Combo_OotFormBlocksItem). So
+// within ONE access condition, once a form's credit is used every later item check must be something that form can
+// use; and once a human-only item has been used, the forms' credits are refused. (A player could take the mask off
+// and use the item; the logic doesn't assume that, which keeps it on the safe side.) The context is reset before each
+// condition (ComboFormCtxReset in location_access.h / entrance.cpp).
+extern "C" int gComboOracleFormZora = 0;
+extern "C" int gComboOracleFormGoron = 0;
+namespace {
+enum { COMBO_CTX_NONE, COMBO_CTX_ZORA, COMBO_CTX_GORON };
+int sComboFormCtx = COMBO_CTX_NONE;
+bool sComboBlockZora = false;  // an item the Zora can't use was used in this condition
+bool sComboBlockGoron = false; // an item the Goron can't use was used in this condition
+bool sComboInCanUse = false;
+
+bool ComboFormNeutral(RandomizerGet item) {
+    switch (item) {
+        case RG_FAIRY_OCARINA:
+        case RG_OCARINA_OF_TIME:
+        case RG_ZELDAS_LULLABY:
+        case RG_EPONAS_SONG:
+        case RG_SARIAS_SONG:
+        case RG_SUNS_SONG:
+        case RG_SONG_OF_TIME:
+        case RG_SONG_OF_STORMS:
+        case RG_MINUET_OF_FOREST:
+        case RG_BOLERO_OF_FIRE:
+        case RG_SERENADE_OF_WATER:
+        case RG_REQUIEM_OF_SPIRIT:
+        case RG_NOCTURNE_OF_SHADOW:
+        case RG_PRELUDE_OF_LIGHT:
+            return true; // the forms play their instruments
+        default:
+            return false;
+    }
+}
+bool ComboZoraUsable(RandomizerGet item) {
+    return ComboFormNeutral(item) || (item == RG_HOOKSHOT) || (item == RG_LONGSHOT) || (item == RG_IRON_BOOTS) ||
+           (item == RG_ZORA_TUNIC);
+}
+bool ComboGoronStrength(RandomizerGet item) {
+    // Owner 2026-11-14: "he should still be able to lift every boulder" -- Goron Link lifts what the Golden Gauntlets
+    // lift, at either age (z_player_lib.c Player_GetStrength).
+    return (item == RG_GORONS_BRACELET) || (item == RG_SILVER_GAUNTLETS) || (item == RG_GOLDEN_GAUNTLETS);
+}
+bool ComboGoronUsable(RandomizerGet item) {
+    return ComboFormNeutral(item) || (item == RG_GORON_TUNIC) || (item == RG_MEGATON_HAMMER) || ComboGoronStrength(item);
+}
+// Inside BlastOrSmash (bombable walls, grotto holes and boulders alike): the Goron's punch is no hammer there. MM's bomb
+// walls take explosives only (owner 2026-11-14: "goron link can't break bomb walls in MM just by punching"), and the
+// call sites don't say wall or boulder, so the credit stays off (safe: never counts a wall he can't open).
+bool sComboNoGoronHammer = false;
+} // namespace
+
+void ComboFormCtxReset() {
+    sComboFormCtx = COMBO_CTX_NONE;
+    sComboBlockZora = false;
+    sComboBlockGoron = false;
+}
+
+// A form's credit for `item`, taken (and the context set) when the condition still allows it.
+static bool ComboFormCredit(RandomizerGet item) {
+    const bool zora = (item == RG_IRON_BOOTS) || (item == RG_ZORA_TUNIC) || (item == RG_BRONZE_SCALE) ||
+                      (item == RG_SILVER_SCALE) || (item == RG_GOLDEN_SCALE);
+    const bool goron = (item == RG_GORON_TUNIC) || ((item == RG_MEGATON_HAMMER) && !sComboNoGoronHammer) ||
+                       ComboGoronStrength(item);
+    if (zora && gComboOracleFormZora && !sComboBlockZora && (sComboFormCtx != COMBO_CTX_GORON)) {
+        sComboFormCtx = COMBO_CTX_ZORA;
+        return true;
+    }
+    if (goron && gComboOracleFormGoron && !sComboBlockGoron && (sComboFormCtx != COMBO_CTX_ZORA)) {
+        sComboFormCtx = COMBO_CTX_GORON;
+        return true;
+    }
+    return false;
+}
 #endif
 
 namespace Rando {
 
 bool Logic::HasItem(RandomizerGet itemName) {
+#ifdef COMBO_BUILD
+    if ((itemName == RG_GORONS_BRACELET) && !sComboInCanUse) {
+        sComboInCanUse = true;
+        const bool real = HasItem(itemName);
+        sComboInCanUse = false;
+        return real || ComboFormCredit(itemName); // the Goron lifts
+    }
+    if ((itemName == RG_BRONZE_SCALE) && !sComboInCanUse) {
+        sComboInCanUse = true; // the real check below, without the credit
+        const bool real = HasItem(itemName);
+        sComboInCanUse = false;
+        return real || ComboFormCredit(itemName); // the Zora swims
+    }
+#endif
     switch (itemName) {
         case RG_FAIRY_OCARINA:
             return CheckInventory(ITEM_OCARINA_FAIRY, false);
@@ -281,8 +383,18 @@ bool Logic::HasItem(RandomizerGet itemName) {
             return CurrentUpgrade(UPG_WALLET) >= 3;
             // Scales
         case RG_SILVER_SCALE:
+#ifdef COMBO_BUILD
+            if (!sComboInCanUse && (CurrentUpgrade(UPG_SCALE) < 1)) {
+                return ComboFormCredit(itemName); // the Zora dives as deep as he likes
+            }
+#endif
             return CurrentUpgrade(UPG_SCALE) >= 1;
         case RG_GOLDEN_SCALE:
+#ifdef COMBO_BUILD
+            if (!sComboInCanUse && (CurrentUpgrade(UPG_SCALE) < 2)) {
+                return ComboFormCredit(itemName);
+            }
+#endif
             return CurrentUpgrade(UPG_SCALE) >= 2;
             // Silver Rupees
         case RG_SHADOW_SILVER_BLADES:
@@ -547,12 +659,55 @@ bool Logic::BAllowed() {
 // Can the passed in item be used?
 // RANDOTODO catch magic items explicitly and add an assert on miss.
 bool Logic::CanUse(RandomizerGet itemName) {
+#ifdef COMBO_BUILD
+    if (!sComboInCanUse) {
+        // outer call: apply the form context around the real check
+        if (sComboFormCtx == COMBO_CTX_ZORA) {
+            if (!ComboZoraUsable(itemName)) {
+                return false;
+            }
+            if ((itemName == RG_IRON_BOOTS) || (itemName == RG_ZORA_TUNIC)) {
+                return true; // the Zora already stands in for them in this condition
+            }
+        } else if (sComboFormCtx == COMBO_CTX_GORON) {
+            if (!ComboGoronUsable(itemName)) {
+                return false;
+            }
+            if ((itemName == RG_GORON_TUNIC) || ((itemName == RG_MEGATON_HAMMER) && !sComboNoGoronHammer) ||
+                ComboGoronStrength(itemName)) {
+                return true;
+            }
+        }
+        sComboInCanUse = true;
+        const bool real = CanUse(itemName);
+        sComboInCanUse = false;
+        if (real) {
+            // an item one form can use (the Zora's hookshots) only rules out the other form
+            if (!ComboZoraUsable(itemName)) {
+                sComboBlockZora = true;
+            }
+            if (!ComboGoronUsable(itemName)) {
+                sComboBlockGoron = true;
+            }
+            return true;
+        }
+        return ComboFormCredit(itemName);
+    }
+#endif
     if (!HasItem(itemName))
         return false;
 
     if (!ItemUseAllowed(itemName)) {
         return false;
     }
+
+#ifdef COMBO_BUILD
+    // ComboShip (owner ruling 2026-11-11): Unified Inventory — these items work at either age (runtime:
+    // ComboUnifiedInventory.cpp, the Timeless Equipment hooks), so logic drops their age gate.
+    if (ComboUnifiedItemIsTimeless(itemName)) {
+        return true;
+    }
+#endif
 
     switch (itemName) {
         // Magic items
@@ -1712,7 +1867,17 @@ bool Logic::HasExplosives() {
 }
 
 bool Logic::BlastOrSmash() {
+#ifdef COMBO_BUILD
+    if (HasExplosives()) {
+        return true;
+    }
+    sComboNoGoronHammer = true; // the real hammer only (see sComboNoGoronHammer)
+    const bool hammer = CanUse(RG_MEGATON_HAMMER);
+    sComboNoGoronHammer = false;
+    return hammer;
+#else
     return HasExplosives() || CanUse(RG_MEGATON_HAMMER);
+#endif
 }
 
 bool Logic::CanSpawnSoilSkull(RandomizerGet bean) {

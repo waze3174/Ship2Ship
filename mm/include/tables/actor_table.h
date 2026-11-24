@@ -703,3 +703,9 @@
 /* 0x2AF */ DEFINE_ACTOR(         En_Invisible_Ruppe,  ACTOR_EN_INVISIBLE_RUPPE,  ALLOCTYPE_NORMAL,    "En_Invisible_Ruppe",  "Invisible Ruppe")
 /* 0x2B0 */ DEFINE_ACTOR(         Obj_Ending,          ACTOR_OBJ_ENDING,          ALLOCTYPE_NORMAL,    "Obj_Ending",          "Stump/Lighting (credits end)")
 /* 0x2B1 */ DEFINE_ACTOR(         En_Rsn,              ACTOR_EN_RSN,              ALLOCTYPE_NORMAL,    "En_Rsn",              "Bomb Shop Man (credits)")
+#ifdef COMBO_BUILD
+// ComboShip (OOT items in Termina): OOT's spell actors, ported (mm/src/overlays/actors/ovl_Combo_Magic_*).
+/* 0x2B2 */ DEFINE_ACTOR(         Combo_Magic_Dark,    ACTOR_COMBO_MAGIC_DARK,    ALLOCTYPE_NORMAL,    "Combo_Magic_Dark",    "Nayru's Love (Ocarina of Time)")
+/* 0x2B3 */ DEFINE_ACTOR(         Combo_Magic_Fire,    ACTOR_COMBO_MAGIC_FIRE,    ALLOCTYPE_NORMAL,    "Combo_Magic_Fire",    "Din's Fire (Ocarina of Time)")
+/* 0x2B4 */ DEFINE_ACTOR(         Combo_Magic_Wind,    ACTOR_COMBO_MAGIC_WIND,    ALLOCTYPE_NORMAL,    "Combo_Magic_Wind",    "Farore's Wind (Ocarina of Time)")
+#endif

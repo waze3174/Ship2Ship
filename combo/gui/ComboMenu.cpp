@@ -1,5 +1,7 @@
 // combo/gui/ComboMenu.cpp
 #include "ComboMenu.h"
+#include "ComboSettingsLink.h" // one control for a preference both games own separately
+#include "ComboPlayPreset.h"   // shipped control presets (bindings + button colours)
 #include "ComboExport.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
@@ -25,6 +27,12 @@
 #include <cstdio>
 #include <unordered_set>
 #include "ComboResolve.h"
+
+namespace ComboRando {
+void RegisterCoopWindow();        // ComboCoopWindow.cpp
+void RegisterBottleShelfWindow(); // ComboBottleShelfWindow.cpp
+void ApplyDpadEquips();           // below: one combo setting drives both games' D-pad equips
+} // namespace ComboRando
 
 namespace {
 // soh.dll exports: trigger combo generation (non-blocking; spawns the launcher worker), read the
@@ -94,11 +102,19 @@ constexpr const char* RoomId = "gRemote.Anchor.RoomId";
 constexpr const char* TeamId = "gRemote.Anchor.TeamId";
 constexpr const char* ColorValue = "gRemote.Anchor.Color.Value";
 constexpr const char* ShowOnMinimap = "gRemote.Anchor.ShowOtherPlayersOnMinimap";
+// Live partner feed toggles (read by soh's Anchor and MMAnchor; both default on).
+constexpr const char* PartnerFeedFinds = "gRemote.Anchor.PartnerFeed.Finds";
+constexpr const char* PartnerFeedGameSwitch = "gRemote.Anchor.PartnerFeed.GameSwitch";
 // Room-admin settings: shared store both games read; changes broadcast via SendRoomState.
 constexpr const char* PvpMode = "gRemote.Anchor.RoomSettings.PvpMode";
 constexpr const char* ShowLocationsMode = "gRemote.Anchor.RoomSettings.ShowLocationsMode";
 constexpr const char* TeleportMode = "gRemote.Anchor.RoomSettings.TeleportMode";
 constexpr const char* SyncItemsAndFlags = "gRemote.Anchor.RoomSettings.SyncItemsAndFlags";
+// Co-op combat (2026-11-13). WORLD CVars (combo/coop/WorldCvarsOot.inl): the room host's values are overlaid
+// on every joiner for the session, so these are room settings. Read by CoopEnemySync in both games.
+constexpr const char* CoopEnemySync = "gCombo.Coop.EnemySync";
+constexpr const char* CoopEnemyHpScale = "gCombo.Coop.EnemyHpScale";
+constexpr const char* CoopEnemyHpPercent = "gCombo.Coop.EnemyHpPercent";
 } // namespace AnchorCVar
 
 // Combo plandomizer exports: each game's static-data dump (friendly item names) + the reload trigger
@@ -190,6 +206,10 @@ void ComboMenu::Draw() {
         return;
     }
     DrawElement();
+    // One control for the settings both games keep their own copy of (camera speed, invert, ocarina
+    // stick...): mirror whichever side the player just moved onto the other. Cheap, and only while
+    // the menu is on screen, which is the only place these can change.
+    ComboUI_SettingsLinkPoll();
     SyncVisibilityConsoleVariable();
 }
 
@@ -326,6 +346,74 @@ void ComboMenu::DrawElement() {
         } else if (mScope == "mm") {
             DrawGamePanel("mm");
         } else {
+            if (mScope != "randomizer") {
+                bool linked = ComboUI_SettingsLinkEnabled() != 0;
+                if (ImGui::Checkbox("Use one setting for both games", &linked)) {
+                    CVarSetInteger("gCombo.LinkSettings", linked);
+                    if (linked) {
+                        // Switching it on adopts what is set here (the Shared tab shows OOT's side).
+                        ComboUI_SettingsLinkPushOotToMm();
+                    }
+                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Hyrule and Termina each store their own copy of %d preferences —\n"
+                                      "camera speed and inversion, free-look distance, first-person aim,\n"
+                                      "the ocarina stick, D-pad item slots. With this on, setting one\n"
+                                      "sets the other; you never hunt for the second slider.",
+                                      ComboUI_SettingsLinkCount());
+                }
+                bool ootHud = CVarGetInteger("gCombo.MmHud.OotStyle", 1) != 0;
+                if (ImGui::Checkbox("Majora's Mask HUD looks like Ocarina of Time's", &ootHud)) {
+                    CVarSetInteger("gCombo.MmHud.OotStyle", ootHud);
+                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+                }
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("In Termina, the HUD uses Ocarina of Time's button sprites, labels and layout,\n"
+                                      "and the same colour and HUD Placement options as Hyrule -- set them once\n"
+                                      "in the Ocarina of Time cosmetics and both games follow. The three-day clock\n"
+                                      "stays exactly as Majora's Mask draws it.");
+                }
+                if (ComboUI_PlayPresetCount() > 0 && ImGui::TreeNode("Control presets")) {
+                    ImGui::TextWrapped("Someone else's whole control setup, in both games at once. "
+                                       "Pick the parts you want, then Apply.");
+                    static int sPresetIdx = 0;
+                    static bool sWantBindings = true, sWantColors = true, sWantPrefs = true;
+                    if (ImGui::BeginCombo("Preset", ComboUI_PlayPresetName(sPresetIdx))) {
+                        for (int p = 0; p < ComboUI_PlayPresetCount(); ++p) {
+                            if (ImGui::Selectable(ComboUI_PlayPresetName(p), p == sPresetIdx)) {
+                                sPresetIdx = p;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    if (const char* desc = ComboUI_PlayPresetDescription(sPresetIdx)) {
+                        ImGui::TextDisabled("%s", desc);
+                    }
+                    ImGui::Checkbox("Controller bindings", &sWantBindings);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Button colours", &sWantColors);
+                    ImGui::SameLine();
+                    ImGui::Checkbox("Camera / ocarina / D-pad / letterbox", &sWantPrefs);
+                    const int parts = (sWantBindings ? COMBO_PRESET_PART_BINDINGS : 0) |
+                                      (sWantColors ? COMBO_PRESET_PART_COLORS : 0) |
+                                      (sWantPrefs ? COMBO_PRESET_PART_PREFS : 0);
+                    static std::string sPresetStatus;
+                    ImGui::BeginDisabled(parts == 0);
+                    if (ImGui::Button("Apply preset")) {
+                        const int n = ComboUI_PlayPresetApply(sPresetIdx, parts);
+                        sPresetStatus = (n < 0) ? "Could not read that preset."
+                                                : (std::to_string(n) + " settings applied to both games.");
+                    }
+                    ImGui::EndDisabled();
+                    if (!sPresetStatus.empty()) {
+                        ImGui::SameLine();
+                        ImGui::TextUnformatted(sPresetStatus.c_str());
+                    }
+                    ImGui::TreePop();
+                }
+                ImGui::Separator();
+            }
             DrawSharedPanel();
         }
 
@@ -859,6 +947,25 @@ void DrawNetworkSharedPanel() {
             AnchorSaveCVars();
         }
         ComboRando::ComboMenu_PopCheckbox();
+
+        // Live partner feed: local display preferences only (nothing is sent differently).
+        ImGui::SeparatorText("Partner Feed");
+        bool feedFinds = CVarGetInteger(AnchorCVar::PartnerFeedFinds, 1) != 0;
+        ComboRando::ComboMenu_PushCheckbox(theme);
+        if (ImGui::Checkbox("Show teammate finds", &feedFinds)) {
+            CVarSetInteger(AnchorCVar::PartnerFeedFinds, feedFinds ? 1 : 0);
+            AnchorSaveCVars();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::TextDisabled("Toast for important items a teammate finds, including in the other game.");
+        bool feedSwitch = CVarGetInteger(AnchorCVar::PartnerFeedGameSwitch, 1) != 0;
+        ComboRando::ComboMenu_PushCheckbox(theme);
+        if (ImGui::Checkbox("Announce game switches", &feedSwitch)) {
+            CVarSetInteger(AnchorCVar::PartnerFeedGameSwitch, feedSwitch ? 1 : 0);
+            AnchorSaveCVars();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::TextDisabled("Toast when a teammate moves between Ocarina of Time and Majora's Mask.");
     }
 
     // --- Room window: toggle the combo-native floating roster window (only once Anchor is enabled) ---
@@ -889,6 +996,39 @@ void DrawNetworkSharedPanel() {
     int ownerInfo = sSohAnchorGetOwnerInfo ? sSohAnchorGetOwnerInfo() : 0;
     bool isOwner = (ownerInfo & 1) != 0;
     bool isGlobalRoom = (ownerInfo & 2) != 0;
+
+    // --- Co-op combat: a room setting. Before joining it is what you'll host with; in a room only the owner
+    // edits it and everyone else sees the room's values (overlaid from the host, restored on leave).
+    {
+        ImGui::SeparatorText("Co-op Combat");
+        bool locked = connected && !isOwner;
+        ImGui::BeginDisabled(locked);
+        ComboRando::ComboMenu_PushCheckbox(theme);
+        bool enemySync = CVarGetInteger(AnchorCVar::CoopEnemySync, 1) != 0;
+        if (ImGui::Checkbox("Share enemies and bosses", &enemySync)) {
+            CVarSetInteger(AnchorCVar::CoopEnemySync, enemySync ? 1 : 0);
+            AnchorSaveCVars();
+        }
+        ImGui::SetItemTooltip("Players in the same area fight one copy of every enemy and boss: same positions, "
+                              "health and deaths. Whoever is nearest or attacking drives it.");
+        bool hpScale = CVarGetInteger(AnchorCVar::CoopEnemyHpScale, 1) != 0;
+        if (ImGui::Checkbox("Enemy health scales with players", &hpScale)) {
+            CVarSetInteger(AnchorCVar::CoopEnemyHpScale, hpScale ? 1 : 0);
+            AnchorSaveCVars();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::BeginDisabled(!hpScale);
+        int pct = CVarGetInteger(AnchorCVar::CoopEnemyHpPercent, 100);
+        if (ImGui::SliderInt("Extra HP per player (%)", &pct, 10, 1500, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
+            CVarSetInteger(AnchorCVar::CoopEnemyHpPercent, pct);
+            AnchorSaveCVars();
+        }
+        ImGui::EndDisabled();
+        ImGui::TextDisabled("100%% = enemy and boss HP x number of players in the area (bosses included).");
+        ImGui::EndDisabled();
+        if (locked)
+            ImGui::TextDisabled("Set by the room owner.");
+    }
     if (connected && isOwner && !isGlobalRoom) {
         ImGui::SeparatorText("Room Settings (Admin Only)");
 
@@ -1689,6 +1829,214 @@ void ComboMenu::DrawComboPanel() {
                         "and the Mask Shop key/entrance exclusions, so Ocarina of Time stays enterable from nothing.");
     ImGui::Separator();
 
+    // Owner ruling 2026-11-11: Unified Inventory — both Links use every item (seed setting).
+    ImGui::SeparatorText("Unified Inventory");
+    {
+        bool unified = CVarGetInteger("gCombo.Rando.UnifiedInventory", 0) != 0;
+        ComboRando::ComboMenu_PushCheckbox(goalTheme);
+        if (ImGui::Checkbox("Both Links use every item", &unified))
+            CVarSetInteger("gCombo.Rando.UnifiedInventory", unified ? 1 : 0);
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::TextDisabled("Child and adult Link can use every Ocarina of Time item (hookshot, bow, hammer, boots,\n"
+                            "tunics, swords, slingshot, boomerang...), masks work as adult, and every Shared Items\n"
+                            "family below is on, so an item found in one game counts in both. Logic knows all of it.");
+        {
+            bool dpad = CVarGetInteger("gCombo.DpadEquips", 1) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("D-pad item slots (both games)", &dpad)) {
+                CVarSetInteger("gCombo.DpadEquips", dpad ? 1 : 0);
+                ComboRando::ApplyDpadEquips();
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Four more item buttons on the D-pad, in Hyrule and Termina.");
+        }
+        {
+            bool forms = CVarGetInteger("gCombo.Forms.InHyrule", 1) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Transformations in Hyrule", &forms)) {
+                CVarSetInteger("gCombo.Forms.InHyrule", forms ? 1 : 0);
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Goron/Zora Masks transform in OOT too; every form carries between the games.");
+        }
+        {
+            bool analogs = CVarGetInteger("gCombo.Forms.ItemAnalogs", 1) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Form moves count as items", &analogs)) {
+                CVarSetInteger("gCombo.Forms.ItemAnalogs", analogs ? 1 : 0);
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Goron lifts like Golden Gauntlets, punch/pound = Megaton Hammer, Zora fins =\n"
+                                "Boomerang, Deku bubble = Slingshot: solve Hyrule's puzzles with form moves.");
+        }
+        {
+            bool anchorTunic = CVarGetInteger("gCombo.Cosmetics.AnchorTunicSync", 0) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Anchor color on every tunic", &anchorTunic)) {
+                CVarSetInteger("gCombo.Cosmetics.AnchorTunicSync", anchorTunic ? 1 : 0);
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Your Anchor color becomes every tunic in both games: Kokiri/Goron/Zora Tunic and the\n"
+                                "Deku/Goron/Zora/Fierce Deity forms. Set it once in the Anchor panel.");
+        }
+        if (ImGui::Button("Open Bottle Shelf"))
+            CVarSetInteger("gCombo.BottleShelf.Open", 1);
+        ImGui::SameLine();
+        ImGui::TextDisabled("In-game: pause, put the cursor on a bottle and press A, then left/right to cycle all 10.\n"
+                            "This window can also fill an empty bottle slot from the shelf.");
+    }
+    ImGui::Separator();
+
+    // full-coop-sync §B1: Majora's Mask entrance randomizer. The launcher's shuffler reads these through
+    // SOH_ReadComboEntranceCVars; the layout it picks is stored in the seed.
+    ImGui::SeparatorText("Entrance Randomizer (Majora's Mask)");
+    {
+        struct EntToggle {
+            const char* cvar;
+            const char* label;
+            const char* help;
+        };
+        static const EntToggle kToggles[] = {
+            { "gCombo.Rando.Entrances.MM.Overworld", "Overworld",
+              "Area-to-area links (Clock Town, fields, roads, regions)." },
+            { "gCombo.Rando.Entrances.MM.Interior", "Interiors", "Shops, houses, fountains and other doors." },
+            { "gCombo.Rando.Entrances.MM.Dungeon", "Dungeons",
+              "Temples, Beneath the Well, Ikana Castle, Spider Houses." },
+            { "gCombo.Rando.Entrances.MM.Mixed", "Mix pools", "Any door can lead to any kind of place." },
+            { "gCombo.Rando.Entrances.MM.Decoupled", "Decoupled", "Going back through a door may not return you." },
+        };
+        ComboRando::ComboMenu_PushCheckbox(goalTheme);
+        for (const auto& t : kToggles) {
+            bool on = CVarGetInteger(t.cvar, 0) != 0;
+            if (ImGui::Checkbox(t.label, &on))
+                CVarSetInteger(t.cvar, on ? 1 : 0);
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", t.help);
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::TextDisabled("Every seed is still checked beatable. Grottos and boss rooms stay vanilla for now.");
+    }
+    ImGui::Separator();
+
+    // full-coop-sync §B2: cross-game entrances. A crossed door in one game leads into the other game; Link keeps his
+    // age both ways. The launcher pairs same-kind doors (stored in the seed) and logic proves every seed beatable.
+    ImGui::SeparatorText("Cross-Game Entrances");
+    {
+        struct CrossToggle {
+            const char* cvar;
+            const char* label;
+            const char* help;
+        };
+        static const CrossToggle kCross[] = {
+            { "gCombo.Rando.Entrances.Cross.Overworld", "Overworld##cross",
+              "Area links can lead into the other game (Hyrule Field -> Termina Field...)." },
+            { "gCombo.Rando.Entrances.Cross.Interior", "Interiors##cross",
+              "A house or shop door can open into the other game's building." },
+            { "gCombo.Rando.Entrances.Cross.Dungeon", "Dungeons##cross",
+              "Dungeon entrances can be in the other game." },
+        };
+        ComboRando::ComboMenu_PushCheckbox(goalTheme);
+        for (const auto& t : kCross) {
+            bool on = CVarGetInteger(t.cvar, 0) != 0;
+            if (ImGui::Checkbox(t.label, &on))
+                CVarSetInteger(t.cvar, on ? 1 : 0);
+            ImGui::SameLine();
+            ImGui::TextDisabled("%s", t.help);
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        int pct = CVarGetInteger("gCombo.Rando.Entrances.Cross.Percent", 50);
+        ImGui::SetNextItemWidth(200.0f);
+        if (ImGui::SliderInt("Doors crossed##crosspct", &pct, 1, 100, "%d%%"))
+            CVarSetInteger("gCombo.Rando.Entrances.Cross.Percent", pct);
+        ImGui::SameLine();
+        ImGui::TextDisabled("How many of each enabled kind lead into the other game.");
+        ImGui::TextDisabled("Child stays child and adult stays adult when you cross. Every seed is checked beatable.");
+        if (ImGui::Button("Full Slurry")) {
+            // Everything random in both games, every enabled kind crossed: you never know which game is next.
+            for (const char* k : { "ShuffleOverworldEntrances", "ShuffleDungeonsEntrances", "ShuffleGrottosEntrances",
+                                   "MixedEntrances", "MixOverworld", "MixInteriors", "MixDungeons" })
+                CVarSetInteger((std::string("gRandoSettings.") + k).c_str(), 1);
+            CVarSetInteger("gRandoSettings.ShuffleInteriorsEntrances", 2); // all interiors
+            for (const char* k : { "Overworld", "Interior", "Dungeon" }) {
+                CVarSetInteger((std::string("gCombo.Rando.Entrances.MM.") + k).c_str(), 1);
+                CVarSetInteger((std::string("gCombo.Rando.Entrances.Cross.") + k).c_str(), 1);
+            }
+            CVarSetInteger("gCombo.Rando.Entrances.Cross.Percent", 100);
+            if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Turns on every entrance shuffle in both games and crosses 100%% of doors.");
+    }
+    ImGui::Separator();
+
+    // Pots and grass/bushes in the pool, in BOTH games (OOT: SoH's ShufflePots/ShuffleGrass "All"; MM: 2ship's
+    // scenery drops). The combined fill places either game's items in either game's pots and grass.
+    ImGui::SeparatorText("Pots & Grass");
+    {
+        constexpr const char* kOotPots = "gRandoSettings.ShufflePots";
+        constexpr const char* kOotGrass = "gRandoSettings.ShuffleGrass";
+        constexpr const char* kMmPots = "gRando.Options.RO_SHUFFLE_POT_DROPS";
+        constexpr const char* kMmGrass = "gRando.Options.RO_SHUFFLE_GRASS_DROPS";
+        bool pots = CVarGetInteger(kOotPots, 0) != 0 && CVarGetInteger(kMmPots, 0) != 0;
+        bool grass = CVarGetInteger(kOotGrass, 0) != 0 && CVarGetInteger(kMmGrass, 0) != 0;
+        bool changed = false;
+        ComboRando::ComboMenu_PushCheckbox(goalTheme);
+        if (ImGui::Checkbox("Pots (both games)", &pots)) {
+            CVarSetInteger(kOotPots, pots ? 3 : 0); // 3 = all pots (dungeons + overworld)
+            CVarSetInteger(kMmPots, pots ? 1 : 0);
+            changed = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Checkbox("Grass & bushes (both games)", &grass)) {
+            CVarSetInteger(kOotGrass, grass ? 3 : 0);
+            CVarSetInteger(kMmGrass, grass ? 1 : 0);
+            changed = true;
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        if (changed)
+            if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        ImGui::TextDisabled("Every pot / grass clump in Hyrule AND Termina is a check (about 2,200 extra), and any\n"
+                            "item from either game can be inside. Each game's own menu has the finer options.");
+        if (ImGui::Button("Shuffle EVERYTHING (both games)")) {
+            // Every scenery / drop shuffle both games have: ~4,700 checks across Hyrule and Termina.
+            static const std::pair<const char*, int> kOot[] = {
+                { "ShufflePots", 3 },         { "ShuffleGrass", 3 },        { "ShuffleCrates", 3 },
+                { "ShuffleRocks", 1 },        { "ShuffleBoulders", 3 },     { "ShuffleTrees", 1 },
+                { "ShuffleBushes", 1 },       { "ShuffleIcicles", 1 },      { "ShuffleRedIce", 1 },
+                { "ShuffleSigns", 3 },        { "ShuffleFreestanding", 3 }, { "ShuffleWonderItems", 3 },
+                { "ShuffleBeehives", 1 },     { "ShuffleCows", 1 },         { "ShuffleFountainFairies", 1 },
+                { "ShuffleStoneFairies", 1 }, { "ShuffleBeanFairies", 1 },  { "ShuffleButterflyFairies", 1 },
+            };
+            for (const auto& [k, v] : kOot)
+                CVarSetInteger((std::string("gRandoSettings.") + k).c_str(), v);
+            static const char* const kMm[] = { "POT_DROPS",          "CRATE_DROPS",  "BARREL_DROPS", "SNOWBALL_DROPS",
+                                               "GRASS_DROPS",        "TREE_DROPS",   "HIVE_DROPS",   "BUTTERFLIES",
+                                               "FREESTANDING_ITEMS", "WONDER_ITEMS", "COWS" };
+            for (const char* k : kMm)
+                CVarSetInteger((std::string("gRando.Options.RO_SHUFFLE_") + k).c_str(), 1);
+            if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        }
+        ImGui::SameLine();
+        ImGui::TextDisabled("Pots, grass, bushes, crates, barrels, rocks, trees, signs, snowballs, hives,\n"
+                            "fairies, butterflies, cows, freestanding + wonder items: everything, in both games.");
+    }
+    ImGui::Separator();
+
     // Shared Items (OoTMM-style): one item counts for both games, applied at generation. Deferred
     // families (Ocarina, Song of Time, Shields, Bottles, Health) are not drawn — see the plan doc.
     ImGui::SeparatorText("Shared Items");
@@ -1808,6 +2156,14 @@ extern "C" COMBO_EXPORT void ComboUI_OpenRandomizerSettings(void) {
         ComboRando::sComboMenu->OpenAtRandomizer();
 }
 
+namespace ComboRando {
+void ApplyDpadEquips() {
+    const int on = CVarGetInteger("gCombo.DpadEquips", 1) ? 1 : 0;
+    CVarSetInteger("gEnhancements.DpadEquips", on);      // OOT (SoH)
+    CVarSetInteger("gEnhancements.Dpad.DpadEquips", on); // MM (2ship)
+}
+} // namespace ComboRando
+
 extern "C" COMBO_EXPORT void ComboUI_Register(void) {
     auto ctx = Ship::Context::GetRawInstance();
     if (!ctx || !ctx->GetWindow() || !ctx->GetWindow()->GetGui()) {
@@ -1824,6 +2180,18 @@ extern "C" COMBO_EXPORT void ComboUI_Register(void) {
 
     // Combo-native floating Anchor room window (toggled from the Anchor panel).
     ComboRando::RegisterAnchorRoomWindow();
+    ComboRando::RegisterCoopWindow();        // full-coop-sync A-M1: Co-op Sync window, room-seed modal/toast
+    ComboRando::RegisterBottleShelfWindow(); // shared bottles: the Bottle Shelf
+
+    // (The "done once" flag is a sibling key, never "gCombo.DpadEquips.Init": a leaf and a subtree under one name can't
+    // both exist in the nested config, and that clash silently stopped every config save.)
+    // Owner ask 2026-11-12: D-pad item slots in BOTH games, on by default. One combo setting drives each game's own
+    // D-pad equips (SoH gEnhancements.DpadEquips, 2ship gEnhancements.Dpad.DpadEquips) so they never disagree.
+    if (!CVarGetInteger("gCombo.DpadEquipsInit", 0)) {
+        CVarSetInteger("gCombo.DpadEquipsInit", 1);
+        CVarSetInteger("gCombo.DpadEquips", 1);
+    }
+    ComboRando::ApplyDpadEquips();
 
     // Combo-owned cross-game Personal Notes window (toggled from the Shared item tracker panel).
     ComboNotes::RegisterWindow();

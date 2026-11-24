@@ -6,6 +6,11 @@
 
 #include "z_en_dog.h"
 #include "objects/object_dog/object_dog.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboMmItems.h"
+
+static struct EnDog* sComboBremenFollower = NULL; // ComboShip: MM's Bremen Mask (MM En_Dg:85 sBremenMaskFollowerIndex)
+#endif
 
 #define FLAGS 0
 
@@ -299,6 +304,11 @@ void EnDog_Init(Actor* thisx, PlayState* play) {
 
 void EnDog_Destroy(Actor* thisx, PlayState* play) {
     EnDog* this = (EnDog*)thisx;
+#ifdef COMBO_BUILD
+    if (this == sComboBremenFollower) {
+        sComboBremenFollower = NULL; // ComboShip: MM's Bremen Mask follower left the scene (MM En_Dg:85)
+    }
+#endif
     Collider_DestroyCylinder(play, &this->collider);
 }
 
@@ -475,6 +485,127 @@ void EnDog_Wait(EnDog* this, PlayState* play) {
     }
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: MM's Bremen Mask (MM En_Dg, mm/src/overlays/actors/ovl_En_Dg/z_en_dg.c). While Link marches, ONE dog —
+// the one Link targets, else the nearest — follows him: it walks up at Link's pace, sits next to him when he stops,
+// barks every 10 frames, and goes back to what it was doing when the march ends.
+
+void EnDog_ComboBremenSetupApproach(EnDog* this, PlayState* play);
+void EnDog_ComboBremenApproach(EnDog* this, PlayState* play);
+void EnDog_ComboBremenSit(EnDog* this, PlayState* play);
+
+// ComboShip: MM's Bremen Mask (MM En_Dg:526 EnDg_FindFollowerForBremenMask). MM's dogs are ACTORCAT_ENEMY, OOT's are
+// ACTORCAT_NPC.
+static s32 EnDog_ComboFindFollowerForBremenMask(PlayState* play) {
+    Actor* dog = play->actorCtx.actorLists[ACTORCAT_NPC].head;
+    f32 minDist = 9999.0f;
+    f32 dist;
+
+    while (dog != NULL) {
+        if ((dog->id == ACTOR_EN_DOG) && (dog->update != NULL)) {
+            if (dog->isTargeted) { // MM isLockedOn
+                sComboBremenFollower = (EnDog*)dog;
+                return true;
+            }
+
+            dist = dog->xzDistToPlayer;
+            if (dist < minDist) {
+                sComboBremenFollower = (EnDog*)dog;
+                minDist = dist;
+            }
+        }
+
+        dog = dog->next;
+    }
+
+    if (sComboBremenFollower != NULL) {
+        return true;
+    }
+
+    return false;
+}
+
+// ComboShip: MM's Bremen Mask (MM En_Dg:563 EnDg_CheckForBremenMaskMarch). MM calls it from the dog's idle walk and
+// its follow actions; OOT's dog has other idle actions (path walk, waiting, following Link as Richard), so it runs
+// every frame, before the dog's action.
+static void EnDog_ComboCheckForBremenMaskMarch(EnDog* this, PlayState* play) {
+    if (Combo_BremenMarching()) {
+        if (sComboBremenFollower == NULL) {
+            EnDog_ComboFindFollowerForBremenMask(play);
+        }
+
+        if (this == sComboBremenFollower) {
+            if (!this->comboBremenFollowing) {
+                this->comboBremenFollowing = true;
+                this->comboBremenPrevAction = this->actionFunc;
+                this->comboBremenPrevBehavior = this->nextBehavior;
+                this->nextBehavior = DOG_WALK; // MM DOG_ANIM_WALK
+                this->actor.speedXZ = 0.0f;    // MM: EnDg_SetupBremenMaskApproachPlayer doesn't move the dog
+                this->actionFunc = EnDog_ComboBremenSetupApproach;
+            } else if ((this->actionFunc == EnDog_ComboBremenApproach) ||
+                       (this->actionFunc == EnDog_ComboBremenSit)) {
+                if (DECR(this->comboBremenBarkTimer) == 0) {
+                    this->comboBremenBarkTimer = 10;
+                    Audio_PlayActorSound2(&this->actor, NA_SE_EV_SMALL_DOG_BARK);
+                }
+            }
+        }
+    } else if (this == sComboBremenFollower) {
+        // MM: the dog leaves the march and goes back to its idle walk (EnDg_SetupIdleMove); OOT's dog goes back to
+        // what it was doing (its path, its wait, or following Link as Richard).
+        this->comboBremenFollowing = false;
+        sComboBremenFollower = NULL;
+        if (this->comboBremenPrevAction != NULL) {
+            this->actionFunc = this->comboBremenPrevAction;
+            this->nextBehavior = this->comboBremenPrevBehavior;
+        }
+        this->comboBremenPrevAction = NULL;
+    }
+}
+
+// ComboShip: MM's Bremen Mask (MM En_Dg:974 EnDg_SetupBremenMaskApproachPlayer). MM waits for the march's beat
+// (func_801A46F8: the fanfare player's channel-15 IO port on a beat); the march music in Hyrule isn't MM's fanfare
+// player, so the dog sets off at once.
+void EnDog_ComboBremenSetupApproach(EnDog* this, PlayState* play) {
+    this->comboBremenBarkTimer = 10;
+    Audio_PlayActorSound2(&this->actor, NA_SE_EV_SMALL_DOG_BARK);
+    this->actionFunc = EnDog_ComboBremenApproach;
+}
+
+// ComboShip: MM's Bremen Mask (MM En_Dg:996 EnDg_ApproachPlayer, the marching branch at :1011).
+void EnDog_ComboBremenApproach(EnDog* this, PlayState* play) {
+    Player* player = GET_PLAYER(play);
+
+    if ((this->actor.xzDistToPlayer < 60.0f) && (this->collider.base.ocFlags1 & OC1_HIT)) {
+        this->actor.shape.rot.y += 0x71C;
+    } else {
+        Math_ApproachS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 4, 0xC00);
+    }
+
+    this->actor.world.rot.y = this->actor.shape.rot.y;
+    if (this->actor.xzDistToPlayer < 40.0f) {
+        this->nextBehavior = DOG_SIT; // MM DOG_ANIM_SIT_DOWN
+        this->actionFunc = EnDog_ComboBremenSit;
+    } else if ((this->actor.xzDistToPlayer > 40.0f) && (player->linearVelocity == 0.0f)) { // MM player->speedXZ
+        Math_ApproachF(&this->actor.speedXZ, 1.5f, 0.2f, 1.0f);
+    } else {
+        Math_ApproachF(&this->actor.speedXZ, player->actor.speedXZ, 0.2f, 1.0f);
+    }
+}
+
+// ComboShip: MM's Bremen Mask (MM En_Dg:873 EnDg_SitNextToPlayer, the marching branch at :884).
+void EnDog_ComboBremenSit(EnDog* this, PlayState* play) {
+    this->actor.speedXZ = 0.0f; // MM: sitting doesn't move the dog
+    if (this->actor.xzDistToPlayer < 50.0f) {
+        Math_ApproachS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 4, 0xC00);
+        this->actor.world.rot.y = this->actor.shape.rot.y;
+    } else {
+        this->nextBehavior = DOG_WALK; // MM DOG_ANIM_WALK
+        this->actionFunc = EnDog_ComboBremenApproach;
+    }
+}
+#endif
+
 void EnDog_Update(Actor* thisx, PlayState* play) {
     EnDog* this = (EnDog*)thisx;
     s32 pad;
@@ -483,6 +614,9 @@ void EnDog_Update(Actor* thisx, PlayState* play) {
     SkelAnime_Update(&this->skelAnime);
     Actor_UpdateBgCheckInfo(play, &this->actor, this->collider.dim.radius, this->collider.dim.height * 0.5f, 0.0f, 5);
     Actor_MoveXZGravity(&this->actor);
+#ifdef COMBO_BUILD
+    EnDog_ComboCheckForBremenMaskMarch(this, play); // ComboShip: MM's Bremen Mask (MM En_Dg:566)
+#endif
     this->actionFunc(this, play);
     Collider_UpdateCylinder(&this->actor, &this->collider);
     CollisionCheck_SetOC(play, &play->colChkCtx, &this->collider.base);

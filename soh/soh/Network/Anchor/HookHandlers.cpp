@@ -1,4 +1,7 @@
 #include "Anchor.h"
+#ifdef COMBO_BUILD
+#include "CoopEnemySync.h"
+#endif
 #include "soh/Enhancements/cosmetics/cosmeticsTypes.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/frame_interpolation.h"
@@ -67,6 +70,7 @@ static inline void ComboPumpDormantTick() {
 void Anchor::RegisterHooks() {
 #ifdef COMBO_BUILD
     SPDLOG_INFO("[Anchor] RegisterHooks (isConnected={})", isConnected);
+    CoopEnemySync_Init(); // co-op combat (2026-11-13): registers once, gates itself on the connection
 #endif
 
     // #region Hooks that are required for basic Anchor functionality

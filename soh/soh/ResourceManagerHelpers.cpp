@@ -5,6 +5,10 @@
 #include <libultraship/bridge/resourcebridge.h>
 #include <ship/Context.h>
 #include <ship/resource/ResourceManager.h>
+#include <ship/resource/CrossRMRegistry.h>
+#include <ship/resource/ResourceManagerScope.h>
+#include <unordered_map>
+#include <spdlog/spdlog.h>
 #include <stb_image.h>
 
 #include "ResourceManagerHelpers.h"
@@ -15,6 +19,7 @@
 #include "soh/Enhancements/randomizer/SeedContext.h"
 #include <soh/GameVersions.h>
 #include "resource/type/SohResourceType.h"
+#include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: Combo_OotForm (transformed Link uses MM anims)
 #include "resource/type/Array.h"
 #include "resource/type/Skeleton.h"
 #include "resource/type/PlayerAnimation.h"
@@ -586,21 +591,55 @@ extern "C" Vtx* ResourceMgr_LoadVtxByName(char* path) {
     return (Vtx*)ResourceGetDataByName(path);
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: "@mm:" audio paths (MM's sfx sequence and soundfonts, played natively by OOT's engine) come from MM's
+// resident ResourceManager, pinned and cached in ComboMmAudio.cpp.
+extern "C" int Combo_IsRoutedAudioPath(const char* path);
+extern "C" SequenceData* Combo_RoutedAudioSeq(const char* path);
+extern "C" SoundFont* Combo_RoutedAudioFont(const char* path);
+extern "C" SoundFontSample* Combo_RoutedAudioSample(const char* path);
+#endif
+
 extern "C" SequenceData ResourceMgr_LoadSeqByName(const char* path) {
+#ifdef COMBO_BUILD
+    if (Combo_IsRoutedAudioPath(path)) {
+        SequenceData* routed = Combo_RoutedAudioSeq(path);
+        if (routed != nullptr) {
+            return *routed;
+        }
+        SequenceData empty = {};
+        return empty;
+    }
+#endif
     SequenceData* sequence = (SequenceData*)COMBO_OWN_RM()->GetResourceRawPointer(path);
     return *sequence;
 }
 
 extern "C" SequenceData* ResourceMgr_LoadSeqPtrByName(const char* path) {
+#ifdef COMBO_BUILD
+    if (Combo_IsRoutedAudioPath(path)) {
+        return Combo_RoutedAudioSeq(path);
+    }
+#endif
     SequenceData* sequence = (SequenceData*)COMBO_OWN_RM()->GetResourceRawPointer(path);
     return sequence;
 }
 
 extern "C" SoundFontSample* ResourceMgr_LoadAudioSample(const char* path) {
+#ifdef COMBO_BUILD
+    if (Combo_IsRoutedAudioPath(path)) {
+        return Combo_RoutedAudioSample(path);
+    }
+#endif
     return (SoundFontSample*)COMBO_OWN_RM()->GetResourceRawPointer(path);
 }
 
 extern "C" SoundFont* ResourceMgr_LoadAudioSoundFontByName(const char* path) {
+#ifdef COMBO_BUILD
+    if (Combo_IsRoutedAudioPath(path)) {
+        return Combo_RoutedAudioFont(path);
+    }
+#endif
     return (SoundFont*)COMBO_OWN_RM()->GetResourceRawPointer(path);
 }
 
@@ -625,7 +664,91 @@ extern "C" int ResourceMgr_OTRSigCheck(char* imgData) {
 // Load animation with explicit alt asset path checking.
 // When Alt Assets is OFF: use original path directly (O2R or vanilla)
 // When Alt Assets is ON: try alt/ prefix first, fall back to regular path if not found or invalid
+#ifdef COMBO_BUILD
+// ComboShip (MM transformations in Hyrule): "__OTR__@mm:..." animations come from MM's resident ResourceManager. MM's
+// PlayerAnimationHeader has OOT's LinkAnimationHeader layout (frame count, then the frame-data pointer) and its frames
+// are the same 22 joints + face word, so OOT's player plays MM's form animations directly. Loaded once, kept resident.
+static AnimationHeaderCommon* Combo_LoadRoutedAnim(const char* path, bool quiet = false) {
+    // Never destroyed: the MM resources it pins belong to 2ship's ResourceManager, which is torn down (and its library
+    // unloaded) before static destructors run; destroying them then crashed every exit.
+    static auto& sLoaded = *new std::unordered_map<std::string, std::shared_ptr<Ship::IResource>>();
+    static const std::string kPrefix = "__OTR__@mm:";
+    const std::string full(path);
+    auto it = sLoaded.find(full);
+    if (it == sLoaded.end()) {
+        std::shared_ptr<Ship::IResource> res;
+        if (auto rm = Ship::CrossRMRegistry::Get("mm")) {
+            try {
+                Ship::ResourceManagerScope scope(rm); // the header's frame data nested-loads through the active RM
+                res = rm->LoadResource("__OTR__" + full.substr(kPrefix.size()));
+            } catch (...) { res.reset(); }
+        }
+        if (res == nullptr && !quiet)
+            SPDLOG_ERROR("[ComboShip] MM animation '{}' not found", full);
+        it = sLoaded.emplace(full, res).first;
+    }
+    return it->second ? (AnimationHeaderCommon*)it->second->GetRawPointer() : nullptr;
+}
+#endif
+
 extern "C" AnimationHeaderCommon* ResourceMgr_LoadAnimByName(const char* path) {
+#ifdef COMBO_BUILD
+    if (path != nullptr && strncmp(path, "__OTR__@mm:", 11) == 0)
+        return Combo_LoadRoutedAnim(path);
+    // ComboShip (forms audit 2026-11-13): a transformed Link moves with MM's own animations. MM plays its human
+    // `link_*` animations (and the pg/pz/pn ones) on every form's skeleton, so while transformed every Link
+    // animation comes from MM's data under the same name; one MM lacks (OOT-only: iron boots, OOT cutscenes) falls
+    // back to OOT's. Cached either way, so the lookup is once per name.
+    static const char kLinkAnimPrefix[] = "__OTR__objects/gameplay_keep/gPlayerAnim_";
+    if (path != nullptr && (Combo_OotForm() != COMBO_FORM_HUMAN) &&
+        strncmp(path, kLinkAnimPrefix, sizeof(kLinkAnimPrefix) - 1) == 0) {
+        // Where MM swaps a human animation for the form's own, so do we (mm z_player.c: doors D_8085D118/D_8085D124,
+        // the instrument D_8085D17C/D_8085D190, the Deku's drink and item-get ternaries).
+        const char* form = (Combo_OotForm() == COMBO_FORM_GORON)  ? "pg"
+                           : (Combo_OotForm() == COMBO_FORM_ZORA) ? "pz"
+                           : (Combo_OotForm() == COMBO_FORM_DEKU) ? "pn"
+                                                                  : nullptr;
+        if (form != nullptr) {
+            static const struct {
+                const char* human;
+                const char* formAnim;
+                bool dekuOnly;
+            } kSubs[] = {
+                { "link_demo_doorA_link_free", "doorA_open", false },
+                { "link_demo_doorA_link", "doorA_open", false },
+                { "clink_demo_doorA_link", "doorA_open", false },
+                { "link_demo_doorB_link_free", "doorB_open", false },
+                { "link_demo_doorB_link", "doorB_open", false },
+                { "clink_demo_doorB_link", "doorB_open", false },
+                { "link_normal_okarina_start", "gakkistart", false },
+                { "link_normal_okarina_swing", "gakkiplay", false },
+                { "link_bottle_drink_demo_start", "drinkstart", true },
+                { "link_bottle_drink_demo_wait", "drink", true },
+                { "link_bottle_drink_demo_end", "drinkend", true },
+                { "link_demo_get_itemA", "getA", true },
+                { "link_demo_get_itemB", "getB", true },
+            };
+            const char* name = path + sizeof(kLinkAnimPrefix) - 1;
+            for (const auto& sub : kSubs) {
+                if ((strcmp(name, sub.human) == 0) && (!sub.dekuOnly || (Combo_OotForm() == COMBO_FORM_DEKU))) {
+                    const std::string mmPath =
+                        std::string("__OTR__@mm:objects/gameplay_keep/gPlayerAnim_") + form + "_" + sub.formAnim;
+                    if (AnimationHeaderCommon* a = Combo_LoadRoutedAnim(mmPath.c_str(), true))
+                        return a;
+                }
+            }
+        }
+        AnimationHeaderCommon* mm = Combo_LoadRoutedAnim(("__OTR__@mm:" + std::string(path + 7)).c_str(), true);
+        static const bool sDbg = std::getenv("COMBO_DEBUG_ANIMROUTE") != nullptr;
+        if (sDbg) {
+            static std::unordered_map<std::string, bool> sSeen;
+            if (sSeen.emplace(path, true).second)
+                SPDLOG_INFO("[ComboShip] form anim {} -> {}", path, mm ? "MM" : "OOT (MM has none)");
+        }
+        if (mm != nullptr)
+            return mm;
+    }
+#endif
     bool isAlt = ResourceMgr_IsAltAssetsEnabled();
 
     if (isAlt) {

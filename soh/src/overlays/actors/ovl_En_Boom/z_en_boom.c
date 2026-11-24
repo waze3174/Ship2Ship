@@ -60,6 +60,13 @@ void EnBoom_SetupAction(EnBoom* this, EnBoomActionFunc actionFunc) {
 
 void EnBoom_Init(Actor* thisx, PlayState* play) {
     EnBoom* this = (EnBoom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (COMBO_IS_ZORA_FIN(this->actor.params)) {
+        EnBoom_ComboFinInit(this, play); // ComboShip: MM's Zora fins (z_en_boom_combo_fins.c)
+        return;
+    }
+#endif
     EffectBlureInit1 blure;
 
     this->actor.room = -1;
@@ -101,6 +108,13 @@ void EnBoom_Init(Actor* thisx, PlayState* play) {
 
 void EnBoom_Destroy(Actor* thisx, PlayState* play) {
     EnBoom* this = (EnBoom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (COMBO_IS_ZORA_FIN(this->actor.params)) {
+        EnBoom_ComboFinDestroy(this, play); // ComboShip: MM's Zora fins (z_en_boom_combo_fins.c)
+        return;
+    }
+#endif
 
     Effect_Delete(play, this->effectIndex);
     Collider_DestroyQuad(play, &this->collider);
@@ -240,6 +254,13 @@ void EnBoom_Fly(EnBoom* this, PlayState* play) {
 
 void EnBoom_Update(Actor* thisx, PlayState* play) {
     EnBoom* this = (EnBoom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (COMBO_IS_ZORA_FIN(this->actor.params)) {
+        EnBoom_ComboFinUpdate(this, play); // ComboShip: MM's Zora fins (z_en_boom_combo_fins.c)
+        return;
+    }
+#endif
     Player* player = GET_PLAYER(play);
 
     if (!(player->stateFlags1 & PLAYER_STATE1_IN_CUTSCENE)) {
@@ -253,6 +274,13 @@ void EnBoom_Draw(Actor* thisx, PlayState* play) {
     static Vec3f sMultVec1 = { -960.0f, 0.0f, 0.0f };
     static Vec3f sMultVec2 = { 960.0f, 0.0f, 0.0f };
     EnBoom* this = (EnBoom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (COMBO_IS_ZORA_FIN(this->actor.params)) {
+        EnBoom_ComboFinDraw(this, play); // ComboShip: MM's Zora fins (z_en_boom_combo_fins.c)
+        return;
+    }
+#endif
     Vec3f vec1;
     Vec3f vec2;
 

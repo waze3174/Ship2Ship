@@ -1622,6 +1622,55 @@ void Play_Draw(PlayState* this) {
     }
 }
 
+// ComboShip (owner 2026-11-14: "let the pause button skip cutscenes in both MM and OOT, that skull kid cutscene takes
+// ages"): Start during a scripted cutscene fast-forwards it. A cutscene can't be cut short safely -- its commands fire
+// on exact frames (flags, items, songs, warps), so jumping to the end would lose them -- so instead the game runs up
+// to COMBO_CS_SKIP_SPEED updates per displayed frame until the cutscene is over, with text advanced by A. Every
+// effect still happens, in a few seconds. It stops at once on a scene transition and whenever the ocarina is up
+// (song lessons need the player's notes; the skip resumes with another Start).
+#ifdef COMBO_BUILD
+#define COMBO_CS_SKIP_SPEED 24
+static s32 sComboCsSkip = false;
+
+static void Combo_CutsceneFastForward(PlayState* play) {
+    Input* in = CONTROLLER1(&play->state);
+    Input saved;
+    s32 i;
+
+    if (play->csCtx.state == CS_STATE_IDLE) {
+        sComboCsSkip = false;
+        return;
+    }
+    if (!sComboCsSkip && CHECK_BTN_ALL(in->press.button, BTN_START)) {
+        sComboCsSkip = true;
+    }
+    if (!sComboCsSkip) {
+        return;
+    }
+    saved = *in;
+    for (i = 0; i < COMBO_CS_SKIP_SPEED; i++) {
+        if ((play->csCtx.state == CS_STATE_IDLE) || (play->transitionTrigger != TRANS_TRIGGER_OFF) ||
+            (play->transitionMode != TRANS_MODE_OFF)) {
+            break;
+        }
+        if (play->msgCtx.ocarinaMode != 0) {
+            sComboCsSkip = false; // the ocarina is up: the player plays it
+            break;
+        }
+        // Text: lines still type out at their normal speed (the reveal is driven by the draw, and the games' own
+        // text-skip paths need a real per-frame rhythm); A moves each finished line on.
+        memset(in, 0, sizeof(*in));
+        if ((play->msgCtx.msgMode != MSGMODE_TEXT_DISPLAYING) && (i & 1)) {
+            in->cur.button = BTN_A;
+            in->press.button = BTN_A;
+        }
+        Play_Update(play);
+    }
+    *in = saved;
+    in->press.button &= ~BTN_START; // the Start that skipped doesn't also pause afterwards
+}
+#endif
+
 void Play_Main(GameState* thisx) {
     static Input* prevInput = NULL;
     PlayState* this = (PlayState*)thisx;
@@ -1636,6 +1685,9 @@ void Play_Main(GameState* thisx) {
             this->state.gfxCtx = NULL;
         }
         Play_Update(this);
+#ifdef COMBO_BUILD
+        Combo_CutsceneFastForward(this);
+#endif
         this->state.gfxCtx = gfxCtx;
     }
 
@@ -2072,7 +2124,13 @@ void func_80169ECC(PlayState* this) {
 
 // Gameplay_TriggerVoidOut ?
 // Used by Player, Ikana_Rotaryroom, Bji01, Kakasi, LiftNuts, Test4, Warptag, WarpUzu, Roomtimer
+#ifdef COMBO_BUILD
+s32 Combo_SoftlockGuard(PlayState* play); // z_player.c: a transformed Link stuck on a spot that kills him -> human
+#endif
 void func_80169EFC(PlayState* this) {
+#ifdef COMBO_BUILD
+    Combo_SoftlockGuard(this);
+#endif
     gSaveContext.respawn[RESPAWN_MODE_DOWN].tempSwitchFlags = this->actorCtx.sceneFlags.switches[2];
     gSaveContext.respawn[RESPAWN_MODE_DOWN].unk_18 = this->actorCtx.sceneFlags.collectible[1];
     gSaveContext.respawn[RESPAWN_MODE_DOWN].tempCollectFlags = this->actorCtx.sceneFlags.collectible[2];

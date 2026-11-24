@@ -451,6 +451,11 @@ extern "C" void Randomizer_DrawComboForeign(PlayState* play, GetItemEntry* getIt
     OOT_DrawComboForeign(play, getItemEntry);
 }
 
+// ComboShip (MM items in Hyrule): an MM item's real model by its MM rando name (e.g. "RI_MOONS_TEAR").
+extern "C" int Randomizer_DrawMmItemByName(PlayState* play, const char* name) {
+    return OOT_DrawMmItemByName(play, name) ? 1 : 0;
+}
+
 extern "C" void Randomizer_LatchComboForeign(int32_t rc) {
     ComboLatchForeignDraw((RandomizerCheck)rc);
 }
@@ -461,6 +466,58 @@ extern "C" const char* Randomizer_ComboForeignLatchedName(int32_t rc) {
 
 extern "C" const char* Randomizer_ComboForeignLiveName(int32_t rc) {
     return ComboForeignLiveName((RandomizerCheck)rc);
+}
+
+// ComboShip (MM stray fairies in Hyrule, z_en_item00_combo_strayfairy.c): the check's foreign item draws as MM's
+// stray fairy (MM describes it as gStrayFairySkel + a per-area texanim). Returns the area (MM StrayFairyArea:
+// 0 Clock Town, 1 Woodfall, 2 Snowhead, 3 Great Bay, 4 Stone Tower), -1 = not a stray fairy, -2 = not resolvable
+// yet (MM not resident; retry).
+extern "C" int Randomizer_ComboStrayFairyArea(int32_t rc) {
+    if (rc == RC_UNKNOWN_CHECK) {
+        return -1;
+    }
+    const ComboForeignDrawInfo* info = ComboResolveForeignDrawInfo((RandomizerCheck)rc);
+    if (info == nullptr) {
+        // The resolver erases transient failures; a cached Unknown stays in the map as ok=false.
+        ComboForeignDrawCache& c = ComboForeignDrawCacheGet();
+        return (c.map.find(rc) == c.map.end()) ? -2 : -1;
+    }
+    if (!info->animOk || info->anim.skelPath == nullptr || strstr(info->anim.skelPath, "gStrayFairySkel") == nullptr) {
+        return -1;
+    }
+    const char* ta = info->anim.texAnimPath != nullptr ? info->anim.texAnimPath : "";
+    if (strstr(ta, "Woodfall") != nullptr) {
+        return 1;
+    }
+    if (strstr(ta, "Snowhead") != nullptr) {
+        return 2;
+    }
+    if (strstr(ta, "GreatBay") != nullptr) {
+        return 3;
+    }
+    if (strstr(ta, "StoneTower") != nullptr) {
+        return 4;
+    }
+    return 0;
+}
+
+// Init the fairy actor's own SkelAnime on MM's gStrayFairySkel / gStrayFairyFlyingAnim. 1 = ok.
+extern "C" int Randomizer_ComboStrayFairyInitSkel(PlayState* play, int32_t rc, SkelAnime* skelAnime, Vec3s* jointTable,
+                                                  int32_t count) {
+    const ComboForeignDrawInfo* info = ComboResolveForeignDrawInfo((RandomizerCheck)rc);
+    if (info == nullptr || !info->animOk) {
+        return 0;
+    }
+    return ComboForeignAnim_InitInstance(&info->anim, "mm", play, skelAnime, jointTable, count);
+}
+
+// MM EnElforg_Draw's body at the actor matrix: per-area texanim, billboard, DrawFlex with one head hidden. 1 = drawn.
+extern "C" int Randomizer_DrawComboStrayFairy(PlayState* play, int32_t rc, SkelAnime* skelAnime, int32_t hiddenLimb) {
+    const ComboForeignDrawInfo* info = ComboResolveForeignDrawInfo((RandomizerCheck)rc);
+    if (info == nullptr || !info->animOk) {
+        return 0;
+    }
+    return ComboForeignAnim_DrawInstance(&info->anim, "mm", play, skelAnime, hiddenLimb, &play->billboardMtxF);
 }
 #endif
 

@@ -1229,8 +1229,15 @@ void DmChar08_Reset(void) {
     free(sTurtleGreatBayTempleColPolygons2Data);
 
     // Assign back the original pointers from the LUS resource
-    sTurtleGreatBayTempleColData->polyList = sTurtleGreatBayTempleColPolygonsData;
-    sTurtleGreatBayTempleColData->vtxList = sTurtleGreatBayTempleColVerticesOrigData;
+#ifdef COMBO_BUILD
+    // ComboShip: the reset also runs for a turtle freed before its Init ran (a scene left or a game switched within a
+    // moment of loading), with nothing set up: the NULL deref crashed leaving Great Bay (owner log 2026-11-14).
+    if (sTurtleGreatBayTempleColData != NULL)
+#endif
+    {
+        sTurtleGreatBayTempleColData->polyList = sTurtleGreatBayTempleColPolygonsData;
+        sTurtleGreatBayTempleColData->vtxList = sTurtleGreatBayTempleColVerticesOrigData;
+    }
 
     // Wipe out the pointers for next init
     sTurtleGreatBayTempleColData = NULL;

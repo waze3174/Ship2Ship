@@ -1,4 +1,8 @@
 #include "z_kaleido_scope.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus
+#include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: Combo_DebugEnv / Combo_DebugLog
+#endif
 #include <stdlib.h>
 #include <string.h>
 
@@ -748,6 +752,21 @@ static void* iconNameTextures[] = {
     gBiggoronsSwordItemNameJPNTex,
 };
 
+#ifdef COMBO_BUILD
+// ComboShip (merged pause menus): OOT's item page as MM's Hyrule tab draws it (SOH_ComboPause_* exports).
+const char* const* KaleidoScope_ComboSelectItemTexs(void) {
+    return (const char* const*)sSelectItemENGTexs;
+}
+const char* const* KaleidoScope_ComboEquipmentTexs(void) {
+    return (const char* const*)sEquipmentENGTexs;
+}
+const char* KaleidoScope_ComboItemNameTex(int item) {
+    return (const char*)iconNameTextures[item];
+}
+Gfx* KaleidoScope_ComboDrawItemPageSections(Gfx* gfx, Vtx* vertices, void** nativeTextures); // z_kaleido_combo.c
+static s32 KaleidoScope_ComboButtonRow(s32 page); // the prism (below KaleidoScope_DrawPageSections)
+#endif
+
 // SOH [NTSC] - Fit in JPN textures, resulting in changes to offsets when indexed
 static void* mapNameTextures[] = {
     // LANGUAGE_ENG
@@ -1225,6 +1244,11 @@ void KaleidoScope_SetDefaultCursor(PlayState* play) {
 
     switch (pauseCtx->pageIndex) {
         case PAUSE_ITEM:
+#ifdef COMBO_BUILD
+            if (Combo_PauseTab() != COMBO_PAUSE_TAB_HYRULE) {
+                break; // ComboShip: MM's page (Termina / Masks tab) lets the cursor rest on an empty slot
+            }
+#endif
             s = pauseCtx->cursorSlot[PAUSE_ITEM];
             if (gSaveContext.inventory.items[s] == ITEM_NONE) {
                 i = s + 1;
@@ -1253,6 +1277,10 @@ void KaleidoScope_SetDefaultCursor(PlayState* play) {
 }
 
 void KaleidoScope_SwitchPage(PauseContext* pauseCtx, u8 pt) {
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): a 60-degree turn of the prism (the target face may share this page).
+    s32 comboTarget = Combo_PausePrismTurn(pt ? 1 : -1);
+#endif
     pauseCtx->unk_1E4 = 1;
     pauseCtx->unk_1EA = 0;
 
@@ -1269,11 +1297,19 @@ void KaleidoScope_SwitchPage(PauseContext* pauseCtx, u8 pt) {
     }
 
     for (int buttonIndex = 1; buttonIndex < ARRAY_COUNT(gSaveContext.buttonStatus); buttonIndex++) {
+#ifdef COMBO_BUILD
+        gSaveContext.buttonStatus[buttonIndex] = D_8082AB6C[KaleidoScope_ComboButtonRow(comboTarget)][buttonIndex];
+#else
         gSaveContext.buttonStatus[buttonIndex] = D_8082AB6C[pauseCtx->pageIndex + pt][buttonIndex];
+#endif
     }
 
     if ((CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0) != 0) &&
+#ifdef COMBO_BUILD
+        (comboTarget == PAUSE_EQUIP)) {
+#else
         (D_8082ABEC[pauseCtx->mode] == PAUSE_EQUIP)) {
+#endif
         gSaveContext.buttonStatus[1] = BTN_ENABLED;
         gSaveContext.buttonStatus[2] = BTN_ENABLED;
         gSaveContext.buttonStatus[3] = BTN_ENABLED;
@@ -1420,6 +1456,167 @@ Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, void** textures) {
 
     return gfx;
 }
+
+#ifdef COMBO_BUILD
+// ComboShip (merged pause menus): OOT's pause cube is a HEXAGONAL PRISM (owner ask 2026-11-12: "make the pause cubes
+// into hexagonal prisms with 6 tiles to scroll between"). Faces in page-turn order (R / stick right = +1): Hyrule
+// items, Termina items (MM's item page), Masks (MM's mask page), Map, Quest, Equipment; Z / R / stick-at-edge turn it
+// 60 degrees with vanilla's 16-frame turn. Vanilla's cube has the pages 93.55 from the centre (WREG(3)) and the
+// camera on the opposite wall (64 back), 157.55 from the page it shows. The prism keeps the page size: its apothem
+// fits six 187.2-wide pages (3 x 80 texels at scale 0.78) -> 187.2 / (2 tan 30deg) = 162.1, and the camera sits 4.55
+// in front of the centre looking out, so the face it shows is again 157.55 away and exactly vanilla's size on screen.
+#include <math.h>
+#define COMBO_PRISM_APOTHEM 162.1f
+#define COMBO_PRISM_EYE_AHEAD 4.55f
+#define COMBO_PRISM_STEP (3.14159265f / 3.0f)
+
+// A face's page transform: vanilla's per-page Translate / Scale / flip / RotateY, generalised to face * 60deg (the
+// flip about the page's own horizontal axis composes as RotateY(-phi) * RotateX(-flip)).
+static void KaleidoScope_ComboFaceMatrix(GraphicsContext* gfxCtx, f32 phi, f32 dist, f32 flip) {
+    OPEN_DISPS(gfxCtx);
+    Matrix_Translate(dist * sinf(phi), (f32)WREG(2) / 100.0f, -dist * cosf(phi), MTXMODE_NEW);
+    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+    Matrix_RotateY(-phi, MTXMODE_APPLY);
+    Matrix_RotateX(-flip / 100.0f, MTXMODE_APPLY);
+    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    CLOSE_DISPS(gfxCtx);
+}
+
+// One face: its page tiles and contents. Only the active face is driven (cursor, equips); the others are drawn.
+static void KaleidoScope_ComboDrawFace(PlayState* play, GraphicsContext* gfxCtx, s32 face, s32 active) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+    f32 phi = face * COMBO_PRISM_STEP;
+
+    OPEN_DISPS(gfxCtx);
+
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
+
+    switch (Combo_PauseFacePage(face)) {
+        case PAUSE_ITEM: {
+            u16 pageIndex = pauseCtx->pageIndex;
+            // The three item faces share OOT's item flip; while the active one flips for a prompt, the others keep
+            // the map's (the flips only ever differ for the active page).
+            KaleidoScope_ComboFaceMatrix(gfxCtx, phi, COMBO_PRISM_APOTHEM,
+                                         (active || (pageIndex != PAUSE_ITEM)) ? pauseCtx->unk_1F4 : pauseCtx->unk_1FC);
+            Combo_PauseSetDrawTab(face);
+            POLY_OPA_DISP = KaleidoScope_ComboDrawItemPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
+                                                                   sSelectItemTexs[gSaveContext.language]);
+            if (!active) {
+                pauseCtx->pageIndex = PAUSE_MAP; // drawn, not driven: no cursor, no input on a side face
+            }
+            KaleidoScope_DrawItemSelect(play);
+            pauseCtx->pageIndex = pageIndex;
+            Combo_PauseSetDrawTab(-1);
+            break;
+        }
+        case PAUSE_MAP:
+            KaleidoScope_ComboFaceMatrix(gfxCtx, phi, COMBO_PRISM_APOTHEM, pauseCtx->unk_1FC);
+            POLY_OPA_DISP =
+                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->mapPageVtx, sMapTexs[gSaveContext.language]);
+            if (sInDungeonScene) {
+                KaleidoScope_DrawDungeonMap(play, gfxCtx);
+                Gfx_SetupDL_42Opa(gfxCtx);
+                gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+                if (active && (pauseCtx->cursorSpecialPos == 0)) {
+                    KaleidoScope_DrawCursor(play, PAUSE_MAP);
+                }
+                if (CHECK_DUNGEON_ITEM(DUNGEON_COMPASS, gSaveContext.mapIndex)) {
+                    PauseMapMark_Draw(play);
+                }
+            } else {
+                KaleidoScope_DrawWorldMap(play, gfxCtx);
+            }
+            break;
+        case PAUSE_QUEST:
+            gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
+            KaleidoScope_ComboFaceMatrix(gfxCtx, phi, COMBO_PRISM_APOTHEM, pauseCtx->unk_200);
+            if (pauseCtx->randoQuestMode) {
+                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->saveVtx, sGameOverTexs);
+                RandoKaleido_DrawMiscCollectibles(play);
+            } else {
+                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->questPageVtx,
+                                                              sQuestStatusTexs[gSaveContext.language]);
+                KaleidoScope_DrawQuestStatus(play, gfxCtx);
+            }
+            if (active && (pauseCtx->cursorSpecialPos == 0)) {
+                KaleidoScope_DrawCursor(play, PAUSE_QUEST);
+            }
+            break;
+        case PAUSE_EQUIP:
+            KaleidoScope_ComboFaceMatrix(gfxCtx, phi, COMBO_PRISM_APOTHEM, pauseCtx->unk_1F8);
+            POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipPageVtx,
+                                                          sEquipmentTexs[gSaveContext.language]);
+            KaleidoScope_DrawEquipment(play);
+            if (active && (pauseCtx->cursorSpecialPos == 0)) {
+                KaleidoScope_DrawCursor(play, PAUSE_EQUIP);
+            }
+            break;
+    }
+
+    CLOSE_DISPS(gfxCtx);
+}
+
+// Every face, the active one last (vanilla draws its current page last too).
+static void KaleidoScope_ComboDrawPrism(PlayState* play, GraphicsContext* gfxCtx) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+    s32 face;
+    s32 active;
+
+    if ((pauseCtx->state == 6) && (pauseCtx->unk_1E4 == 0)) {
+        Combo_PausePrismSync(pauseCtx->pageIndex);
+    }
+    active = Combo_PauseFace();
+    // Each face is its own frame-interpolation scope, keyed by the face: the draw order changes when the active face
+    // changes (it is drawn last, with its cursor), and with the turns between two item-page faces keeping the same
+    // page index (the outer scope's key) the interpolator paired one face's matrices with another's for a frame — the
+    // owner's "twitch" turning to/from the extra faces. Keyed scopes pair face with face whatever the order.
+    for (face = 0; face < COMBO_PAUSE_FACE_COUNT; face++) {
+        if (face != active) {
+            FrameInterpolation_RecordOpenChild("ComboPrismFace", face);
+            KaleidoScope_ComboDrawFace(play, gfxCtx, face, false);
+            FrameInterpolation_RecordCloseChild();
+        }
+    }
+    FrameInterpolation_RecordOpenChild("ComboPrismFace", active);
+    KaleidoScope_ComboDrawFace(play, gfxCtx, active, true);
+    FrameInterpolation_RecordCloseChild();
+}
+
+// The pause camera: on the prism's axis, looking out at the face it is turned to (fractional while turning).
+static void KaleidoScope_ComboSetPrismView(PauseContext* pauseCtx) {
+    s32 turning = (pauseCtx->state == 6) && (pauseCtx->unk_1E4 == 1);
+    s32 opening = (pauseCtx->state < 6) && (pauseCtx->unk_1EA < 64);
+    f32 heading = Combo_PausePrismHeading(turning, opening, pauseCtx->unk_1EA / 64.0f) * COMBO_PRISM_STEP;
+    if (Combo_DebugEnv("COMBO_DEBUG_PRISM")) {
+        Combo_DebugLog("[ComboShip] prism state %d sw %d t %d page %d face %d heading %.3f flips %.1f %.1f %.1f %.1f "
+                       "eye %.1f %.1f %.1f\n",
+                       pauseCtx->state, pauseCtx->unk_1E4, pauseCtx->unk_1EA, pauseCtx->pageIndex, Combo_PauseFace(),
+                       heading / COMBO_PRISM_STEP, pauseCtx->unk_1F4, pauseCtx->unk_1F8, pauseCtx->unk_1FC,
+                       pauseCtx->unk_200, pauseCtx->eye.x, pauseCtx->eye.y, pauseCtx->eye.z);
+    }
+    Vec3f eye;
+    Vec3f lookAt;
+    Vec3f up;
+
+    eye.x = COMBO_PRISM_EYE_AHEAD * sinf(heading);
+    eye.y = pauseCtx->eye.y;
+    eye.z = -COMBO_PRISM_EYE_AHEAD * cosf(heading);
+    lookAt.x = eye.x + 100.0f * sinf(heading);
+    lookAt.y = eye.y;
+    lookAt.z = eye.z - 100.0f * cosf(heading);
+    up.x = up.z = 0.0f;
+    up.y = 1.0f;
+
+    func_800AA358(&pauseCtx->view, &eye, &lookAt, &up);
+    func_800AAA50(&pauseCtx->view, 127);
+}
+
+// D_8082AB6C row for arriving on a page (vanilla indexes it by pageIndex + pt).
+static s32 KaleidoScope_ComboButtonRow(s32 page) {
+    return page == PAUSE_ITEM ? 1 : page == PAUSE_MAP ? 2 : page == PAUSE_QUEST ? 3 : 4;
+}
+#endif
 
 void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
     static Color_RGB8 D_8082ACF4[12] = {
@@ -1589,138 +1786,53 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
             }
         }
 
-        if (pauseCtx->pageIndex) { // pageIndex != PAUSE_ITEM
-            gDPPipeSync(OVERLAY_DISP++);
-            gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
+#ifdef COMBO_BUILD
+        KaleidoScope_ComboDrawPrism(play, gfxCtx);
+        if (0) {
+#endif
+            if (pauseCtx->pageIndex) { // pageIndex != PAUSE_ITEM
+                gDPPipeSync(OVERLAY_DISP++);
+                gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
 
-            Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, -(f32)WREG(3) / 100.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateX(-pauseCtx->unk_1F4 / 100.0f, MTXMODE_APPLY);
-
-            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-
-            POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
-                                                          sSelectItemTexs[gSaveContext.language]);
-
-            KaleidoScope_DrawItemSelect(play);
-        }
-
-        if (pauseCtx->pageIndex != PAUSE_EQUIP) {
-            gDPPipeSync(POLY_OPA_DISP++);
-            gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
-
-            Matrix_Translate(-(f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateZ(pauseCtx->unk_1F8 / 100.0f, MTXMODE_APPLY);
-            Matrix_RotateY(1.57f, MTXMODE_APPLY);
-
-            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-
-            POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipPageVtx,
-                                                          sEquipmentTexs[gSaveContext.language]);
-
-            KaleidoScope_DrawEquipment(play);
-        }
-
-        if (pauseCtx->pageIndex != PAUSE_QUEST) {
-            gDPPipeSync(POLY_OPA_DISP++);
-            gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
-            gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
-
-            Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, (f32)WREG(3) / 100.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateX(pauseCtx->unk_200 / 100.0f, MTXMODE_APPLY);
-            Matrix_RotateY(3.14f, MTXMODE_APPLY);
-
-            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-
-            if (pauseCtx->randoQuestMode) {
-                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->saveVtx, sGameOverTexs);
-                RandoKaleido_DrawMiscCollectibles(play);
-            } else {
-                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->questPageVtx,
-                                                              sQuestStatusTexs[gSaveContext.language]);
-                KaleidoScope_DrawQuestStatus(play, gfxCtx);
-            }
-        }
-
-        if (pauseCtx->pageIndex != PAUSE_MAP) {
-            gDPPipeSync(POLY_OPA_DISP++);
-
-            gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
-
-            Matrix_Translate((f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateZ(-pauseCtx->unk_1FC / 100.0f, MTXMODE_APPLY);
-            Matrix_RotateY(-1.57f, MTXMODE_APPLY);
-
-            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-
-            POLY_OPA_DISP =
-                KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->mapPageVtx, sMapTexs[gSaveContext.language]);
-
-            if (sInDungeonScene) {
-                KaleidoScope_DrawDungeonMap(play, gfxCtx);
-                Gfx_SetupDL_42Opa(gfxCtx);
-
-                gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
-
-                if (CHECK_DUNGEON_ITEM(DUNGEON_COMPASS, gSaveContext.mapIndex)) {
-                    PauseMapMark_Draw(play);
-                }
-            } else {
-                KaleidoScope_DrawWorldMap(play, gfxCtx);
-            }
-        }
-
-        gDPPipeSync(POLY_OPA_DISP++);
-        gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
-
-        switch (pauseCtx->pageIndex) {
-            case PAUSE_ITEM:
                 Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, -(f32)WREG(3) / 100.0f, MTXMODE_NEW);
                 Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
                 Matrix_RotateX(-pauseCtx->unk_1F4 / 100.0f, MTXMODE_APPLY);
 
                 gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
-                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
-                                                              sSelectItemTexs[gSaveContext.language]);
+#ifdef COMBO_BUILD
+                // ComboShip (merged pause menus): the Termina / Masks tab wears MM's own page tiles.
+                POLY_OPA_DISP = KaleidoScope_ComboDrawItemPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
+                                                                       sSelectItemTexs[gSaveContext.language]);
+#else
+            POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
+                                                          sSelectItemTexs[gSaveContext.language]);
+#endif
 
                 KaleidoScope_DrawItemSelect(play);
-                break;
+            }
 
-            case PAUSE_MAP:
-                Matrix_Translate((f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
+            if (pauseCtx->pageIndex != PAUSE_EQUIP) {
+                gDPPipeSync(POLY_OPA_DISP++);
+                gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
+
+                Matrix_Translate(-(f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
                 Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-                Matrix_RotateZ(-pauseCtx->unk_1FC / 100.0f, MTXMODE_APPLY);
-                Matrix_RotateY(-1.57f, MTXMODE_APPLY);
+                Matrix_RotateZ(pauseCtx->unk_1F8 / 100.0f, MTXMODE_APPLY);
+                Matrix_RotateY(1.57f, MTXMODE_APPLY);
 
                 gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
-                POLY_OPA_DISP =
-                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->mapPageVtx, sMapTexs[gSaveContext.language]);
+                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipPageVtx,
+                                                              sEquipmentTexs[gSaveContext.language]);
 
-                if (sInDungeonScene) {
-                    KaleidoScope_DrawDungeonMap(play, gfxCtx);
-                    Gfx_SetupDL_42Opa(gfxCtx);
+                KaleidoScope_DrawEquipment(play);
+            }
 
-                    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
-
-                    if (pauseCtx->cursorSpecialPos == 0) {
-                        KaleidoScope_DrawCursor(play, PAUSE_MAP);
-                    }
-
-                    if (CHECK_DUNGEON_ITEM(DUNGEON_COMPASS, gSaveContext.mapIndex)) {
-                        PauseMapMark_Draw(play);
-                    }
-                } else {
-                    KaleidoScope_DrawWorldMap(play, gfxCtx);
-                }
-                break;
-
-            case PAUSE_QUEST:
+            if (pauseCtx->pageIndex != PAUSE_QUEST) {
+                gDPPipeSync(POLY_OPA_DISP++);
                 gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
+                gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
 
                 Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, (f32)WREG(3) / 100.0f, MTXMODE_NEW);
                 Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
@@ -1737,30 +1849,133 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
                                                                   sQuestStatusTexs[gSaveContext.language]);
                     KaleidoScope_DrawQuestStatus(play, gfxCtx);
                 }
+            }
 
-                if (pauseCtx->cursorSpecialPos == 0) {
-                    KaleidoScope_DrawCursor(play, PAUSE_QUEST);
-                }
-                break;
+            if (pauseCtx->pageIndex != PAUSE_MAP) {
+                gDPPipeSync(POLY_OPA_DISP++);
 
-            case PAUSE_EQUIP:
-                Matrix_Translate(-(f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
+                gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
+
+                Matrix_Translate((f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
                 Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-                Matrix_RotateZ(pauseCtx->unk_1F8 / 100.0f, MTXMODE_APPLY);
-                Matrix_RotateY(1.57f, MTXMODE_APPLY);
+                Matrix_RotateZ(-pauseCtx->unk_1FC / 100.0f, MTXMODE_APPLY);
+                Matrix_RotateY(-1.57f, MTXMODE_APPLY);
 
                 gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
 
-                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipPageVtx,
-                                                              sEquipmentTexs[gSaveContext.language]);
+                POLY_OPA_DISP =
+                    KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->mapPageVtx, sMapTexs[gSaveContext.language]);
 
-                KaleidoScope_DrawEquipment(play);
+                if (sInDungeonScene) {
+                    KaleidoScope_DrawDungeonMap(play, gfxCtx);
+                    Gfx_SetupDL_42Opa(gfxCtx);
 
-                if (pauseCtx->cursorSpecialPos == 0) {
-                    KaleidoScope_DrawCursor(play, PAUSE_EQUIP);
+                    gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+
+                    if (CHECK_DUNGEON_ITEM(DUNGEON_COMPASS, gSaveContext.mapIndex)) {
+                        PauseMapMark_Draw(play);
+                    }
+                } else {
+                    KaleidoScope_DrawWorldMap(play, gfxCtx);
                 }
-                break;
+            }
+
+            gDPPipeSync(POLY_OPA_DISP++);
+            gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
+
+            switch (pauseCtx->pageIndex) {
+                case PAUSE_ITEM:
+                    Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, -(f32)WREG(3) / 100.0f, MTXMODE_NEW);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_RotateX(-pauseCtx->unk_1F4 / 100.0f, MTXMODE_APPLY);
+
+                    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+
+#ifdef COMBO_BUILD
+                    POLY_OPA_DISP = KaleidoScope_ComboDrawItemPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
+                                                                           sSelectItemTexs[gSaveContext.language]);
+#else
+                POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->itemPageVtx,
+                                                              sSelectItemTexs[gSaveContext.language]);
+#endif
+
+                    KaleidoScope_DrawItemSelect(play);
+                    break;
+
+                case PAUSE_MAP:
+                    Matrix_Translate((f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_RotateZ(-pauseCtx->unk_1FC / 100.0f, MTXMODE_APPLY);
+                    Matrix_RotateY(-1.57f, MTXMODE_APPLY);
+
+                    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+
+                    POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->mapPageVtx,
+                                                                  sMapTexs[gSaveContext.language]);
+
+                    if (sInDungeonScene) {
+                        KaleidoScope_DrawDungeonMap(play, gfxCtx);
+                        Gfx_SetupDL_42Opa(gfxCtx);
+
+                        gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+
+                        if (pauseCtx->cursorSpecialPos == 0) {
+                            KaleidoScope_DrawCursor(play, PAUSE_MAP);
+                        }
+
+                        if (CHECK_DUNGEON_ITEM(DUNGEON_COMPASS, gSaveContext.mapIndex)) {
+                            PauseMapMark_Draw(play);
+                        }
+                    } else {
+                        KaleidoScope_DrawWorldMap(play, gfxCtx);
+                    }
+                    break;
+
+                case PAUSE_QUEST:
+                    gDPSetTextureFilter(POLY_OPA_DISP++, G_TF_BILERP);
+
+                    Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, (f32)WREG(3) / 100.0f, MTXMODE_NEW);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_RotateX(pauseCtx->unk_200 / 100.0f, MTXMODE_APPLY);
+                    Matrix_RotateY(3.14f, MTXMODE_APPLY);
+
+                    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+
+                    if (pauseCtx->randoQuestMode) {
+                        POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->saveVtx, sGameOverTexs);
+                        RandoKaleido_DrawMiscCollectibles(play);
+                    } else {
+                        POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->questPageVtx,
+                                                                      sQuestStatusTexs[gSaveContext.language]);
+                        KaleidoScope_DrawQuestStatus(play, gfxCtx);
+                    }
+
+                    if (pauseCtx->cursorSpecialPos == 0) {
+                        KaleidoScope_DrawCursor(play, PAUSE_QUEST);
+                    }
+                    break;
+
+                case PAUSE_EQUIP:
+                    Matrix_Translate(-(f32)WREG(3) / 100.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
+                    Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                    Matrix_RotateZ(pauseCtx->unk_1F8 / 100.0f, MTXMODE_APPLY);
+                    Matrix_RotateY(1.57f, MTXMODE_APPLY);
+
+                    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+
+                    POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->equipPageVtx,
+                                                                  sEquipmentTexs[gSaveContext.language]);
+
+                    KaleidoScope_DrawEquipment(play);
+
+                    if (pauseCtx->cursorSpecialPos == 0) {
+                        KaleidoScope_DrawCursor(play, PAUSE_EQUIP);
+                    }
+                    break;
+            }
+#ifdef COMBO_BUILD
         }
+#endif
     }
 
     Gfx_SetupDL_42Opa(gfxCtx);
@@ -1771,36 +1986,57 @@ void KaleidoScope_DrawPages(PlayState* play, GraphicsContext* gfxCtx) {
 
         gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA, G_CC_MODULATEIA);
 
-        if (!pauseCtx->pageIndex) { // pageIndex == PAUSE_ITEM
-            pauseCtx->unk_1F4 = pauseCtx->unk_204 + 314.0f;
-
-            Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, -pauseCtx->unk_1F0 / 10.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateX(-pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
-        } else if (pauseCtx->pageIndex == PAUSE_MAP) {
-            pauseCtx->unk_1FC = pauseCtx->unk_204 + 314.0f;
-
-            Matrix_Translate(pauseCtx->unk_1F0 / 10.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateZ(-pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
-            Matrix_RotateY(-1.57f, MTXMODE_APPLY);
-        } else if (pauseCtx->pageIndex == PAUSE_QUEST) {
-            pauseCtx->unk_200 = pauseCtx->unk_204 + 314.0f;
-
-            Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, pauseCtx->unk_1F0 / 10.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateX(pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
-            Matrix_RotateY(3.14f, MTXMODE_APPLY);
-        } else {
-            pauseCtx->unk_1F8 = pauseCtx->unk_204 + 314.0f;
-
-            Matrix_Translate(-pauseCtx->unk_1F0 / 10.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
-            Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
-            Matrix_RotateZ(pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
-            Matrix_RotateY(1.57f, MTXMODE_APPLY);
+#ifdef COMBO_BUILD
+        {
+            // ComboShip (merged pause menus): the prompt page swings down in front of the prism's active face.
+            f32 phi = Combo_PauseFace() * COMBO_PRISM_STEP;
+            if (pauseCtx->pageIndex == PAUSE_ITEM) {
+                pauseCtx->unk_1F4 = pauseCtx->unk_204 + 314.0f;
+            } else if (pauseCtx->pageIndex == PAUSE_MAP) {
+                pauseCtx->unk_1FC = pauseCtx->unk_204 + 314.0f;
+            } else if (pauseCtx->pageIndex == PAUSE_QUEST) {
+                pauseCtx->unk_200 = pauseCtx->unk_204 + 314.0f;
+            } else {
+                pauseCtx->unk_1F8 = pauseCtx->unk_204 + 314.0f;
+            }
+            KaleidoScope_ComboFaceMatrix(gfxCtx, phi, (pauseCtx->unk_1F0 / 10.0f) * (COMBO_PRISM_APOTHEM / 93.55f),
+                                         pauseCtx->unk_204);
         }
+        if (0) {
+#endif
+            if (!pauseCtx->pageIndex) { // pageIndex == PAUSE_ITEM
+                pauseCtx->unk_1F4 = pauseCtx->unk_204 + 314.0f;
 
-        gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+                Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, -pauseCtx->unk_1F0 / 10.0f, MTXMODE_NEW);
+                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                Matrix_RotateX(-pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
+            } else if (pauseCtx->pageIndex == PAUSE_MAP) {
+                pauseCtx->unk_1FC = pauseCtx->unk_204 + 314.0f;
+
+                Matrix_Translate(pauseCtx->unk_1F0 / 10.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
+                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                Matrix_RotateZ(-pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
+                Matrix_RotateY(-1.57f, MTXMODE_APPLY);
+            } else if (pauseCtx->pageIndex == PAUSE_QUEST) {
+                pauseCtx->unk_200 = pauseCtx->unk_204 + 314.0f;
+
+                Matrix_Translate(0.0f, (f32)WREG(2) / 100.0f, pauseCtx->unk_1F0 / 10.0f, MTXMODE_NEW);
+                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                Matrix_RotateX(pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
+                Matrix_RotateY(3.14f, MTXMODE_APPLY);
+            } else {
+                pauseCtx->unk_1F8 = pauseCtx->unk_204 + 314.0f;
+
+                Matrix_Translate(-pauseCtx->unk_1F0 / 10.0f, (f32)WREG(2) / 100.0f, 0.0f, MTXMODE_NEW);
+                Matrix_Scale(0.78f, 0.78f, 0.78f, MTXMODE_APPLY);
+                Matrix_RotateZ(pauseCtx->unk_204 / 100.0f, MTXMODE_APPLY);
+                Matrix_RotateY(1.57f, MTXMODE_APPLY);
+            }
+
+            gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+#ifdef COMBO_BUILD
+        }
+#endif
 
         if ((pauseCtx->state >= 8) && (pauseCtx->state <= 0x11)) {
             POLY_OPA_DISP = KaleidoScope_DrawPageSections(POLY_OPA_DISP, pauseCtx->saveVtx, sGameOverTexs);
@@ -2184,7 +2420,17 @@ void KaleidoScope_DrawInfoPanel(PlayState* play) {
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, 255);
             }
 
-            POLY_OPA_DISP = KaleidoScope_QuadTextureIA4(POLY_OPA_DISP, pauseCtx->nameSegment, 128, 16, 0);
+#ifdef COMBO_BUILD
+            // ComboShip (merged pause menus): an MM item's name is MM's own plate, from MM's ResourceManager. It
+            // never goes through nameSegment (gSPInvalidateTexCache resolves that buffer against OOT's RM).
+            if (Combo_PauseIsForeign(pauseCtx->namedItem) && (Combo_PauseNameTex(pauseCtx->namedItem) != NULL)) {
+                gSPComboRMPush(POLY_OPA_DISP++, "mm");
+                POLY_OPA_DISP = KaleidoScope_QuadTextureIA4(POLY_OPA_DISP,
+                                                            (void*)Combo_PauseNameTex(pauseCtx->namedItem), 128, 16, 0);
+                gSPComboRMPop(POLY_OPA_DISP++);
+            } else
+#endif
+                POLY_OPA_DISP = KaleidoScope_QuadTextureIA4(POLY_OPA_DISP, pauseCtx->nameSegment, 128, 16, 0);
         }
 
         if (pauseCtx->pageIndex == PAUSE_MAP && CVarGetInteger(CVAR_DEVELOPER_TOOLS("SkulltulaDebugEnabled"), 0) != 0) {
@@ -2278,6 +2524,28 @@ void KaleidoScope_DrawInfoPanel(PlayState* play) {
                 gDPPipeSync(POLY_OPA_DISP++);
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 200, 0, 255);
 
+#ifdef COMBO_BUILD
+                // ComboShip (merged pause menus): "To <page>" names the prism's neighbouring face, not the cube's.
+                if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) {
+                    s32 dest = Combo_PauseFacePage(Combo_PauseFace() - 1);
+                    POLY_OPA_DISP =
+                        KaleidoScope_QuadTextureIA8(POLY_OPA_DISP,
+                                                    D_8082AD78[dest == PAUSE_EQUIP  ? 0
+                                                               : dest == PAUSE_ITEM ? 1
+                                                               : dest == PAUSE_MAP  ? 2
+                                                                                    : 3][gSaveContext.language],
+                                                    128, 16, 0);
+                } else {
+                    s32 dest = Combo_PauseFacePage(Combo_PauseFace() + 1);
+                    POLY_OPA_DISP =
+                        KaleidoScope_QuadTextureIA8(POLY_OPA_DISP,
+                                                    D_8082ADA8[dest == PAUSE_MAP     ? 0
+                                                               : dest == PAUSE_QUEST ? 1
+                                                               : dest == PAUSE_EQUIP ? 2
+                                                                                     : 3][gSaveContext.language],
+                                                    128, 16, 0);
+                }
+#else
                 if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) {
                     POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(
                         POLY_OPA_DISP, D_8082AD78[pauseCtx->pageIndex][gSaveContext.language], 128, 16, 0);
@@ -2285,6 +2553,7 @@ void KaleidoScope_DrawInfoPanel(PlayState* play) {
                     POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(
                         POLY_OPA_DISP, D_8082ADA8[pauseCtx->pageIndex][gSaveContext.language], 128, 16, 0);
                 }
+#endif
             }
         } else {
             bool pauseAnyCursor =
@@ -2454,11 +2723,19 @@ void KaleidoScope_UpdateNamePanel(PlayState* play) {
             ((pauseCtx->pageIndex == PAUSE_EQUIP && pauseCtx->cursorX[PAUSE_EQUIP] != 0 &&
               !CHECK_OWNED_EQUIP(pauseCtx->cursorY[PAUSE_EQUIP], pauseCtx->cursorX[PAUSE_EQUIP] - 1)) ||
              (pauseCtx->pageIndex == PAUSE_ITEM &&
+#ifdef COMBO_BUILD
+              (Combo_PauseTab() == COMBO_PAUSE_TAB_HYRULE) && // ComboShip: the Termina / Masks tab is MM's page
+#endif
               gSaveContext.inventory.items[pauseCtx->cursorPoint[PAUSE_ITEM]] == ITEM_NONE))) {
             pauseCtx->namedItem = PAUSE_ITEM_NONE;
         }
 
-        if (pauseCtx->namedItem != PAUSE_ITEM_NONE) {
+#ifdef COMBO_BUILD
+        if (Combo_PauseIsForeign(pauseCtx->namedItem)) {
+            pauseCtx->nameDisplayTimer = 0; // ComboShip: drawn from MM's plate in KaleidoScope_DrawInfoPanel
+        } else
+#endif
+            if (pauseCtx->namedItem != PAUSE_ITEM_NONE) {
             if ((pauseCtx->pageIndex == PAUSE_MAP) && !sInDungeonScene) {
                 // #region SOH [NTSC] - There's a lot of OOB/Incorrect accesses that can occur so make sure sp2A selects
                 // something valid
@@ -2550,6 +2827,9 @@ void func_808237B4(PlayState* play, Input* input) {
         if (pauseCtx->unk_1EA == 64) {
             pauseCtx->unk_1EA = 0;
             pauseCtx->pageIndex = D_8082ABEC[pauseCtx->mode];
+#ifdef COMBO_BUILD
+            pauseCtx->pageIndex = Combo_PausePrismArrive(play); // ComboShip: the prism's face, not the cube's
+#endif
             pauseCtx->unk_1E4 = 0;
         }
     }
@@ -3145,6 +3425,10 @@ void KaleidoScope_InitVertices(PlayState* play, GraphicsContext* gfxCtx) {
 
     for (phi_t3 = 1; phi_t3 < ARRAY_COUNT(gSaveContext.equips.buttonItems); phi_t3++, phi_t2 += 4) {
         if (gSaveContext.equips.cButtonSlots[phi_t3 - 1] != ITEM_NONE &&
+#ifdef COMBO_BUILD
+            // ComboShip (merged pause menus): a foreign item's slot byte is its foreign id, not an OOT slot.
+            (gSaveContext.equips.cButtonSlots[phi_t3 - 1] < 24) &&
+#endif
             ((phi_t3 < 4) || CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0))) {
             phi_t4 = gSaveContext.equips.cButtonSlots[phi_t3 - 1] * 4;
 
@@ -3516,7 +3800,11 @@ void KaleidoScope_Draw(PlayState* play) {
     // gSPSegment(POLY_OPA_DISP++, 0x0D, pauseCtx->iconItemLangSegment);
 
     if (pauseCtx->debugState == 0) {
+#ifdef COMBO_BUILD
+        KaleidoScope_ComboSetPrismView(pauseCtx); // ComboShip: the camera inside the hexagonal prism
+#else
         KaleidoScope_SetView(pauseCtx, pauseCtx->eye.x, pauseCtx->eye.y, pauseCtx->eye.z);
+#endif
 
         Gfx_SetupDL_42Opa(play->state.gfxCtx);
         KaleidoScope_InitVertices(play, play->state.gfxCtx);
@@ -3566,6 +3854,9 @@ void func_808265BC(PlayState* play) {
         }
 
         pauseCtx->pageIndex = D_8082ABEC[pauseCtx->mode];
+#ifdef COMBO_BUILD
+        pauseCtx->pageIndex = Combo_PauseFacePage(Combo_PauseFace()); // ComboShip: reopen on the prism's last face
+#endif
 
         if ((CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0) != 0) &&
             (pauseCtx->pageIndex == PAUSE_EQUIP)) {
@@ -3585,6 +3876,9 @@ void func_808265BC(PlayState* play) {
         Interface_LoadActionLabelB(play, DO_ACTION_SAVE);
     } else if (pauseCtx->unk_1EA == 64) {
         pauseCtx->pageIndex = D_8082ABEC[pauseCtx->mode];
+#ifdef COMBO_BUILD
+        pauseCtx->pageIndex = Combo_PauseFacePage(Combo_PauseFace());
+#endif
         pauseCtx->mode = (u16)(pauseCtx->pageIndex * 2) + 1;
     }
 }

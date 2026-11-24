@@ -193,9 +193,27 @@ s16 Grotto_GetEntranceValueHandlingGrottoRando(s16 nextEntranceIndex) {
 
 // Translates and overrides the passed in entrance index if it corresponds to a
 // special grotto entrance (grotto load or return point) and updates player respawn data correctly.
+#ifdef COMBO_BUILD
+static bool sComboForceGrotto = false;
+
+// ComboShip (cross-game entrances): a crossed MM door can name an OOT grotto by its rando id (0x700 load / 0x800
+// return). Those ids are not real entrances (ENTR_MAX is 0x614): loading one raw read past the entrance table and
+// crashed in OTRPlay_SpawnScene on arrival. Translate them whatever OOT's own grotto settings are.
+s16 Grotto_OverrideSpecialEntranceForCross(s16 nextEntranceIndex) {
+    sComboForceGrotto = true;
+    nextEntranceIndex = Grotto_OverrideSpecialEntrance(nextEntranceIndex);
+    sComboForceGrotto = false;
+    return nextEntranceIndex;
+}
+#endif
+
 s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex) {
     // Don't change anything unless grotto shuffle has been enabled
-    if (!Randomizer_GetSettingValue(RSK_SHUFFLE_GROTTO_ENTRANCES) &&
+    if (
+#ifdef COMBO_BUILD
+        !sComboForceGrotto &&
+#endif
+        !Randomizer_GetSettingValue(RSK_SHUFFLE_GROTTO_ENTRANCES) &&
         !Randomizer_GetSettingValue(RSK_SHUFFLE_OVERWORLD_SPAWNS) &&
         !Randomizer_GetSettingValue(RSK_SHUFFLE_WARP_SONGS)) {
         return nextEntranceIndex;

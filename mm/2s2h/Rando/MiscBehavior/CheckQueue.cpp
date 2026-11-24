@@ -110,6 +110,31 @@ bool Rando::MiscBehavior::ShouldShowForeignCutscene(RandoCheckId rc) {
     }
     return advancement ? (lvl < 3) : (lvl < 1);
 }
+
+// ComboShip (owner ask 2026-11-12): items from pots, grass, crates, barrels, snowballs, trees, hives, butterflies,
+// enemy drops, wonder items and freestanding pickups act like OOT randomizer's: given on touch with a sound and a
+// notification — no get-item cutscene, no text box to read — whatever the item.
+bool Rando::MiscBehavior::IsQuickPickupCheck(RandoCheckId rc) {
+    auto it = Rando::StaticData::Checks.find(rc);
+    if (it == Rando::StaticData::Checks.end())
+        return false;
+    switch (it->second.randoCheckType) {
+        case RCTYPE_BARREL:
+        case RCTYPE_BUTTERFLY:
+        case RCTYPE_CRATE:
+        case RCTYPE_ENEMY_DROP:
+        case RCTYPE_FREESTANDING:
+        case RCTYPE_GRASS:
+        case RCTYPE_BEEHIVE:
+        case RCTYPE_POT:
+        case RCTYPE_SNOWBALL:
+        case RCTYPE_TREE:
+        case RCTYPE_WONDER_ITEM:
+            return true;
+        default:
+            return false;
+    }
+}
 #endif
 
 static bool queued = false;
@@ -137,8 +162,10 @@ void Rando::MiscBehavior::CheckQueue() {
             GameInteractor::Instance->events.emplace_back(GIEventGiveItem{
                 .showGetItemCutscene =
 #ifdef COMBO_BUILD
-                    // Foreign checks decide by the foreign item's home-game importance.
-                (randoSaveCheck.randoItemId == RI_COMBO_FOREIGN)
+                    // Quick pickups (pots, grass, crates...) never play the cutscene, like OOT randomizer.
+                Rando::MiscBehavior::IsQuickPickupCheck(randoCheckId) ? false
+                // Foreign checks decide by the foreign item's home-game importance.
+                : (randoSaveCheck.randoItemId == RI_COMBO_FOREIGN)
                     ? Rando::MiscBehavior::ShouldShowForeignCutscene(randoCheckId)
                     :
 #endif
@@ -182,7 +209,8 @@ void Rando::MiscBehavior::CheckQueue() {
                             };
                             if (CUSTOM_ITEM_FLAGS & CustomItem::GIVE_ITEM_CUTSCENE) {
                                 CustomMessage::SetActiveCustomMessage(entry.msg, entry);
-                            } else if (Rando::MiscBehavior::ShouldShowForeignCutscene(cid)) {
+                            } else if (!Rando::MiscBehavior::IsQuickPickupCheck(cid) &&
+                                       Rando::MiscBehavior::ShouldShowForeignCutscene(cid)) {
                                 CustomMessage::StartTextbox(entry.msg + "\x1C\x02\x10", entry);
                             }
                             randoSaveCheck.cycleObtained = true;
@@ -254,10 +282,19 @@ void Rando::MiscBehavior::CheckQueue() {
 
                         if (CUSTOM_ITEM_FLAGS & CustomItem::GIVE_ITEM_CUTSCENE) {
                             CustomMessage::SetActiveCustomMessage(entry.msg, entry);
-                        } else if (Rando::StaticData::ShouldShowGetItemCutscene(randoItemId)) {
+                        } else if (
+#ifdef COMBO_BUILD
+                            !Rando::MiscBehavior::IsQuickPickupCheck((RandoCheckId)CUSTOM_ITEM_PARAM) &&
+#endif
+                            Rando::StaticData::ShouldShowGetItemCutscene(randoItemId)) {
                             CustomMessage::StartTextbox(entry.msg + "\x1C\x02\x10", entry);
                         } else {
-                            if (Rando::StaticData::Items[randoItemId].randoItemType != RITYPE_JUNK) {
+                            // ComboShip: a quick pickup always toasts what it was (OOT randomizer does too).
+                            if (Rando::StaticData::Items[randoItemId].randoItemType != RITYPE_JUNK
+#ifdef COMBO_BUILD
+                                || Rando::MiscBehavior::IsQuickPickupCheck((RandoCheckId)CUSTOM_ITEM_PARAM)
+#endif
+                            ) {
                                 Notification::Emit({
                                     .itemIcon = Rando::StaticData::GetIconTexturePath(randoItemId),
                                     .message = prefix,

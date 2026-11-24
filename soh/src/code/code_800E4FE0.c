@@ -272,6 +272,9 @@ void func_800E5584(AudioCmd* cmd) {
                 seqPlayer->muted = 1;
                 seqPlayer->recalculateVolume = 1;
             }
+            // ComboShip: "mute all" covers the native MM sfx player as it covers OOT's sfx player.
+            gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX].muted = 1;
+            gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX].recalculateVolume = 1;
             return;
         case 0xF2:
             if (cmd->asUInt == 1) {
@@ -291,6 +294,8 @@ void func_800E5584(AudioCmd* cmd) {
                 seqPlayer->muted = 0;
                 seqPlayer->recalculateVolume = 1;
             }
+            gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX].muted = 0; // ComboShip
+            gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX].recalculateVolume = 1;
 
             return;
         case 0xF3:
@@ -331,6 +336,9 @@ void func_800E5584(AudioCmd* cmd) {
                     if (seqPlayer->enabled) {
                         AudioSeq_SequencePlayerDisableAsFinished(seqPlayer);
                     }
+                }
+                if (gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX].enabled) { // ComboShip
+                    AudioSeq_SequencePlayerDisableAsFinished(&gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX]);
                 }
             }
             func_800E66C0(temp_t7);
@@ -455,7 +463,9 @@ void Audio_ProcessCmd(AudioCmd* cmd) {
         return;
     }
 
-    if (cmd->arg0 < gAudioContext.audioBufferParameters.numSequencePlayers) {
+    // ComboShip: commands addressed to the native MM sfx player are accepted too.
+    if ((cmd->arg0 < gAudioContext.audioBufferParameters.numSequencePlayers) ||
+        (cmd->arg0 == SEQ_PLAYER_COMBO_MM_SFX)) {
         seqPlayer = &gAudioContext.seqPlayers[cmd->arg0];
         if (cmd->op & 0x80) {
             func_800E5584(cmd);

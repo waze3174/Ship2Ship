@@ -8,6 +8,9 @@
 #include "overlays/effects/ovl_Effect_Ss_Hahen/z_eff_ss_hahen.h"
 #include "objects/object_dekunuts/object_dekunuts.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE)
 
@@ -253,9 +256,20 @@ void EnDekunuts_Wait(EnDekunuts* this, PlayState* play) {
     }
 
     this->collider.dim.height = ((CLAMP(this->skelAnime.curFrame, 9.0f, 12.0f) - 9.0f) * 9.0f) + 5.0f;
-    if (!hasSlowPlaybackSpeed && (this->actor.xzDistToPlayer < 120.0f)) {
+    if (!hasSlowPlaybackSpeed &&
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Dekunuts z_en_dekunuts.c:196) — Link up close goes unnoticed
+        !COMBO_MM_STONE_MASK() &&
+#endif
+        (this->actor.xzDistToPlayer < 120.0f)) {
         EnDekunuts_SetupBurrow(this);
     } else if (SkelAnime_Update(&this->skelAnime)) {
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Dekunuts z_en_dekunuts.c:200-202) — just look around, never stand to spit
+        if (COMBO_MM_STONE_MASK()) {
+            EnDekunuts_SetupLookAround(this);
+        } else
+#endif
         if (this->actor.xzDistToPlayer < 120.0f) {
             EnDekunuts_SetupBurrow(this);
         } else if ((this->animFlagAndTimer == 0) && (this->actor.xzDistToPlayer > 320.0f)) {
@@ -276,7 +290,13 @@ void EnDekunuts_LookAround(EnDekunuts* this, PlayState* play) {
     if (Animation_OnFrame(&this->skelAnime, 0.0f) && (this->animFlagAndTimer != 0)) {
         this->animFlagAndTimer--;
     }
-    if ((this->actor.xzDistToPlayer < 120.0f) || (this->animFlagAndTimer == 0)) {
+    if (((this->actor.xzDistToPlayer < 120.0f)
+#ifdef COMBO_BUILD
+         // ComboShip: MM's Stone Mask (MM En_Dekunuts z_en_dekunuts.c:237) — Link up close goes unnoticed
+         && !COMBO_MM_STONE_MASK()
+#endif
+             ) ||
+        (this->animFlagAndTimer == 0)) {
         EnDekunuts_SetupBurrow(this);
     }
 }
@@ -290,13 +310,26 @@ void EnDekunuts_Stand(EnDekunuts* this, PlayState* play) {
         Math_ApproachS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 2, 0xE38);
     }
     if (this->animFlagAndTimer == 0x1000) {
-        if ((this->actor.xzDistToPlayer > 480.0f) || (this->actor.xzDistToPlayer < 120.0f)) {
+        if ((this->actor.xzDistToPlayer > 480.0f) || (this->actor.xzDistToPlayer < 120.0f)
+#ifdef COMBO_BUILD
+            // ComboShip: MM's Stone Mask (MM En_Dekunuts z_en_dekunuts.c:267) — burrow instead of spitting again
+            || COMBO_MM_STONE_MASK()
+#endif
+        ) {
             EnDekunuts_SetupBurrow(this);
         } else {
             EnDekunuts_SetupThrowNut(this);
         }
     } else if (this->animFlagAndTimer == 0) {
-        EnDekunuts_SetupThrowNut(this);
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Dekunuts z_en_dekunuts.c:273) — burrow instead of spitting
+        if (COMBO_MM_STONE_MASK()) {
+            EnDekunuts_SetupBurrow(this);
+        } else
+#endif
+        {
+            EnDekunuts_SetupThrowNut(this);
+        }
     }
 }
 

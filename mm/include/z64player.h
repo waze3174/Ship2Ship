@@ -58,8 +58,19 @@ typedef enum PlayerBoots {
     /* 5 */ PLAYER_BOOTS_ZORA_UNDERWATER,
     /* 6 */ PLAYER_BOOTS_GORON,
     /* 7 */ PLAYER_BOOTS_7,
-    /* 8 */ PLAYER_BOOTS_MAX
+    // ComboShip: OOT's Iron Boots worn by human Link in Termina. After MM's sinking boots on purpose: MM's water code
+    // treats every value >= PLAYER_BOOTS_ZORA_UNDERWATER as "sinks / walks the bottom" (as OOT treats its iron boots),
+    // and func_80123140 steps to the next row in water, onto OOT's IRON_UNDERWATER row.
+    /* 8 */ PLAYER_BOOTS_COMBO_IRON,
+    /* 9 */ PLAYER_BOOTS_COMBO_IRON_UNDERWATER,
+    /* 10 */ PLAYER_BOOTS_MAX
 } PlayerBoots;
+
+// ComboShip: "on the bottom in boots that sink" -- the Zora's underwater boots or OOT's Iron Boots.
+#define COMBO_BOOTS_SUNK(boots) (((boots) == PLAYER_BOOTS_ZORA_UNDERWATER) || ((boots) == PLAYER_BOOTS_COMBO_IRON))
+#ifdef COMBO_BUILD
+extern s32 gComboHoverBoots; // z_player_lib.c: OOT's Hover Boots on human Link in Termina
+#endif
 
 typedef enum PlayerStrength {
     /* 0 */ PLAYER_STRENGTH_DEKU,
@@ -190,7 +201,23 @@ typedef enum PlayerItemAction {
     /* 0x51 */ PLAYER_IA_MASK_DEKU,
     /* 0x51 */ PLAYER_IA_MASK_MAX = PLAYER_IA_MASK_DEKU,
     /* 0x52 */ PLAYER_IA_LENS_OF_TRUTH,
-    /* 0x53 */ PLAYER_IA_MAX
+#ifdef COMBO_BUILD
+    // ComboShip (OOT items in Termina): OOT items with no Termina twin run OOT's own item action, ported into MM's
+    // player (z_player_combo_oot.inc). Appended after MM's own so no MM range check (masks, bottles) ever sees them.
+    /* 0x53 */ PLAYER_IA_COMBO_OOT_MIN,
+    /* 0x53 */ PLAYER_IA_COMBO_OOT_BOOMERANG = PLAYER_IA_COMBO_OOT_MIN,
+    /* 0x54 */ PLAYER_IA_COMBO_OOT_HAMMER,
+    /* 0x55 */ PLAYER_IA_COMBO_OOT_SLINGSHOT,
+    /* 0x56 */ PLAYER_IA_COMBO_OOT_DINS_FIRE,
+    /* 0x57 */ PLAYER_IA_COMBO_OOT_FARORES_WIND,
+    /* 0x58 */ PLAYER_IA_COMBO_OOT_NAYRUS_LOVE,
+    /* 0x59 */ PLAYER_IA_COMBO_OOT_LONGSHOT,
+    /* 0x5A */ PLAYER_IA_COMBO_OOT_TRADE, // OOT hand-over items (Weird Egg .. Claim Check, Ruto's Letter)
+    /* 0x5B */ PLAYER_IA_COMBO_OOT_HOOKSHOT,
+    /* 0x5C */ PLAYER_IA_COMBO_OOT_MASK, // OOT's Skull / Spooky / Gerudo masks (worn, never held)
+    /* 0x5C */ PLAYER_IA_COMBO_OOT_MAX = PLAYER_IA_COMBO_OOT_MASK,
+#endif
+    PLAYER_IA_MAX
 } PlayerItemAction;
 
 // Relies on B swords related item actions to be contiguous
@@ -215,6 +242,9 @@ typedef enum PlayerMeleeWeapon {
     /* 4 */ PLAYER_MELEEWEAPON_SWORD_TWO_HANDED = GET_MELEE_WEAPON_FROM_IA(PLAYER_IA_SWORD_TWO_HANDED),
     /* 5 */ PLAYER_MELEEWEAPON_DEKU_STICK = GET_MELEE_WEAPON_FROM_IA(PLAYER_IA_DEKU_STICK),
     /* 6 */ PLAYER_MELEEWEAPON_ZORA_BOOMERANG = GET_MELEE_WEAPON_FROM_IA(PLAYER_IA_ZORA_BOOMERANG),
+#ifdef COMBO_BUILD
+    /* 7 */ PLAYER_MELEEWEAPON_COMBO_OOT_HAMMER, // ComboShip: OOT's Megaton Hammer (OOT melee weapon 5)
+#endif
     /* 7 */ PLAYER_MELEEWEAPON_MAX
 } PlayerMeleeWeapon;
 

@@ -24,6 +24,13 @@ typedef struct EnDog {
     /* 0x01F2 */ s16 behavior;
     /* 0x01F4 */ Vec3s jointTable[13];
     /* 0x0242 */ Vec3s morphTable[13];
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Bremen Mask (MM En_Dg DOG_FLAG_FOLLOWING_BREMEN_MASK / bremenBarkTimer, z_en_dg.c:563-593).
+    u8 comboBremenFollowing;               // this dog is following the march
+    s16 comboBremenBarkTimer;              // MM bremenBarkTimer
+    EnDogActionFunc comboBremenPrevAction; // what the dog was doing before it joined (restored when the march ends)
+    s16 comboBremenPrevBehavior;           // its nextBehavior then
+#endif
 } EnDog; // size = 0x0290
 
 #endif

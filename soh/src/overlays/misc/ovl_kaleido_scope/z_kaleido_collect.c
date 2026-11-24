@@ -451,7 +451,19 @@ void KaleidoScope_DrawQuestStatus(PlayState* play, GraphicsContext* gfxCtx) {
         }
     }
 
+#ifdef COMBO_BUILD
+    // ComboShip: one health bar for both games, each piece worth an eighth of a heart (combo/ComboSharedHealth.h). The
+    // meter shows the shared eighths: the whole quarters as OOT draws them, an odd eighth as the next quarter at half
+    // strength (owner 2026-11-14: "show 1/8ths of hearts").
+    extern int Combo_HeartPieceEighths(void);
+    const s32 comboEighths = Combo_HeartPieceEighths();
+    const s32 comboQuarters = (comboEighths >= 0) ? (comboEighths / 2) : (s32)(gSaveContext.inventory.questItems >> 0x1C);
+    const s32 comboHalf = (comboEighths >= 0) && (comboEighths & 1);
+    if ((comboQuarters != 0) || comboHalf) {
+        u8 comboAlpha;
+#else
     if ((gSaveContext.inventory.questItems >> 0x1C) != 0) {
+#endif
         gDPPipeSync(POLY_OPA_DISP++);
         gDPSetCombineLERP(POLY_OPA_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                           PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -459,16 +471,56 @@ void KaleidoScope_DrawQuestStatus(PlayState* play, GraphicsContext* gfxCtx) {
         if ((pauseCtx->state == 4) || (pauseCtx->state == 0x12)) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, D_8082A070[0][0], D_8082A070[0][1], D_8082A070[0][2],
                             pauseCtx->alpha);
+#ifdef COMBO_BUILD
+            comboAlpha = pauseCtx->alpha;
+#endif
         } else {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, D_8082A104, D_8082A108, D_8082A10C, D_8082A110);
+#ifdef COMBO_BUILD
+            comboAlpha = D_8082A110;
+#endif
         }
 
         gDPSetEnvColor(POLY_OPA_DISP++, 0, 0, 0, 255);
         gSPVertex(POLY_OPA_DISP++, &pauseCtx->questVtx[sp21A], 4, 0);
 
+#ifdef COMBO_BUILD
+        if (comboQuarters != 0) {
+            POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(POLY_OPA_DISP, gItemIcons[0x79 + comboQuarters], 48, 48, 0);
+        }
+        if (comboHalf) {
+            // the eighth: the next quarter piece, half strength over what is already drawn
+            if ((pauseCtx->state == 4) || (pauseCtx->state == 0x12)) {
+                gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, D_8082A070[0][0], D_8082A070[0][1], D_8082A070[0][2],
+                                comboAlpha / 2);
+            } else {
+                gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, D_8082A104, D_8082A108, D_8082A10C, comboAlpha / 2);
+            }
+            if (comboQuarters < 3) {
+                POLY_OPA_DISP =
+                    KaleidoScope_QuadTextureIA8(POLY_OPA_DISP, gItemIcons[0x79 + comboQuarters + 1], 48, 48, 0);
+            } else {
+                // 7/8: OOT has no fourth-quarter icon (the heart container replaces it). Its missing quarter is the
+                // top right, which is where the 3/4 icon's top left lands when mirrored left to right.
+                Vtx* mirrored = Graph_Alloc(play->state.gfxCtx, 4 * sizeof(Vtx));
+                s32 v;
+
+                for (v = 0; v < 4; v++) {
+                    mirrored[v] = pauseCtx->questVtx[sp21A + v];
+                }
+                mirrored[0].v.tc[0] = pauseCtx->questVtx[sp21A + 1].v.tc[0];
+                mirrored[1].v.tc[0] = pauseCtx->questVtx[sp21A + 0].v.tc[0];
+                mirrored[2].v.tc[0] = pauseCtx->questVtx[sp21A + 3].v.tc[0];
+                mirrored[3].v.tc[0] = pauseCtx->questVtx[sp21A + 2].v.tc[0];
+                gSPVertex(POLY_OPA_DISP++, mirrored, 4, 0);
+                POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(POLY_OPA_DISP, gItemIcons[0x79 + 3], 48, 48, 0);
+            }
+        }
+#else
         POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(
             POLY_OPA_DISP, gItemIcons[0x79 + (((gSaveContext.inventory.questItems & 0xF0000000) & 0xF0000000) >> 0x1C)],
             48, 48, 0);
+#endif
     }
 
     if (pauseCtx->state == 6) {

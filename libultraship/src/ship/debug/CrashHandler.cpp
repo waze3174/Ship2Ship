@@ -13,6 +13,8 @@
 #pragma comment(lib, "Dbghelp.lib")
 
 #include <filesystem>
+#else
+#include <unistd.h> // _exit
 #endif
 
 namespace Ship {
@@ -204,6 +206,10 @@ static void ErrorHandler(int sig, siginfo_t* sigInfo, void* data) {
         snprintf(intToCharBuffer, sizeof(intToCharBuffer), "%i ", (int)i);
         WRITE_VAR_LINE(crashHandler, intToCharBuffer, functionName.c_str());
     }
+    // ComboShip: the report reaches the log first, and the process ends within a minute even if the dialog can't be
+    // shown or answered (SIGALRM's default action terminates; alarm() is async-signal-safe).
+    Context::GetRawInstance()->GetLogger()->flush();
+    alarm(60);
     SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, (Context::GetRawInstance()->GetName() + " has crashed").c_str(),
                              (Context::GetRawInstance()->GetName() +
                               " has crashed. Please upload the logs to the support channel in discord.")
@@ -214,7 +220,11 @@ static void ErrorHandler(int sig, siginfo_t* sigInfo, void* data) {
 
     Context::GetRawInstance()->GetLogger()->flush();
     spdlog::shutdown();
-    exit(1);
+    // ComboShip: _exit, not exit. exit() runs atexit handlers and static destructors inside the crashed process, and
+    // any of them waiting on a lock the crashed thread held (audio, logging, the GPU thread) hangs it forever. A hung
+    // copy keeps its data folder's .instance.lock, so every later launch silently moved to ComboShip-data-N with no
+    // saves in it (owner 2026-11-14: "my saves have all dissapeared").
+    _exit(1);
 }
 
 static void ShutdownHandler(int sig, siginfo_t* sigInfo, void* data) {

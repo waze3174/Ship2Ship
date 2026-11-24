@@ -37,6 +37,7 @@ void Entrance::SetCondition(ConditionFn newCondition) {
 bool Entrance::GetConditionsMet() const {
     auto ctx = Rando::Context::GetInstance();
     if (ctx->GetOption(RSK_NO_LOGIC).Is(RO_GENERIC_OFF)) {
+        COMBO_FORM_CTX_RESET();
         return condition_function();
     }
     return true;
@@ -1737,6 +1738,11 @@ void EntranceShuffler::ApplyEntranceOverrides() {
         entrance->Disconnect();
         entrance->Connect(overrideEntrance->GetOriginalConnectedRegionKey());
         entrance->SetAsShuffled();
+#ifdef COMBO_BUILD
+        // ComboShip (cross-game entrances): record what the shuffle recorded (ShuffleAllEntrances sets the same),
+        // so a replayed layout reports each door's destination exactly like the generated one.
+        entrance->SetReplacement(overrideEntrance);
+#endif
     }
 }
 

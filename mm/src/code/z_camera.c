@@ -465,7 +465,7 @@ s32 Camera_IsUnderwaterAsZora(Camera* camera) {
     Actor* focalActor = camera->focalActor;
 
     if (camera->focalActor == &GET_PLAYER(camera->play)->actor) {
-        return ((Player*)focalActor)->currentBoots == PLAYER_BOOTS_ZORA_UNDERWATER;
+        return COMBO_BOOTS_SUNK(((Player*)focalActor)->currentBoots); // ComboShip: OOT's camera does it for iron too
     } else {
         return 0;
     }

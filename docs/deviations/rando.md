@@ -2164,3 +2164,436 @@ wins if both are present):
 Before applying, every `GetAllOptions()` CVar is cleared (and `ExcludedLocations` emptied), so a key an
 older spoiler lacks reads as the default, not the local machine's value. A user's `comboship.json`
 keeps its stale leaf keys (no clash); those settings fall back to defaults.
+
+## Majora's Mask entrance randomizer, B-M1 (2026-11-11)
+
+**Why:** docs/plans/full-coop-sync.md §B1, and groundwork for cross-game entrances (§B2). MM had no
+entrance shuffle at all. The owner asked for "every entrance random … the most random but still beatable".
+
+**Design:** one combo-owned shuffler in the launcher (`combo/rando/CrossEntrance.h`) instead of a per-game
+one, so §B2 can mix OOT and MM doors in the same pools. MM contributes its logic graph; the shuffler
+classifies every two-way exit (overworld / interior / dungeon / grotto / boss / fixed, by MM scene id),
+shuffles the enabled pools from the attempt's masterSeed (coupled or decoupled, per-type or mixed), checks
+that everything reachable with every item in the vanilla layout stays reachable (no islands, no one-way
+traps), and pushes `{target: newTarget}` into MM. The combined fill then proves the seed beatable with real
+logic; a failed attempt reshuffles (`kEntranceFillAttempts` = 12, used only when entrance randomization is on).
+The layout is **stored** in the seed (`entrances.mm`, plus `entranceSettings.mm` and a readable
+`entranceSpoiler.mm`) and applied from there on reload, slot load and playthrough. It is never re-derived.
+
+**`mm/2s2h/Rando/Entrances/ComboEntrances.cpp` (new, combo-owned):** `MM_DumpEntranceGraph` (regions, scenes,
+connections, exits with condition strings), `MM_SetEntranceOverrides`, the override table, and
+`Combo_MM_RedirectExit` (no-op unless `IS_RANDO` with a non-empty table). `MM_LoadComboRando`
+(`BenPort.cpp`) loads the table from the slot's seed (an absent block clears it).
+
+**Vendored seams (all `COMBO_BUILD`, no lines deleted):**
+- `mm/2s2h/Rando/Logic/Logic.cpp` (`FindReachableRegions`): an exit's region is looked up through
+  `Rando::Entrances::LogicTarget(exitId)`, so MM's own generator, the combo oracle and the playthrough all
+  see the shuffled world. Declarations in `Logic.h`.
+- `mm/src/overlays/actors/ovl_player_actor/z_player.c` (`func_808354A4`, loading zones and scene doors),
+  `ovl_Door_Ana/z_door_ana.c` (visible scene-exit grottos), `ovl_En_Holl/z_en_holl.c` (scene-changer load
+  planes): `play->nextEntrance = Combo_MM_RedirectExit(play->nextEntrance)` right after the exit-list read.
+  Only walked-through exits are redirected. Void-outs, respawns, warps, Song of Time and cutscene transitions
+  never pass these sites. MM's scene-variant swap (poisoned/cleared swamp, winter/spring) happens later, at
+  `Play_Init`, from the canonical entrance, so it keeps working on redirected doors.
+- `soh/soh/OTRGlobals.cpp`: `SOH_ReadComboEntranceCVars` reads the combo menu's `gCombo.Rando.Entrances.MM.*`
+  CVars as JSON (the launcher and headless `comborando` read settings through soh exports, like the goal).
+
+**Settings** (combo menu, Randomizer panel): Overworld, Interiors, Dungeons, Mix pools, Decoupled. They're
+combo-owned CVars rather than new `RO_*` options: adding to MM's option enum would resize
+`RANDO_SAVE_OPTIONS` in the MM save and break existing saves and team-state JSON. The seed carries what was
+used.
+
+**Not shuffled yet:** grottos (most MM grottos enter through one generic `GROTTOS` entrance plus respawn data
+and need their own redirect), boss rooms, owl warps and the spawn, the Moon, Clock Tower, the Pirates'
+Fortress complex, race tracks, Inverted Stone Tower, Zora Hall's inner rooms, and the Woodfall Temple
+princess exit plus Ikana Castle's internal links (see `MmEnt::kFixed*`).
+
+**Verified:** `comborando --mm-entrances all --count 20` 20/20 and `--mm-entrances
+overworld,interior,dungeon,decoupled,mixed --count 20` 20/20 completable. A stored seed replays BEATABLE
+through `--playthrough`; the same seed with every rewritten exit pointed at the Fisherman's Hut replays
+NOT beatable (272 MM checks unreachable), which proves the validator applies the stored layout.
+
+On future merges: re-apply the four one-line seams if upstream moves exit handling. Everything else is
+combo-owned.
+
+## Unified Inventory, U-M1 (2026-11-12)
+
+**Why:** owner ruling (2026-11-11, recorded in the full-coop-sync plan's Findings log): both Links must have
+every item, in both games, for every quest, trade and event. This replaces §B3's "child body keeps MM's
+inventory, adult keeps OOT's" design.
+
+**Seed setting** `unifiedInventory` (combo menu, Randomizer panel, "Both Links use every item";
+`gCombo.Rando.UnifiedInventory`). It travels in the seed (part of `seedId`) and is pushed to soh with
+`SOH_SetComboUnifiedInventory` before generation dumps, on reload, on slot load and after a generation
+(`RestoreLoadedSlotGoal`). When on:
+- **Every Shared Items family is shared:** `SOH_ReadComboSharedCVars` reports `SharedMaskAll()`, so every
+  existing cross-game family (bows, bombs, bombchus, magic, wallets, hookshot, magic arrows, lens, Epona's
+  Song, Song of Storms, masks, Soaring, warp songs) counts in both games through the existing reconcile.
+- **OOT items work at either age:** `soh/soh/Enhancements/randomizer/ComboUnifiedInventory.cpp` (new,
+  combo-owned) registers the three age-requirement VB hooks Timeless Equipment uses
+  (`VB_PLAYER_/ITEM_/SLOT_MEETS_AGE_REQ`), gated by the seed flag at call time instead of a local cheat CVar,
+  so both players in a room and the logic agree.
+- **Logic knows:** `logic.cpp` `Logic::CanUse` (vendored, `COMBO_BUILD`) returns usable for the timeless set
+  (bow, hammer, iron/hover boots, hookshot/longshot, tunics, Mirror Shield, Master/Biggoron sword, Giant's
+  Knife, slingshot, boomerang, Kokiri Sword, Deku Shield) whatever the age. Kept age-locked on purpose: the
+  Silver/Golden Gauntlets (child lift strength is age-based in the engine) and the adult trade sequence (its
+  NPCs exist only in the adult era).
+- **Masks as adult:** `settings.cpp` `FinalizeSettings` (the existing `COMBO_BUILD` force block) forces
+  `RSK_MASKS_AS_ADULT` on, which already has SoH logic support.
+
+**Verified:** `comborando --unified --count 10` 10/10 and `--unified --mm-entrances
+overworld,interior,dungeon,mixed --count 10` 10/10 completable. Control: six `--unified` seeds replay BEATABLE
+(e.g. sphere 16); the same six with `unifiedInventory` stripped replay NOT beatable (64 OOT checks
+unreachable), which proves the fill really used the age-free logic.
+
+**Still to come (owner's "all items"):** the Shared Items families the code marks deferred (Ocarina, Song of
+Time, shields, bottles, health), more cross-game equivalents (swords, sticks/nuts, beans), and the
+OOT-only ↔ MM-only item ports (§B4 Tier B/C) for items with no counterpart in the other game.
+
+## Shared Bottles: pooled Shared Items family + Bottle Shelf (2026-11-12)
+
+**Why:** owner ruling: 10 bottles, all 4 from OOT and all 6 from MM, every one usable at any time in both games.
+Part of Unified Inventory, which turns it on along with every other family. It's also a toggle of its own
+("Shared Bottles").
+
+**Pooled families (`combo/rando/SharedItems.h`):** a new `SharedFamilyDef::pooled` flag. Unlike the progressive
+families (OOT keeps its copies, MM's are trimmed, both sides converge on the higher tier), a pooled family keeps
+EVERY copy in both pools, and the shared amount is the SUM of what each game found. `SF_BOTTLES` (key `bottles`,
+cap 10) is the first. `PooledNames` lists each game's bottle items (they come pre-filled).
+`ApplyPooledMirror` credits every copy owned on one side to the other side's logic as its generic name. It's
+idempotent, and mirrored copies never count as "found" on the side that received them. The fill
+(`CrossWorldRando.h`, no trim for pooled), the playthrough and the pare-down (`ComboPlaythrough.h`) all call it.
+Unit tested in `coop_tests` (`TestPooledMirror`).
+
+**Runtime:** each game keeps its native slots (OOT 4, MM 6) as the working set; bottles past them wait on a
+**Bottle Shelf**: `soh/soh/Enhancements/randomizer/ComboBottleShelf.cpp` and
+`mm/2s2h/Rando/MiscBehavior/ComboBottleShelf.cpp` (new, combo-owned). Neither save format changes: the shelf and
+each game's `mirroredIn` count ride in the combo container (`combo.bottleShelf.{oot,mm}`), written in
+`Combo_WriteGameSave` and pushed back in `Combo_ReadGameSave`, at the same moments as that game's own save.
+`held = native slots in use + shelf`, `found = held - mirroredIn`. `SOH_/MM_GetSharedTier(SF_BOTTLES)`
+reports `found`. The launcher's reconcile raises both sides to hold `oot found + mm found`, and a raise adds
+mirrored empty bottles (a free native slot first, else the shelf). A shelf swap updates any C/D-pad button
+(MM: every form) pointing at that slot. UI: `combo/gui/ComboBottleShelfWindow.cpp` (combo menu → "Open Bottle
+Shelf"; `gCombo.BottleShelf.Open`).
+
+**Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
+- `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
+  substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.
+- `mm/2s2h/Rando/ConvertItem.cpp` (`IsItemObtainable`) and `mm/2s2h/Rando/GiveItem.cpp` (`Rando::GiveItem`): the same
+  two seams for MM.
+- `soh/soh/OTRGlobals.cpp` / `mm/2s2h/BenPort.cpp`: the `SF_BOTTLES` case in Get/RaiseSharedTier.
+
+**Verified:** `comborando --unified --count 10` 10/10. `--shared-items bottles` places exactly 10 bottle items
+(4 OOT + 6 MM), generates and replays BEATABLE. `coop_tests` 753/753. In-game shelf/swap: playtest.
+
+**Known limits:** bottle CONTENTS stay per game (a fairy caught in OOT stays in OOT's bottle). Sharing contents
+would need a translation table for one-game contents (Big Poe, Deku Princess, Gold Dust...). An MM bottle stolen
+by Takkuri lowers MM's found count, but nothing is ever taken back from OOT.
+
+**Pause-menu box (2026-11-12, owner: "add a box … so everything is accessible"):** the Bottle Shelf lives in each
+game's own pause item screen through the item cycling both ports already have. Put the cursor on a bottle slot
+and press A, then left/right rotates that slot through the shelf; the neighbouring bottles show beside the slot
+and the C-button updates on the spot.
+- OOT: `soh/src/overlays/misc/ovl_kaleido_scope/z_kaleido_item.c` (vendored, `COMBO_BUILD`):
+  `KaleidoScope_HandleItemCycles` / `KaleidoScope_DrawItemCycles` call `Combo_HandleBottleCycles` /
+  `Combo_DrawBottleCycles` (`ComboBottleShelf.cpp`). These drive the stock
+  `KaleidoScope_HandleItemCycleExtras` per bottle slot with previous = shelf back and next = shelf front, then
+  rotate the shelf.
+- MM: `mm/2s2h/Rando/MiscBehavior/KaleidoItemPage.cpp` (vendored 2S2H, `COMBO_BUILD` helpers outside the hook
+  macros, no-op stubs otherwise): bottle slots join the trade slots as cycle-able, and a step rotates the shelf
+  (`Combo_MM_BottleCycleStep`).
+The ImGui Bottle Shelf window stays as a secondary tool, for filling an empty slot from the shelf.
+
+**More equivalents (2026-11-12):** `SF_OCARINA` (OOT Progressive Ocarina ↔ MM Ocarina of Time, MM tier 1)
+and `SF_SONG_OF_TIME`, with Get/Raise cases in both DLLs. Both only become effective when MM's pool actually
+holds the item. On default settings MM starts with its ocarina and Song of Time, so the generator logs "MM pool
+has none … not shared" and leaves them alone. Swords (Kokiri ↔ MM Progressive Sword would trim MM's Razor and
+Gilded tiers too), shields and hearts need their own family shapes and are not done yet.
+
+## Cross-game entrances, B-M2 (2026-11-12)
+
+**Why:** docs/plans/full-coop-sync.md §B2. The owner's ruling: "a full slurry … you never know which game
+you'll end up in", and Link **keeps his age** across games (enter Termina as adult, you're adult there).
+
+**Design:** the B-M1 launcher shuffler gains a cross pass (`ShuffleCrossEntrancesForAttempt`, `CrossEntrance.h`).
+After each game's own shuffle it reads both games' *current* two-way connections (OOT: `SOH_DumpEntranceGraph`;
+MM: the B-M1 graph with its overrides) and pairs a percentage of same-kind connections (overworld / interior /
+dungeon) across games. For an OOT door `A→B` and an MM door `a→b`, entering OOT's door leads to `b`, leaving `b`
+leads back to `A`, and the mirror holds for MM. The layout is stored in the seed (`entrances.cross` = `{oot:
+{dest: mmEntrance}, mm: {dest: ootEntrance}}`, with `entranceSettings.cross` and `entranceSpoiler.cross`) and
+applied from the seed on playthrough. It is never re-derived.
+
+**Logic (age-tagged, both ways):** each game's oracle treats a crossed door as an exit out of its own graph and
+reports which ages reach it (`"D:c"` / `"D:a"`). The combined fixpoint (`ApplyCrossEntrances`) turns that into
+an arrival pseudo-item for the other game (`@combo:arrive:<game>:<dest>:<c|a>`), which roots the arrival region
+at that age:
+- OOT: one capture-free condition per arrival slot (`ArrivalCondition<I>`, SoH's `ConditionFn` is a raw pointer)
+  on an exit appended to `RR_ROOT_EXITS`. Crossed doors are disconnected and found again by identity (parent +
+  original target), because SoH rebuilds its region table.
+- MM: arrivals are extra search roots per age. Termina reached only through crossed doors before the portal
+  opens has no save-warp root (`@combo:mmNoRoot`).
+The fill's fixpoint, the playthrough and the pare-down all run the same loop.
+
+**Runtime:** `Entrance_OverrideNextIndex` / `Entrance_OverrideDynamicExit` (OOT) and `Combo_MM_RedirectExit`
+(MM) look the destination up in the seed's table and call `Combo_RequestCrossSwitch`. MM → OOT passes the raw
+OOT entrance (`|0x10000`) so `title_setup` skips OOT's own override. Age is kept because OOT reopens its save.
+
+**Bug found while verifying (fixed):** with OOT's own entrance shuffle off, `SOH_ShuffleEntrancesForCombo`
+returned before burning the oracle's lazy init. That init (`RegionTable_Init`) then ran on the fill's first
+query, silently reconnecting every crossed OOT door. Generation "passed" against a world the save doesn't play,
+and the replay correctly failed it. `SOH_SetCrossEntrances` and `SOH_DumpEntranceGraph` now burn the init
+first, `EnsureEntranceData` stops trusting a door-index map that points at destroyed doors, and
+`ComboCross_CollectReached` logs a tripwire (`[ComboCross] TRIPWIRE`) if a crossed door is ever connected again.
+
+**More found by the seed batches (fixed):**
+- A replayed OOT ER layout (`EntranceShuffler::ApplyEntranceOverrides`) connected each shuffled door but never set
+  its replacement, so a door reported its *original* destination and 16 crossings collided on replay. Fenced
+  seam in `soh/soh/Enhancements/randomizer/entrance.cpp`: `entrance->SetReplacement(overrideEntrance)`, the same
+  value `ShuffleAllEntrances` records.
+- A shuffled layout can list one two-way connection from both sides; the pairing now dedupes by door so a crossing
+  is never overwritten by another.
+- Every static-data dump re-runs `RegionTable_Init`, so SoH's door-index map can hold freed pointers, and a
+  rebuilt door can reuse the old address. The liveness test checks the door is live *and* still carries its
+  index. The stale map made one attempt in ten pair nothing (and only without verbose logging). An attempt that
+  pairs nothing now fails loudly instead of shipping a cross-game seed that crosses nothing.
+
+**Settings** (combo menu, Randomizer panel, "Cross-Game Entrances"): Overworld, Interiors, Dungeons and a
+"Doors crossed" percentage (`gCombo.Rando.Entrances.Cross.*`). **Full Slurry** turns on every entrance shuffle
+in both games (OOT overworld/interiors(all)/dungeons/grottos + mixed pools, MM overworld/interiors/dungeons) and
+crosses 100%. Headless: `comborando --cross overworld,interior,dungeon|all[,pct=N]`.
+
+**Not crossed yet:** grottos and boss rooms (MM has no grotto pool yet), owl/warp destinations, spawns.
+Adult Link's *body* in MM is the next milestone: logic and the runtime switch already keep the age.
+
+## Adult Link in Termina, B-M3a (2026-11-12)
+
+**Why:** owner ruling 2026-11-12, age is kept across games: enter Termina as adult and Link IS adult there.
+
+**Design:** adult Link in MM is MM's human form for play (items, masks, controls, MM's own animations) with
+OOT's adult body. The two engines share Link's rig: the same 22-limb player skeleton layout and the same animation
+format. MM's Fierce Deity is OOT's adult Link at 1.5x scale, so MM's adult animation set, adult voice bank and
+adult joint offsets already exist.
+- **Body** (`mm/2s2h/Rando/MiscBehavior/ComboAdultBody.cpp`, combo-owned): OOT's `gLinkAdultSkel` is loaded
+  from OOT's resident ResourceManager (CrossRMRegistry, scoped load). `Player_DrawImpl` draws it with MM's joint
+  table, and every limb model is submitted as an `__OTR__@oot:` routed display list. MM's hand / sheath / waist
+  picks for human Link map to OOT's adult models (sword in hand → Master Sword, Great Fairy's Sword → Biggoron's,
+  Hero's/Mirror shield → Hylian/Mirror, bow, hookshot, ocarina, bottle). The sheath limb carries sword + sheath +
+  back shield as one OOT model, so MM's separate back-shield draw is skipped. First person uses OOT's adult arms.
+  OOT's adult eyes/mouth go on segments 8/9, and OOT's tunic color goes in env color.
+- **Dimensions** (`z_player.c`, fenced): adult age properties = Fierce Deity's entry (animations, voice, joints)
+  with OOT's own adult lengths (ceiling 56, ledges, water depths, wall radius 18, root-motion scale 1.0).
+- **Age source:** OOT's live save. OOT captures age + tunic at the switch door (`SOH_GetComboLinkState`), the
+  launcher pushes them into MM before every MM boot/resume (`MM_SetComboLinkState`) and mirrors them into the
+  container (`combo.link`) for a slot that resumes straight in MM.
+
+**Verified (headless, Xvfb):** an OOT save loaded as adult, crossed to South Clock Town: the launcher logs "Link
+enters Termina as ADULT" and the frame shows adult Link (Hylian Shield and Master Sword on his back), walking and
+swinging the sword.
+
+**Not done yet:** masks are drawn at child scale on the adult head; held MM items (bombs, sticks) keep MM's hand
+offsets; Goron/Zora tunic effects are cosmetic only. Debug hook: `COMBO_DEBUG_CROSS=<mm entrance>[,adult]`.
+
+## Pots & grass in both games' pools (2026-11-12)
+
+Owner ask: pots and bushes in the pool for MM too. MM (2ship) already had scenery-drop shuffles
+(`RO_SHUFFLE_POT_DROPS`, `RO_SHUFFLE_GRASS_DROPS`, plus crates/barrels/snowballs/trees/hives) in its own rando menu,
+and the combined fill takes whatever checks each game's dump lists. Verified that it holds up: MM pots + grass grow
+MM's pool from 284 to ~1,820 checks. One seed put 130 OOT items (36 progression, e.g. Biggoron's Sword) in MM pots
+and grass. With pots + grass in BOTH games plus full-slurry entrances (OOT ER + MM ER + 100% crossing), 5/5 seeds
+generate and replay BEATABLE, and 874 of 1,094 cross-game items sit in pots or grass. MM's draw code already renders
+foreign items at its grass/pot drop sites.
+
+Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and grass/bushes that sets BOTH games
+(OOT "All", MM on). Each game's own menu keeps the finer options.
+
+## Termina polish: tunic color, adult speed, quick pickups, "?" scenery, shuffle everything (2026-11-12)
+
+- **Tunic color:** adult Link in MM wears the player's color choice: OOT's cosmetics editor for the tunic OOT
+  has equipped (`gCosmetics.Link.{Kokiri,Goron,Zora}Tunic`), else MM's "Human Tunic" cosmetic
+  (`gCosmetic.Player.HumanTunic`) for green. Read every frame, so editing it live shows at once. Verified
+  headless: a magenta OOT Kokiri tunic logs `tunic 0 color 200,30,200` in MM.
+- **Adult speed:** OOT's adult Link is faster than child: `sBootData[PLAYER_BOOTS_KOKIRI]` runs 6.0 against
+  child's 5.5, with adult acceleration and turning. MM's human Link uses exactly OOT's child row, so adult in MM
+  now gets OOT's adult row in MM's boot-register layout (`z_player_lib.c` `func_80123140`, fenced).
+- **Quick pickups (OOT randomizer style):** items from pots, grass, crates, barrels, snowballs, trees, hives,
+  butterflies, enemy drops, wonder items and freestanding pickups are given on touch, with a sound and a
+  notification. No get-item cutscene and no text box, whatever the item
+  (`Rando::MiscBehavior::IsQuickPickupCheck`, CheckQueue.cpp).
+- **"?" on shuffled scenery:** with "Container matches contents" off, an unchecked shuffled pot, crate (both
+  sizes) or barrel in MM shows 2ship's own "?" model (`gPotRandomDL`, `g{Small,Large}RandoCrateDL`,
+  `gBarrelRandoDL`). Bushes and cuttable grass already did. Before this, pots drew the MAJOR texture and
+  crates/barrels the JUNK one. Snowballs, trees and hives have no "?" model yet.
+- **Shuffle EVERYTHING (both games):** one button in the combo menu's Pots & Grass section turns on every
+  scenery/drop shuffle both games have: OOT pots/grass/crates/rocks/boulders/trees/bushes/icicles/red ice/signs/
+  freestanding/wonder items/beehives/cows/fairies; MM pots/crates/barrels/snowballs/grass/trees/hives/
+  butterflies/freestanding/wonder items/cows. That's ~4,700 checks. With full-slurry entrances on top, 3/3 seeds
+  generate and replay BEATABLE (about 138 crossed doors each).
+
+## D-pad slots + shared button layout (2026-11-12)
+
+- **D-pad item slots in both games:** one combo setting (`gCombo.DpadEquips`, on by default, a checkbox under
+  Unified Inventory) drives each game's own D-pad equips (SoH `gEnhancements.DpadEquips`, 2ship
+  `gEnhancements.Dpad.DpadEquips`), so MM gets four more item buttons and the two games never disagree.
+- **Shared equips:** what sits on C-left/down/right and the D-pad travels with Link across every switch.
+  Each game describes its layout in game-neutral keys (`bow`, `hookshot`, `bombs`, `bottle:milk`,
+  `mask_bunny`...; any ocarina = `ocarina`, hookshot/longshot = `hookshot`) in combo-owned `ComboEquipShare.cpp`
+  on both sides. The launcher carries it across. The receiving game puts a key on the same button only if it
+  owns that item, and otherwise keeps what that button had. OOT captures its layout at the switch door (its
+  save context is gone when the launcher asks). Verified headless: OOT bombs on C-left show on MM's C-left after
+  crossing; an OOT-only item (Ruto's Letter) on D-up is left out.
+
+## MM transformations in Hyrule, Goron body (B-M6a, 2026-11-12)
+
+**Why:** owner ask, "items and transformations work anywhere between games" (full-coop-sync.md §B4 Tier C).
+
+**Design:** the mirror of adult Link in Termina. MM's forms share Link's rig with OOT (22-limb player skeleton, same
+animation format), and MM's Goron walks, runs, jumps and climbs with the SAME human `link_*` animations OOT plays.
+So a form in Hyrule is OOT's player and movement with:
+- **Body:** the form's MM skeleton, drawn from MM's resident ResourceManager. Limb models are `__OTR__@mm:`
+  routed, hands map to the form's own (open / closed / bottle), with no sheath or shield and no gauntlets or
+  boots. The Goron's eyes go on segment 8. Combo-owned file: `soh/soh/Enhancements/randomizer/ComboForms.{h,cpp}`.
+- **Dimensions** (`z_player.c`, fenced): OOT adult's entry with MM's Goron ceiling 70, root-motion scale 0.74,
+  water depth 50 and wall radius 19.5.
+- **Rules until moves are ported:** B (sword) is off, and C only takes masks and the ocarina, as in Termina.
+- **Animations from MM:** `ResourceMgr_LoadAnimByName` routes `__OTR__@mm:` animation paths to MM's
+  ResourceManager. The header layout and frames (22 joints + face word) are identical, so OOT's player can play MM's
+  form animations (`gPlayerAnim_pg_*`) for the moves that need them.
+- **Trigger:** wearing the Goron Mask transforms (OOT's Goron Mask IS MM's through Shared Items); wearing any
+  mask while transformed changes back. Setting `gCombo.Forms.InHyrule` (on by default).
+- **Form travels with Link:** OOT puts the form in the link state it captures at the switch door (bits 3-5). The
+  launcher pushes it into MM, which sets `playerForm` on its `OnSaveLoad` (before Link spawns), and brings MM's
+  form back into OOT on the return (`SOH_SetComboForm`). The container keeps it too (`combo.link.form`).
+- **Logic credits nothing for a form in Hyrule** until its moves are real (§B4 Tier C rule).
+
+**Verified (headless, Xvfb):** Goron Link standing and walking in Link's house; becoming a Goron in Hyrule and
+crossing to South Clock Town arrives as MM's native Goron (Punch/Curl on the HUD). Debug hook:
+`COMBO_DEBUG_FORM=goron`.
+
+**Goron moves in Hyrule (2026-11-12, B-M6b)** (z_player.c, fenced; built on OOT's own systems, after MM's code):
+- **MM's own animations** where MM has them: idle `pg_wait`, chest open, climbing, punches, curl. They're routed with
+  `COMBO_MM_ANIM` through a wrapped `GET_PLAYER_ANIM` and the Goron age properties.
+- **Punch (B):** LEFT → RIGHT → BUTT, a B press mid-punch buffers the next, and there's a small lunge. The fist drives
+  the two melee quads (`gComboGoronPunchLimb`, placed in `Player_PostLimbDrawGameplay`) with OOT's hammer-swing
+  damage: it hurts enemies and breaks hammer rocks. Verified headless: during a punch the live quad sits at the
+  fist, 30-50 units in front of Link and 25-50 high, with AT on.
+- **Curl / roll / spikes / pound (hold A):** it starts where Link would roll, so talk, doors and climbing keep
+  priority, and plays MM's `pg_maru_change`. The roll steers with the stick and speeds up to 12, bonks off walls,
+  and its front hurts (hammer swing). Spikes come out at full speed with magic (up to 18, drain 1 magic every 10
+  frames, hammer-jump hits). B while curled = the ground pound: jump, hang, slam, then OOT's hammer impact (quake,
+  stun) plus a shockwave and a short all-round hit. Releasing A uncurls. In water a Goron can't roll.
+- **The ball** is MM's `gLinkGoronCurledDL` (+ spike shell `object_link_goron_DL_00C540`), drawn instead of the
+  skeleton, scaled 1.15 and spinning with speed. MM draws it with segment 0x0C on a run of end-markers
+  (`Scene_SetRenderModeXlu(play, 0, 1)`), and the ball's display list calls into 0x0C at an offset. Leaving 0x0C
+  on OOT's 2-command cull list ran into garbage ("Unhandled OP code 0x10/0x14"), so the ball draw sets MM's list.
+
+**Not yet:** Goron shielding curl (R), drums, Goron sounds/voice, lava immunity and heavy switches in Hyrule,
+logic abilities. Then Zora, Deku and Fierce Deity.
+
+## All four MM forms in Hyrule (B-M6c, 2026-11-12)
+
+The Goron design (above) now covers every form; `ComboForms.cpp` holds a per-form table (skeleton, object, model
+prefix, hands, eyes/mouth).
+- **Zora:** MM's Zora body, eyes and mouth. Idle, chest and climb use MM's `pz_*` animations. B = the 3-hit
+  Zora attack (`pz_attackA/B/C`, sword-class damage). It breathes underwater like the Zora Tunic
+  (`COMBO_WATER_PROOF`). MM's Zora entry: OOT adult lengths, water depth 50. Trigger: OOT's Zora Mask (Shared Items).
+- **Deku:** MM's Deku body (one hand model; its head reads no eye segment). B = the Deku spin (`pn_attack`), a hit
+  centred on the body. MM's Deku entry: child base, ceiling 35, root scale 0.3, shallow water depths.
+- **Fierce Deity:** MM's FD body (MM's own `object_link_boy`, routed so it never collides with OOT's). Its eyes
+  and mouth are single textures. It keeps B: OOT's sword system with FD's sword-in-hand model. OOT adult body.
+- **Deku / Fierce Deity in Hyrule come from Termina:** OOT has no Deku or FD mask item, so these forms arrive
+  with Link (the form carries both ways: combo ids 0 human, 1 Goron, 2 Zora, 3 Deku, 4 FD ↔ MM `playerForm`).
+  Wearing any mask in Hyrule turns Link back.
+- **Root motion:** OOT hardcodes child = 0.64 for the animation's root translation. A form uses its own body's
+  factor (`ageProperties->unk_08`: Deku 0.3, Goron 0.74, Zora / FD 1.0) as MM does, so forms stand on the floor.
+- **Goron is heat-proof** in Hyrule (`COMBO_HEAT_PROOF`, counts as the Goron Tunic at OOT's five heat checks).
+
+Verified headless (Xvfb), each form standing in Link's house, plus the B move of each: Goron punch/roll/pound,
+Zora fin attack, Deku spin, and FD drawn with the sword. No renderer errors, no missing MM animations.
+`COMBO_DEBUG_FORM=goron|zora|deku|fd`. Round trip verified: Goron in Hyrule → South Clock Town as MM's Goron
+→ back to Link's house still a Goron (`COMBO_DEBUG_MM_RETURN=<oot entrance>` is the MM-side debug hook).
+
+**Not yet:** Zora fast swim / fin boomerang / barrier, Deku water hop / bubble / flowers, Goron shield curl /
+drums, FD sword beams, wearing Deku/FD masks from OOT's own inventory, logic abilities.
+
+## MM forms in Hyrule, made 1:1 (B-M7, 2026-11-12)
+
+**Why:** owner tested B-M6d: "goron link just makes adult link sounds in OOT and can't throw his special punches".
+Owner rule: every cross-game move/item must look, sound and feel 1:1 with its home game (port the real MM code and
+assets); "counts as an OOT item" means only the damage/puzzle credit.
+
+- **Form B attacks start from OOT's attack handler** (`Player_ActionHandler_8`), i.e. from every state a sword swing
+  could start (lock-on strafing, after landing...), instead of a 10-action whitelist. Goron/Zora/Deku never fall
+  through to a sword slash there.
+- **Hit shapes are MM's:** Goron fists `D_801C09B8`/`D_801C0970`, butt `D_801C0A90`/`D_801C0A6C`, Zora jabs from the
+  forearm fins `D_801C0A00`/`D_801C09DC`, Zora kick from the right shin. OOT's left-hand sword code no longer
+  overwrites form quads (it moved the butt slam to the left hand and drew a sword trail).
+- **Guest audio (MM's sound engine inside OOT):** `MM_ComboGuestAudio*` exports (mm `ComboGuestAudio.cpp`), OOT side
+  `soh/.../ComboGuestAudio.cpp`. MM is booted at startup and only its audio thread stops while OOT runs, so OOT's
+  game thread runs MM's `Audio_Update` (in OOT's `Audio_Update`) and OOT's audio thread renders MM's buffer and adds it
+  to OOT's (`OTRAudio_Thread`). MM music players are stopped at begin; guest sounds play at positions owned by the
+  bridge (Link, or slots for actors), never pointers into OOT memory; all stopped at the OOT->MM handoff
+  (`SOH_PrepareForTransition`). OOT's Master/SFX sliders drive MM's levels.
+  - Every OOT voice line while transformed plays in the form's MM voice bank (0x6800 + line + MM offset: FD x0,
+    Goron x6, Zora x5, Deku x4), in `Player_PlaySfx`.
+  - Goron punch swing, curl/uncurl, roll (per turn), spike charge, wall bounce, pound jump/impact: MM's sounds.
+- **Zora fins = MM's EnBoom** (`ovl_En_Boom/z_en_boom_combo_fins.c`, params `COMBO_ZORA_FIN_LEFT/RIGHT`): tap B jabs,
+  hold B readies (MM `pz_cutterwait*`), release throws both fins (`pz_cutterattack`, frame 6), MM's curve/homing/speed,
+  per-fin catch (`pz_cuttercatch`). Forearm fins drawn as MM's own models (`object_link_zora_DL_00CC38/00CDA0`),
+  tucked/full-size/hidden in flight (MM `func_80126BD0`). Hit = `DMG_BOOMERANG` (same bit as MM) -> every boomerang
+  target in Hyrule; fetches items/tokens.
+- **Deku bubble = MM's EnArrow bubble** (`ovl_En_Arrow/z_en_arrow_combo_bubble.c`, params `ARROW_COMBO_DEKU_BUBBLE`):
+  hold B to blow (MM `pn_tamahakidf`/`pn_tamahaki`, head squash + lean, breath sound), release to fire; MM's flight,
+  shrink, wobble, framebuffer-refraction draw (`FB_WriteFramebufferSliceToCPU` + `gameplay_keep_DL_06F380`), bounce off
+  reflective hits, pop + MM's wall splat (EffectSsSbn ported into the popped actor). 2 magic per bubble, no seeds. Hit =
+  `DMG_SLINGSHOT` (eye switches, enemies).
+- **Goron lifts like the Golden Gauntlets** (`Player_GetStrength`).
+- Menu: "Form moves count as items" (`gCombo.Forms.ItemAnalogs`, on) and "Anchor color on every tunic"
+  (`gCombo.Cosmetics.AnchorTunicSync`, off): the Anchor color is written to OOT's 3 tunic slots and MM's human/Deku/
+  Goron/Zora/FD tunic slots; each game re-applies both games' patches (`SOH_/MM_ComboApplyCosmetics`).
+
+**Verified headless (Xvfb, docker, both ROM archives extracted by the AppImage):** Goron punch from idle and from a
+walk (MM goron voice 0x68C0 + MM punch swing, guest mix peaks 15k-30k); Zora hold-B -> both fins thrown, both caught,
+repeating; Deku hold-B -> bubble grows (breath sfx), fires, pops on walls / shrinks away, repeating; no renderer errors.
+Bugs found and fixed by those runs: unresolved `Actor_PlaySfx` (MM name) kept libsoh from loading; OOT put the fins/
+bubble away instantly (item not on a "button"); hold-B re-triggered the item mid-change; segmented billboard matrix
+needs 2S2H's `| 1`. Harness hooks: `COMBO_DEBUG_BOOT_PLAY=<entrance>`, `COMBO_DEBUG_FORM_B`, `_WALK`, `_HOLDB`,
+`COMBO_DEBUG_AUDIO`, `COMBO_AUTO_EXTRACT`.
+
+**Not yet:** full MM animation sets for walking/running/jumping as each form; HUD B icon per form (MM shows punch/fins/
+Deku nut); Goron shield curl (R) and drums; Zora barrier/fast swim; Deku hop/flowers; FD beams; logic credit.
+
+## B-M7.1 (2026-11-12): return-to-Hyrule bounce fixed; guest MM audio engine off
+
+- **Bounce:** every MM->OOT return sent Link straight back to South Clock Town. The return load runs `OnLoadGame`,
+  whose entrance-rando handler recomputes the savewarp (`Entrance_SetSavewarpEntrance` ->
+  `Entrance_OverrideNextIndex`), and `Combo_OOT_CrossRedirect` treated that COMPUTED savewarp as walking through a
+  crossed door whenever the savewarp spawn (adult: 0x1F9) is crossed in the seed. Now a savewarp never crosses games
+  (`Combo_OOT_CrossSuppress` around `Entrance_SetSavewarpEntrance`, logged), and the combo return path drops any cross
+  switch requested during the load (`Combo_CancelPendingCrossSwitch`). Verified with the owner's seed/save through a
+  full OOT->MM->OOT round trip (`COMBO_DEBUG_RETURN=0,0x433` + `COMBO_DEBUG_CROSS` + `COMBO_DEBUG_MM_RETURN`).
+- **Audio:** the B-M7 guest MM engine (MM's sound engine rendered beside OOT's and mixed) crackled; a lock-free
+  ring-buffer rework added latency. Owner ruling: no second engine — MM's form sounds will be NATIVELY IMPORTED into
+  OOT's audio engine (MM's samples + sound definitions as extra banks, like sm64coopdx character banks). Until then the
+  guest engine is off (`gCombo.Audio.GuestEngine`, default 0) and the forms use OOT's sounds.
+
+## Form attacks react as in MM (CrossDamageMap, 2026-11-13, branch feat/form-damage-tables)
+
+**Why:** owner, "make sure deku spin actually stuns some enemies instead of damaging them … every attack should
+behave the same way" + the 1:1 MM rule. OOT's damage tables index one OOT damage bit, so every form attack made
+OOT enemies react as to the OOT weapon it borrowed (Deku spin = Kokiri slash, Goron punch = hammer, …).
+
+**Vendored-tree changes (preserve on merges):**
+- `soh/include/z64collision_check.h`: `ColliderTouch` gains `comboMmDmg` / `comboMmAtDamage` in its padding (size
+  stays 8); `Collider_SetTouch` copies them.
+- `soh/src/code/z_collision_check.c` (fenced `COMBO_BUILD`): MM's no-register rule in `CollisionCheck_SetATvsAC`,
+  MM damage + the OOT actor's effect code for MM's reaction class in `CollisionCheck_ApplyDamage`, the opt-in mask
+  rule in `CollisionCheck_NoSharedFlags` (current AC collider tracked in `CollisionCheck_AC`), the variant picker
+  (Wolfos / White Wolfos, Iron Knuckle armour, Big Poe) and the boss rule (Zora barrier passes through OOT bosses).
+- Tags set in `z_player.c` (form attacks, Blast Mask bomb; OOT swings clear them in `func_80837918`),
+  `z_en_boom_combo_fins.c`, `z_en_arrow_combo_bubble.c`, `z_en_bom_combo_keg.c`.
+- Combo-owned: `combo/rando/CrossDamageTags.h`, `combo/rando/CrossDamageMap.h` (GENERATED by
+  `scripts/combo/gen-cross-damage-map.py` from MM's sources — rerun it after an MM merge that touches enemy tables).
+
+Test hook: `COMBO_TEST_ENEMY="<actorId>,<params>,<dist>,<frame>"` (env, `Combo_HarnessEnv`) spawns an enemy in front
+of Link and traces its health / colour filter / damageEffect; `COMBO_DEBUG_CROSSDMG` traces every mapped hit.
+Reference: docs/combo/forms-audit.md §6.

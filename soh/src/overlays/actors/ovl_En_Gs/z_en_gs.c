@@ -4,6 +4,9 @@
  * Description: Gossip Stone
  */
 
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h"
+#endif
 #include "z_en_gs.h"
 #include "objects/object_gs/object_gs.h"
 #include "overlays/actors/ovl_En_Elf/z_en_elf.h"
@@ -192,7 +195,12 @@ void func_80A4E648(EnGs* this, PlayState* play) {
                     // if we're rando'd, always use the non-mask text id
                     this->actor.textId = 0x2053;
                 } else {
-                    if (Player_GetMask(play) == PLAYER_MASK_TRUTH) {
+                    if ((Player_GetMask(play) == PLAYER_MASK_TRUTH)
+#ifdef COMBO_BUILD
+                        // ComboShip: MM's Mask of Truth worn in Hyrule reads a Gossip Stone as MM's does (MM En_Gs:202)
+                        || Combo_MmMaskIs(COMBO_MM_ITEM_MASK_TRUTH)
+#endif
+                    ) {
                         this->actor.textId = 0x2054;
                     } else {
                         this->actor.textId = 0x2053;

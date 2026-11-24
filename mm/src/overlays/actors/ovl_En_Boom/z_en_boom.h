@@ -8,6 +8,16 @@ typedef enum {
     /* 1 */ ZORA_BOOMERANG_RIGHT
 } EnBoomType;
 
+#ifdef COMBO_BUILD
+// ComboShip (OOT items in Termina): OOT's own Boomerang, thrown by human Link (z_en_boom_combo_oot.c).
+#define COMBO_OOT_BOOMERANG 0x10
+struct EnBoom;
+void EnBoom_ComboOotInit(struct EnBoom* boom, PlayState* play);
+void EnBoom_ComboOotDestroy(struct EnBoom* boom, PlayState* play);
+void EnBoom_ComboOotUpdate(struct EnBoom* boom, PlayState* play);
+void EnBoom_ComboOotDraw(struct EnBoom* boom, PlayState* play);
+#endif
+
 struct EnBoom;
 
 typedef void (*EnBoomActionFunc)(struct EnBoom*, PlayState*);

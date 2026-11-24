@@ -13,6 +13,9 @@
 #include "soh/ResourceManagerHelpers.h"
 #include "soh/SaveManager.h"
 #include "soh/framebuffer_effects.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPicto.h" // ComboShip: MM's Pictograph Box in Hyrule
+#endif
 
 #include <time.h>
 #include <assert.h>
@@ -526,6 +529,10 @@ void Play_Init(GameState* thisx) {
     play->unk_11E16 = 0xFF;
     play->bgCoverAlpha = 0;
     play->haltAllActors = false;
+#ifdef COMBO_BUILD
+    // ComboShip: MM Play_Init: R_PICTO_PHOTO_STATE = PICTO_PHOTO_STATE_OFF (+ Interface_Init's sPictoState reset).
+    Combo_PictoReset();
+#endif
 
     if (gSaveContext.gameMode != GAMEMODE_TITLE_SCREEN) {
         if (gSaveContext.nextTransitionType == TRANS_NEXT_TYPE_DEFAULT) {
@@ -683,6 +690,12 @@ void Play_Update(PlayState* play) {
         HREG(82) = 0;
         // ActorOverlayTable_LogPrint();
     }
+
+#ifdef COMBO_BUILD
+    // ComboShip: MM Play_UpdateMain: R_PICTO_PHOTO_STATE == PICTO_PHOTO_STATE_PROCESS -> Play_TakePictoPhoto (the
+    // frame captured by the previous Play_Draw has been read back to the CPU by now).
+    Combo_PictoPlayUpdate(play);
+#endif
 
     if (CVarGetInteger(CVAR_SETTING("FreeLook.Enabled"), 0) && Player_InCsMode(play)) {
         play->manualCamera = false;
@@ -1229,6 +1242,11 @@ void Play_Update(PlayState* play) {
                 GameOver_Update(play);
             } else {
                 PLAY_LOG(3733);
+#ifdef COMBO_BUILD
+                // ComboShip: MM's Pictograph Box keep / discard answer, read before OOT's message system closes the
+                // choice box itself.
+                Combo_PictoMessageUpdate(play);
+#endif
                 Message_Update(play);
             }
 
@@ -1600,6 +1618,20 @@ void Play_Draw(PlayState* play) {
             }
         }
 
+#ifdef COMBO_BUILD
+        // ComboShip: MM Play_Draw, R_PICTO_PHOTO_STATE == PICTO_PHOTO_STATE_SETUP: capture the world drawn so far (no
+        // HUD) for MM's Pictograph Box, then skip the post-world draw this frame as 2S2H does.
+        {
+            Gfx* comboPictoGfx = OVERLAY_DISP;
+
+            if (Combo_PictoPlayDrawCapture(play, (void**)&comboPictoGfx)) {
+                OVERLAY_DISP = comboPictoGfx;
+                SREG(33) |= 1;
+                goto Play_Draw_skip;
+            }
+        }
+#endif
+
         // Draw Enhancements that need to be placed in the world. This happens before the PostWorldDraw
         // so that they aren't drawn when the pause menu is up (e.g. collision viewer, actor name tags)
         GameInteractor_ExecuteOnPlayDrawEnd();
@@ -1646,6 +1678,60 @@ time_t Play_GetRealTime() {
     return t1 - t2;
 }
 
+// ComboShip (owner 2026-11-14: "let the pause button skip cutscenes in both MM and OOT, that skull kid cutscene takes
+// ages"): Start during a scripted cutscene fast-forwards it. A cutscene can't be cut short safely -- its commands fire
+// on exact frames (flags, items, songs, warps), so jumping to the end would lose them -- so instead the game runs up
+// to COMBO_CS_SKIP_SPEED updates per displayed frame until the cutscene is over, with text advanced by A. Every
+// effect still happens, in a few seconds. It stops at once on a scene transition and whenever the ocarina is up
+// (song lessons need the player's notes; the skip resumes with another Start).
+#ifdef COMBO_BUILD
+#define COMBO_CS_SKIP_SPEED 24
+static s32 sComboCsSkip = false;
+
+static void Combo_CutsceneFastForward(PlayState* play) {
+    Input* in = &play->state.input[0];
+    Input saved;
+    s32 i;
+
+    if (play->csCtx.state == CS_STATE_IDLE) {
+        if (sComboCsSkip) {
+            LUSLOG_INFO("[ComboShip] cutscene skip: cutscene over");
+        }
+        sComboCsSkip = false;
+        return;
+    }
+    if (!sComboCsSkip && CHECK_BTN_ALL(in->press.button, BTN_START)) {
+        sComboCsSkip = true;
+        LUSLOG_INFO("[ComboShip] cutscene skip: fast-forwarding from cutscene frame %d", play->csCtx.frames);
+    }
+    if (!sComboCsSkip) {
+        return;
+    }
+    saved = *in;
+    for (i = 0; i < COMBO_CS_SKIP_SPEED; i++) {
+        if ((play->csCtx.state == CS_STATE_IDLE) || (play->transitionTrigger != TRANS_TRIGGER_OFF) ||
+            (play->transitionMode != TRANS_MODE_OFF)) {
+            break;
+        }
+        if (play->msgCtx.ocarinaMode != 0) {
+            sComboCsSkip = false; // the ocarina is up: the player plays it
+            LUSLOG_INFO("[ComboShip] cutscene skip: paused for the ocarina (mode %d)", play->msgCtx.ocarinaMode);
+            break;
+        }
+        // Text: lines still type out at their normal speed (the reveal is driven by the draw, and the games' own
+        // text-skip paths need a real per-frame rhythm); A moves each finished line on.
+        memset(in, 0, sizeof(*in));
+        if ((play->msgCtx.msgMode != MSGMODE_TEXT_DISPLAYING) && (i & 1)) {
+            in->cur.button = BTN_A;
+            in->press.button = BTN_A;
+        }
+        Play_Update(play);
+    }
+    *in = saved;
+    in->press.button &= ~BTN_START; // the Start that skipped doesn't also pause afterwards
+}
+#endif
+
 void Play_Main(GameState* thisx) {
     PlayState* play = (PlayState*)thisx;
 
@@ -1680,6 +1766,9 @@ void Play_Main(GameState* thisx) {
     if ((HREG(80) != 10) || (HREG(81) != 0)) {
         Play_Update(play);
     }
+#ifdef COMBO_BUILD
+    Combo_CutsceneFastForward(play);
+#endif
 
     PLAY_LOG(4583);
 

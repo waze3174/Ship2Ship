@@ -6,7 +6,59 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/Enhancements/savestate_serialize.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h"
+// ComboShip: the native MM sfx front end (audio_mm_sfx.c), Majora's Mask's sounds played by this engine.
+void AudioMmSfx_Init(u16 fadeTimer);
+void AudioMmSfx_ResetAll(void);
+void AudioMmSfx_Update(void);
+#endif
 #include <libultraship/bridge/consolevariablebridge.h>
+
+#ifdef COMBO_BUILD
+// ComboShip (owner 2026-11-14: "get the instruments ... playing the correct soundfonts for all transformations"): a
+// Goron / Zora / Deku in Hyrule plays MM's own instrument, as MM's message code picks it (sPlayerFormOcarinaInstruments:
+// Goron drums 7, Zora guitar 8, Deku pipes 9; Fierce Deity and human Link keep the ocarina). OOT's ocarina logic runs
+// unchanged; its channel io and the note sfx go to the native MM sfx player's ocarina channel (MM's Sequence_0 and
+// soundfonts in OOT's engine, audio_mm_sfx.c), with MM's instrument on io 7 as MM's AudioOcarina_Update writes it.
+int Combo_OotForm(void);
+void AudioMmSfx_OcarinaIo(u8 ioPort, s8 value);
+void AudioMmSfx_PlaySfx(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* volume, s8* reverbAdd);
+void AudioMmSfx_StopById(u32 sfxId);
+static u8 sComboMmOcarinaInstrument = 0; // MM OCARINA_INSTRUMENT_* of the form's instrument, 0 = OOT's own ocarina
+
+static void Combo_OcarinaIo(u8 port, s8 value) {
+    if (sComboMmOcarinaInstrument != 0) {
+        AudioMmSfx_OcarinaIo(port, (port == 7) ? (s8)(sComboMmOcarinaInstrument - 1) : value);
+    } else {
+        Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD00 | port, value);
+    }
+}
+static void Combo_OcarinaNote(f32* freqScale, f32* volume) {
+    if (Combo_DebugEnv("COMBO_DEBUG_OCARINA")) {
+        Combo_DebugLog("[ComboShip] ocarina note: %s instrument %d\n", sComboMmOcarinaInstrument ? "MM" : "OOT",
+                       sComboMmOcarinaInstrument);
+    }
+    if (sComboMmOcarinaInstrument != 0) {
+        AudioMmSfx_PlaySfx(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, freqScale, volume, &gSfxDefaultReverb);
+    } else {
+        Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, freqScale, volume, &gSfxDefaultReverb);
+    }
+}
+static void Combo_OcarinaStop(void) {
+    Audio_StopSfxById(NA_SE_OC_OCARINA);
+    AudioMmSfx_StopById(NA_SE_OC_OCARINA);
+}
+#define COMBO_OCARINA_IO(port, value) Combo_OcarinaIo(port, value)
+#define COMBO_OCARINA_NOTE(freq, vol) Combo_OcarinaNote(freq, vol)
+#define COMBO_OCARINA_STOP() Combo_OcarinaStop()
+#else
+#define COMBO_OCARINA_IO(port, value) Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD00 | (port), value)
+#define COMBO_OCARINA_NOTE(freq, vol) \
+    Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, freq, vol, &gSfxDefaultReverb)
+#define COMBO_OCARINA_STOP() Audio_StopSfxById(NA_SE_OC_OCARINA)
+#endif
+
 
 // TODO: can these macros be shared between files? code_800F9280 seems to use
 // versions without any casts...
@@ -1479,6 +1531,12 @@ void AudioOcarina_ReadControllerInput(void) {
 
     PadMgr_RequestPadData(&gPadMgr, inputs, false);
     sOcarinaInputButtonCur = input->cur.button;
+#ifdef COMBO_BUILD
+    if (Combo_HarnessEnv("COMBO_DEBUG_OCARINA") && (gPlayState != NULL)) {
+        // test hook (launch env only): the scripted game input (COMBO_DEBUG_PAUSE) reaches the ocarina too
+        sOcarinaInputButtonCur |= gPlayState->state.input[0].cur.button;
+    }
+#endif
     sOcarinaInputButtonPrev = ocarinaInputButtonPrev;
     sOcarinaInputStickAdj.x = input->rel.stick_x;
     sOcarinaInputStickAdj.y = input->rel.stick_y;
@@ -1944,7 +2002,7 @@ void AudioOcarina_PlayControllerInput(u8 unused) {
             sCurOcarinaVibrato =
                 (sOcarinaInputStickAdj.x < 0 ? -sOcarinaInputStickAdj.x : sOcarinaInputStickAdj.x) >> 2;
             // Sets vibrato to io port 6
-            Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD06, sCurOcarinaVibrato);
+            COMBO_OCARINA_IO(6, sCurOcarinaVibrato);
         } else {
             // no bending or vibrato for recording state OCARINA_RECORD_SCARECROW_SPAWN
             sCurOcarinaBendIndex = 0;
@@ -1956,14 +2014,20 @@ void AudioOcarina_PlayControllerInput(u8 unused) {
         if ((sCurOcarinaPitch != OCARINA_PITCH_NONE) && (sPrevOcarinaPitch != sCurOcarinaPitch)) {
             // Sets ocarina instrument Id to channelIndex io port 7, which is used
             // as an index in seq 0 to get the true instrument Id
-            Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD07, sOcarinaInstrumentId - 1);
+            COMBO_OCARINA_IO(7, sOcarinaInstrumentId - 1);
             // Sets pitch to io port 5
-            Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD05, sCurOcarinaPitch);
-            Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, &sCurOcarinaBendFreq, &sRelativeOcarinaVolume,
-                                 &gSfxDefaultReverb);
+            COMBO_OCARINA_IO(5, sCurOcarinaPitch);
+            COMBO_OCARINA_NOTE(&sCurOcarinaBendFreq, &sRelativeOcarinaVolume);
+#ifdef COMBO_BUILD
+            {
+                // the player's instrument animation reads the button of each new note (MM msgCtx.ocarinaButtonIndex)
+                extern s8 gComboOcarinaNoteBtn;
+                gComboOcarinaNoteBtn = (s8)sCurOcarinaButtonIndex;
+            }
+#endif
         } else if ((sPrevOcarinaPitch != OCARINA_PITCH_NONE) && (sCurOcarinaPitch == OCARINA_PITCH_NONE)) {
             // Stops ocarina sound when transitioning from playing to not playing a note
-            Audio_StopSfxById(NA_SE_OC_OCARINA);
+            COMBO_OCARINA_STOP();
         }
 
         GameInteractor_ExecuteOnOcarinaNote(sCurOcarinaPitch, sCurOcarinaBendFreq, sOcarinaInstrumentId);
@@ -1999,6 +2063,17 @@ void AudioOcarina_SetInstrument(u8 ocarinaInstrumentId) {
 
     Audio_SeqCmd8(SEQ_PLAYER_SFX, 1, SFX_CHANNEL_OCARINA, ocarinaInstrumentId);
     sOcarinaInstrumentId = ocarinaInstrumentId;
+#ifdef COMBO_BUILD
+    {
+        static const u8 sFormInstruments[] = { 0, 7, 8, 9, 0 }; // human, Goron drums, Zora guitar, Deku pipes, FD
+        const int form = Combo_OotForm();
+
+        sComboMmOcarinaInstrument = ((ocarinaInstrumentId != OCARINA_INSTRUMENT_OFF) && (form >= 0) && (form <= 4))
+                                        ? sFormInstruments[form]
+                                        : 0;
+        AudioMmSfx_OcarinaIo(1, sComboMmOcarinaInstrument); // MM's channel on (its instrument) / off
+    }
+#endif
     if (ocarinaInstrumentId == OCARINA_INSTRUMENT_OFF) {
         sOcarinaInputButtonCur = 0;
         sOcarinaInputButtonPrev = 0;
@@ -2007,7 +2082,7 @@ void AudioOcarina_SetInstrument(u8 ocarinaInstrumentId) {
         sOcarinaInputButtonStart = 0xFFFF;
 
         AudioOcarina_PlayControllerInput(false);
-        Audio_StopSfxById(NA_SE_OC_OCARINA);
+        COMBO_OCARINA_STOP();
         Audio_SetSfxBanksMute(0);
         sPlaybackState = 0;
         sPlaybackStaffPos = 0;
@@ -2028,7 +2103,7 @@ void AudioOcarina_SetInstrument(u8 ocarinaInstrumentId) {
 void AudioOcarina_SetPlaybackSong(s8 songIndexPlusOne, s8 playbackState) {
     if (songIndexPlusOne == 0) {
         sPlaybackState = 0;
-        Audio_StopSfxById(NA_SE_OC_OCARINA);
+        COMBO_OCARINA_STOP();
         return;
     }
 
@@ -2086,7 +2161,7 @@ void AudioOcarina_PlaybackSong(void) {
                     sPlaybackStaffPos = 0;
                     sPlaybackPitch = OCARINA_PITCH_NONE;
                 } else {
-                    Audio_StopSfxById(NA_SE_OC_OCARINA);
+                    COMBO_OCARINA_STOP();
                 }
                 return;
             } else {
@@ -2103,7 +2178,7 @@ void AudioOcarina_PlaybackSong(void) {
             // Update vibrato
             if (sNotePlaybackVibrato != sPlaybackSong[sPlaybackNotePos].vibrato) {
                 sNotePlaybackVibrato = sPlaybackSong[sPlaybackNotePos].vibrato;
-                Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD06, sNotePlaybackVibrato);
+                COMBO_OCARINA_IO(6, sNotePlaybackVibrato);
             }
 
             // Update bend
@@ -2134,13 +2209,13 @@ void AudioOcarina_PlaybackSong(void) {
                     sPlaybackStaffPos++;
                     // Sets ocarina instrument Id to channelIndex io port 7, which is used
                     // as an index in seq 0 to get the true instrument Id
-                    Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD07, sOcarinaInstrumentId - 1);
+                    COMBO_OCARINA_IO(7, sOcarinaInstrumentId - 1);
                     // Sets sPlaybackPitch to channelIndex io port 5
-                    Audio_QueueCmdS8(0x6 << 24 | SEQ_PLAYER_SFX << 16 | 0xD05, sPlaybackPitch & 0x3F);
+                    COMBO_OCARINA_IO(5, sPlaybackPitch & 0x3F);
                     Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, &sRelativeNotePlaybackBend,
                                          &sRelativeNotePlaybackVolume, &gSfxDefaultReverb);
                 } else {
-                    Audio_StopSfxById(NA_SE_OC_OCARINA);
+                    COMBO_OCARINA_STOP();
                 }
             }
             sPlaybackNotePos++;
@@ -3940,6 +4015,9 @@ void Audio_Update(void) {
         Audio_ProcessSoundRequests();
         Audio_ProcessSeqCmds();
         func_800F8F88();
+#ifdef COMBO_BUILD
+        AudioMmSfx_Update(); // ComboShip: MM sfx requests -> the native MM sfx player (MM forms in Hyrule)
+#endif
         func_800FA3DC();
         AudioDebug_SetInput();
         AudioDebug_ProcessInput();
@@ -5013,12 +5091,93 @@ void func_800F5C2C(void) {
     sPrevMainBgmSeqId = NA_BGM_DISABLED;
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: a Majora's Mask music sequence (registered with this engine by ComboMmAudio.cpp, e.g. the Bremen Mask
+// march) as a fanfare, as MM's Player plays it with Audio_PlayFanfare. It runs on OOT's fanfare player, which switches
+// to MM script semantics for it (audio_load.c). OOT's seq-command path carries 8-bit sequence ids and applies the audio
+// editor's replacements, so the start goes to the audio thread directly (as Audio_StartSequence does it). The C API
+// is in ComboGuestAudio.cpp (Combo_MmPlayFanfare / Combo_MmStopFanfare / Combo_MmFanfareIsPlaying).
+static s32 sComboMmFanfarePending = false; // the pending sFanfareSeqId is an MM sequence (OOT seq id)
+static s32 sComboMmFanfareSeqId = -1;      // OOT seq id of the last MM fanfare started
+// Audio updates left before the started MM fanfare must show as enabled on the audio thread (the start command is
+// processed by the next audio task, so the player reads disabled for a frame or two after the start).
+static s32 sComboMmFanfareStartGrace = 0;
+
+// Audio_StartSequence (code_800F9280.c) for a 16-bit OOT sequence id, without the editor's replacement.
+static void Audio_ComboStartMmSequence(u8 playerIdx, u16 fadeTimer, u16 seqId) {
+    u8 i;
+
+    if (D_80133408 != 0) { // an audio reset is in progress: Audio_StartSequence drops starts too
+        return;
+    }
+    sComboMmFanfareStartGrace = 10;
+    Audio_QueueCmdS32(0x82000000 | _SHIFTL(playerIdx, 16, 8) | (seqId & 0xFFFF),
+                      (fadeTimer * (u16)gAudioContext.audioBufferParameters.updatesPerFrame) / 4);
+    gActiveSeqs[playerIdx].seqId = seqId;
+    gActiveSeqs[playerIdx].prevSeqId = seqId;
+    if (gActiveSeqs[playerIdx].volCur != 1.0f) {
+        Audio_QueueCmdF32(0x41000000 | _SHIFTL(playerIdx, 16, 8), gActiveSeqs[playerIdx].volCur);
+    }
+    gActiveSeqs[playerIdx].tempoTimer = 0;
+    gActiveSeqs[playerIdx].tempoOriginal = 0;
+    gActiveSeqs[playerIdx].tempoCmd = 0;
+    for (i = 0; i < 0x10; i++) {
+        gActiveSeqs[playerIdx].channelData[i].volCur = 1.0f;
+        gActiveSeqs[playerIdx].channelData[i].volTimer = 0;
+        gActiveSeqs[playerIdx].channelData[i].freqScaleCur = 1.0f;
+        gActiveSeqs[playerIdx].channelData[i].freqScaleTimer = 0;
+    }
+    gActiveSeqs[playerIdx].freqScaleChannelFlags = 0;
+    gActiveSeqs[playerIdx].volChannelFlags = 0;
+}
+
+// MM Audio_PlayFanfare for an MM music sequence (ootSeqId = its OOT id). MM keeps the fanfare player running when the
+// new fanfare shares the current one's first font and otherwise stops it and waits 5 frames; the font comparison has
+// no meaning across the two games' sequences, so a running fanfare is always stopped first (OOT's own fallback).
+void Audio_ComboMmPlayFanfare(u16 ootSeqId) {
+    if (func_800FA0B4(SEQ_PLAYER_FANFARE) == NA_BGM_DISABLED) {
+        sFanfareStartTimer = 1;
+    } else {
+        sFanfareStartTimer = 5;
+        Audio_SeqCmd1(SEQ_PLAYER_FANFARE, 0);
+    }
+    sFanfareSeqId = ootSeqId;
+    sComboMmFanfarePending = true;
+    sComboMmFanfareSeqId = ootSeqId;
+}
+
+// MM Player func_80831454 (the march / dance ends): SEQCMD_STOP_SEQUENCE(SEQ_PLAYER_FANFARE, 0). A start still
+// pending is dropped as well (MM's Audio_UpdateFanfare drops it on seeing the queued stop).
+void Audio_ComboMmStopFanfare(void) {
+    if (sComboMmFanfarePending && (sFanfareStartTimer != 0)) {
+        sFanfareStartTimer = 0;
+    }
+    sComboMmFanfarePending = false;
+    sComboMmFanfareStartGrace = 0;
+    Audio_SeqCmd1(SEQ_PLAYER_FANFARE, 0);
+}
+
+// The MM fanfare is pending or playing on the fanfare player.
+s32 Audio_ComboMmFanfareIsPlaying(void) {
+    if (sComboMmFanfarePending && (sFanfareStartTimer != 0)) {
+        return true;
+    }
+    if ((sComboMmFanfareSeqId < 0) || (gActiveSeqs[SEQ_PLAYER_FANFARE].seqId != (u16)sComboMmFanfareSeqId)) {
+        return false; // never started, stopped (seqId reset to NA_BGM_DISABLED), or replaced by another sequence
+    }
+    return gAudioContext.seqPlayers[SEQ_PLAYER_FANFARE].enabled || (sComboMmFanfareStartGrace > 0);
+}
+#endif
+
 void Audio_PlayFanfare(u16 seqId) {
     u16 curSeqId;
     u32 outNumFonts;
     u16* curFontId;
     u16* requestedFontId;
 
+#ifdef COMBO_BUILD
+    sComboMmFanfarePending = false; // ComboShip: an OOT fanfare replaces a pending MM one
+#endif
     curSeqId = func_800FA0B4(SEQ_PLAYER_FANFARE);
 
     // Although seqIds are u16, there is no fanfare that is above 0xFF
@@ -5047,6 +5206,12 @@ void Audio_UpdateFanfare(void) {
     u16 pad;
     u16 sp22;
 
+#ifdef COMBO_BUILD
+    if (sComboMmFanfareStartGrace > 0) { // ComboShip: see Audio_ComboMmFanfareIsPlaying
+        sComboMmFanfareStartGrace =
+            gAudioContext.seqPlayers[SEQ_PLAYER_FANFARE].enabled ? 0 : (sComboMmFanfareStartGrace - 1);
+    }
+#endif
     if (sFanfareStartTimer != 0) {
         sFanfareStartTimer--;
         if (sFanfareStartTimer == 0) {
@@ -5055,6 +5220,25 @@ void Audio_UpdateFanfare(void) {
             func_800FA0B4(SEQ_PLAYER_BGM_MAIN);
             sp26 = func_800FA0B4(SEQ_PLAYER_FANFARE);
             sp22 = func_800FA0B4(SEQ_PLAYER_BGM_SUB);
+#ifdef COMBO_BUILD
+            if (sComboMmFanfarePending) {
+                // ComboShip: MM's Audio_UpdateFanfare / Audio_MuteBgmPlayersForFanfare for an MM fanfare: both BGM
+                // players ducked to 0 over 5 frames and restored over 10 when the fanfare ends, the main BGM's
+                // channels disabled meanwhile (MM leaves BGM_SUB's channels alone), then SEQCMD_PLAY_SEQUENCE with no
+                // fade-in.
+                sComboMmFanfarePending = false;
+                if (sp26 == NA_BGM_DISABLED) {
+                    Audio_SetVolScale(SEQ_PLAYER_BGM_MAIN, 1, 0, 5);
+                    Audio_SetVolScale(SEQ_PLAYER_BGM_SUB, 1, 0, 5);
+                    Audio_SeqCmdC(SEQ_PLAYER_FANFARE, 0x80, 1, 0xA);
+                    Audio_SeqCmdC(SEQ_PLAYER_FANFARE, 0x83, 1, 0xA);
+                    Audio_SeqCmdC(SEQ_PLAYER_FANFARE, 0x90, 0, 0);
+                }
+                Audio_ComboStartMmSequence(SEQ_PLAYER_FANFARE, 0, sFanfareSeqId);
+                Audio_SeqCmdA(SEQ_PLAYER_BGM_MAIN, 0xFFFF);
+                return;
+            }
+#endif
             if (sp26 == NA_BGM_DISABLED) {
                 Audio_SetVolScale(SEQ_PLAYER_BGM_MAIN, 1, 0, 5);
                 Audio_SetVolScale(SEQ_PLAYER_BGM_SUB, 1, 0, 5);
@@ -5555,10 +5739,17 @@ void Audio_InitSound(void) {
     func_800FAEB4();
     Audio_ResetSounds();
     Audio_StartSequence(SEQ_PLAYER_SFX, 0, 0x70, 10);
+#ifdef COMBO_BUILD
+    AudioMmSfx_ResetAll(); // ComboShip: MM's Audio_InitSound order: reset, then AudioSfx_Init
+    AudioMmSfx_Init(10);
+#endif
 }
 
 void func_800F7170(void) {
     Audio_StartSequence(SEQ_PLAYER_SFX, 0, 0x70, 1);
+#ifdef COMBO_BUILD
+    AudioMmSfx_Init(1); // ComboShip: restart MM's sfx sequence after an audio heap reset (MM ResetForAudioHeapStep3)
+#endif
     Audio_QueueCmdS32(0xF2000000, 1);
     Audio_ScheduleProcessCmds();
     Audio_QueueCmdS32(0xF8000000, 0);
@@ -5571,6 +5762,9 @@ void func_800F71BC(s32 arg0) {
     Audio_ResetSfxChannelState();
     Audio_ResetActiveSequences();
     Audio_ResetSounds();
+#ifdef COMBO_BUILD
+    AudioMmSfx_ResetAll(); // ComboShip (MM ResetForAudioHeapStep1)
+#endif
 }
 
 void func_800F7208(void) {
@@ -5579,4 +5773,8 @@ void func_800F7208(void) {
     func_800F6C34();
     Audio_ResetSfxChannelState();
     Audio_StartSequence(SEQ_PLAYER_SFX, 0, 0x70, 1);
+#ifdef COMBO_BUILD
+    AudioMmSfx_ResetAll(); // ComboShip (MM Audio_UnusedReset)
+    AudioMmSfx_Init(1);
+#endif
 }

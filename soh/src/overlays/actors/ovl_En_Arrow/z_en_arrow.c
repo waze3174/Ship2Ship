@@ -87,6 +87,13 @@ void EnArrow_Init(Actor* thisx, PlayState* play) {
     };
     EnArrow* this = (EnArrow*)thisx;
 
+#ifdef COMBO_BUILD
+    if (this->actor.params == ARROW_COMBO_DEKU_BUBBLE) {
+        EnArrow_ComboBubbleInit(this, play); // ComboShip: MM's Deku Bubble (z_en_arrow_combo_bubble.c)
+        return;
+    }
+#endif
+
     if (CVarGetInteger(CVAR_COSMETIC("Arrows.NormalPrimary.Changed"), 0)) {
         blureNormal.altEnvColor =
             CVarGetColor(CVAR_COSMETIC("Arrows.NormalPrimary.Value"), (Color_RGBA8){ 0, 150, 0, 0 });
@@ -194,6 +201,13 @@ void EnArrow_Init(Actor* thisx, PlayState* play) {
 
 void EnArrow_Destroy(Actor* thisx, PlayState* play) {
     EnArrow* this = (EnArrow*)thisx;
+
+#ifdef COMBO_BUILD
+    if (this->actor.params == ARROW_COMBO_DEKU_BUBBLE) {
+        EnArrow_ComboBubbleDestroy(this, play);
+        return;
+    }
+#endif
 
     if (this->actor.params <= ARROW_LIGHT) {
         Effect_Delete(play, this->effectIndex);
@@ -443,6 +457,13 @@ void func_809B4640(EnArrow* this, PlayState* play) {
 void EnArrow_Update(Actor* thisx, PlayState* play) {
     s32 pad;
     EnArrow* this = (EnArrow*)thisx;
+
+#ifdef COMBO_BUILD
+    if (this->actor.params == ARROW_COMBO_DEKU_BUBBLE) {
+        EnArrow_ComboBubbleUpdate(this, play);
+        return;
+    }
+#endif
     Player* player = GET_PLAYER(play);
 
     if (this->isCsNut || ((this->actor.params >= ARROW_NORMAL_LIT) && (player->unk_A73 != 0)) ||
@@ -507,6 +528,13 @@ void func_809B4800(EnArrow* this, PlayState* play) {
 void EnArrow_Draw(Actor* thisx, PlayState* play) {
     s32 pad;
     EnArrow* this = (EnArrow*)thisx;
+
+#ifdef COMBO_BUILD
+    if (this->actor.params == ARROW_COMBO_DEKU_BUBBLE) {
+        EnArrow_ComboBubbleDraw(this, play);
+        return;
+    }
+#endif
     u8 alpha;
     f32 scale;
 

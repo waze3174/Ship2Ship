@@ -18,6 +18,14 @@ typedef struct EnBom {
     /* 0x01FC */ f32 flashIntensity;
     /* 0x0200 */ u8 bumpOn;
     /* 0x0204 */ EnBomActionFunc actionFunc;
+#ifdef COMBO_BUILD
+    // ComboShip: Majora's Mask's Powder Keg and its explosion (z_en_bom_combo_keg.c). Zero (unused) on OOT bombs.
+    u8 comboIsKeg;                                // MM EnBom.isPowderKeg
+    u8 comboSinkTimer;                            // MM EnBom.unk_1FC (sinking in water)
+    s16 comboKegRoll;                             // MM EnBom.unk_1FA (the barrel rolling)
+    s32 comboSfxSlot;                             // MM sfx source slot (ComboGuestAudio.cpp), 0 = none yet
+    struct EnBomComboClearTag* comboClearTag;     // MM EnClearTag's effects (the explosion-effects instance only)
+#endif
 } EnBom; // size = 0x0208
 
 typedef enum {

@@ -1,0 +1,12 @@
+FROM ubuntu:24.04
+ENV DEBIAN_FRONTEND=noninteractive
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    build-essential cmake ninja-build python3 git ccache ca-certificates file wget \
+    libusb-dev libusb-1.0-0-dev libsdl2-dev libsdl2-net-dev libpng-dev libglew-dev \
+    nlohmann-json3-dev libtinyxml2-dev libspdlog-dev \
+    libogg-dev libopus-dev opus-tools libopusfile-dev libvorbis-dev \
+    libzip-dev zipcmp zipmerge ziptool libbz2-dev libboost-dev zlib1g-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# + lsb-release (needed by the CMake config)
+RUN apt-get update && apt-get install -y --no-install-recommends lsb-release && rm -rf /var/lib/apt/lists/*

@@ -119,8 +119,18 @@ void EnKbt_Destroy(Actor* thisx, PlayState* play) {
 
 void EnKbt_Reset(void) {
     // #region 2S2H [Port] Reset the joint indicies back to their original value from the resource.
+#ifdef COMBO_BUILD
+    // ComboShip: the reset also runs for an actor freed before its Init (a scene left or a game switched within a
+    // frame or two of loading): nothing was swapped, and writing NULL here would break the resource for later.
+    if (origIndicies_004274 == NULL) {
+        return;
+    }
+#endif
     AnimationHeader* anim = (AnimationHeader*)ResourceMgr_LoadAnimByName(object_kbt_Anim_004274);
     anim->jointIndices = origIndicies_004274;
+#ifdef COMBO_BUILD
+    origIndicies_004274 = NULL;
+#endif
     // #endregion
 }
 

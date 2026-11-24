@@ -21,6 +21,11 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
+#ifdef COMBO_BUILD
+void Combo_OOT_CrossRedirect(s16 dest); // ComboCrossEntrances.cpp
+void Combo_OOT_CrossSuppress(int on);   // ComboCrossEntrances.cpp
+#endif
+
 extern PlayState* gPlayState;
 
 // Overwrite the dynamic exit for the OGC Fairy Fountain to be 0x3E8 instead
@@ -295,12 +300,27 @@ s16 Entrance_OverrideNextIndex(s16 nextEntranceIndex) {
 
     Entrance_SetEntranceDiscovered(nextEntranceIndex, false);
     EntranceTracker_SetLastEntranceOverride(nextEntranceIndex);
+#ifdef COMBO_BUILD
+    {
+        // ComboShip (cross-game entrances): a crossed door switches to MM (ComboCrossEntrances.cpp).
+        s16 dest = Grotto_OverrideSpecialEntrance(Entrance_GetOverride(nextEntranceIndex));
+        Combo_OOT_CrossRedirect(dest);
+        return dest;
+    }
+#endif
     return Grotto_OverrideSpecialEntrance(Entrance_GetOverride(nextEntranceIndex));
 }
 
 s16 Entrance_OverrideDynamicExit(s16 dynamicExitIndex) {
     Entrance_SetEntranceDiscovered(dynamicExitList[dynamicExitIndex], false);
     EntranceTracker_SetLastEntranceOverride(dynamicExitList[dynamicExitIndex]);
+#ifdef COMBO_BUILD
+    {
+        s16 dest = Grotto_OverrideSpecialEntrance(Entrance_GetOverride(dynamicExitList[dynamicExitIndex]));
+        Combo_OOT_CrossRedirect(dest); // ComboShip (cross-game entrances)
+        return dest;
+    }
+#endif
     return Grotto_OverrideSpecialEntrance(Entrance_GetOverride(dynamicExitList[dynamicExitIndex]));
 }
 
@@ -372,7 +392,24 @@ void Entrance_SetGameOverEntrance(void) {
 }
 
 // Properly savewarp the player accounting for dungeon entrance randomizer.
+#ifdef COMBO_BUILD
+static void Entrance_SetSavewarpEntranceImpl(void);
+
+// ComboShip (cross-game entrances): a savewarp is COMPUTED (file load, game over, a return from MM), never walked
+// through, so it must never cross into MM even when its spawn entrance is a crossed door in this seed. Without this,
+// an adult Link whose savewarp spawn (ENTR_HYRULE_FIELD_10) is crossed was sent back to MM on every return.
 void Entrance_SetSavewarpEntrance(void) {
+    Combo_OOT_CrossSuppress(1);
+    Entrance_SetSavewarpEntranceImpl();
+    Combo_OOT_CrossSuppress(0);
+    LUSLOG_INFO("[ComboCross] savewarp computed: entrance 0x%X (no game switch from a savewarp)",
+                (u16)gSaveContext.entranceIndex);
+}
+
+static void Entrance_SetSavewarpEntranceImpl(void) {
+#else
+void Entrance_SetSavewarpEntrance(void) {
+#endif
     s16 scene = gSaveContext.savedSceneNum;
 
     // When in a boss room and boss shuffle is on, use the boss scene to find the savewarp entrance

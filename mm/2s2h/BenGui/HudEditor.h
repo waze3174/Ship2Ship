@@ -57,6 +57,8 @@ void HudEditor_SetActiveElement(HudEditorElementID id);
 bool HudEditor_ShouldOverrideDraw();
 bool HudEditor_IsActiveElementHidden();
 f32 HudEditor_GetActiveElementScale();
+// ComboShip: the active element's effective mode (MM's own, or the OOT-style layout when gCombo.MmHud.OotStyle).
+int HudEditor_GetActiveElementMode();
 void HudEditor_ModifyRectPosValuesFromBase(s16 baseX, s16 baseY, s16* rectLeft, s16* rectTop);
 void HudEditor_ModifyRectPosValues(s16* rectLeft, s16* rectTop);
 void HudEditor_ModifyRectSizeValues(s16* rectWidth, s16* rectHeight);

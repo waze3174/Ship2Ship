@@ -4,6 +4,10 @@
  */
 
 #include "global.h"
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboAdultBody.h" // ComboShip: adult Link in Termina
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"  // ComboShip: OOT items in Termina
+#endif
 #include "2s2h/GameInteractor/GameInteractor.h"
 
 #include "objects/gameplay_keep/gameplay_keep.h"
@@ -596,7 +600,18 @@ s16 D_801BFE14[PLAYER_BOOTS_MAX][18] = {
         0,   // IREG(69)
         80,  // MREG(95)
     },
+    // ComboShip: PLAYER_BOOTS_COMBO_IRON = OOT sBootData[PLAYER_BOOTS_IRON] (MM's extra REG(39) = the Hylian row's 120)
+    { 200, 1000, 300, 700, 550, 270, 1000, 0, 120, 800, 300, -160, 600, 590, 750, 125, 200, 130 },
+    // ComboShip: PLAYER_BOOTS_COMBO_IRON_UNDERWATER = OOT sBootData[PLAYER_BOOTS_IRON_UNDERWATER]
+    { 80, 800, 150, 700, 480, 270, 600, 50, 120, 800, 550, -40, 400, 540, 270, 25, 0, 80 },
 };
+
+#ifdef COMBO_BUILD
+// ComboShip: OOT's boots on human Link in Termina (owner 2026-11-14). OOT's save owns them (equipped from the Hyrule
+// equipment face of Termina's pause, ComboPause.cpp): 2 = Iron (PLAYER_BOOTS_COMBO_IRON), 3 = Hover (this flag).
+s32 gComboHoverBoots = false;
+int Combo_MmOotBootsValue(void); // ComboOotItems.cpp: OOT's CUR_EQUIP_VALUE(EQUIP_TYPE_BOOTS), 0 without OOT's save
+#endif
 
 // OoT's Player_SetBootData
 void func_80123140(PlayState* play, Player* player) {
@@ -625,6 +640,31 @@ void func_80123140(PlayState* play, Player* player) {
     }
 
     bootRegs = D_801BFE14[currentBoots];
+#ifdef COMBO_BUILD
+    // ComboShip (age kept across games): adult Link moves like OOT's adult — OOT's sBootData[PLAYER_BOOTS_KOKIRI]
+    // (run 6.0 vs child 5.5, plus adult acceleration/turn values) in MM's layout (MM's extra REG(39) kept).
+    if ((currentBoots == PLAYER_BOOTS_HYLIAN) && Combo_MM_AdultBodyActive(&player->actor)) {
+        static s16 sComboAdultBootRegs[18] = {
+            200, 1000, 300, 700, 550, 270, 600, 350, 120, 800, 600, -100, 600, 590, 750, 125, 200, 130,
+        };
+        bootRegs = sComboAdultBootRegs;
+    }
+    if (player->actor.id == ACTOR_PLAYER) {
+        // OOT Player_SetBootData: Iron Boots turn slowly and step short (REG(27) 500, REG(48) 100) in and out of water.
+        if ((player->currentBoots == PLAYER_BOOTS_COMBO_IRON)) {
+            REG(27) = 500;
+            REG(48) = 100;
+        }
+        // OOT's Hover Boots: Link keeps MM's Hylian boots value (anything >= PLAYER_BOOTS_ZORA_UNDERWATER would sink
+        // him) and moves on OOT's sBootData[PLAYER_BOOTS_HOVER] row.
+        if ((currentBoots == PLAYER_BOOTS_HYLIAN) && gComboHoverBoots) {
+            static s16 sComboHoverBootRegs[18] = {
+                200, 1000, 300, 700, 550, 270, 600, 600, 120, 800, 550, -100, 600, 540, 270, 25, 0, 130,
+            };
+            bootRegs = sComboHoverBootRegs;
+        }
+    }
+#endif
     REG(19) = bootRegs[0];
     REG(30) = bootRegs[1];
     REG(32) = bootRegs[2];
@@ -792,6 +832,15 @@ ItemId Player_GetItemOnButton(PlayState* play, Player* player, EquipSlot slot) {
 
     if (slot == EQUIP_SLOT_B) {
         ItemId item = Inventory_GetBtnBItem(play);
+
+#ifdef COMBO_BUILD
+        // ComboShip: OOT's Megaton Hammer out in Termina -- B swings it, as in OOT (MM swings a held weapon only on the
+        // button that holds it, so B answers with the hammer's own button item; owner 2026-11-14: the hammer should
+        // break the snow boulders).
+        if ((player->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) && (player->heldItemId != ITEM_NONE)) {
+            return (ItemId)player->heldItemId;
+        }
+#endif
 
         GameInteractor_Should(VB_GET_ITEM_ON_BUTTON, item, slot, &item);
 
@@ -1001,6 +1050,20 @@ u8 sActionModelGroups[PLAYER_IA_MAX] = {
     PLAYER_MODELGROUP_DEFAULT,        // PLAYER_IA_MASK_ZORA
     PLAYER_MODELGROUP_DEFAULT,        // PLAYER_IA_MASK_DEKU
     PLAYER_MODELGROUP_DEFAULT,        // PLAYER_IA_LENS_OF_TRUTH
+#ifdef COMBO_BUILD
+    // ComboShip (OOT items in Termina): OOT's model group for each, mapped to MM's group with the same animation
+    // type; the OOT hand model itself is swapped in at draw time (ComboOotItems.cpp Combo_MmOotHeldDL).
+    PLAYER_MODELGROUP_DEFAULT,    // PLAYER_IA_COMBO_OOT_BOOMERANG (OOT BOOMERANG: animtype 0, LH boomerang)
+    PLAYER_MODELGROUP_DEKU_STICK, // PLAYER_IA_COMBO_OOT_HAMMER (OOT HAMMER: animtype 3, LH hammer, RH closed)
+    PLAYER_MODELGROUP_BOW,        // PLAYER_IA_COMBO_OOT_SLINGSHOT (OOT BOW_SLINGSHOT: animtype 4, RH slingshot)
+    PLAYER_MODELGROUP_DEFAULT,    // PLAYER_IA_COMBO_OOT_DINS_FIRE
+    PLAYER_MODELGROUP_DEFAULT,    // PLAYER_IA_COMBO_OOT_FARORES_WIND
+    PLAYER_MODELGROUP_DEFAULT,    // PLAYER_IA_COMBO_OOT_NAYRUS_LOVE
+    PLAYER_MODELGROUP_HOOKSHOT,   // PLAYER_IA_COMBO_OOT_LONGSHOT
+    PLAYER_MODELGROUP_DEFAULT,    // PLAYER_IA_COMBO_OOT_TRADE
+    PLAYER_MODELGROUP_HOOKSHOT,   // PLAYER_IA_COMBO_OOT_HOOKSHOT
+    PLAYER_MODELGROUP_DEFAULT,    // PLAYER_IA_COMBO_OOT_MASK
+#endif
 };
 
 PlayerModelGroup Player_ActionToModelGroup(Player* player, PlayerItemAction itemAction) {
@@ -1572,6 +1635,16 @@ void Player_SetEquipmentData(PlayState* play, Player* player) {
                                                              (player->currentBoots != PLAYER_BOOTS_ZORA_UNDERWATER))) {
             player->currentBoots = D_801BFF90[player->transformation];
         }
+#ifdef COMBO_BUILD
+        if (player->actor.id == ACTOR_PLAYER) {
+            const int ootBoots = (player->transformation == PLAYER_FORM_HUMAN) ? Combo_MmOotBootsValue() : 0;
+
+            if (ootBoots == 2) { // EQUIP_VALUE_BOOTS_IRON
+                player->currentBoots = PLAYER_BOOTS_COMBO_IRON;
+            }
+            gComboHoverBoots = (ootBoots == 3); // EQUIP_VALUE_BOOTS_HOVER
+        }
+#endif
         Player_SetModelGroup(player, Player_ActionToModelGroup(player, player->heldItemAction));
         func_80123140(play, player);
         if (player->unk_B62 != 0) {
@@ -1705,6 +1778,13 @@ bool Player_IsHoldingMirrorShield(PlayState* play) {
 }
 
 bool Player_IsHoldingHookshot(Player* player) {
+#ifdef COMBO_BUILD
+    // ComboShip: OOT's Hookshot and Longshot in Termina are hookshots (OOT Player_HoldsHookshot counts both).
+    if ((player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ||
+        (player->heldItemAction == PLAYER_IA_COMBO_OOT_LONGSHOT)) {
+        return true;
+    }
+#endif
     return player->heldItemAction == PLAYER_IA_HOOKSHOT;
 }
 
@@ -1732,6 +1812,15 @@ PlayerBButtonSword Player_GetHeldBButtonSword(Player* player) {
 PlayerMeleeWeapon Player_MeleeWeaponFromIA(PlayerItemAction itemAction) {
     PlayerMeleeWeapon weapon = GET_MELEE_WEAPON_FROM_IA(itemAction);
 
+#ifdef COMBO_BUILD
+    if (itemAction == PLAYER_IA_COMBO_OOT_HAMMER) {
+        return PLAYER_MELEEWEAPON_COMBO_OOT_HAMMER; // ComboShip: OOT items in Termina
+    }
+    if (weapon >= PLAYER_MELEEWEAPON_COMBO_OOT_HAMMER) {
+        return PLAYER_MELEEWEAPON_NONE;
+    }
+#endif
+
     if ((weapon > PLAYER_MELEEWEAPON_NONE) && (weapon < PLAYER_MELEEWEAPON_MAX)) {
         return weapon;
     }
@@ -1748,6 +1837,11 @@ s32 Player_IsHoldingTwoHandedWeapon(Player* player) {
     if ((player->heldItemAction >= PLAYER_IA_SWORD_TWO_HANDED) && (player->heldItemAction <= PLAYER_IA_DEKU_STICK)) {
         return true;
     }
+#ifdef COMBO_BUILD
+    if (player->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) {
+        return true; // ComboShip: OOT's Player_HoldsTwoHandedWeapon counts the Megaton Hammer
+    }
+#endif
 
     return false;
 }
@@ -1803,6 +1897,13 @@ s32 Player_GetEnvironmentalHazard(PlayState* play) {
 
     if (play->roomCtx.curRoom.environmentType == ROOM_ENV_HOT) {
         envHazard = PLAYER_ENV_HAZARD_HOTROOM - 1;
+#ifdef COMBO_BUILD
+    } else if ((player->currentBoots == PLAYER_BOOTS_COMBO_IRON) && (player->underwaterTimer > 80)) {
+        // OOT's Iron Boots (OOT Player_GetEnvironmentalHazard): deep after 80 frames; on the floor = UNDERWATER_FLOOR
+        // (the hookshot works there), off it = UNDERWATER_FREE.
+        envHazard = (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? (PLAYER_ENV_HAZARD_UNDERWATER_FLOOR - 1)
+                                                                       : (PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1);
+#endif
     } else if ((player->transformation != PLAYER_FORM_ZORA) && (player->underwaterTimer > 80)) {
         envHazard = PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1;
     } else if (player->stateFlags1 & PLAYER_STATE1_8000000) {
@@ -2086,34 +2187,80 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
         }
     }
 
-    // Only Human, Zora, and Goron will read the eye textures in the head limb display list.
-    // Fierce Deity and Deku will point this segment to garbage data, but it will be unread from.
-    gSPSegment(&gfx[0], 0x08, Lib_SegmentedToVirtual(sPlayerEyesTextures[playerForm][eyeIndex]));
+#ifdef COMBO_BUILD
+    // ComboShip (owner ruling 2026-11-12, age kept across games): adult Link in Termina is drawn with OOT's adult
+    // skeleton and models (ComboAdultBody.cpp); MM's human animations drive it.
+    const s32 comboAdult = Combo_MM_AdultBodyActive(actor);
+    if (comboAdult) {
+        if (mouthIndex >= PLAYER_MOUTH_MAX) {
+            mouthIndex = 0;
+        }
+        if (mouthIndex < 0) {
+            mouthIndex = sPlayerFaces[face].mouthIndex;
+        }
+        POLY_OPA_DISP = Combo_MM_AdultDrawPrep(gfx, eyeIndex, mouthIndex);
+        skeleton = Combo_MM_AdultLimbs(&dListCount);
+        overrideLimbDraw = (OverrideLimbDrawFlex)Combo_MM_AdultWrapOverride((void*)overrideLimbDraw);
+    } else {
+#endif
+        // Only Human, Zora, and Goron will read the eye textures in the head limb display list.
+        // Fierce Deity and Deku will point this segment to garbage data, but it will be unread from.
+        gSPSegment(&gfx[0], 0x08, Lib_SegmentedToVirtual(sPlayerEyesTextures[playerForm][eyeIndex]));
 
-    // 2S2H [Port] Hess crash fix
-    if (mouthIndex >= PLAYER_MOUTH_MAX) {
-        Ship_HandleConsoleCrashAsReset();
-        mouthIndex = 0;
+        // 2S2H [Port] Hess crash fix
+        if (mouthIndex >= PLAYER_MOUTH_MAX) {
+            Ship_HandleConsoleCrashAsReset();
+            mouthIndex = 0;
+        }
+
+        // If the mouth index provided by the animation is negative, use the value provided by the `face` argument
+        // instead
+        if (mouthIndex < 0) {
+            mouthIndex = sPlayerFaces[face].mouthIndex;
+        }
+
+        // Only Human and Zora will read the mouth textures in the head limb display list.
+        // Goron, Fierce Deity, and Deku will point this segment to garbage data, but it will be unread from.
+        gSPSegment(&gfx[1], 0x09, Lib_SegmentedToVirtual(sPlayerMouthTextures[playerForm][mouthIndex]));
+
+        POLY_OPA_DISP = &gfx[2];
+#ifdef COMBO_BUILD
     }
-
-    // If the mouth index provided by the animation is negative, use the value provided by the `face` argument instead
-    if (mouthIndex < 0) {
-        mouthIndex = sPlayerFaces[face].mouthIndex;
-    }
-
-    // Only Human and Zora will read the mouth textures in the head limb display list.
-    // Goron, Fierce Deity, and Deku will point this segment to garbage data, but it will be unread from.
-    gSPSegment(&gfx[1], 0x09, Lib_SegmentedToVirtual(sPlayerMouthTextures[playerForm][mouthIndex]));
-
-    POLY_OPA_DISP = &gfx[2];
+#endif
 
     D_801F59E0 = playerForm * 2;
     // 2S2H [Port] Disable LOD when a custom player model is used
     if (Player_IsCustomLinkModel((Player*)actor)) {
         lod = 0;
     }
+#ifdef COMBO_BUILD
+    if (comboAdult) {
+        lod = 0; // the adult remap picks OOT's near models
+    }
+#endif
     sPlayerLod = lod;
     SkelAnime_DrawFlexLod(play, skeleton, jointTable, dListCount, overrideLimbDraw, postLimbDraw, actor, lod);
+#ifdef COMBO_BUILD
+    // OOT Player_DrawImpl (adult): the Iron / Hover Boots, drawn over the feet on the skeleton's matrices (segment
+    // 0x0D, which the skeleton draw just set). Child Link has no boot models in OOT either.
+    if (comboAdult && (actor->id == ACTOR_PLAYER)) {
+        const Player* comboPlayer = (const Player*)actor;
+        const char* left = NULL;
+        const char* right = NULL;
+
+        if (comboPlayer->currentBoots == PLAYER_BOOTS_COMBO_IRON) {
+            left = "__OTR__@oot:objects/object_link_boy/gLinkAdultLeftIronBootDL";
+            right = "__OTR__@oot:objects/object_link_boy/gLinkAdultRightIronBootDL";
+        } else if (gComboHoverBoots) {
+            left = "__OTR__@oot:objects/object_link_boy/gLinkAdultLeftHoverBootDL";
+            right = "__OTR__@oot:objects/object_link_boy/gLinkAdultRightHoverBootDL";
+        }
+        if (left != NULL) {
+            gSPDisplayList(POLY_OPA_DISP++, (Gfx*)left);
+            gSPDisplayList(POLY_OPA_DISP++, (Gfx*)right);
+        }
+    }
+#endif
 
     CLOSE_DISPS(play->state.gfxCtx);
 }
@@ -2646,6 +2793,14 @@ s32 Player_OverrideLimbDrawGameplayDefault(PlayState* play, s32 limbIndex, Gfx**
 
             *dList = leftHandDLists[sPlayerLod];
             CosmeticEditor_SplitHeldItem(dList, CVAR_COSMETIC("Silly.LinkSwordScale"));
+#ifdef COMBO_BUILD
+            {
+                const void* oot = Combo_MmOotHeldDL(player, limbIndex); // ComboShip: OOT item in hand (OOT model)
+                if (oot != NULL) {
+                    *dList = (Gfx*)oot;
+                }
+            }
+#endif
 
             if (player->transformation == PLAYER_FORM_GORON) {
                 if (BEN_ANIM_EQUAL(player->skelAnime.animation, gPlayerAnim_pg_punchA)) {
@@ -2704,6 +2859,14 @@ s32 Player_OverrideLimbDrawGameplayDefault(PlayState* play, s32 limbIndex, Gfx**
 
                 *dList = rightHandDLists[sPlayerLod];
                 CosmeticEditor_SplitHeldItem(dList, CVAR_COSMETIC("Silly.LinkShieldScale"));
+#ifdef COMBO_BUILD
+                {
+                    const void* oot = Combo_MmOotHeldDL(player, limbIndex); // ComboShip: OOT item in hand
+                    if (oot != NULL) {
+                        *dList = (Gfx*)oot;
+                    }
+                }
+#endif
 
                 if (BEN_ANIM_EQUAL(player->skelAnime.animation, gPlayerAnim_pg_punchB)) {
                     func_80125CE0(player, D_801C0784, pos, rot);
@@ -2759,6 +2922,12 @@ s32 Player_OverrideLimbDrawGameplayFirstPerson(PlayState* play, s32 limbIndex, G
             } else {
                 *dList = sPlayerFirstPersonRightHandDLs[player->transformation];
             }
+#ifdef COMBO_BUILD
+            if (player->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT) {
+                // ComboShip: OOT's first-person slingshot arm (sFirstPersonRightHandHoldingWeaponDLs, child).
+                *dList = (Gfx*)"__OTR__@oot:objects/object_link_child/gLinkChildRightArmStretchedSlingshotDL";
+            }
+#endif
         } else {
             *dList = NULL;
         }
@@ -3819,6 +3988,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
 
     if (limbIndex == PLAYER_LIMB_LEFT_HAND) {
         Math_Vec3f_Copy(&player->leftHandWorld.pos, sPlayerCurBodyPartPos);
+#ifdef COMBO_BUILD
+        Combo_MM_AdultDrawHeld(play); // ComboShip: MM's Great Fairy's Sword in adult Link's hand (ComboAdultBody.cpp)
+#endif
 
         if ((*dList1 != NULL) && !func_801271B0(play, player, 0) && !func_80128640(play, player, *dList1) &&
             (BEN_ANIM_EQUAL(player->skelAnime.animation, gPlayerAnim_pg_punchA))) {
@@ -3860,6 +4032,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     5500.0f, // PLAYER_MELEEWEAPON_SWORD_TWO_HANDED
                     -1.0f,   // PLAYER_MELEEWEAPON_DEKU_STICK
                     2500.0f, // PLAYER_MELEEWEAPON_ZORA_BOOMERANG
+#ifdef COMBO_BUILD
+                    2500.0f, // PLAYER_MELEEWEAPON_COMBO_OOT_HAMMER (OOT sMeleeWeaponLengths[hammer])
+#endif
                 };
 
                 if ((player->transformation == PLAYER_FORM_FIERCE_DEITY) ||
@@ -3890,11 +4065,24 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                 static Vec3f D_801C0D98 = { -35.0f, -395.0f, 0.0f };
                 // Unused
                 static s32 D_801C0DA4 = 0;
+#ifdef COMBO_BUILD
+                // ComboShip: OOT's slingshot draws OOT's rubber band (sBowStringData[1]) at OOT's offset, with OOT's
+                // child twist as it stretches.
+                static Vec3f sComboSlingshotStringPos = { 606.0f, 236.0f, 0.0f };
+                const s32 comboSlingshot = (player->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT);
+                Vec3f* stringPos = comboSlingshot ? &sComboSlingshotStringPos : &D_801C0D98;
+                Gfx* stringDL =
+                    comboSlingshot ? (Gfx*)"__OTR__@oot:objects/object_link_child/gLinkChildSlinghotStringDL"
+                                   : D_801C0D94;
+#else
+                Vec3f* stringPos = &D_801C0D98;
+                Gfx* stringDL = D_801C0D94;
+#endif
 
                 OPEN_DISPS(play->state.gfxCtx);
 
                 Matrix_Push();
-                Matrix_Translate(D_801C0D98.x, D_801C0D98.y, D_801C0D98.z, MTXMODE_APPLY);
+                Matrix_Translate(stringPos->x, stringPos->y, stringPos->z, MTXMODE_APPLY);
                 if ((player->stateFlags3 & PLAYER_STATE3_40) && (player->unk_B28 >= 0) && (player->unk_ACC < 0xB)) {
                     Vec3f sp20C;
                     f32 temp_fv0;
@@ -3914,9 +4102,14 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     player->unk_B0C = -0.5f;
                 }
                 Matrix_Scale(1.0f, player->unk_B08, 1.0f, MTXMODE_APPLY);
+#ifdef COMBO_BUILD
+                if (comboSlingshot) {
+                    Matrix_RotateZF(player->unk_B08 * -0.2f, MTXMODE_APPLY); // OOT: !LINK_IS_ADULT
+                }
+#endif
 
                 MATRIX_FINALIZE_AND_LOAD(POLY_XLU_DISP++, play->state.gfxCtx);
-                gSPDisplayList(POLY_XLU_DISP++, D_801C0D94);
+                gSPDisplayList(POLY_XLU_DISP++, stringDL);
 
                 Matrix_Pop();
 
@@ -3958,7 +4151,14 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     heldActor->shape.rot = heldActor->world.rot;
                     if (func_800B7128(player)) {
                         Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
+#ifdef COMBO_BUILD
+                        // ComboShip: OOT's reticle reach (OOT: Hookshot 38600, Longshot 77600).
+                        Player_DrawHookshotReticle(
+                            play, player,
+                            (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f : 77600.0f);
+#else
                         Player_DrawHookshotReticle(play, player, 77600.0f);
+#endif
                     }
                 }
             } else if (player->meleeWeaponState != PLAYER_MELEE_WEAPON_STATE_0) {
@@ -4043,6 +4243,18 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
             }
         }
     } else if (limbIndex == PLAYER_LIMB_HEAD) {
+#ifdef COMBO_BUILD
+        // ComboShip: OOT's Skull / Spooky / Gerudo Mask worn in Termina: OOT's model in head limb space, as OOT's
+        // Player_PostLimbDrawGameplay draws a worn mask.
+        if ((*dList1 != NULL) && (player->transformation == PLAYER_FORM_HUMAN) &&
+            (player->currentMask == PLAYER_MASK_NONE) && (player->actor.id == ACTOR_PLAYER) &&
+            (Combo_MmOotWornMaskDL() != NULL)) {
+            OPEN_DISPS(play->state.gfxCtx);
+            MATRIX_FINALIZE_AND_LOAD(POLY_OPA_DISP++, play->state.gfxCtx);
+            gSPDisplayList(POLY_OPA_DISP++, (Gfx*)Combo_MmOotWornMaskDL());
+            CLOSE_DISPS(play->state.gfxCtx);
+        }
+#endif
         if (((*dList1 != NULL) && ((u32)player->currentMask != PLAYER_MASK_NONE)) &&
             (((player->transformation == PLAYER_FORM_HUMAN) &&
               ((!BEN_ANIM_EQUAL(player->skelAnime.animation, gPlayerAnim_cl_setmask)) ||
@@ -4265,6 +4477,10 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
     } else if (limbIndex == PLAYER_LIMB_SHEATH) {
         if ((*dList1 != NULL) && (player->transformation == PLAYER_FORM_HUMAN) &&
             (player->currentShield != PLAYER_SHIELD_NONE) &&
+#ifdef COMBO_BUILD
+            // ComboShip: adult Link's sheath model already carries the shield on his back (ComboAdultBody.cpp).
+            !Combo_MM_AdultBodyActive(&player->actor) &&
+#endif
             ((player->sheathType == PLAYER_MODELTYPE_SHEATH_14) ||
              (player->sheathType == PLAYER_MODELTYPE_SHEATH_15))) {
             CosmeticEditor_DrawBackShield(play, gPlayerShields[2 * ((player->currentShield - 1) ^ 0)]);

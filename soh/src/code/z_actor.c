@@ -18,6 +18,9 @@
 #include "soh/ActorDB.h"
 #include "soh/OTRGlobals.h"
 #include "soh/ShipUtils.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: MM form voices (guest audio)
+#endif
 
 #include <string.h>
 #include <stdlib.h>
@@ -1404,6 +1407,27 @@ f32 Actor_HeightDiff(Actor* actorA, Actor* actorB) {
 
 f32 Player_GetHeight(Player* player) {
     f32 offset = (player->stateFlags1 & PLAYER_STATE1_ON_HORSE) ? 32.0f : 0.0f;
+#ifdef COMBO_BUILD
+    // ComboShip: a transformed Link is as tall as MM says (mm z_actor.c Player_GetHeight): the camera's height and
+    // distance, targeting and NPC look-at all follow it. A curled Goron is 34.
+    {
+        extern s32 gComboGoronBall;
+        switch (Combo_OotForm()) {
+            case COMBO_FORM_FIERCE_DEITY:
+                // Owner 2026-11-13: MM's 124 put OOT's camera far above Fierce Deity ("hard to see him"); OOT's
+                // cameras are tuned for OOT bodies, so FD frames like adult Link (whose body it uses here).
+                return offset + 68.0f;
+            case COMBO_FORM_GORON:
+                return offset + (gComboGoronBall ? 34.0f : 80.0f);
+            case COMBO_FORM_ZORA:
+                return offset + 68.0f;
+            case COMBO_FORM_DEKU:
+                return offset + 36.0f;
+            default:
+                break;
+        }
+    }
+#endif
 
     if (LINK_IS_ADULT) {
         return offset + 68.0f;
@@ -1665,6 +1689,23 @@ s32 func_8002E2AC(PlayState* play, Actor* actor, Vec3f* arg2, s32 arg3) {
             func_80043334(&play->colCtx, actor, actor->floorBgId);
         }
     } else { // actor is above ground
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Goron ball (Player_Action_96) rolls with BGCHECKFLAG_PLAYER_800 set (func_80857A44), and
+        // MM's func_800B7678 then never keeps it on a floor below it: the frame it is above the floor it leaves the
+        // ground with its velocity, so a roll up a ramp launches off the lip (OOT keeps anything within 11 grounded).
+        extern s32 gComboGoronBall;
+        if ((actor->id == ACTOR_PLAYER) && gComboGoronBall) {
+            if (actor->bgCheckFlags & 0x1) {
+                actor->bgCheckFlags &= ~0x1;
+                actor->bgCheckFlags |= 0x4;
+                if ((actor->velocity.y < 0.0f) && (arg3 & 0x10)) {
+                    actor->velocity.y = 0.0f;
+                }
+                return false;
+            }
+            return true;
+        }
+#endif
         if ((actor->bgCheckFlags & 0x1) && (floorHeightDiff >= -11.0f)) {
             func_80043334(&play->colCtx, actor, actor->floorBgId);
         }
@@ -2245,6 +2286,13 @@ void Actor_SetPlayerKnockbackSmallNoDamage(PlayState* play, Actor* actor, f32 ar
 }
 
 void Player_PlaySfx(Actor* actor, u16 sfxId) {
+#ifdef COMBO_BUILD
+    // ComboShip: an MM transformation's voice lines play in its own MM voice (ComboGuestAudio.cpp).
+    if ((actor->id == ACTOR_PLAYER) && Combo_GuestVoice(sfxId)) {
+        GameInteractor_ExecuteOnPlayerSfx(sfxId);
+        return;
+    }
+#endif
     if (actor->id != ACTOR_PLAYER || sfxId < NA_SE_VO_LI_SWORD_N || sfxId > NA_SE_VO_LI_ELECTRIC_SHOCK_LV_KID) {
         Audio_PlaySfxGeneral(sfxId, &actor->projectedPos, 4, &gSfxDefaultFreqAndVolScale, &gSfxDefaultFreqAndVolScale,
                              &gSfxDefaultReverb);
@@ -3325,6 +3373,12 @@ void Actor_FreeOverlay(ActorDBEntry* dbEntry) {
 //      array to spawn An example of what this fixes, is that it allows hookshot to be used as child
 int gMapLoading = 0;
 
+#ifdef COMBO_BUILD
+// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): an actor spawned while an enemy we sync is updating is its
+// child (rock, nut, egg, boss spawn) and is mirrored on teammates' screens.
+void SohCoop_ActorSpawned(Actor* actor);
+#endif
+
 Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 posX, f32 posY, f32 posZ, s16 rotX,
                    s16 rotY, s16 rotZ, s16 params) {
     Actor* actor;
@@ -3413,6 +3467,9 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     gSegments[6] = temp;
 
     GameInteractor_ExecuteOnActorSpawn(actor);
+#ifdef COMBO_BUILD
+    SohCoop_ActorSpawned(actor);
+#endif
 
     return actor;
 }

@@ -371,7 +371,14 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 #endif
 
     char title[512];
+#ifdef COMBO_BUILD
+    // WomboComboShip: the window says the fork's name. The context name stays "ComboShip" on purpose -- it also
+    // names logs/ComboShip.log and the crash dump, which players and the debug-trace docs point at.
+    (void)gameName;
+    int len = snprintf(title, sizeof(title), "WomboComboShip (%s)", gfxApiName);
+#else
     int len = snprintf(title, sizeof(title), "%s (%s)", gameName, gfxApiName);
+#endif
 
 #ifdef __IOS__
     Uint32 flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_SHOWN;

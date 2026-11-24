@@ -741,6 +741,8 @@ s32 AudioHeap_ResetStep(void) {
             for (i = 0; i < gAudioContext.audioBufferParameters.numSequencePlayers; i++) {
                 AudioSeq_SequencePlayerDisableAsFinished(&gAudioContext.seqPlayers[i]);
             }
+            // ComboShip: the native MM sfx player too.
+            AudioSeq_SequencePlayerDisableAsFinished(&gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX]);
             gAudioContext.audioResetFadeOutFramesLeft = 2 / sp24;
             gAudioContext.resetStatus--;
             break;
@@ -988,6 +990,9 @@ void AudioHeap_Init(void) {
         AudioSeq_InitSequencePlayerChannels(j);
         AudioSeq_ResetSequencePlayer(&gAudioContext.seqPlayers[j]);
     }
+    // ComboShip: the native MM sfx player (outside numSequencePlayers so vanilla per-spec player counts are unchanged).
+    AudioSeq_InitSequencePlayerChannels(SEQ_PLAYER_COMBO_MM_SFX);
+    AudioSeq_ResetSequencePlayer(&gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX]);
 
     AudioHeap_InitSampleCaches(spec->persistentSampleCacheMem, spec->temporarySampleCacheMem);
     AudioLoad_InitSampleDmaBuffers(gAudioContext.numNotes);

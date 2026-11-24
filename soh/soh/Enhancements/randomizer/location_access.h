@@ -24,6 +24,13 @@ class Region;
     EventAccess(                       \
         event, #event, [] { return condition; }, CleanConditionString(#condition))
 
+#ifdef COMBO_BUILD
+void ComboFormCtxReset(); // logic.cpp: the MM forms' logic credit is judged per access condition
+#define COMBO_FORM_CTX_RESET() ComboFormCtxReset()
+#else
+#define COMBO_FORM_CTX_RESET()
+#endif
+
 class EventAccess {
   public:
     explicit EventAccess(LogicVal event_, std::string event_str_, ConditionFn condition_function_,
@@ -34,6 +41,7 @@ class EventAccess {
     bool ConditionsMet() const {
         auto ctx = Rando::Context::GetInstance();
         if (ctx->GetOption(RSK_NO_LOGIC).Is(RO_GENERIC_OFF)) {
+            COMBO_FORM_CTX_RESET();
             return condition_function();
         }
         return true;
@@ -85,6 +93,7 @@ class LocationAccess {
     bool GetConditionsMet() const {
         auto ctx = Rando::Context::GetInstance();
         if (ctx->GetOption(RSK_NO_LOGIC).Is(RO_GENERIC_OFF)) {
+            COMBO_FORM_CTX_RESET();
             return condition_function();
         }
         return true;

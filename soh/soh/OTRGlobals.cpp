@@ -1,4 +1,9 @@
 ﻿#include "OTRGlobals.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h"
+#include "ComboAnchorTunic.h"                           // ComboShip: Anchor color on every tunic
+#include "soh/Enhancements/cosmetics/CosmeticsEditor.h" // ComboShip: ApplyOrResetCustomGfxPatches
+#endif
 #include "OTRAudio.h"
 #include "ComboExport.h"
 #include "ComboResolve.h"
@@ -7,6 +12,9 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#if !defined(_WIN32)
+#include <dlfcn.h>
+#endif
 #include <set>
 #include <sstream>
 #include <unordered_set>
@@ -1164,12 +1172,22 @@ void OTRAudio_Thread() {
 
         int samples_left = AudioPlayer_Buffered();
         u32 num_audio_samples = samples_left < AudioPlayer_GetDesiredBuffered() ? SAMPLES_HIGH : SAMPLES_LOW;
+#ifdef COMBO_BUILD
+        // ComboShip: the MM sfx render harness (COMBO_DEBUG_SFX_RENDER only) paces like the MM reference engine.
+        num_audio_samples = Combo_MmAudioDebugSampleCount(num_audio_samples);
+#endif
 
         // 3 is the maximum authentic frame divisor.
         s16 audio_buffer[SAMPLES_HIGH * NUM_AUDIO_CHANNELS * 3];
         for (int i = 0; i < AUDIO_FRAMES_PER_UPDATE; i++) {
             AudioMgr_CreateNextAudioBuffer(audio_buffer + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
                                            num_audio_samples);
+#ifdef COMBO_BUILD
+            // ComboShip: debug harness only (COMBO_DEBUG_AUDIO / COMBO_DEBUG_SFX_RENDER). MM's sounds are played by
+            // this engine itself (native MM sfx player); nothing is mixed in from outside.
+            Combo_MmAudioDebugAfterRender(audio_buffer + i * (num_audio_samples * NUM_AUDIO_CHANNELS),
+                                          num_audio_samples);
+#endif
         }
 
         AudioPlayer_Play((u8*)audio_buffer,
@@ -1602,6 +1620,15 @@ static int sComboSwitchFileNum = -1;
 static int sComboCrossTargetMM = -1;
 // Arrival override pushed by the launcher, consumed once by TitleSetup (-1 = outside the Mask Shop).
 extern "C" s32 gComboTargetEntrance = -1;
+extern "C" void Combo_RequestCrossSwitch(int mmEntrance); // defined below (cross-game switch)
+extern "C" void Combo_RefreshFormBody(PlayState* play);   // z_player.c: re-derive a form's body
+void ComboEquipShare_Tick();                              // ComboEquipShare.cpp
+void ComboEquipShare_CaptureAtSwitch();                   // ComboEquipShare.cpp
+static int sComboLinkStateAtSwitch = -1; // ComboShip: Link age/tunic captured at the switch (SOH_GetComboLinkState)
+static int Combo_LiveLinkState();
+static int sComboMaskAtSwitch = -1; // ComboShip: the mask Link wears at the door (SOH_GetComboMask)
+static int Combo_LiveMaskToken();
+static void Combo_ApplyPendingMask();
 // Set on an override arrival, cleared by the next OnSceneInit.
 extern "C" s32 gComboCrossArrival = 0;
 #endif
@@ -1758,6 +1785,7 @@ extern "C" COMBO_EXPORT int SOH_ApplyImportedConfig(const char* mergedJsonUtf8) 
 }
 #endif
 
+extern "C" void (*gComboCrossDeliver)(int targetGame, const char* itemName, const char* srcCheckName); // (below)
 static void Combo_FinishInit() {
     OTRGlobals::Instance->Initialize();
     CustomMessageManager::Instance = new CustomMessageManager();
@@ -1838,11 +1866,15 @@ static void Combo_FinishInit() {
         }
     });
 
+    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() { Combo_ApplyPendingMask(); });
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
         if (!sComboSwitchPending)
             return;
         sComboSwitchPending = false;
-        Combo_FlushDormantAccumulators(); // ComboShip (#214): bank a count-up still running at the door
+        sComboLinkStateAtSwitch = Combo_LiveLinkState(); // age kept across games: what Link is at the door
+        sComboMaskAtSwitch = Combo_LiveMaskToken();       // and the mask he wears through it
+        ComboEquipShare_CaptureAtSwitch();               // shared button layout: what's on Link's buttons at the door
+        Combo_FlushDormantAccumulators();                // ComboShip (#214): bank a count-up still running at the door
         SaveManager::Instance->SaveFile(sComboSwitchFileNum);
         SaveManager::Instance->ThreadPoolWait();
         if (gComboSceneSwitchCallback) {
@@ -1852,6 +1884,278 @@ static void Combo_FinishInit() {
             gGameState->running = false;
         }
     });
+
+    // ComboShip debug (test harness only): COMBO_DEBUG_CROSS="<mm entrance>[,adult]" — once a save has been in play
+    // for ~2 s, optionally make Link adult, then cross into MM at that entrance exactly like a crossed door does.
+    // ComboShip debug (test harness only): COMBO_DEBUG_FORM=goron|zora|deku|fd — become that MM form once a save is in
+    // play.
+    // ComboShip: one health bar for both games (combo/ComboSharedHealth.h).
+    {
+        extern void Combo_SharedHealthRegister();
+        Combo_SharedHealthRegister();
+    }
+    // ComboShip: "Anchor color on every tunic" (combo/ComboAnchorTunic.h): keep all eight tunic slots on the Anchor
+    // color while OOT is the foreground game; re-apply OOT's patches and MM's (the forms in Hyrule wear MM's models).
+    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+        if (ComboAnchorTunic::Sync(ComboAnchorTunic::kOotSlots)) {
+            ApplyOrResetCustomGfxPatches(false);
+        }
+        if (ComboAnchorTunic::Sync(ComboAnchorTunic::kMmSlots)) {
+            typedef void (*FnVoid)(void);
+            static FnVoid sMmApply = (FnVoid)Combo_ResolveSym("2ship", "MM_ComboApplyCosmetics");
+            if (sMmApply != nullptr) {
+                sMmApply();
+            }
+        }
+    });
+    if (std::getenv("COMBO_DEBUG_FORM")) {
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            static bool sDone = false;
+            if (sDone || gPlayState == nullptr || gSaveContext.fileNum > 2 || GET_PLAYER(gPlayState) == nullptr)
+                return;
+            if (++sFrames < 40)
+                return;
+            sDone = true;
+            const std::string want = std::getenv("COMBO_DEBUG_FORM");
+            Combo_OotSetForm(want == "zora"   ? COMBO_FORM_ZORA
+                             : want == "deku" ? COMBO_FORM_DEKU
+                             : want == "fd"   ? COMBO_FORM_FIERCE_DEITY
+                                              : COMBO_FORM_GORON);
+            Combo_RefreshFormBody(gPlayState);
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_FORM: form now {}", Combo_OotForm());
+        });
+    }
+#if !defined(_WIN32)
+    if (std::getenv("COMBO_DEBUG_PRESET")) {
+        // Debug (test harness only): COMBO_DEBUG_PRESET=<index>,<parts> applies a shipped preset (combo/gui
+        // ComboPlayPreset.cpp) at frame 60 of play, as the menu's Apply button does.
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            if (gPlayState == nullptr || ++sFrames != 60)
+                return;
+            int idx = 0, parts = 15;
+            sscanf(std::getenv("COMBO_DEBUG_PRESET"), "%d,%d", &idx, &parts);
+            typedef int (*FnApply)(int, int);
+            FnApply apply = (FnApply)dlsym(RTLD_DEFAULT, "ComboUI_PlayPresetApply");
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_PRESET {} parts {}: {}", idx, parts, apply ? apply(idx, parts) : -2);
+        });
+    }
+#endif
+    if (std::getenv("COMBO_DEBUG_WATER")) {
+        // Debug (test harness only): COMBO_DEBUG_WATER=1 drops Link into the middle of the scene's largest water box at
+        // frame 60 (swimming tests, headless).
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            static bool sDone = false;
+            static int sScene = -1;
+            if (gPlayState == nullptr || gSaveContext.fileNum > 2 || GET_PLAYER(gPlayState) == nullptr)
+                return;
+            if ((atoi(std::getenv("COMBO_DEBUG_WATER")) == 3) && (gPlayState->sceneNum != sScene)) {
+                sScene = gPlayState->sceneNum; // =3: again in every new scene (after a game switch)
+                sFrames = 0;
+                sDone = false;
+            }
+            const int mode = atoi(std::getenv("COMBO_DEBUG_WATER"));
+            if (sDone || ++sFrames < ((mode >= 100) ? mode : 60)) // >= 100: that many frames in (stand first)
+                return;
+            sDone = true;
+            CollisionHeader* col = gPlayState->colCtx.colHeader;
+            WaterBox* best = nullptr;
+            for (int i = 0; (col != nullptr) && (i < col->numWaterBoxes); i++) {
+                WaterBox* w = &col->waterBoxes[i];
+                if ((best == nullptr) || ((s32)w->xLength * w->zLength > (s32)best->xLength * best->zLength))
+                    best = w;
+            }
+            if (best == nullptr) {
+                SPDLOG_INFO("[ComboShip] COMBO_DEBUG_WATER: no water here");
+                return;
+            }
+            Player* player = GET_PLAYER(gPlayState);
+            player->actor.world.pos.x = best->xMin + best->xLength * 0.5f;
+            player->actor.world.pos.z = best->zMin + best->zLength * 0.5f;
+            player->actor.world.pos.y = best->ySurface - 5.0f;
+            player->actor.prevPos = player->actor.world.pos;
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_WATER: into water at {:.0f} {:.0f} {:.0f}", player->actor.world.pos.x,
+                        player->actor.world.pos.y, player->actor.world.pos.z);
+        });
+    }
+    if (std::getenv("COMBO_DEBUG_AIM")) {
+        // Debug (test harness only): COMBO_DEBUG_AIM=<actor id hex>,<dist>,<frame>[,<y offset>[,<yaw hex>]] puts Link <dist> units from the
+        // nearest actor of that id, level with its middle, facing it, at <frame> (crates / pots to ram or hit).
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            static bool sDone = false;
+            unsigned id = 0;
+            int dist = 120, frame = 200, yOff = 10;
+            unsigned yawSet = 0x10000; // > 0xFFFF = from where Link stands
+            if (gPlayState == nullptr || gSaveContext.fileNum > 2 || GET_PLAYER(gPlayState) == nullptr)
+                return;
+            if (sDone) {
+                static int sAfter = 0;
+                Player* p = GET_PLAYER(gPlayState);
+                if ((++sAfter <= 200) && ((sAfter < 4) || ((sAfter % 10) == 0))) {
+                    SPDLOG_INFO("[ComboShip] COMBO_DEBUG_AIM +{}: pos {:.0f} {:.0f} {:.0f} spd {:.1f} water {:.0f} "
+                                "s1 0x{:X} boots {}",
+                                sAfter, p->actor.world.pos.x, p->actor.world.pos.y, p->actor.world.pos.z,
+                                p->linearVelocity, p->actor.yDistToWater, p->stateFlags1, p->currentBoots);
+                }
+                return;
+            }
+            std::sscanf(std::getenv("COMBO_DEBUG_AIM"), "%x,%d,%d,%d,%x", &id, &dist, &frame, &yOff,
+                        &yawSet);
+            if (++sFrames < frame)
+                return;
+            sDone = true;
+            Player* player = GET_PLAYER(gPlayState);
+            Actor* best = nullptr;
+            f32 bestD = 1e9f;
+            for (int c = 0; c < ACTORCAT_MAX; c++) {
+                for (Actor* a = gPlayState->actorCtx.actorLists[c].head; a != nullptr; a = a->next) {
+                    if (a->id != (s16)id)
+                        continue;
+                    const f32 d = Math_Vec3f_DistXYZ(&a->world.pos, &player->actor.world.pos);
+                    SPDLOG_INFO("[ComboShip] COMBO_DEBUG_AIM: actor 0x{:X} at {:.0f} {:.0f} {:.0f}", id, a->world.pos.x,
+                                a->world.pos.y, a->world.pos.z);
+                    if (d < bestD) {
+                        bestD = d;
+                        best = a;
+                    }
+                }
+            }
+            if (best == nullptr) {
+                SPDLOG_INFO("[ComboShip] COMBO_DEBUG_AIM: no actor 0x{:X}", id);
+                return;
+            }
+            const s16 yaw =
+                (yawSet <= 0xFFFF) ? (s16)yawSet : Math_Vec3f_Yaw(&player->actor.world.pos, &best->world.pos);
+            player->actor.world.pos.x = best->world.pos.x - Math_SinS(yaw) * dist;
+            player->actor.world.pos.z = best->world.pos.z - Math_CosS(yaw) * dist;
+            player->actor.world.pos.y = best->world.pos.y + yOff;
+            player->actor.prevPos = player->actor.world.pos;
+            player->actor.shape.rot.y = player->actor.world.rot.y = player->yaw = yaw;
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_AIM: Link {} from it, yaw 0x{:X}", dist, (u16)yaw);
+        });
+    }
+    if (std::getenv("COMBO_DEBUG_LEDGE")) {
+        // Debug (test harness only): COMBO_DEBUG_LEDGE=1 puts Link 40 units short of the nearest drop (>= 80 units)
+        // within 400 units of where he stands, facing it, at frame 60 (ledge jumps / spins off ledges, headless).
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            static bool sDone = false;
+            if (sDone || gPlayState == nullptr || gSaveContext.fileNum > 2 || GET_PLAYER(gPlayState) == nullptr)
+                return;
+            if (++sFrames < 60)
+                return;
+            sDone = true;
+            Player* player = GET_PLAYER(gPlayState);
+            const Vec3f origin = player->actor.world.pos;
+            for (int dist = 20; dist <= 2000; dist += 10) {
+                for (int dir = 0; dir < 32; dir++) {
+                    const s16 yaw = (s16)(dir * 0x800);
+                    Vec3f probe = { origin.x + Math_SinS(yaw) * dist, origin.y + 300.0f,
+                                    origin.z + Math_CosS(yaw) * dist };
+                    CollisionPoly* poly;
+                    s32 bgId;
+                    const f32 floor = BgCheck_EntityRaycastFloor3(&gPlayState->colCtx, &poly, &bgId, &probe);
+                    Vec3f prev = { origin.x + Math_SinS(yaw) * (dist - 10), origin.y + 300.0f,
+                                   origin.z + Math_CosS(yaw) * (dist - 10) };
+                    const f32 prevFloor = BgCheck_EntityRaycastFloor3(&gPlayState->colCtx, &poly, &bgId, &prev);
+                    if ((prevFloor > -30000.0f) && (floor < prevFloor - 120.0f) && (floor > -30000.0f)) {
+                        static int sCand = 0;
+                        if (sCand++ < 6) {
+                            SPDLOG_INFO(
+                                "[ComboShip] COMBO_DEBUG_LEDGE: candidate {:.0f} -> {:.0f} at dist {} yaw 0x{:X}",
+                                prevFloor, floor, dist, (u16)yaw);
+                        }
+                        // nothing in the way (railings, walls) between Link and the edge
+                        Vec3f a = { origin.x + Math_SinS(yaw) * (dist - 60), prevFloor + 25.0f,
+                                    origin.z + Math_CosS(yaw) * (dist - 60) };
+                        Vec3f b = { probe.x, prevFloor + 25.0f, probe.z };
+                        Vec3f hit;
+                        CollisionPoly* wall;
+                        s32 wallBg;
+                        if (BgCheck_EntityLineTest1(&gPlayState->colCtx, &a, &b, &hit, &wall, true, false, false, true,
+                                                    &wallBg)) {
+                            continue;
+                        }
+                        a.y = b.y = prevFloor + 50.0f;
+                        if (BgCheck_EntityLineTest1(&gPlayState->colCtx, &a, &b, &hit, &wall, true, false, false, true,
+                                                    &wallBg)) {
+                            continue;
+                        }
+                        player->actor.world.pos.x = origin.x + Math_SinS(yaw) * (dist - 50);
+                        player->actor.world.pos.z = origin.z + Math_CosS(yaw) * (dist - 50);
+                        player->actor.world.pos.y = prevFloor;
+                        player->actor.shape.rot.y = player->actor.world.rot.y = player->yaw = yaw;
+                        SPDLOG_INFO("[ComboShip] COMBO_DEBUG_LEDGE: drop {:.0f} -> {:.0f} at dist {} yaw 0x{:X}",
+                                    prevFloor, floor, dist, (u16)yaw);
+                        return;
+                    }
+                }
+            }
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_LEDGE: no drop found");
+        });
+    }
+    // ComboShip debug (launch env only): COMBO_DEBUG_CROSSGIVE="<target game 0|1>,<item name>[;<target>,<item>...]"
+    // hands each item to the launcher's cross-game dispatcher (as a foreign check found here would), one every 40
+    // frames once play has run 60 frames. Health is logged before and after each delivery.
+    if (const char* dbg = std::getenv("COMBO_DEBUG_CROSSGIVE")) {
+        static std::vector<std::pair<int, std::string>> sGives;
+        {
+            std::string all = dbg;
+            size_t pos = 0;
+            while (pos <= all.size()) {
+                size_t end = all.find(';', pos);
+                std::string one = all.substr(pos, end == std::string::npos ? std::string::npos : end - pos);
+                size_t comma = one.find(',');
+                if (comma != std::string::npos) {
+                    sGives.emplace_back(std::atoi(one.substr(0, comma).c_str()), one.substr(comma + 1));
+                }
+                if (end == std::string::npos) {
+                    break;
+                }
+                pos = end + 1;
+            }
+        }
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            static size_t sNext = 0;
+            if (sNext >= sGives.size() || gPlayState == nullptr || gSaveContext.fileNum > 2 ||
+                GET_PLAYER(gPlayState) == nullptr || gComboCrossDeliver == nullptr)
+                return;
+            if ((++sFrames < 60) || ((sFrames - 60) % 40) != 0)
+                return;
+            const auto& g = sGives[sNext];
+            const std::string check = "debug-crossgive-" + std::to_string(sNext);
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_CROSSGIVE: '{}' for game {} | before: health {} / {} pieces {}",
+                        g.second, g.first, gSaveContext.health, gSaveContext.healthCapacity,
+                        (gSaveContext.inventory.questItems & 0xF0000000) >> 28);
+            gComboCrossDeliver(g.first, g.second.c_str(), check.c_str());
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_CROSSGIVE: after: health {} / {} pieces {} accumulator {}",
+                        gSaveContext.health, gSaveContext.healthCapacity,
+                        (gSaveContext.inventory.questItems & 0xF0000000) >> 28, gSaveContext.healthAccumulator);
+            sNext++;
+        });
+    }
+    if (const char* dbg = std::getenv("COMBO_DEBUG_CROSS")) {
+        static int sDbgEntrance = (int)std::strtol(dbg, nullptr, 0);
+        static bool sDbgAdult = std::strstr(dbg, "adult") != nullptr;
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
+            static int sFrames = 0;
+            static bool sDone = false;
+            if (sDone || gPlayState == nullptr || gSaveContext.fileNum > 2 || GET_PLAYER(gPlayState) == nullptr)
+                return;
+            if (++sFrames < 40)
+                return;
+            sDone = true;
+            if (sDbgAdult)
+                gSaveContext.linkAge = LINK_AGE_ADULT;
+            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_CROSS: -> MM entrance 0x{:X} ({})", sDbgEntrance,
+                        sDbgAdult ? "adult" : "as is");
+            Combo_RequestCrossSwitch(sDbgEntrance);
+        });
+    }
 
     // ComboShip release gate: drain slots the launcher backed up for a version mismatch and show a
     // popup on this (main) thread — the launcher only records slots, never touches ImGui.
@@ -1872,10 +2176,18 @@ static void Combo_FinishInit() {
             gComboSharedChanged(0, static_cast<int>(gSaveContext.fileNum));
         }
     });
+    // ... and on every load (a switch in, a file load): a raise the other game owed this one is made on arrival, not
+    // left waiting for the next pickup.
+    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnLoadGame>([](int32_t fileNum) {
+        if (gComboSharedChanged && (fileNum >= 0) && (fileNum != 0xFF)) {
+            gComboSharedChanged(0, static_cast<int>(fileNum));
+        }
+    });
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
         if (gComboSharedTick) {
             gComboSharedTick();
         }
+        ComboEquipShare_Tick(); // shared button layout pushed by the launcher (ComboEquipShare.cpp)
     });
 #endif
 
@@ -1977,9 +2289,25 @@ extern "C" COMBO_EXPORT void SOH_DeinitWindowOnly() {
 // COMBO_EXPORT must follow the extern "C" specifier: the split form (the export attribute on its
 // own line BEFORE `extern "C"`) is silently ignored by MSVC (C4091), so this function would not be
 // exported and the MM boot gate would fail.
+// ComboShip debug (test harness only): bring MM's save for an OOT slot into MM's dormant memory (what a real file load
+// does through the launcher), so the debug save's foreign pause faces have items. Called from title_setup.c.
+extern "C" void Combo_DebugLoadMmSave(int fileNum) {
+    typedef int (*FnLoad)(int);
+    static FnLoad sLoad = (FnLoad)Combo_ResolveSym("2ship", "MM_LoadSaveForCombo");
+    if (sLoad != nullptr) {
+        SPDLOG_INFO("[ComboShip] debug: MM save for slot {} loaded ({})", fileNum, sLoad(fileNum));
+    }
+}
+
+// ComboShip: re-apply OOT's cosmetic model patches (tunic colors) after another game changed the shared CVars.
+extern "C" COMBO_EXPORT void SOH_ComboApplyCosmetics(void) {
+    ApplyOrResetCustomGfxPatches(false);
+}
+
 extern "C" COMBO_EXPORT void SOH_PrepareForTransition(void) {
     SaveManager_ThreadPoolWait();
     OTRAudio_Exit();
+    Combo_GuestAudioEnd(); // ComboShip: stop the MM sounds OOT's engine plays before MM takes the foreground
     // ComboShip: do NOT SohGui::Destroy() here. The Gui is a single shared libultraship instance that
     // persists across transitions; OOT's windows are set up once at first boot and stay resident (same
     // model MM uses — see MM_PrepareForTransition). Tearing them down would force a rebuild on resume,
@@ -3174,6 +3502,15 @@ void Combo_GrantResolvedOOT(const GetItemEntry& gie) {
 extern "C" COMBO_EXPORT void SOH_GrantCrossItem(const char* itemName) {
     if (!itemName)
         return;
+    // ComboShip: MM's magic refills, handed here by the launcher while Hyrule is being played (the meter is shared):
+    // OOT's own magic jars. OOT's item pool has no refill of that name, so this is the only way they arrive.
+    if ((std::string(itemName) == "Small Magic Refill") || (std::string(itemName) == "Large Magic Refill")) {
+        if ((gPlayState != nullptr) && gSaveContext.isMagicAcquired) {
+            Item_Give(gPlayState, (std::string(itemName) == "Small Magic Refill") ? ITEM_MAGIC_SMALL : ITEM_MAGIC_LARGE);
+            SPDLOG_INFO("[ComboShip] SOH_GrantCrossItem: '{}' fills the shared meter here", itemName);
+        }
+        return;
+    }
     RandomizerGet rg;
     // ComboShip: resolve magic concretely — Item::GetGIEntry()'s progressive resolver reads a
     // stale/frozen Logic magicLevel, losing a second dormant magic upgrade. See deviations/rando.md.
@@ -3276,6 +3613,40 @@ extern "C" COMBO_EXPORT int SOH_ReadComboGoalCVars(int* required, int* total) {
     }
     return hunt;
 }
+// ComboShip (full-coop-sync §B1/§B2): the combo entrance-randomizer settings, read from the combo menu's
+// CVars as JSON for the launcher's shuffler (combo/rando/CrossEntrance.h). The seed stores what was used.
+// ComboShip (owner ruling 2026-11-11): Unified Inventory — both Links use every item. Pushed from the seed by the
+// launcher before generation dumps, on reload and on slot load. See Enhancements/randomizer/ComboUnifiedInventory.cpp.
+extern "C" int gComboUnifiedInventory;
+extern "C" COMBO_EXPORT void SOH_SetComboUnifiedInventory(int on) {
+    gComboUnifiedInventory = on ? 1 : 0;
+}
+// Owner ruling 2026-11-12: OOT starts with what MM starts with (ComboRando::MirrorStartBit, SharedItems.h).
+extern "C" int gComboMirrorStartMask = 0;
+extern "C" COMBO_EXPORT void SOH_SetComboMirrorStart(uint32_t mask) {
+    gComboMirrorStartMask = static_cast<int>(mask);
+}
+extern "C" COMBO_EXPORT const char* SOH_ReadComboEntranceCVars(void) {
+    static std::string cached;
+    nlohmann::json mm;
+    mm["overworld"] = CVarGetInteger("gCombo.Rando.Entrances.MM.Overworld", 0) != 0;
+    mm["interior"] = CVarGetInteger("gCombo.Rando.Entrances.MM.Interior", 0) != 0;
+    mm["dungeon"] = CVarGetInteger("gCombo.Rando.Entrances.MM.Dungeon", 0) != 0;
+    mm["decoupled"] = CVarGetInteger("gCombo.Rando.Entrances.MM.Decoupled", 0) != 0;
+    mm["mixed"] = CVarGetInteger("gCombo.Rando.Entrances.MM.Mixed", 0) != 0;
+    // Cross-game entrances (§B2): which kinds of doors may lead into the OTHER game, and how many of them do.
+    nlohmann::json cross;
+    cross["overworld"] = CVarGetInteger("gCombo.Rando.Entrances.Cross.Overworld", 0) != 0;
+    cross["interior"] = CVarGetInteger("gCombo.Rando.Entrances.Cross.Interior", 0) != 0;
+    cross["dungeon"] = CVarGetInteger("gCombo.Rando.Entrances.Cross.Dungeon", 0) != 0;
+    cross["percent"] = CVarGetInteger("gCombo.Rando.Entrances.Cross.Percent", 50);
+    cached = nlohmann::json{
+        { "mm", mm },
+        { "cross", cross },
+        { "unifiedInventory", CVarGetInteger("gCombo.Rando.UnifiedInventory", 0) != 0 }
+    }.dump();
+    return cached.c_str();
+}
 // ComboShip (#135): which game a new file starts in. The launcher resolves OOT/MM/Random per seed and
 // pushes the concrete value here; FinalizeSettings forces the settings an MM start needs.
 extern "C" int gComboStartingGameMM = 0;
@@ -3311,6 +3682,10 @@ extern "C" COMBO_EXPORT void SOH_SetComboSharedItems(uint32_t mask) {
     gComboSharedMask = static_cast<int>(mask);
 }
 extern "C" COMBO_EXPORT uint32_t SOH_ReadComboSharedCVars(void) {
+    // Unified Inventory (owner ruling 2026-11-11) shares every family.
+    if (CVarGetInteger("gCombo.Rando.UnifiedInventory", 0)) {
+        return ComboRando::SharedMaskAll();
+    }
     uint32_t mask = 0;
     for (int i = 0; i < ComboRando::SF_COUNT; ++i) {
         if (CVarGetInteger(ComboRando::SharedFamilyByIndex(i).cvar, 0)) {
@@ -3320,9 +3695,16 @@ extern "C" COMBO_EXPORT uint32_t SOH_ReadComboSharedCVars(void) {
     return mask;
 }
 
+// Shared bottles (ComboBottleShelf.cpp): pooled family — found-in-OOT count / hold-this-many raise.
+int ComboBottles_Found();
+int ComboBottles_Held();
+void ComboBottles_AddMirrored();
+
 extern "C" COMBO_EXPORT int SOH_GetSharedTier(int family) try {
     if (family < 0 || family >= ComboRando::SF_COUNT)
         return 0;
+    if (family == ComboRando::SF_BOTTLES)
+        return ComboBottles_Found();
     switch (static_cast<ComboRando::SharedFamily>(family)) {
         case ComboRando::SF_BOW:
             return CUR_UPG_VALUE(UPG_QUIVER);
@@ -3349,6 +3731,12 @@ extern "C" COMBO_EXPORT int SOH_GetSharedTier(int family) try {
             return CHECK_QUEST_ITEM(QUEST_SONG_EPONA) ? 1 : 0;
         case ComboRando::SF_SONG_OF_STORMS:
             return CHECK_QUEST_ITEM(QUEST_SONG_STORMS) ? 1 : 0;
+        case ComboRando::SF_OCARINA:
+            return INV_CONTENT(ITEM_OCARINA_FAIRY) == ITEM_OCARINA_TIME    ? 2
+                   : INV_CONTENT(ITEM_OCARINA_FAIRY) == ITEM_OCARINA_FAIRY ? 1
+                                                                           : 0;
+        case ComboRando::SF_SONG_OF_TIME:
+            return CHECK_QUEST_ITEM(QUEST_SONG_TIME) ? 1 : 0;
         case ComboRando::SF_GORON_MASK:
             return Flags_GetRandomizerInf(RAND_INF_CHILD_TRADES_HAS_MASK_GORON) ? 1 : 0;
         case ComboRando::SF_ZORA_MASK:
@@ -3389,6 +3777,12 @@ extern "C" COMBO_EXPORT void SOH_RaiseSharedTier(int family, int tier) try {
     if (family < 0 || family >= ComboRando::SF_COUNT)
         return;
     const auto fam = static_cast<ComboRando::SharedFamily>(family);
+    if (fam == ComboRando::SF_BOTTLES) {
+        // Pooled: `tier` is the shared TOTAL; hold that many (mirrored empties fill slots, then the shelf).
+        while (ComboBottles_Held() < tier && ComboBottles_Held() < ComboRando::SharedFamilyByIndex(family).mmTierCap)
+            ComboBottles_AddMirrored();
+        return;
+    }
     for (;;) {
         const int cur = SOH_GetSharedTier(family);
         if (cur >= tier)
@@ -3427,6 +3821,12 @@ extern "C" COMBO_EXPORT void SOH_RaiseSharedTier(int family, int tier) try {
                 break;
             case ComboRando::SF_SONG_OF_STORMS:
                 rg = RG_SONG_OF_STORMS;
+                break;
+            case ComboRando::SF_OCARINA:
+                rg = cur == 0 ? RG_FAIRY_OCARINA : RG_OCARINA_OF_TIME;
+                break;
+            case ComboRando::SF_SONG_OF_TIME:
+                rg = RG_SONG_OF_TIME;
                 break;
             case ComboRando::SF_GORON_MASK:
                 rg = RG_GORON_MASK;
@@ -3482,6 +3882,13 @@ extern "C" COMBO_EXPORT void SOH_RaiseSharedTier(int family, int tier) try {
         }
         if (SOH_GetSharedTier(family) <= cur)
             return; // didn't raise (e.g. no free trade slot) — stop instead of looping forever
+        // Persist the raise, as MM_RaiseSharedTier and SOH_GrantCrossItem do. A raise made while OOT was dormant lived
+        // only in memory, and the next switch into OOT reloads its save from disk: a magic meter got in Termina was
+        // gone on arrival in Hyrule (owner 2026-11-14: "when the game switched to OOT ... i had zero magic and
+        // couldn't use lens of truth").
+        if (SaveManager::Instance && (gSaveContext.fileNum != 0xFF)) {
+            SaveManager::Instance->SaveFile(gSaveContext.fileNum);
+        }
     }
 } catch (const std::exception& e) { SPDLOG_ERROR("[ComboShip] SOH_RaiseSharedTier threw: {}", e.what()); } catch (...) {
     SPDLOG_ERROR("[ComboShip] SOH_RaiseSharedTier threw a non-std exception");
@@ -3752,6 +4159,17 @@ extern "C" COMBO_EXPORT int32_t SOH_MenuDrawWidget(int32_t i, int32_t width) {
 extern "C" bool WindowIsRunning(void);
 
 // ComboShip (teleport songs): switch to MM and arrive at this entrance. Console: combo_warp_mm.
+// ComboShip: drop a cross switch requested while a save was being (re)loaded. A return from MM must stay in OOT; only a
+// door walked through after arrival may cross. Returns true if one was dropped.
+extern "C" int Combo_CancelPendingCrossSwitch(void) {
+    if (!sComboSwitchPending || (sComboCrossTargetMM < 0))
+        return 0;
+    SPDLOG_WARN("[ComboShip] dropping cross switch to MM 0x{:X} requested during the return load", sComboCrossTargetMM);
+    sComboSwitchPending = false;
+    sComboCrossTargetMM = -1;
+    return 1;
+}
+
 extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
     if (gSaveContext.fileNum > 2) {
         SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: no save loaded (fileNum={})", (int)gSaveContext.fileNum);
@@ -3760,6 +4178,104 @@ extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
     sComboCrossTargetMM = mmEntrance;
     sComboSwitchFileNum = (int)gSaveContext.fileNum;
     sComboSwitchPending = true;
+}
+
+// ComboShip (owner ruling 2026-11-12, age kept across games): Link's age + tunic in OOT's live save, read by the
+// launcher before every switch into MM. -1 = no OOT save loaded. bit 0 = adult, bits 1-2 = tunic (0 Kokiri, 1 Goron,
+// 2 Zora).
+// OOT's save context is torn down by the time the launcher asks, so the switch hook captures the state at the door
+// (sComboLinkStateAtSwitch); the live save answers when no switch is in flight.
+static int Combo_LiveLinkState() {
+    if (gSaveContext.fileNum > 2)
+        return -1;
+    int tunic = (int)CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) - EQUIP_VALUE_TUNIC_KOKIRI;
+    if (tunic < 0 || tunic > 2)
+        tunic = 0;
+    return (LINK_IS_ADULT ? 1 : 0) | (tunic << 1) | (Combo_OotForm() << 3); // bits 3-5: MM form in Hyrule
+}
+
+// Launcher push before OOT resumes: the MM form Link had in Termina (ComboForms.h; human if OOT has no port yet).
+extern "C" COMBO_EXPORT void SOH_SetComboForm(int form) {
+    Combo_OotSetForm(form);
+    SPDLOG_INFO("[ComboShip] form from Termina: {} -> Hyrule form {}", form, Combo_OotForm());
+}
+extern "C" COMBO_EXPORT int SOH_GetComboLinkState(void) {
+    if (sComboLinkStateAtSwitch >= 0) {
+        const int st = sComboLinkStateAtSwitch;
+        sComboLinkStateAtSwitch = -1; // consumed by this switch
+        return st;
+    }
+    return Combo_LiveLinkState();
+}
+
+// ---- the worn mask across the doors ---------------------------------------------------------------------------------
+// Token: -1 none, an OOT item id (ITEM_MASK_KEATON..TRUTH) for OOT's own masks, 0x100 | MM item id for an MM mask.
+// Transformation masks travel as the form (SOH_SetComboForm), not here.
+extern "C" int Combo_PauseWornMmMaskId(void);
+extern "C" int Combo_PauseWearMmMaskFromButtons(int mm);
+extern "C" void Combo_PauseClearMmMask(void);
+static int Combo_LiveMaskToken() {
+    if ((gPlayState == nullptr) || (GET_PLAYER(gPlayState) == nullptr) || (Combo_OotForm() != COMBO_FORM_HUMAN)) {
+        return -1;
+    }
+    if (Combo_PauseWornMmMaskId() >= 0) {
+        return 0x100 | Combo_PauseWornMmMaskId();
+    }
+    const int mask = GET_PLAYER(gPlayState)->currentMask;
+    if ((mask == PLAYER_MASK_NONE) || (mask == PLAYER_MASK_GORON) || (mask == PLAYER_MASK_ZORA)) {
+        return -1;
+    }
+    return ITEM_MASK_KEATON + (mask - PLAYER_MASK_KEATON);
+}
+
+extern "C" COMBO_EXPORT int SOH_GetComboMask(void) {
+    if (sComboMaskAtSwitch != -1) {
+        const int t = sComboMaskAtSwitch;
+        sComboMaskAtSwitch = -1;
+        return t;
+    }
+    return Combo_LiveMaskToken();
+}
+
+// Launcher push before OOT resumes: the mask Link wore in Termina. Put on the first frame he is in play, by OOT's
+// rules: an OOT mask (Skull / Spooky / Gerudo worn in Termina) as OOT's own, an MM mask from the button that holds it;
+// MM's Keaton / Bunny / Truth become OOT's own twin when only that is on a button. -1 takes off what he had on.
+static int sComboPendingMask = -2; // -2 = nothing pending
+extern "C" COMBO_EXPORT void SOH_SetComboMask(int token) {
+    sComboPendingMask = token;
+}
+static void Combo_ApplyPendingMask() {
+    if ((sComboPendingMask == -2) || (gPlayState == nullptr) || (GET_PLAYER(gPlayState) == nullptr) ||
+        (gSaveContext.fileNum > 2)) {
+        return;
+    }
+    Player* player = GET_PLAYER(gPlayState);
+    const int token = sComboPendingMask;
+    sComboPendingMask = -2;
+    Combo_PauseClearMmMask();
+    player->currentMask = PLAYER_MASK_NONE;
+    if ((token < 0) || (Combo_OotForm() != COMBO_FORM_HUMAN)) {
+        return;
+    }
+    if (token < 0x100) {
+        if ((token >= ITEM_MASK_KEATON) && (token <= ITEM_MASK_TRUTH)) {
+            player->currentMask = PLAYER_MASK_KEATON + (token - ITEM_MASK_KEATON);
+        }
+    } else if (!Combo_PauseWearMmMaskFromButtons(token & 0xFF)) {
+        static const int sTwins[][2] = { { 0x3A, ITEM_MASK_KEATON }, { 0x39, ITEM_MASK_BUNNY }, { 0x36, ITEM_MASK_TRUTH } };
+        for (const auto& t : sTwins) {
+            if (t[0] != (token & 0xFF)) {
+                continue;
+            }
+            for (int b = 1; b < 8; b++) {
+                if (gSaveContext.equips.buttonItems[b] == t[1]) {
+                    player->currentMask = PLAYER_MASK_KEATON + (t[1] - ITEM_MASK_KEATON);
+                }
+            }
+        }
+    }
+    SPDLOG_INFO("[ComboShip] mask on arrival: token 0x{:X} -> OOT mask {} / MM mask {}", token, (int)player->currentMask,
+                Combo_PauseWornMmMaskId());
 }
 
 // Launcher drain: the MM entrance the pending switch should arrive at, consumed on read (-1 = none).
@@ -5546,9 +6062,23 @@ static void EnsureOracleInit() {
 }
 
 #ifdef COMBO_BUILD
+// ComboShip (cross-game entrances): ComboCrossEntrances.cpp burns the lazy init before crossing doors.
+void ComboCross_EnsureOracleInit() {
+    EnsureOracleInit();
+}
+
 // ComboShip (teleport songs): cross-game warp inputs for the next search (cleared after it), CW_OOT_OUT_* output.
 extern "C" int gComboOracleCrossIn = 0;
+extern "C" int gComboOracleFormZora;  // logic.cpp
+extern "C" int gComboOracleFormGoron; // logic.cpp
 static uint32_t sComboCrossOut = 0;
+#endif
+
+#ifdef COMBO_BUILD
+// ComboShip cross-game entrances (Enhancements/randomizer/ComboCrossEntrances.cpp).
+bool ComboCross_ParseOwned(const std::string& name);
+void ComboCross_ResetOwned();
+void ComboCross_CollectReached();
 #endif
 
 extern "C" COMBO_EXPORT void Combo_SOH_Rando_Reset(void) {
@@ -5556,6 +6086,8 @@ extern "C" COMBO_EXPORT void Combo_SOH_Rando_Reset(void) {
     EnsureOracleInit();
 #ifdef COMBO_BUILD
     gComboOracleCrossIn = 0; // ComboShip (teleport songs): inputs belong to one query
+    gComboOracleFormZora = gComboOracleFormGoron = 0;
+    ComboCross_ResetOwned(); // ComboShip (cross-game entrances): arrival pseudo-items belong to one query
 #endif
     ctx->GetLogic()->Reset();
     Regions::AccessReset();
@@ -5583,6 +6115,17 @@ extern "C" COMBO_EXPORT void Combo_SOH_Rando_SetOwnedItems(const char* itemNames
                 gComboOracleCrossIn |= static_cast<int>(crossBit);
                 continue;
             }
+            if (ComboCross_ParseOwned(name.get<std::string>()))
+                continue; // cross-game entrance arrival (age-tagged)
+            // MM's Zora / Goron Masks: the forms' logic credit (logic.cpp ComboFormCredit)
+            if (name.get<std::string>() == "@combo:form:zora") {
+                gComboOracleFormZora = 1;
+                continue;
+            }
+            if (name.get<std::string>() == "@combo:form:goron") {
+                gComboOracleFormGoron = 1;
+                continue;
+            }
 #endif
             auto it = Rando::StaticData::itemNameToEnum.find(name.get<std::string>());
             if (it == Rando::StaticData::itemNameToEnum.end())
@@ -5603,6 +6146,7 @@ extern "C" COMBO_EXPORT const char* Combo_SOH_Rando_GetReachableChecks(void) {
     auto ctx = OTRGlobals::Instance->gRandoContext;
     auto reachable = ReachabilitySearch(ctx->allLocations);
 #ifdef COMBO_BUILD
+    ComboCross_CollectReached(); // which crossed doors each age reached in this search
     // RR_MARKET_MASK_SHOP holds no real checks, so the cross-fill gates MM on REGION access. Any age:
     // the requirement lives in the entrance condition, so this survives entrance shuffle moving it.
     Region* portal = RegionTable(RR_MARKET_MASK_SHOP);

@@ -10,6 +10,9 @@
 #include "soh/Enhancements/randomizer/randomizer_entrance.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <assert.h>
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -189,7 +192,12 @@ s32 Ge2_DetectPlayerInAction(PlayState* play, EnGe2* this) {
         return 0;
     }
 
-    if (this->actor.xzDistToPlayer < 50.0f) {
+    if (
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Ge2 z_en_ge2.c:144, EnGe2_DetectPlayer) — no proximity detection
+        !COMBO_MM_STONE_MASK() &&
+#endif
+        (this->actor.xzDistToPlayer < 50.0f)) {
         return 2;
     }
 
@@ -206,6 +214,13 @@ s32 Ge2_DetectPlayerInUpdate(PlayState* play, EnGe2* this, Vec3f* pos, s16 yRot,
     f32 visionScale;
 
     visionScale = (!IS_DAY ? 0.75f : 1.5f);
+
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Stone Mask (MM En_Ge2 z_en_ge2.c:171, EnGe2_LookForPlayer) — never seen
+    if (COMBO_MM_STONE_MASK()) {
+        return 0;
+    }
+#endif
 
     if ((250.0f * visionScale) < this->actor.xzDistToPlayer) {
         return 0;

@@ -18,6 +18,9 @@ void func_8001DFC8(EnItem00* this, PlayState* play);
 void func_8001E1C8(EnItem00* this, PlayState* play);
 void func_8001E304(EnItem00* this, PlayState* play);
 void func_8001E5C8(EnItem00* this, PlayState* play);
+#ifdef COMBO_BUILD
+s32 EnItem00_ComboStrayFairyAdopt(EnItem00* item, PlayState* play); // z_en_item00_combo_strayfairy.c
+#endif
 
 void EnItem00_DrawRupee(EnItem00* this, PlayState* play);
 void EnItem00_DrawCollectible(EnItem00* this, PlayState* play);
@@ -761,6 +764,15 @@ void EnItem00_Update(Actor* thisx, PlayState* play) {
     u32* temp;
     EnItem00* this = (EnItem00*)thisx;
     s32 pad;
+
+#ifdef COMBO_BUILD
+    // ComboShip: a randomizer pickup whose check holds an MM stray fairy becomes MM's free-floating stray fairy
+    // (z_en_item00_combo_strayfairy.c), which takes over this actor's update / draw / destroy.
+    if ((this->actor.params == ITEM00_SOH_DUMMY) && (this->actionFunc != func_8001E5C8) &&
+        EnItem00_ComboStrayFairyAdopt(this, play)) {
+        return;
+    }
+#endif
 
     // Rotate some drops when 3D drops are on, otherwise reset rotation back to 0 for billboard effect
     if ((this->actor.params == ITEM00_HEART && this->unk_15A >= 0) ||

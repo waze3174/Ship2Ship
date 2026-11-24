@@ -75,6 +75,8 @@ inline const char* ComboInternRoutedPath(const std::string& s) {
 // not resident, foreign map not built, MM's rando state null), which must NEVER be negative-cached.
 enum class ComboForeignResolve { Ok, Unknown, NotReady };
 
+inline ComboForeignResolve ComboFillForeignDrawInfoByName(const char* drawName, ComboForeignDrawInfo& info);
+
 inline ComboForeignResolve ComboFillForeignDrawInfo(RandomizerCheck rc, int slot, ComboForeignDrawInfo& info) {
     const std::string checkName = Rando::StaticData::GetLocation(rc)->GetName();
     const ComboRando::ForeignItem* fi = OOT_LookupForeign(slot, checkName);
@@ -93,6 +95,19 @@ inline ComboForeignResolve ComboFillForeignDrawInfo(RandomizerCheck rc, int slot
     // A disguised trap must draw the item it pretends to be. Same namespace, so the itemGame dispatch
     // above is unaffected. Not state-dependent: like OOT, the disguise holds until the get-item cutscene.
     const char* drawName = fi->HasDisguise() ? fi->fakeItemName.c_str() : fi->itemName.c_str();
+    return ComboFillForeignDrawInfoByName(drawName, info);
+}
+
+// The MM draw recipe for an MM item by its MM rando name (RI_* or display name), no check needed (an MM item held
+// up in Hyrule, e.g. a trade item shown with nobody to take it).
+inline ComboForeignResolve ComboFillForeignDrawInfoByName(const char* drawName, ComboForeignDrawInfo& info) {
+    static Fn_GetItemDrawInfo sGetItemDrawInfo = nullptr;
+    if (sGetItemDrawInfo == nullptr) {
+        sGetItemDrawInfo = (Fn_GetItemDrawInfo)Combo_ResolveSym("2ship", "MM_GetItemDrawInfo");
+    }
+    if (sGetItemDrawInfo == nullptr) {
+        return ComboForeignResolve::NotReady;
+    }
     CwItemDrawInfo raw{};
     int32_t rcStatic = sGetItemDrawInfo(drawName, &raw);
     if (rcStatic == CW_DRAW_NOT_READY) {
@@ -692,6 +707,61 @@ inline void OOT_DrawComboForeign(PlayState* play, GetItemEntry* getItemEntry) {
             OOT_DrawForeignSimple(play, info);
             break;
     }
+}
+
+// Draw an MM item by its MM rando name at the current model matrix (no randomizer check). Returns false when MM
+// cannot describe it (the caller draws nothing).
+inline bool OOT_DrawMmItemByName(PlayState* play, const char* name) {
+    static std::unordered_map<std::string, ComboForeignDrawInfo> sByName;
+    auto it = sByName.find(name);
+    if (it == sByName.end()) {
+        ComboForeignDrawInfo info{};
+        if (ComboFillForeignDrawInfoByName(name, info) == ComboForeignResolve::NotReady) {
+            return false;
+        }
+        it = sByName.emplace(name, info).first;
+    }
+    const ComboForeignDrawInfo* info = &it->second;
+    if (!info->ok) {
+        return false;
+    }
+    if (info->animOk) {
+        return ComboForeignAnim_Draw(&info->anim, "mm", play);
+    }
+    switch (info->drawKind) {
+        case CW_DRAW_KIND_GORON_SWORD:
+            OOT_DrawForeignGoronSword(play, info);
+            break;
+        case CW_DRAW_KIND_DEKU_NUTS:
+            OOT_DrawForeignDekuNuts(play, info);
+            break;
+        case CW_DRAW_KIND_RECOVERY_HEART:
+            OOT_DrawForeignRecoveryHeart(play, info);
+            break;
+        case CW_DRAW_KIND_FISH:
+            OOT_DrawForeignFish(play, info);
+            break;
+        case CW_DRAW_KIND_POTION:
+            OOT_DrawForeignPotion(play, info);
+            break;
+        case CW_DRAW_KIND_POES:
+            OOT_DrawForeignPoes(play, info);
+            break;
+        case CW_DRAW_KIND_MM_FAIRY_BOTTLE:
+            OOT_DrawForeignFairyBottle(play, info);
+            break;
+        case CW_DRAW_KIND_MM_SOUL_FLAME:
+            OOT_DrawForeignSoulFlame(play, info);
+            break;
+        case CW_DRAW_KIND_OPS:
+            OOT_DrawForeignOps(play, info);
+            break;
+        case CW_DRAW_KIND_SIMPLE:
+        default:
+            OOT_DrawForeignSimple(play, info);
+            break;
+    }
+    return true;
 }
 
 #undef COMBO_FOREIGN_MTX

@@ -142,6 +142,22 @@ void Config::Erase(const std::string& key) {
     mFlattenedJson.erase(FormatNestedKey(key));
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: see Config.h (CVar persist shadow, full-coop-sync A-M1).
+bool Config::GetRaw(const std::string& key, nlohmann::json& out) {
+    auto it = mFlattenedJson.find(FormatNestedKey(key));
+    if (it == mFlattenedJson.end()) {
+        return false;
+    }
+    out = *it;
+    return true;
+}
+
+void Config::SetRaw(const std::string& key, const nlohmann::json& value) {
+    mFlattenedJson[FormatNestedKey(key)] = value;
+}
+#endif
+
 void Config::SetBlock(const std::string& key, nlohmann::json block) {
     // ComboShip: skip (with the helper's error log) rather than crash on a key clash.
     nlohmann::json gjson;

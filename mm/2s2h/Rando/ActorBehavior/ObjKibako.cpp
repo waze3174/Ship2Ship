@@ -146,7 +146,12 @@ void IdentifyCrate(Actor* actor) {
 
 void ObjKibako_RandoDraw(Actor* actor, PlayState* play) {
     if (!CVarGetInteger("gRando.CSMC", 0)) {
+#ifdef COMBO_BUILD
+        // ComboShip: an unchecked shuffled crate shows the "?" model, like OOT randomizer.
+        Gfx_DrawDListOpa(play, (Gfx*)gSmallRandoCrateDL);
+#else
         Gfx_DrawDListOpa(play, (Gfx*)gSmallJunkCrateDL);
+#endif
         return;
     }
 
@@ -186,7 +191,12 @@ void ObjKibako_RandoDraw(Actor* actor, PlayState* play) {
 
 void ObjKibako2_RandoDraw(Actor* actor, PlayState* play) {
     if (!CVarGetInteger("gRando.CSMC", 0)) {
+#ifdef COMBO_BUILD
+        // ComboShip: an unchecked shuffled crate shows the "?" model, like OOT randomizer.
+        Gfx_DrawDListOpa(play, (Gfx*)gLargeRandoCrateDL);
+#else
         Gfx_DrawDListOpa(play, (Gfx*)gLargeJunkCrateDL);
+#endif
         return;
     }
 

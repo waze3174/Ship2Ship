@@ -185,6 +185,13 @@ endif()
 # src (decomp) {{{
 file(GLOB_RECURSE src__ CONFIGURE_DEPENDS RELATIVE ${CMAKE_CURRENT_SOURCE_DIR} "src/*.c" "src/*.h")
 set_source_files_properties(${src__} PROPERTIES COMPILE_OPTIONS "${WARNING_OVERRIDE}")
+# ComboShip: C code ported from Majora's Mask's decomp (implicit float/int conversions like the rest of src/) gets
+# the same warning policy as src/, or MSVC's /WX rejects it.
+set_source_files_properties(
+    soh/Enhancements/randomizer/ComboCrater.c
+    soh/Enhancements/randomizer/ComboKeyframe.c
+    soh/Enhancements/randomizer/ComboTireMark.c
+    PROPERTIES COMPILE_OPTIONS "${WARNING_OVERRIDE}")
 
 list(APPEND src__ ${CMAKE_CURRENT_SOURCE_DIR}/Resource.rc)
 list(FILTER src__ EXCLUDE REGEX "src/dmadata/")

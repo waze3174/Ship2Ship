@@ -24,6 +24,16 @@ extern "C" {
 #include "variables.h"
 #include "functions.h"
 
+#ifdef COMBO_BUILD
+// ComboShip shared bottles (Rando/MiscBehavior/ComboBottleShelf.cpp). C++ linkage even if this lands in an extern "C"
+// block.
+extern "C++" {
+bool Combo_MM_BottlesActive();
+uint8_t Combo_MM_BottleItemForRi(RandoItemId ri);
+bool Combo_MM_BottlesShelveIfFull(uint8_t item);
+}
+#endif
+
 extern GetItemEntry sGetItemTable[GI_MAX - 1];
 }
 
@@ -435,6 +445,12 @@ bool Rando::IsItemObtainable(RandoItemId randoItemId, RandoCheckId randoCheckId)
             if (hasObtainedCheck) {
                 return false;
             }
+#ifdef COMBO_BUILD
+            // ComboShip (shared bottles): full slots shelve the bottle instead of substituting it.
+            if (Combo_MM_BottlesActive()) {
+                return true;
+            }
+#endif
 
             for (s32 slot = SLOT_BOTTLE_1; slot <= SLOT_BOTTLE_6; slot++) {
                 if (gSaveContext.save.saveInfo.inventory.items[slot] == ITEM_NONE) {

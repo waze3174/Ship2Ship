@@ -116,17 +116,47 @@ void Audio_QueueSeqCmdMute(u8 channelIdx) {
     Audio_SetVolScale(SEQ_PLAYER_BGM_SUB, 2, 0x40, 0xF);
 }
 
+#ifdef COMBO_BUILD
+u16 AudioMmSfx_LowVolumeFlags(void); // ComboShip: MM sfx lowering the bgm through the same volume scale
+#endif
+
 void Audio_ClearBGMMute(u8 channelIdx) {
     D_801333D0 &= ((1 << channelIdx) ^ 0xFFFF);
+#ifdef COMBO_BUILD
+    if ((D_801333D0 == 0) && (AudioMmSfx_LowVolumeFlags() == 0)) {
+#else
     if (D_801333D0 == 0) {
+#endif
         Audio_SetVolScale(SEQ_PLAYER_BGM_MAIN, 2, 0x7F, 0xF);
         Audio_SetVolScale(SEQ_PLAYER_BGM_SUB, 2, 0x7F, 0xF);
     }
 }
 
+#ifdef COMBO_BUILD
+int Combo_GuestVoice(unsigned short ootSfxId); // ComboGuestAudio.cpp
+// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): observes sounds played at a position inside an enemy we own,
+// so teammates' mirrors of it play them too. Never changes or blocks the request.
+void SohCoop_ActorSfx(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* vol, s8* reverbAdd);
+#endif
+
 void Audio_PlaySfxGeneral(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* vol, s8* reverbAdd) {
     size_t i;
     SoundRequest* req;
+
+#ifdef COMBO_BUILD
+    SohCoop_ActorSfx(sfxId, pos, token, freqScale, vol, reverbAdd);
+#endif
+
+#ifdef COMBO_BUILD
+    // ComboShip: every Link voice line (NA_SE_VO_LI_*, both ages: 0x6800-0x683F) is the form's MM voice while a
+    // transformation is out, whichever way it is requested. Player_PlaySfx already routed its own, but many lines
+    // come straight through here: Actor_PlaySfx_* on Link's actor (the electric shock's NA_SE_VO_LI_TAKEN_AWAY --
+    // owner 2026-11-15: a Jabu jellyfish made the Zora scream in child Link's voice), func_800F4190, other actors.
+    // (a continuous line arrives without SFX_FLAG: 0x6000-0x603F)
+    if ((((sfxId | 0x800) >= 0x6800) && ((sfxId | 0x800) <= 0x683F)) && Combo_GuestVoice(sfxId)) {
+        return;
+    }
+#endif
 
     if (!gSoundBankMuted[SFX_BANK_SHIFT(sfxId)]) {
         req = &sSoundRequests[sSoundRequestWriteIndex];

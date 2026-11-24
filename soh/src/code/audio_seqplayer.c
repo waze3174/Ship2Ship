@@ -168,6 +168,11 @@ void AudioSeq_InitSequenceChannel(SequenceChannel* channel) {
 
     channel->unused = false;
     Audio_InitNoteLists(&channel->notePool);
+    // ComboShip: MM channel extras (read only under an mmMode player; MM's AudioScript_InitSequenceChannel values).
+    channel->surroundEffectIndex = 0xFF;
+    channel->startSamplePos = 0;
+    channel->unk_E0 = 0;
+    channel->sfxState = NULL;
 }
 
 s32 AudioSeq_SeqChannelSetLayer(SequenceChannel* channel, s32 layerIdx) {
@@ -1779,6 +1784,21 @@ void AudioSeq_SequencePlayerProcessSequence(SequencePlayer* seqPlayer) {
     }
 }
 
+#ifdef COMBO_BUILD
+u16 Combo_MmAudio_OotFontFor(s32 mmFont); // ComboMmAudio.cpp
+#endif
+
+// ComboShip: an mmMode player (the native MM sfx player) runs Majora's Mask's script semantics.
+void AudioSeqMm_SequencePlayerProcessSequence(SequencePlayer* seqPlayer);
+
+static void AudioSeq_ProcessSequenceAnyMode(SequencePlayer* seqPlayer) {
+    if (SEQ_PLAYER_IS_MM(seqPlayer)) {
+        AudioSeqMm_SequencePlayerProcessSequence(seqPlayer);
+    } else {
+        AudioSeq_SequencePlayerProcessSequence(seqPlayer);
+    }
+}
+
 void AudioSeq_ProcessSequences(s32 arg0) {
     SequencePlayer* seqPlayer;
     u32 i;
@@ -1788,16 +1808,27 @@ void AudioSeq_ProcessSequences(s32 arg0) {
     for (i = 0; i < (u32)gAudioContext.audioBufferParameters.numSequencePlayers; i++) {
         seqPlayer = &gAudioContext.seqPlayers[i];
         if (seqPlayer->enabled == 1) {
+#ifdef COMBO_BUILD
+            // ComboShip: a vanilla player playing an MM sequence (MM music on the fanfare player) runs MM semantics.
+            AudioSeq_ProcessSequenceAnyMode(seqPlayer);
+#else
             AudioSeq_SequencePlayerProcessSequence(seqPlayer);
+#endif
             Audio_SequencePlayerProcessSound(seqPlayer);
         }
+    }
+    // ComboShip: the native MM sfx player, after the vanilla ones (MM's sfx player is processed after its BGM too).
+    seqPlayer = &gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX];
+    if (seqPlayer->enabled == 1) {
+        AudioSeqMm_SequencePlayerProcessSequence(seqPlayer);
+        Audio_SequencePlayerProcessSound(seqPlayer);
     }
     Audio_ProcessNotes();
 }
 
 void AudioSeq_SkipForwardSequence(SequencePlayer* seqPlayer) {
     while (seqPlayer->skipTicks > 0) {
-        AudioSeq_SequencePlayerProcessSequence(seqPlayer);
+        AudioSeq_ProcessSequenceAnyMode(seqPlayer);
         Audio_SequencePlayerProcessSound(seqPlayer);
         seqPlayer->skipTicks--;
     }
@@ -1820,6 +1851,7 @@ void AudioSeq_ResetSequencePlayer(SequencePlayer* seqPlayer) {
     seqPlayer->shortNoteVelocityTable = gDefaultShortNoteVelocityTable;
     seqPlayer->shortNoteGateTimeTable = gDefaultShortNoteGateTimeTable;
     seqPlayer->scriptCounter = 0;
+    seqPlayer->mmUnk16 = 0;
     seqPlayer->fadeVolume = 1.0f;
     seqPlayer->fadeVelocity = 0.0f;
     seqPlayer->volume = 0.0f;
@@ -1843,6 +1875,14 @@ void AudioSeq_InitSequencePlayerChannels(s32 playerIdx) {
             channel = seqPlayer->channels[i];
             channel->seqPlayer = seqPlayer;
             channel->enabled = false;
+            channel->channelIndex = i;
+#ifdef COMBO_BUILD
+            // ComboShip: MM allocates its channels zeroed too, so a channel no script gave a font plays from MM font 0
+            // (MM's sfx channels 12-15 rely on it). Font 0 means OOT's font 0 here: use MM font 0's OOT id.
+            if (SEQ_PLAYER_IS_MM(seqPlayer)) {
+                channel->fontId = Combo_MmAudio_OotFontFor(0);
+            }
+#endif
             for (j = 0; j < 4; j++) {
                 channel->layers[j] = NULL;
             }
@@ -1870,6 +1910,7 @@ void AudioSeq_InitSequencePlayer(SequencePlayer* seqPlayer) {
     seqPlayer->muteBehavior = 0x40 | 0x20;
     seqPlayer->fadeVolumeScale = 1.0f;
     seqPlayer->unk_34 = 1.0f;
+    seqPlayer->mmMode = (seqPlayer == &gAudioContext.seqPlayers[SEQ_PLAYER_COMBO_MM_SFX]);
     Audio_InitNoteLists(&seqPlayer->notePool);
     AudioSeq_ResetSequencePlayer(seqPlayer);
 }
@@ -1878,12 +1919,13 @@ void AudioSeq_InitSequencePlayers(void) {
     s32 i;
 
     AudioSeq_InitLayerFreelist();
-    for (i = 0; i < 64; i++) {
+    for (i = 0; i < ARRAY_COUNT(gAudioContext.sequenceLayers); i++) {
         gAudioContext.sequenceLayers[i].channel = NULL;
         gAudioContext.sequenceLayers[i].enabled = false;
     }
 
-    for (i = 0; i < 4; i++) {
+    // ComboShip: includes SEQ_PLAYER_COMBO_MM_SFX.
+    for (i = 0; i < ARRAY_COUNT(gAudioContext.seqPlayers); i++) {
         AudioSeq_InitSequencePlayer(&gAudioContext.seqPlayers[i]);
     }
 }

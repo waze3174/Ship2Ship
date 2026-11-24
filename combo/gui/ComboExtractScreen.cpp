@@ -7,6 +7,7 @@
 // (ComboMenu.cpp), so it owns the frame loop here. The actual ROM validation + ZAPD work happens in
 // soh.dll / 2ship.dll via the function pointers in ComboExtractCallbacks; this file only renders.
 #include "ComboExtractScreen.h"
+#include <cstdlib>
 #include "ComboExport.h"
 #include "ComboFilePicker.h"  // native Browse dialog (comdlg32 / pfd), shared with the settings-import screen
 #include "ComboWidgetStyle.h" // ComboShip port style: ComboMenu_ThemeColor / PushButton / PopButton
@@ -311,7 +312,8 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                     ImGui::BeginDisabled();
                 }
                 ComboMenu_PushButton(theme);
-                if (ImGui::Button("Extract", ImVec2(150.0f, 0.0f))) {
+                // Debug (test harness only): COMBO_AUTO_EXTRACT=1 presses Extract once both ROMs are found.
+                if (ImGui::Button("Extract", ImVec2(150.0f, 0.0f)) || (ready && std::getenv("COMBO_AUTO_EXTRACT"))) {
                     phase = EXTRACTING;
                     activeSlot = -1;
                 }

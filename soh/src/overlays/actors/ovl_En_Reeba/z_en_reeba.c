@@ -10,6 +10,9 @@
 #include "vt.h"
 #include "objects/object_reeba/object_reeba.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -651,6 +654,14 @@ void EnReeba_Update(Actor* thisx, PlayState* play2) {
             }
         }
     }
+
+#ifdef COMBO_BUILD
+    // ComboShip: MM's Stone Mask (MM En_Neo_Reeba z_en_neo_reeba.c:695-701 EnNeoReeba_SinkIfStoneMask, called at the
+    // end of EnNeoReeba_Update) — a Leever that is chasing sinks back into the sand while it is worn.
+    if (((this->actionfunc == EnReeba_Move) || (this->actionfunc == EnReeba_MoveBig)) && COMBO_MM_STONE_MASK()) {
+        this->actionfunc = EnReeba_SetupSink;
+    }
+#endif
 }
 
 void EnReeba_Draw(Actor* thisx, PlayState* play) {

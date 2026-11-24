@@ -22,6 +22,9 @@ typedef struct EnSkb {
     /* 0x028C */ BodyBreak bodyBreak;
     /* 0x02A4 */ ColliderJntSph collider;
     /* 0x02C4 */ ColliderJntSphElement colliderItem[2];
+#ifdef COMBO_BUILD
+    u8 comboTalked; // ComboShip: MM unk_3E0 (talked to once with the Captain's Hat on)
+#endif
 } EnSkb; // size = 0x0344
 
 #endif

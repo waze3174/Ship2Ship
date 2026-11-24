@@ -1,6 +1,7 @@
 #include "2s2h/BenGui/UIWidgets.hpp"
 #include "2s2h/BenGui/BenGui.hpp"
 #include "CosmeticEditor.h"
+#include "2s2h/Rando/MiscBehavior/ComboOotHud.h"
 #include "CosmeticShading.h"
 #include "2s2h/ShipInit.hpp"
 #ifdef COMBO_BUILD
@@ -204,6 +205,14 @@ Gfx disableGrayscale[] = {
 
 extern "C" Color_RGBA8 CosmeticEditor_GetChangedColorEx(u8 r, u8 g, u8 b, u8 a, const char* cosmeticId, u8 mode,
                                                         f32 modifier) {
+    // ComboShip: with the OOT-style HUD on, Termina's HUD takes OOT's colour options (gCosmetics.*), so one colour
+    // setting styles both games' HUDs (mm/2s2h/Rando/MiscBehavior/ComboOotHud.cpp).
+    {
+        Color_RGB8 ootColor;
+        if (ComboOotHud_ColorForEx(cosmeticId, mode, &ootColor)) { // mode: derived colours (heart border...)
+            return Color_RGBA8{ ootColor.r, ootColor.g, ootColor.b, a };
+        }
+    }
     const CosmeticOption& option = CosmeticEditor_GetOptionMutable(cosmeticId);
 
     Color_RGBA8 returnedColor;

@@ -5,6 +5,7 @@
  */
 
 #include "z_en_bom.h"
+#include "z_en_bom_combo.h" // ComboShip: MM's Powder Keg (z_en_bom_combo_keg.c)
 #include "overlays/effects/ovl_Effect_Ss_Dead_Sound/z_eff_ss_dead_sound.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -94,6 +95,12 @@ void EnBom_SetupAction(EnBom* this, EnBomActionFunc actionFunc) {
 void EnBom_Init(Actor* thisx, PlayState* play) {
     EnBom* this = (EnBom*)thisx;
 
+#ifdef COMBO_BUILD
+    if (EnBom_ComboInit(this, play)) { // ComboShip: MM's Powder Keg / its explosion (z_en_bom_combo_keg.c)
+        return;
+    }
+#endif
+
     Actor_ProcessInitChain(thisx, sInitChain);
     ActorShape_Init(&thisx->shape, 700.0f, ActorShadow_DrawCircle, 16.0f);
     thisx->colChkInfo.mass = 200;
@@ -139,6 +146,12 @@ void EnBom_Init(Actor* thisx, PlayState* play) {
 
 void EnBom_Destroy(Actor* thisx, PlayState* play) {
     EnBom* this = (EnBom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (EnBom_ComboDestroy(this, play)) { // ComboShip: MM's Powder Keg / its explosion (z_en_bom_combo_keg.c)
+        return;
+    }
+#endif
 
     Collider_DestroyJntSph(play, &this->explosionCollider);
     Collider_DestroyCylinder(play, &this->bombCollider);
@@ -258,6 +271,12 @@ void EnBom_Update(Actor* thisx, PlayState* play2) {
     s32 pad;
     PlayState* play = play2;
     EnBom* this = (EnBom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (EnBom_ComboUpdate(this, play)) { // ComboShip: MM's Powder Keg / its explosion (z_en_bom_combo_keg.c)
+        return;
+    }
+#endif
 
     thisx->gravity = -1.2f;
 
@@ -389,6 +408,12 @@ void EnBom_Update(Actor* thisx, PlayState* play2) {
 void EnBom_Draw(Actor* thisx, PlayState* play) {
     s32 pad;
     EnBom* this = (EnBom*)thisx;
+
+#ifdef COMBO_BUILD
+    if (EnBom_ComboDraw(this, play)) { // ComboShip: MM's Powder Keg / its explosion (z_en_bom_combo_keg.c)
+        return;
+    }
+#endif
 
     OPEN_DISPS(play->state.gfxCtx);
 

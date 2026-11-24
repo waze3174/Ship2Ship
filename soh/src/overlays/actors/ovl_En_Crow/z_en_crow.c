@@ -2,6 +2,9 @@
 #include "objects/object_crow/object_crow.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_IGNORE_QUAKE | ACTOR_FLAG_CAN_ATTACH_TO_ARROW)
@@ -283,7 +286,12 @@ void EnCrow_FlyIdle(EnCrow* this, PlayState* play) {
     }
     if ((this->timer == 0) && (this->actor.xzDistToPlayer < 300.0f) &&
         !(player->stateFlags1 & PLAYER_STATE1_ON_HORSE) && (this->actor.yDistToWater < -40.0f) &&
-        (Player_GetMask(play) != PLAYER_MASK_SKULL) && GameInteractor_Should(VB_GUAY_DO_DIVE_ATTACK, true, this)) {
+        (Player_GetMask(play) != PLAYER_MASK_SKULL) &&
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Crow z_en_crow.c:223) — no dive while it is worn
+        !COMBO_MM_STONE_MASK() &&
+#endif
+        GameInteractor_Should(VB_GUAY_DO_DIVE_ATTACK, true, this)) {
         EnCrow_SetupDiveAttack(this);
     }
 }
@@ -318,7 +326,12 @@ void EnCrow_DiveAttack(EnCrow* this, PlayState* play) {
         Math_ApproachS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 4, 0xC00);
     }
 
-    if ((this->timer == 0) || (Player_GetMask(play) == PLAYER_MASK_SKULL) || (this->collider.base.atFlags & AT_HIT) ||
+    if ((this->timer == 0) || (Player_GetMask(play) == PLAYER_MASK_SKULL) ||
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Crow z_en_crow.c:275) — abandon the dive
+        COMBO_MM_STONE_MASK() ||
+#endif
+        (this->collider.base.atFlags & AT_HIT) ||
         (this->actor.bgCheckFlags & 9) || (player->stateFlags1 & PLAYER_STATE1_ON_HORSE) ||
         (this->actor.yDistToWater > -40.0f) || GameInteractor_Should(VB_GUAY_FORCE_FLY_AWAY, false, this)) {
         if (this->collider.base.atFlags & AT_HIT) {

@@ -4,6 +4,20 @@
 
 extern bool gUseLegacySD;
 
+// ComboShip: note-level rules of Majora's Mask's engine, applied only to notes of an mmMode player (the native MM
+// sfx player). MM's SequenceLayer.unk_0A bitfield (SequenceLayer.mmFlags here) is laid out MSB-first as on the N64,
+// where Sequence_0 was authored (layer opcode 0xF0 clears bits by those masks).
+#define MM_LAYER_REVERB_FROM_CHANNEL 0x2000 // unk_0A.bit_2
+#define MM_LAYER_GAIN_FROM_CHANNEL 0x0040   // unk_0A.bit_9
+
+static inline u8 Audio_MmLayerReverb(SequenceLayer* layer, SequenceChannel* channel) {
+    return (layer->mmFlags & MM_LAYER_REVERB_FROM_CHANNEL) ? channel->reverb : layer->targetReverbVol;
+}
+
+static inline u8 Audio_MmLayerGain(SequenceLayer* layer, SequenceChannel* channel) {
+    return (layer->mmFlags & MM_LAYER_GAIN_FROM_CHANNEL) ? channel->unk_0C : 0;
+}
+
 void Audio_InitNoteSub(Note* note, NoteSubEu* sub, NoteSubAttributes* attrs) {
     f32 volRight, volLeft;
     s32 smallPanIndex;
@@ -287,6 +301,10 @@ void Audio_ProcessNotes(void) {
                 }
                 subAttrs.reverbVol = channel->reverb;
                 subAttrs.unk_1 = channel->unk_0C;
+                if (SEQ_PLAYER_IS_MM(channel->seqPlayer)) { // ComboShip: MM per-layer reverb and gain
+                    subAttrs.reverbVol = Audio_MmLayerReverb(layer, channel);
+                    subAttrs.unk_1 = Audio_MmLayerGain(layer, channel);
+                }
                 subAttrs.filter = channel->filter;
                 subAttrs.unk_14 = channel->unk_0F;
                 subAttrs.unk_16 = channel->unk_20;
@@ -480,6 +498,10 @@ void Audio_SeqLayerDecayRelease(SequenceLayer* layer, s32 target) {
             chan = layer->channel;
             attrs->reverb = chan->reverb;
             attrs->unk_1 = chan->unk_0C;
+            if (SEQ_PLAYER_IS_MM(chan->seqPlayer)) { // ComboShip: MM per-layer reverb and gain
+                attrs->reverb = Audio_MmLayerReverb(layer, chan);
+                attrs->unk_1 = Audio_MmLayerGain(layer, chan);
+            }
             attrs->filter = chan->filter;
 
             if (attrs->filter != NULL) {
@@ -784,8 +806,24 @@ void Audio_NoteInitForLayer(Note* note, SequenceLayer* layer) {
         sub->bitField1.isSyntheticWave = false;
     }
 
+    // ComboShip: unk_BC (the synthesis start position) is always 0 in OOT; only an MM-player note sets it, below, so
+    // clear it whenever a note changes hands.
+    note->unk_BC = 0;
     if (sub->bitField1.isSyntheticWave) {
         Audio_BuildSyntheticWave(note, layer, instId);
+    } else if (SEQ_PLAYER_IS_MM(layer->channel->seqPlayer) && (layer->sound != NULL)) {
+        // ComboShip: MM's channel start sample position (opcode 0xBD; 1 = the loop start). note->unk_BC is where OOT's
+        // synthesis starts a note (MM NotePlaybackState.startSamplePos).
+        SequenceChannel* channel = layer->channel;
+
+        if (channel->startSamplePos == 1) {
+            note->unk_BC = layer->sound->sample->loop->start;
+        } else {
+            note->unk_BC = channel->startSamplePos;
+            if (note->unk_BC >= layer->sound->sample->loop->loopEnd) {
+                note->unk_BC = 0;
+            }
+        }
     }
 
     playback->fontId = layer->channel->fontId;

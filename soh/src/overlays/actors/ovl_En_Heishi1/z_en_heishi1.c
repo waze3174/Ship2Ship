@@ -5,6 +5,9 @@
  */
 
 #include "z_en_heishi1.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 #include "objects/object_sd/object_sd.h"
 #include "vt.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
@@ -394,7 +397,11 @@ void EnHeishi1_SetupWaitNight(EnHeishi1* this, PlayState* play) {
 void EnHeishi1_WaitNight(EnHeishi1* this, PlayState* play) {
     SkelAnime_Update(&this->skelAnime);
 
-    if (this->actor.xzDistToPlayer < 100.0f) {
+    if ((this->actor.xzDistToPlayer < 100.0f)
+#ifdef COMBO_BUILD
+        && !COMBO_MM_STONE_MASK() // ComboShip: the Stone Mask (above)
+#endif
+    ) {
         Message_StartTextbox(play, 0x702D, &this->actor);
         Sfx_PlaySfxCentered(NA_SE_SY_FOUND);
         osSyncPrintf(VT_FGCOL(GREEN) "☆☆☆☆☆ 発見！ ☆☆☆☆☆ \n" VT_RST); // "Discovered!"
@@ -467,6 +474,13 @@ void EnHeishi1_Update(Actor* thisx, PlayState* play) {
                             }
                         }
 
+#ifdef COMBO_BUILD
+                        // ComboShip (owner 2026-11-14): MM's Stone Mask -- guards look straight through Link, as MM's
+                        // soldiers and Gerudo do (MM En_Ge2 / En_Ge1 detection; En_Ge2 here already honours it).
+                        if (COMBO_MM_STONE_MASK()) {
+                            this->linkDetected = false;
+                        }
+#endif
                         if (this->linkDetected) {
                             //! @bug This appears to be a check to make sure that link is standing on the ground
                             // before getting caught. However this is an issue for two reasons:

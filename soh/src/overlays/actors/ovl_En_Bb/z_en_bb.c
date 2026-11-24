@@ -8,6 +8,9 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_Bb/object_Bb.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS                                                                                 \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_UPDATE_CULLING_DISABLED | \
@@ -579,7 +582,12 @@ void EnBb_Blue(EnBb* this, PlayState* play) {
             this->actor.speedXZ = 0.0f;
             if (this->charge && (this->targetActor == NULL)) {
                 this->vMoveAngleY = this->actor.world.rot.y;
-                if (this->actor.xzDistToPlayer < 200.0f) {
+                if ((this->actor.xzDistToPlayer < 200.0f)
+#ifdef COMBO_BUILD
+                    // ComboShip: MM's Stone Mask (MM En_Bb z_en_bb.c:252) — no charge at Link while it is worn
+                    && !COMBO_MM_STONE_MASK()
+#endif
+                ) {
                     Animation_PlayLoop(&this->skelAnime, &object_Bb_Anim_000184);
                     this->vMoveAngleY = this->actor.yawTowardsPlayer;
                 }
@@ -593,7 +601,12 @@ void EnBb_Blue(EnBb* this, PlayState* play) {
                 this->vMoveAngleY = Math_SinF(this->bobPhase) * 65535.0f;
             }
         }
-        if ((this->actor.xzDistToPlayer < 150.0f) && (this->actionState != BBBLUE_NORMAL)) {
+        if ((this->actor.xzDistToPlayer < 150.0f) && (this->actionState != BBBLUE_NORMAL)
+#ifdef COMBO_BUILD
+            // ComboShip: MM's Stone Mask (MM En_Bb z_en_bb.c:252/286) — never turns aggro while it is worn
+            && !COMBO_MM_STONE_MASK()
+#endif
+        ) {
             if (!this->charge) {
                 Animation_PlayLoop(&this->skelAnime, &object_Bb_Anim_000184);
                 this->maxSpeed = (Rand_ZeroOne() * 1.5f) + 6.0f;
@@ -601,7 +614,12 @@ void EnBb_Blue(EnBb* this, PlayState* play) {
                 this->vMoveAngleY = this->actor.yawTowardsPlayer;
                 this->actionState = this->charge = true; // Sets actionState to BBBLUE_AGGRO
             }
-        } else if (this->actor.xzDistToPlayer < 200.0f) {
+        } else if ((this->actor.xzDistToPlayer < 200.0f)
+#ifdef COMBO_BUILD
+                   // ComboShip: MM's Stone Mask (MM En_Bb z_en_bb.c:286) — stops homing on Link while it is worn
+                   && !COMBO_MM_STONE_MASK()
+#endif
+        ) {
             this->vMoveAngleY = this->actor.yawTowardsPlayer;
         }
         if (this->targetActor == NULL) {
@@ -789,6 +807,10 @@ void EnBb_Red(EnBb* this, PlayState* play) {
     switch (this->actionState) {
         case BBRED_WAIT:
             if ((Actor_WorldDistXYZToActor(&this->actor, &player->actor) <= 250.0f) && (ABS(yawDiff) <= 0x4000) &&
+#ifdef COMBO_BUILD
+                // ComboShip: MM's Stone Mask (MM En_Bbfall z_en_bbfall.c:279) — the Red Bubble stays buried
+                !COMBO_MM_STONE_MASK() &&
+#endif
                 (this->timer == 0)) {
                 this->actor.speedXZ = 5.0f;
                 this->actor.gravity = -1.0f;

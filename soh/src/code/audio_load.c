@@ -84,6 +84,11 @@ void* sUnusedHandler = NULL;
 
 s32 gAudioContextInitalized = false;
 
+#ifdef COMBO_BUILD
+void Combo_MmAudio_RegisterWithOot(void); // soh/soh/Enhancements/randomizer/ComboMmAudio.cpp
+int Combo_MmAudio_IsMmSeq(int ootSeqId);  // ComboMmAudio.cpp: an MM sequence (run with MM script semantics)
+#endif
+
 char** sequenceMap;
 size_t sequenceMapSize;
 // A map of authentic sequence IDs to their cache policies, for use with sequence swapping.
@@ -136,6 +141,28 @@ uintptr_t AudioLoad_DmaSampleData(uintptr_t devAddr, size_t size, s32 arg2, u8* 
     u32 transfer;
     s32 bufferPos;
     u32 i;
+
+#ifdef COMBO_BUILD
+    // ComboShip: every sample is resident in RAM in the port (a resource buffer; "devAddr" is a real pointer), so read
+    // it in place, as 2S2H's synthesis does ("Assume all samples are in RAM"). The emulated DMA below copied a whole
+    // DMA buffer from the sample, reading past its end, and matched cached DMAs with a 32-bit truncated pointer
+    // difference (and an unsigned dma->size - size that wraps when a high-pitched note asks for more than one buffer),
+    // returning a wild pointer: it crashed MM music (MM's instruments are pitched further from their sample rate).
+    (void)pad1;
+    (void)dma;
+    (void)hasDma;
+    (void)dmaDevAddr;
+    (void)pad2;
+    (void)dmaIndex;
+    (void)transfer;
+    (void)bufferPos;
+    (void)i;
+    (void)size;
+    (void)arg2;
+    (void)dmaIndexRef;
+    (void)medium;
+    return devAddr;
+#endif
 
     if (arg2 != 0 || *dmaIndexRef >= gAudioContext.sampleDmaListSize1) {
         for (i = gAudioContext.sampleDmaListSize1; i < gAudioContext.sampleDmaCount; i++) {
@@ -607,6 +634,11 @@ s32 AudioLoad_SyncInitSeqPlayerInternal(s32 playerIdx, s32 seqId, s32 arg2) {
     }
 
     AudioSeq_ResetSequencePlayer(seqPlayer);
+#ifdef COMBO_BUILD
+    // ComboShip: a player runs Majora's Mask script semantics (audio_seqplayer_mm.c) while its sequence is one of MM's
+    // (an MM music sequence on the fanfare player); the next OOT sequence started on it switches it back.
+    seqPlayer->mmMode = (playerIdx == SEQ_PLAYER_COMBO_MM_SFX) || Combo_MmAudio_IsMmSeq(seqId);
+#endif
     seqPlayer->seqId = seqId;
     seqPlayer->defaultFont = fontId;
 
@@ -1252,8 +1284,8 @@ void AudioLoad_Init(void* heap, size_t heapSize) {
     gAudioContext.resetTimer = 0;
 
     memset(&gAudioContext, 0, sizeof(gAudioContext));
-    memset(gAudioContext.seqToPlay, 0, 8);
-    memset(gAudioContext.seqReplaced, 0, 8);
+    memset(gAudioContext.seqToPlay, 0, sizeof(gAudioContext.seqToPlay));
+    memset(gAudioContext.seqReplaced, 0, sizeof(gAudioContext.seqReplaced));
 
     switch (osTvType) {
         case OS_TV_PAL:
@@ -1466,6 +1498,12 @@ void AudioLoad_Init(void* heap, size_t heapSize) {
     free(customSeqList);
 
     numFonts = fntListSize;
+
+#ifdef COMBO_BUILD
+    // ComboShip: register Majora's Mask's sfx sequence and its soundfonts (read from MM's resident ResourceManager)
+    // so the native MM sfx player (SEQ_PLAYER_COMBO_MM_SFX) can run them. Appends to sequenceMap/fontMap.
+    Combo_MmAudio_RegisterWithOot();
+#endif
 
     // #end region
     gAudioContext.soundFonts = AudioHeap_Alloc(&gAudioContext.audioInitPool, numFonts * sizeof(SoundFont));

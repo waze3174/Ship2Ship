@@ -568,8 +568,14 @@ void OOT_ComboHintRevealed(RandomizerHint hintKey);
 
 // ComboShip: launcher pushes the baked combo rando (foreign map + cross-hints) once per save-load.
 // Store the blob and rebuild the OOT foreign cache from it. Idempotent (pushed at bind and load).
+void ComboCross_LoadRuntime(const nlohmann::json& seed); // ComboCrossEntrances.cpp
+
 extern "C" COMBO_EXPORT void SOH_LoadComboRando(const char* json) {
     ComboRando::Combo_SetForeignJson(json);
+    // ComboShip (cross-game entrances): this slot's crossed doors ({OOT destination: MM entrance}).
+    try {
+        ComboCross_LoadRuntime(json ? nlohmann::json::parse(json) : nlohmann::json::object());
+    } catch (...) { ComboCross_LoadRuntime(nlohmann::json::object()); }
     g_ootForeignMap = ComboRando::LoadForeignForGame(0, ComboRando::GAME_OOT);
     ++g_ootForeignGen; // invalidate the foreign-draw caches keyed on this
     // ComboShip (#164): subscribe once — this is the earliest point a combo seed is known to be live,

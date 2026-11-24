@@ -326,7 +326,22 @@ void KaleidoScope_DrawQuestStatus(PlayState* play) {
     questItemsPtr = &gSaveContext.save.saveInfo.inventory.questItems;
     if (1) {}
 
+#ifdef COMBO_BUILD
+    // ComboShip: one health bar for both games, each piece worth an eighth of a heart (combo/ComboSharedHealth.h). The
+    // meter shows the shared eighths: whole quarters as MM draws them, an odd eighth as the next quarter at half
+    // strength (owner 2026-11-14: "show 1/8ths of hearts").
+    extern int Combo_HeartPieceEighths(void);
+    s32 comboEighths = Combo_HeartPieceEighths();
+    s32 comboQuarters = (comboEighths >= 0) ? (comboEighths / 2) : (s32)(*questItemsPtr >> QUEST_HEART_PIECE_COUNT);
+    s32 comboHalf = (comboEighths >= 0) && (comboEighths & 1);
+    if ((comboQuarters != 0) || comboHalf) {
+        u8 comboR;
+        u8 comboG;
+        u8 comboB;
+        u8 comboA;
+#else
     if ((*questItemsPtr >> QUEST_HEART_PIECE_COUNT) != 0) {
+#endif
         gDPPipeSync(POLY_OPA_DISP++);
         gDPSetCombineLERP(POLY_OPA_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                           PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
@@ -334,17 +349,55 @@ void KaleidoScope_DrawQuestStatus(PlayState* play) {
         if ((pauseCtx->state == PAUSE_STATE_OPENING_3) || (pauseCtx->state == PAUSE_STATE_UNPAUSE_SETUP)) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, sQuestHpPrimColorTargets[0][0], sQuestHpPrimColorTargets[0][1],
                             sQuestHpPrimColorTargets[0][2], pauseCtx->alpha);
+#ifdef COMBO_BUILD
+            comboR = sQuestHpPrimColorTargets[0][0];
+            comboG = sQuestHpPrimColorTargets[0][1];
+            comboB = sQuestHpPrimColorTargets[0][2];
+            comboA = pauseCtx->alpha;
+#endif
         } else {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, sQuestHpPrimRed, sQuestHpPrimGreen, sQuestHpPrimBlue,
                             sQuestHpPrimAlpha);
+#ifdef COMBO_BUILD
+            comboR = sQuestHpPrimRed;
+            comboG = sQuestHpPrimGreen;
+            comboB = sQuestHpPrimBlue;
+            comboA = sQuestHpPrimAlpha;
+#endif
         }
 
         gDPSetEnvColor(POLY_OPA_DISP++, 0, 0, 0, 255);
         gSPVertex(POLY_OPA_DISP++, &pauseCtx->questVtx[j], 4, 0);
 
+#ifdef COMBO_BUILD
+        if (comboQuarters != 0) {
+            POLY_OPA_DISP = Gfx_DrawTexQuadIA8(POLY_OPA_DISP, gItemIcons[0x7A + comboQuarters], 48, 48, 0);
+        }
+        if (comboHalf) {
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, comboR, comboG, comboB, comboA / 2);
+            if (comboQuarters < 3) {
+                POLY_OPA_DISP = Gfx_DrawTexQuadIA8(POLY_OPA_DISP, gItemIcons[0x7A + comboQuarters + 1], 48, 48, 0);
+            } else {
+                // 7/8: no fourth-quarter icon; the missing top-right quarter is the 3/4 icon mirrored left to right.
+                Vtx* mirrored = GRAPH_ALLOC(play->state.gfxCtx, 4 * sizeof(Vtx));
+                s32 v;
+
+                for (v = 0; v < 4; v++) {
+                    mirrored[v] = pauseCtx->questVtx[j + v];
+                }
+                mirrored[0].v.tc[0] = pauseCtx->questVtx[j + 1].v.tc[0];
+                mirrored[1].v.tc[0] = pauseCtx->questVtx[j + 0].v.tc[0];
+                mirrored[2].v.tc[0] = pauseCtx->questVtx[j + 3].v.tc[0];
+                mirrored[3].v.tc[0] = pauseCtx->questVtx[j + 2].v.tc[0];
+                gSPVertex(POLY_OPA_DISP++, mirrored, 4, 0);
+                POLY_OPA_DISP = Gfx_DrawTexQuadIA8(POLY_OPA_DISP, gItemIcons[0x7A + 3], 48, 48, 0);
+            }
+        }
+#else
         POLY_OPA_DISP = Gfx_DrawTexQuadIA8(
             POLY_OPA_DISP,
             gItemIcons[(0x7A + ((GET_SAVE_INVENTORY_QUEST_ITEMS & 0xF0000000) >> QUEST_HEART_PIECE_COUNT))], 48, 48, 0);
+#endif
     }
 
     j += 4;

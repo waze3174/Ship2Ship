@@ -39,6 +39,7 @@
 #include <string>
 
 #include "rando/CrossWorldRando.h"
+#include "rando/CrossEntrance.h"
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossForeign.h" // BuildForeignArray (foreign enrichment parity with RunComboFill)
 #include "rando/CrossHints.h"
@@ -128,6 +129,10 @@ static int Run(int argc, char** argv) {
     int startingGameArg = -1;
     // Shared Items: "all", "none", or a comma-separated key list (see SharedItems.h). Empty => menu CVars.
     std::string sharedItemsArg;
+    std::string dumpEntrancesFile; // full-coop-sync §B1: write MM's entrance graph and exit
+    std::string mmEntrancesArg;    // §B1: "off" | "all" | csv of overworld,interior,dungeon,decoupled,mixed
+    int unifiedArg = -1;           // --unified / --no-unified (else the menu CVar)
+    std::string crossArg;          // §B2: "off" | csv of overworld,interior,dungeon[,pct=N] (else the menu CVars)
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--triforce-required" && i + 1 < argc)
@@ -143,6 +148,16 @@ static int Run(int argc, char** argv) {
             }
         } else if (a == "--shared-items" && i + 1 < argc) {
             sharedItemsArg = argv[++i];
+        } else if (a == "--cross" && i + 1 < argc) {
+            crossArg = argv[++i];
+        } else if (a == "--unified") {
+            unifiedArg = 1;
+        } else if (a == "--no-unified") {
+            unifiedArg = 0;
+        } else if (a == "--mm-entrances" && i + 1 < argc) {
+            mmEntrancesArg = argv[++i];
+        } else if (a == "--dump-mm-entrances" && i + 1 < argc) {
+            dumpEntrancesFile = argv[++i];
         } else if (a == "--seed" && i + 1 < argc)
             seed = argv[++i];
         else if (a == "--count" && i + 1 < argc)
@@ -189,6 +204,23 @@ static int Run(int argc, char** argv) {
     auto SOH_DumpEntranceOverrides = Sym<FnDump>(soh, "SOH_DumpEntranceOverrides");
     auto SOH_ApplyEntranceOverrides = Sym<int (*)(const char*)>(soh, "SOH_ApplyEntranceOverridesForCombo");
     auto MM_Restore = Sym<FnOracleVoid>(mm, "Combo_MM_Rando_Restore");
+    // full-coop-sync §B1: MM entrance randomizer.
+    auto MM_DumpEntranceGraphFn = Sym<FnDump>(mm, "MM_DumpEntranceGraph");
+    auto MM_SetEntranceOverridesFn = Sym<void (*)(const char*)>(mm, "MM_SetEntranceOverrides");
+    auto SOH_ReadComboEntranceCVarsFn = Sym<FnDump>(soh, "SOH_ReadComboEntranceCVars");
+    // §B2 cross-game entrances.
+    auto SOH_DumpEntranceGraphFn = Sym<FnDump>(soh, "SOH_DumpEntranceGraph");
+    auto SOH_SetCrossEntrancesFn = Sym<void (*)(const char*)>(soh, "SOH_SetCrossEntrances");
+    auto SOH_GetCrossExitsFn = Sym<FnDump>(soh, "Combo_SOH_Rando_GetCrossExits");
+    auto MM_SetCrossEntrancesFn = Sym<void (*)(const char*)>(mm, "MM_SetCrossEntrances");
+    auto MM_GetCrossExitsFn = Sym<FnDump>(mm, "Combo_MM_Rando_GetCrossExits");
+    auto undoCross = [&]() {
+        if (SOH_SetCrossEntrancesFn)
+            SOH_SetCrossEntrancesFn("{}");
+        if (MM_SetCrossEntrancesFn)
+            MM_SetCrossEntrancesFn("{}");
+        ComboRando::ActiveCrossEntrances() = {};
+    };
     auto SOH_DumpEnabledTricks = Sym<FnDump>(soh, "SOH_DumpEnabledTricks");
     auto SOH_DumpRandoHintData = Sym<FnDump>(soh, "SOH_DumpRandoHintData"); // cross-hint verification
     auto SOH_SetEnabledTricks = Sym<FnTakeStr>(soh, "SOH_SetEnabledTricks");
@@ -204,6 +236,14 @@ static int Run(int argc, char** argv) {
     auto SOH_ReadComboStartingGameCVar = Sym<int (*)(void)>(soh, "SOH_ReadComboStartingGameCVar");
     // Shared Items: also pushed before every dump (shapes OOT's wallet force + MM's trimmed pool).
     auto SOH_SetComboSharedItems = Sym<void (*)(uint32_t)>(soh, "SOH_SetComboSharedItems");
+    // Owner ruling 2026-11-11: Unified Inventory (both Links use every item).
+    auto SOH_SetComboUnifiedInventory = Sym<void (*)(int)>(soh, "SOH_SetComboUnifiedInventory");
+    auto SOH_SetComboMirrorStart = Sym<void (*)(uint32_t)>(soh, "SOH_SetComboMirrorStart");
+    // Owner ruling 2026-11-12: under Unified Inventory OOT starts with what MM starts with (SharedItems.h).
+    auto pushMirrorStart = [&](bool unified, const nlohmann::json& mmSettings) {
+        if (SOH_SetComboMirrorStart)
+            SOH_SetComboMirrorStart(unified ? ComboRando::MirrorStartMaskFromMmSettings(mmSettings) : 0u);
+    };
     auto SOH_ReadComboSharedCVars = Sym<uint32_t (*)(void)>(soh, "SOH_ReadComboSharedCVars");
 
     ComboRando::OracleFns oot{ Sym<FnOracleVoid>(soh, "Combo_SOH_Rando_Reset"),
@@ -228,6 +268,19 @@ static int Run(int argc, char** argv) {
 
     SOH_InitRandoHeadless();
     MM_InitRandoHeadless();
+
+    if (!dumpEntrancesFile.empty()) {
+        auto MM_DumpEntranceGraph = Sym<FnDump>(mm, "MM_DumpEntranceGraph");
+        if (!MM_DumpEntranceGraph) {
+            std::cerr << "[comborando] MM_DumpEntranceGraph missing — rebuild 2ship.dll\n";
+            return 2;
+        }
+        std::ofstream(dumpEntrancesFile) << MM_DumpEntranceGraph();
+        if (auto SOH_DumpGraph = Sym<FnDump>(soh, "SOH_DumpEntranceGraph")) // §B2: OOT side next to it
+            std::ofstream(dumpEntrancesFile + ".oot.json") << SOH_DumpGraph();
+        std::cout << "[comborando] MM entrance graph -> " << dumpEntrancesFile << "\n";
+        return 0;
+    }
 
     // ---- Playthrough mode: replay a finished seed and judge beatability. ----
     if (!playthroughFile.empty()) {
@@ -312,10 +365,19 @@ static int Run(int argc, char** argv) {
                 MM_SetComboGoal(goal.hunt ? 1 : 0, goal.required, ComboRando::CwMmPieces(goal.total));
             if (SOH_SetComboStartingGame)
                 SOH_SetComboStartingGame(mmStart ? 1 : 0);
+            if (SOH_SetComboUnifiedInventory)
+                SOH_SetComboUnifiedInventory(spoiler.value("unifiedInventory", false) ? 1 : 0);
+            pushMirrorStart(spoiler.value("unifiedInventory", false), mmSettings);
             // A real in-game save's placement map lists only SHUFFLED checks; non-shuffled items the
             // oracle still gates on (OOT vanilla shop items, MM boss remains when not shuffled) live in
             // the dump's fixed[]. Merge them in so those gates (e.g. MM RemainsCount for the Moon) resolve.
             std::string sohDump = SOH_Dump(), mmDump = MM_Dump();
+            // full-coop-sync §B1: the seed's stored MM entrance layout (absent = vanilla).
+            if (MM_SetEntranceOverridesFn)
+                MM_SetEntranceOverridesFn(spoiler.value("entrances", nlohmann::json::object())
+                                              .value("mm", nlohmann::json::object())
+                                              .dump()
+                                              .c_str());
             // NOW force glitchless for traversal (real gates); the dump above froze the seed's slot
             // set in the DLL-side cache, so this re-prep can't shrink it.
             nlohmann::json os = ootSettings;
@@ -324,6 +386,7 @@ static int Run(int argc, char** argv) {
                 if (it.key().find("NoLogic") != std::string::npos || it.key().find("LogicRules") != std::string::npos)
                     it.value() = 0;
             SOH_RestoreSettings(os.dump().c_str());
+            undoCross(); // §B2: no crossed door from a previous pass may survive the re-wiring below
             SOH_PrepContext();
             // The PrepContext above reset the OOT region graph to VANILLA wiring — not the graph the
             // seed was filled against. Install the seed's recorded entrance layout (empty array =
@@ -341,6 +404,10 @@ static int Run(int argc, char** argv) {
                 if (!SOH_ShuffleEntrances || !SOH_ShuffleEntrances(masterSeed))
                     entranceRestoreFailed = true;
             }
+            // §B2: the seed's stored cross-game doors, on top of both games' installed layouts.
+            ComboRando::ApplyStoredCross(
+                spoiler.value("entrances", nlohmann::json::object()).value("cross", nlohmann::json::object()),
+                SOH_SetCrossEntrancesFn, MM_SetCrossEntrancesFn, SOH_GetCrossExitsFn, MM_GetCrossExitsFn);
             // Spoiler prices are the seed's truth — they override the dumps' re-rolls in every oracle
             // reset (SOH) / query (MM), so wallet gates evaluate against what the player actually pays.
             SOH_SetCheckPrices(ootPrices.dump().c_str());
@@ -357,6 +424,50 @@ static int Run(int argc, char** argv) {
             };
             mergeFixed(sohDump, "oot");
             mergeFixed(mmDump, "mm");
+            if (std::getenv("COMBO_FORM_CREDIT_TEST")) {
+                // Plan C1 check: with every OOT item this seed places EXCEPT a form's stand-ins, what the Zora / Goron
+                // Mask adds to Hyrule's reachable checks (and that it adds nothing the real items wouldn't).
+                std::vector<std::string> all;
+                for (const char* g : { "oot", "mm" }) // cross-game seeds put Hyrule's items in Termina's checks too
+                    for (auto& [chk, item] : passFlat[g].items())
+                        if (item.is_string())
+                            all.push_back(item.get<std::string>());
+                auto without = [&](std::initializer_list<const char*> names) {
+                    std::vector<std::string> v;
+                    for (const auto& it : all) {
+                        bool drop = false;
+                        for (const char* n : names)
+                            drop = drop || (it == n);
+                        if (!drop)
+                            v.push_back(it);
+                    }
+                    return v;
+                };
+                auto report = [&](const char* tag, std::vector<std::string> base, const char* pseudo) {
+                    const auto a = ComboRando::QueryReachable(oot, base);
+                    base.push_back(pseudo);
+                    const auto b = ComboRando::QueryReachable(oot, base);
+                    const auto real = ComboRando::QueryReachable(oot, all);
+                    int gained = 0, beyondReal = 0;
+                    for (const auto& c : b) {
+                        if (!a.count(c)) {
+                            gained++;
+                            if (gained <= 12)
+                                std::cout << "[formtest] " << tag << " adds: " << c << "\n";
+                        }
+                        if (!real.count(c))
+                            beyondReal++;
+                    }
+                    std::cout << "[formtest] " << tag << ": without " << a.size() << ", with form " << b.size()
+                              << " (+" << gained << "), with the real items " << real.size()
+                              << ", form beyond real items: " << beyondReal << "\n";
+                };
+                report("zora", without({ "Iron Boots", "Zora Tunic", "Bronze Scale", "Silver Scale", "Golden Scale",
+                                         "Progressive Scale" }),
+                       "@combo:form:zora");
+                report("goron", without({ "Goron Tunic", "Megaton Hammer", "Strength Upgrade", "Progressive Strength Upgrade" }),
+                       "@combo:form:goron");
+            }
             return ComboRando::RunPlaythrough(passFlat.dump(), oot, mmO, label, MM_Restore, ptOut, sohDump, mmDump,
                                               ComboRando::OotAccessFromDump(sohDump) != ComboRando::OotAccess::NO_LOGIC,
                                               /*progressionOnly*/ false, goal, mmStart, sharedMask);
@@ -538,6 +649,13 @@ static int Run(int argc, char** argv) {
     const int startCfg = startingGameArg >= 0            ? startingGameArg
                          : SOH_ReadComboStartingGameCVar ? SOH_ReadComboStartingGameCVar()
                                                          : 0;
+    // Unified Inventory: CLI wins, else the menu CVar (via soh). It shares every family.
+    bool unified = unifiedArg >= 0 ? unifiedArg == 1 : false;
+    if (unifiedArg < 0 && SOH_ReadComboEntranceCVarsFn) {
+        try {
+            unified = nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("unifiedInventory", false);
+        } catch (...) {}
+    }
     // Shared Items: --shared-items wins ("all"/"none"/comma-separated keys); else the menu CVars.
     uint32_t sharedMask = 0;
     if (sharedItemsArg == "all") {
@@ -552,6 +670,8 @@ static int Run(int argc, char** argv) {
             keys.push_back(tok);
         sharedMask = ComboRando::SharedMaskFromKeys(keys);
     }
+    if (unified)
+        sharedMask = ComboRando::SharedMaskAll();
     std::cout << "[comborando] validating " << count << " seed(s) from "
               << (haveMasterSeed ? "masterSeed " + std::to_string(masterSeedArg) : "'" + seed + "'")
               << (goal.hunt ? " (Triforce Hunt, " + std::to_string(goal.required) + " of " +
@@ -571,7 +691,49 @@ static int Run(int argc, char** argv) {
         ComboRando::RequirednessResult pareDownResult; // cross-hint verification (headless mirror of RunComboFill)
         // Whole-fill retries with re-derived seeds, identical to RunComboFill (GAP-4) so a headless
         // seed reproduces the in-game one even when early attempts fail (shared budget, same header).
-        const int kFillAttempts = ComboRando::kFillAttempts;
+        // full-coop-sync §B1: MM entrance settings (CLI override, else the combo menu CVars).
+        ComboRando::EntranceSettings entMm;
+        if (!mmEntrancesArg.empty()) {
+            if (mmEntrancesArg == "all") {
+                entMm.overworld = entMm.interior = entMm.dungeon = true;
+            } else if (mmEntrancesArg != "off") {
+                std::stringstream ss(mmEntrancesArg);
+                for (std::string t; std::getline(ss, t, ',');) {
+                    entMm.overworld |= t == "overworld";
+                    entMm.interior |= t == "interior";
+                    entMm.dungeon |= t == "dungeon";
+                    entMm.decoupled |= t == "decoupled";
+                    entMm.mixed |= t == "mixed";
+                }
+            }
+        } else if (SOH_ReadComboEntranceCVarsFn) {
+            try {
+                entMm = ComboRando::EntranceSettings::FromJson(
+                    nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("mm", nlohmann::json::object()));
+            } catch (...) {}
+        }
+        ComboRando::MmEntranceAttempt entResult;
+        ComboRando::CrossSettings entCross;
+        if (!crossArg.empty()) {
+            if (crossArg != "off") {
+                std::stringstream ss(crossArg);
+                for (std::string t; std::getline(ss, t, ',');) {
+                    entCross.overworld |= t == "overworld" || t == "all";
+                    entCross.interior |= t == "interior" || t == "all";
+                    entCross.dungeon |= t == "dungeon" || t == "all";
+                    if (t.rfind("pct=", 0) == 0)
+                        entCross.percent = std::clamp(std::atoi(t.c_str() + 4), 0, 100);
+                }
+            }
+        } else if (SOH_ReadComboEntranceCVarsFn) {
+            try {
+                entCross = ComboRando::CrossSettings::FromJson(
+                    nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("cross", nlohmann::json::object()));
+            } catch (...) {}
+        }
+        ComboRando::CrossAttempt crossResult;
+        const int kFillAttempts =
+            (entMm.Any() || entCross.Any()) ? ComboRando::kEntranceFillAttempts : ComboRando::kFillAttempts;
         bool pinStartOot = false, resolvedMmStart = false; // #135: Random falls back to OOT after a failure
         for (int attempt = 0; attempt < kFillAttempts; ++attempt) {
             masterSeed = base + attempt * 0x9E3779B9u;
@@ -592,6 +754,15 @@ static int Run(int argc, char** argv) {
             // Shared Items: shapes OOT's wallet-force before the dump (settings.cpp reads gComboSharedMask).
             if (SOH_SetComboSharedItems)
                 SOH_SetComboSharedItems(sharedMask);
+            if (SOH_SetComboUnifiedInventory)
+                SOH_SetComboUnifiedInventory(unified ? 1 : 0);
+            {
+                nlohmann::json mmLive = nlohmann::json::object();
+                try {
+                    mmLive = nlohmann::json::parse(MM_DumpSettings ? MM_DumpSettings() : "{}");
+                } catch (...) {}
+                pushMirrorStart(unified, mmLive);
+            }
             sohDump = SOH_Dump();
             mmDump = MM_Dump();
             if (goal.hunt) {
@@ -605,10 +776,24 @@ static int Run(int argc, char** argv) {
             std::string forced = SOH_GetForced ? SOH_GetForced(masterSeed) : "";
             // Same placement as RunComboFill: after the dump/forced read, before the fill, so logic
             // validates the shuffled world. No-op when the entrance options are off.
+            undoCross(); // §B2: the previous attempt's crossed doors go back before OOT reshuffles
             if (SOH_ShuffleEntrances && !SOH_ShuffleEntrances(masterSeed)) {
                 std::cerr << "[comborando] seed " << masterSeed << ": entrance shuffle found no valid layout\n";
                 if (mmStart && startCfg == 2)
                     pinStartOot = true;
+                continue;
+            }
+            entResult = ComboRando::ShuffleMmEntrancesForAttempt(MM_DumpEntranceGraphFn, MM_SetEntranceOverridesFn,
+                                                                 entMm, masterSeed);
+            if (entResult.ok)
+                crossResult = ComboRando::ShuffleCrossEntrancesForAttempt(
+                    SOH_DumpEntranceGraphFn, SOH_SetCrossEntrancesFn, MM_DumpEntranceGraphFn, MM_SetCrossEntrancesFn,
+                    SOH_GetCrossExitsFn, MM_GetCrossExitsFn, entResult.overrides, entCross, masterSeed);
+            if (!entResult.ok || !crossResult.ok) {
+                std::cerr << "[comborando] seed " << masterSeed << ": "
+                          << (!entResult.ok ? entResult.error : crossResult.error) << "\n";
+                if (MM_Restore)
+                    MM_Restore();
                 continue;
             }
             ComboRando::OotAccess ootAccess = ComboRando::OotAccessFromDump(sohDump);
@@ -690,6 +875,8 @@ static int Run(int argc, char** argv) {
                     nlohmann::json sharedItemsJson = fillSpoiler.value("sharedItems", nlohmann::json::array());
                     const uint32_t effectiveSharedMask = ComboRando::SharedMaskFromKeys(sharedItemsJson);
                     consolidated["sharedItems"] = sharedItemsJson;
+                    if (unified)
+                        consolidated["unifiedInventory"] = true;
                     if (fillSpoiler.contains("sharedStartingMm"))
                         consolidated["sharedStartingMm"] = fillSpoiler["sharedStartingMm"];
                     // ComboShip: suffix cross-game item-name collisions in the placements (parity with
@@ -726,6 +913,16 @@ static int Run(int argc, char** argv) {
                             } catch (...) {}
                         }
                         consolidated["entrances"] = { { "oot", std::move(ootEnt) } };
+                        if (entMm.Any()) { // §B1: stored, applied from the seed (never re-derived)
+                            consolidated["entrances"]["mm"] = entResult.overrides;
+                            consolidated["entranceSettings"]["mm"] = entMm.ToJson();
+                            consolidated["entranceSpoiler"]["mm"] = entResult.spoiler;
+                        }
+                        if (entCross.Any()) { // §B2
+                            consolidated["entrances"]["cross"] = crossResult.runtime;
+                            consolidated["entranceSettings"]["cross"] = entCross.ToJson();
+                            consolidated["entranceSpoiler"]["cross"] = crossResult.spoiler;
+                        }
                     }
                     // Cross-hint generation (mirrors RunComboFill) — enables the headless determinism check.
                     consolidated["hints"] =

@@ -117,6 +117,14 @@ void KaleidoScope_SetItemCursorVtx(PauseContext* pauseCtx) {
 #pragma region Item Cycling
 
 s8 gCurrentItemCyclingSlot;
+#ifdef COMBO_BUILD
+// ComboShip (shared bottles): soh/soh/Enhancements/randomizer/ComboBottleShelf.cpp.
+void Combo_HandleBottleCycles(PlayState* play);
+void Combo_DrawBottleCycles(PlayState* play);
+// ComboShip (merged pause menus): soh/soh/Enhancements/randomizer/ComboPause.cpp + z_kaleido_combo.c.
+#include "soh/Enhancements/randomizer/ComboPause.h"
+void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play);
+#endif
 
 // Vertices for the extra items
 static Vtx sCycleExtraItemVtx[] = {
@@ -358,6 +366,10 @@ void KaleidoScope_HandleItemCycles(PlayState* play) {
     // Handle Nayru's Love/Roc's Feather
     KaleidoScope_HandleItemCycleExtras(play, SLOT_NAYRUS_LOVE, Randomizer_GetSettingValue(RSK_ROCS_FEATHER),
                                        Enhancement_GetPrevNayrusItem(), Enhancement_GetNextNayrusItem(), true);
+#ifdef COMBO_BUILD
+    // ComboShip (shared bottles): each bottle slot cycles through the Bottle Shelf.
+    Combo_HandleBottleCycles(play);
+#endif
 }
 
 void KaleidoScope_DrawItemCycles(PlayState* play) {
@@ -381,6 +393,9 @@ void KaleidoScope_DrawItemCycles(PlayState* play) {
     // Draw Nayru's Love/Roc's Feather
     KaleidoScope_DrawItemCycleExtras(play, SLOT_NAYRUS_LOVE, Randomizer_GetSettingValue(RSK_ROCS_FEATHER),
                                      Enhancement_GetPrevNayrusItem(), Enhancement_GetNextNayrusItem());
+#ifdef COMBO_BUILD
+    Combo_DrawBottleCycles(play);
+#endif
 }
 
 bool IsItemCycling() {
@@ -409,6 +424,15 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
     s16 cursorY;
     s16 oldCursorPoint;
     s16 moveCursorResult;
+
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): the prism's Termina and Masks faces are MM's pages (MM's item page, MM's mask
+    // page), drawn and driven as MM does.
+    if (Combo_PauseTab() != COMBO_PAUSE_TAB_HYRULE) {
+        KaleidoScope_ComboDrawForeignItemSelect(play);
+        return;
+    }
+#endif
 
     OPEN_DISPS(play->state.gfxCtx);
 
@@ -718,6 +742,11 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     for (i = 0, j = 24 * 4; i < ARRAY_COUNT(gSaveContext.equips.cButtonSlots); i++, j += 4) {
         if ((gSaveContext.equips.buttonItems[i + 1] != ITEM_NONE) &&
+#ifdef COMBO_BUILD
+            // ComboShip (merged pause menus): a foreign item's outline is on its own (MM) tab.
+            !Combo_PauseIsForeign(gSaveContext.equips.buttonItems[i + 1]) &&
+            (gSaveContext.equips.cButtonSlots[i] < 24) &&
+#endif
             !((gSaveContext.equips.buttonItems[i + 1] >= ITEM_SHIELD_DEKU) &&
               (gSaveContext.equips.buttonItems[i + 1] <= ITEM_BOOTS_HOVER))) {
             gSPVertex(POLY_OPA_DISP++, &pauseCtx->itemVtx[j], 4, 0);

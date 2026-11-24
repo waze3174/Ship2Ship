@@ -168,11 +168,21 @@ void EffectSs_Insert(PlayState* play, EffectSs* effectSs) {
 }
 
 // original name: "EffectSoftSprite2_makeEffect"
+#ifdef COMBO_BUILD
+// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): an effect spawned while an enemy we own updates is replayed on
+// teammates' mirrors of it. Observe only.
+void SohCoop_EffectSpawn(s32 type, s32 priority, void* initParams);
+#endif
+
 void EffectSs_Spawn(PlayState* play, s32 type, s32 priority, void* initParams) {
     s32 index;
     u32 overlaySize;
     EffectSsOverlay* overlayEntry;
     EffectSsInit* initInfo;
+
+#ifdef COMBO_BUILD
+    SohCoop_EffectSpawn(type, priority, initParams);
+#endif
 
     overlayEntry = &gEffectSsOverlayTable[type];
 

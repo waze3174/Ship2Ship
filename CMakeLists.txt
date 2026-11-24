@@ -229,6 +229,11 @@ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 ################################################################################
 add_compile_definitions(CONTROLLERBUTTONS_T=uint32_t)
 add_compile_definitions(COMBO_BUILD)
+# ComboShip test builds only: the virtual controller (libultraship os.cpp, env COMBO_VPAD). Release AppImages: OFF.
+option(COMBO_HARNESS "Build the test-harness virtual controller (never for releases)" OFF)
+if(COMBO_HARNESS)
+    add_compile_definitions(COMBO_HARNESS)
+endif()
 
 find_package(Python3 REQUIRED)
 

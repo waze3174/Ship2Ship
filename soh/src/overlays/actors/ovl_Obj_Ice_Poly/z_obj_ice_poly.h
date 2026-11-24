@@ -16,6 +16,10 @@ typedef struct ObjIcePoly {
     /* 0x0152 */ s16 meltTimer;
     /* 0x0154 */ ColliderCylinder colliderIce;
     /* 0x01A0 */ ColliderCylinder colliderHard;
+#ifdef COMBO_BUILD
+    // ComboShip: MM's hot spring water melts the ice (MM ObjIcePoly colliders2, z_obj_ice_poly.c:63-82, 189-200).
+    ColliderCylinder colliderComboAqua;
+#endif
 } ObjIcePoly; // size = 0x01EC
 
 #endif

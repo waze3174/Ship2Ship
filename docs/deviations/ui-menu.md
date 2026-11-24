@@ -413,3 +413,175 @@ Fix: soh's button uses `CVAR_WINDOW("TimeSplitSettings")` + an inline settings s
 get `##MM`, its overlay ID `Timesplits##MM`, its settings CVar `gWindows.TimesplitsSettings` (old key
 cleared on init), and `ComboTrackerVisibility` keeps only the foreground game's overlay in the Gui map
 (same Remove/Re-add as notifications, see tracker.md).
+
+## Merged pause menus: hexagonal prisms (2026-11-12)
+
+Owner ask: "the entire Masks panel of the MM pause menu in the OOT pause panels, both item panels from both games in
+each other's pause menus, every item equipable, and my dpad/cbutton equips line up in both games". Owner design
+(same day): "make the pause cubes into hexagonal prisms with 6 tiles to scroll between". Owner hard rule: everything
+from the other game looks and behaves 1:1 like its home game.
+
+**Faces (R / stick right = +1; Z / L / stick left = -1; vanilla's page-turn animation, 60° per turn):**
+- OOT: Hyrule items (OOT's item page) → Termina items (MM's item page) → Masks (MM's mask page) → Map → Quest →
+  Equipment.
+- MM: Termina items (MM's item page) → Hyrule items (OOT's item page) → Map → Quest → Masks → Hyrule equipment
+  (OOT's equipment page).
+
+**Geometry.** Vanilla's cube: pages 93.55 (OOT, `WREG(3)`) / 93 (MM) from the centre, camera on the opposite wall
+(64 back), 157.55 / 157 from the page it shows. The prism keeps the page size: apothem = page width /
+(2 tan 30°) = 187.2 / 1.1547 = 162.1, camera 4.55 (OOT) / 5.1 (MM) in front of the centre looking out, so the face
+shown is exactly vanilla's distance (and size). Each face's transform is vanilla's per-page
+Translate/Scale/flip/RotateY generalised to `face × 60°`. Every face is drawn every frame (MM now allocates all
+four page vertex sets, `COMBO_PRISM_ALL_PAGES`), the active face last. MM's active 3D world-map plane keeps its
+camera distance (208) the same way. Save / game-over prompt pages swing down in front of the active face.
+
+**Page state.** The game page enums are untouched: the extra faces are `PAUSE_ITEM` pages with a combo "face" that
+says whose page it is (`Combo_PauseFace` / `Combo_MmPauseFace`). `KaleidoScope_SwitchPage` starts a prism turn, the
+turn's end (`func_808237B4` / `KaleidoScope_UpdateSwitchPage`) lands on the prism's face, the opening spin
+(`func_808265BC` / `KaleidoScope_UpdateOpening`) reopens on the last face, and the camera
+(`KaleidoScope_ComboSetPrismView`) replaces `KaleidoScope_SetView(eye)`. A side face is drawn with `pageIndex`
+temporarily set to another page so it is drawn but not driven. The "To <page>" labels name the prism's neighbours.
+
+**Foreign pages (1:1).** A foreign face is the owning game's page: its page tiles (MM: flat 180,180,120 prim colour;
+OOT: per-column vertex gradients), icons, name plates and ammo digits, all from the owning game's ResourceManager
+(`G_COMBO_RM_PUSH/POP`), and its cursor rules (MM: the cursor rests on any slot, white on empty; OOT: only on owned
+items). Inventory is read live from the dormant save through `MM_ComboPause_*` / `SOH_ComboPause_*`
+(`combo/menu/ComboPauseABI.h`). The Hyrule equipment face shows OOT's 4×4 equipment grid (upgrade column + three
+pieces per row, equipped outline; no Link preview).
+
+**Foreign items on buttons.** Encoded in the host's own button-item byte (no save-format change), naming the owning
+game's inventory slot: OOT host 0x9E + MM slot, skipping 0xBF–0xC1 (→ 0x9E–0xD0); MM host 0xD0 + OOT slot
+(→ 0xD0–0xE7). The host's slot byte for a foreign button is the foreign id itself (unique, never a real slot), so
+both games' "same slot on another button → swap" rules work unchanged. A shared item the host holds equips as the
+host's own copy. HUD / equip-animation icons come from the owning game's RM. Use: OOT host — MM transformation
+masks → the form system (any mask while transformed changes back), other MM masks → worn with MM's model
+(`D_801C0B20`, routed `@mm:` DL on the head limb), anything else → OOT's error sound. MM host — OOT's Keaton / Bunny /
+Truth / Goron / Zora masks → MM's own masks, anything else → MM's error sound.
+
+**Shared layout.** `ComboEquipShare` now carries each button's origin (`"cx"`, `"dx"`: owning game + slot); the
+receiver puts its own item there when it has one, otherwise the other game's item as a foreign id, and empties a
+button the sender had empty.
+
+**Seams:** `soh/src/overlays/misc/ovl_kaleido_scope/{z_kaleido_scope_PAL.c,z_kaleido_item.c,z_kaleido_combo.c}`,
+`soh/src/code/{z_parameter.c,z_player_lib.c}`, `soh/src/overlays/actors/ovl_player_actor/z_player.c`,
+`mm/src/overlays/kaleido_scope/ovl_kaleido_scope/{z_kaleido_scope_NES.c,z_kaleido_item.c,z_kaleido_combo.c}`,
+`mm/src/code/z_parameter.c`, `mm/src/overlays/actors/ovl_player_actor/z_player.c`; logic in
+`soh/soh/Enhancements/randomizer/ComboPause.cpp` and `mm/2s2h/Rando/MiscBehavior/ComboPause.cpp`. Test harness:
+`COMBO_DEBUG_PAUSE` / `COMBO_DEBUG_MM_PAUSE` (`combo/menu/ComboPauseHarness.h`).
+## MM items in Hyrule (2026-11-13, branch feat/mm-items-in-hyrule)
+
+Owner bar: "Every item has to work from both games in both games ... correct models, correct sounds, animations, all
+of it, no sloppy analogs". Rule applied: each MM item used from OOT's pause (a foreign id on a C button / D-pad) runs
+a PORT of MM's own code (MM's player item action, MM's actor, MM's models / animations / sounds through the "@mm:"
+routing and MM's native sfx player); only damage and puzzle credit map to OOT (OOT damage flags, OOT bombable walls,
+OOT's counterpart actors). Where Hyrule has nothing that reacts, the item still behaves as in MM (worn with MM's
+model, MM's sounds) and the table says so.
+
+Shared pieces added:
+- `soh/soh/Enhancements/combo/ComboMmText.cpp`: MM's own messages in OOT's textbox. Reads MM's message table from
+  MM's archive (`text/message_data_static/message_data_static`), translates MM control codes to OOT's (colours,
+  newline, box breaks, quick text, two/three-choice, button glyphs; MM-only timers/delays/sfx dropped).
+  `Combo_MmTextPrepare(mmTextId)` -> OOT text id `TEXT_COMBO_MM_TEXT` (0x9218).
+- `Randomizer_DrawMmItemByName` (draw.cpp / combo/menu/ComboForeignDrawOOT.h): MM's GI model of an MM item by its MM
+  rando name, for items Link holds up.
+- `MM_ComboItems_SetSlot` (mm/2s2h/Rando/MiscBehavior/ComboHyruleItems.cpp): an MM bottle used in Hyrule writes its
+  new content into MM's own slot (the button keeps its foreign id, which now names the new content).
+- `Combo_MmPlayFanfare` / `Combo_MmStopFanfare` (ComboMmAudio.cpp, code_800EC960.c, audio_load.c): MM music sequences
+  (Bremen March 0x53, Kamaro's Dance 0x71) played natively by OOT's engine on the fanfare player in MM script mode.
+
+| item | works | what was ported | techniques verified | known gaps (reason) |
+|---|---|---|---|---|
+| Great Fairy's Sword | yes (child + adult) | MM EnMThunder GFS look (spin scale 4 / great 6, MM dust, MM charge aura), MM swing / spin sounds (MM sfx player), MM reach 5500 = OOT Biggoron row; 2S2H "Great Fairy Sword B-Button Attack" and "Two-Handed Sword Spin Attack" CVars honoured (shared CVars) | draw + swing from C (child, adult), charged spin by holding C with TwoHandedSwordSpinAttack on (screenshots gfsA / gfsC) | damage credit = OOT Biggoron flags; MM's instant great spin (Swordsman's flag) is not read in Hyrule |
+| Powder Keg | yes (Goron form) | MM EnBom keg branch (z_en_bom_combo_keg.c) + MM EnClearTag large explosion; MM keg ammo; Goron-only use and lift (MM rules); fuse 200; MM sounds; MM barrel / skull / fuse models | Goron takes the keg out overhead, sets it down, fuse burns, MM explosion with rays and smoke (keg-48..68, log "MM keg exploded") | breaks OOT bombable walls / boulders through OOT's explosive flag (radius 200, damage 4); fuse sound doesn't speed up (MM channel IO not in the native sfx player); a held keg isn't respawned across a scene change; non-Gorons get the error sound (button not greyed) |
+| Pictograph Box | yes | MM picto lens, MM HUD focus frame, shutter, capture -> I8 -> I5 in MM's save, MM 0xF8 "Keep this picture? Yes/No" (MM's text), photo shown again on reuse, ColorPictograph CVar | lens, shutter, prompt, Yes, exit, reuse shows the photo (picto-48..88) | no Hyrule photo subjects (snap flags cleared); the prompt box is OOT's; MM's save isn't written to disk while in Hyrule (the colour PNG is) |
+| MM bottles (potions, milk, fairy, fish, bug, Poe, blue fire) | yes | OOT's bottle actions (MM's are the same code) writing the MM bottle's own slot (MM_ComboItems_SetSlot); MM content colours | Chateau drunk: MM slot 18 0x25 -> 0x12 (log) | MM bottles can't catch blue fire (MM's catch table has none); forms can't use MM bottles yet |
+| Chateau Romani | yes | MM drink (heal + magic) + infinite magic (MAGIC_STATE_CONSUME and lens drain skipped) | log "infinite magic until dawn" | adapted: lasts until the next OOT dawn (06:00) instead of MM's cycle reset; not saved |
+| Kotake's red potion | yes | MM maps it to the Poe drink (random -1 / +3 hearts) | code | |
+| Spring / Hot Spring Water | yes | MM pour (release action) spawning MM's ObjAqua (new actor); hot water melts OOT's Obj_Ice_Poly (MM's rule) | code | no frozen Goron / watered bean in Hyrule |
+| Gold Dust, Mushroom, Seahorse, Zora Egg, Hylian Loach, Deku Princess, Big Poe | yes | MM show route: bottle held up, MM 0xFE "This item doesn't seem to work here..." | same path as the Moon's Tear | no takers in Hyrule |
+| Moon's Tear, Title Deeds, Room Key, Letters, Pendant | yes | MM show route with MM's GI model held up, MM 0xFE text, NA_SE_PL_PUT_OUT_ITEM | Moon's Tear held up + textbox (bottle-80) | |
+| Bunny Hood | yes | MM Player_Action_13 1.5x run; MM air steering (no clamp to the run limit) so jumps keep the speed | code | not measured headless |
+| Blast Mask | yes | B through MM's item path (ITEM_F0): bomb at the head, 310-frame cooldown, MM scorched-mask fade | explosion on B, a second B during the cooldown does nothing (blast-44..64) | self-damage = the OOT bomb hitting Link (AT_TYPE_ALL), as in MM; no "Explode" B label (OOT has no B do-action label) |
+| Bremen Mask | yes | MM Player_Action_11 march (MM anims, stride bob) + MM's Bremen March fanfare natively; OOT dogs / chicks follow (MM En_Dg / En_Nwc) | march + fanfare start, no crash (log) | chicks don't grow into cuccos; the dog doesn't wait for the beat |
+| Kamaro's Mask | yes | MM Player_Action_12 dance + MM Kamaro's Dance fanfare | code (same path as Bremen) | no Rosa sisters in Hyrule |
+| Stone Mask | yes | MM's per-actor checks mirrored in the OOT counterparts: Keese, Guay, Bubbles, Mad Scrub, Dodongo, purple Gerudo guards, Leever, Like Like, Skulltula, Tektite, Beamos | code review | OOT-only enemies (Stalfos, Moblins, ...) ignore it, like MM's non-checking enemies |
+| Captain's Hat | yes | MM En_Skb: Stalchildren stop attacking, turn friendly, MM idle / salute, MM lines 0x13F6-0x13F8 | code review | ReDeads: MM reacts only with its dancing types (none in Hyrule) |
+| Garo's / Gibdo Mask | worn | MM reactions are Ikana-only (Garo encounters, dancing ReDeads, Gibdo NPCs) | | nothing in Hyrule reacts (MM rule) |
+| Mask of Scents | yes | MM voice bank 7, MM sniffing idle (cl_msbowait), no fidgets | code | MM has no speed effect; no MM mushrooms in Hyrule |
+| Mask of Truth | yes | Gossip Stones read as with Truth | code | MM dogs' thoughts: OOT dogs can't be picked up |
+| Great Fairy's Mask | yes | MM hair sim incl. its stray-fairy reaction (strands float + sparkle); MM stray fairies at OOT checks are MM's EnElforg (drift, fly to Link's waist with the mask, chime, collect) — see "MM stray fairies in Hyrule" below | see below | see below |
+| Couple's / Circus Leader's Mask | worn | MM animated material / tears + bubbles | code | NPC reactions are Termina-only |
+| Giant's Mask | disabled | MM rule: only in Twinmold's arena; button disabled, error sound | | by design |
+| All-Night, Postman's Hat, Kafei's, Romani's, Don Gero's, Keaton | worn | MM model + MM on/off sounds | | only Termina NPCs / objects react |
+| MM swords / shields | n/a | no MM equipment face on OOT's pause | | skipped |
+
+### MM stray fairies in Hyrule (2026-11-13, branch feat/stray-fairies-hyrule)
+
+Owner: "randomizer can have great fairy pieces in oot levels so the mask should react to that." An MM stray fairy at an
+OOT check (freestanding, or released from a pot / crate / beehive / grass / rock / tree / wonder spot) is MM's EnElforg,
+ported line for line (`soh/src/code/z_en_item00_combo_strayfairy.c`): the check's EnItem00 (ITEM00_SOH_DUMMY whose item
+is RG_COMBO_FOREIGN drawn by MM as gStrayFairySkel) adopts the fairy on its first update and swaps its update / draw /
+destroy. MM's own skeleton, flying animation and per-area colour texanim (per-actor SkelAnime, head flipped by facing:
+`ComboForeignAnim_InitInstance` / `_DrawInstance`), MM's drift around home (speed 1, deliberate orbit), MM's sparkles,
+MM's collect ranges (xz < 30, y in (-68, 12)), +3 hearts, 80 frames circling Link with NA_SE_PL_CHIBI_FAIRY_HEAL. A
+container release appears 40 units up with NA_SE_EV_BUTTERFRY_TO_FAIRY (MM Item_DropCollectible).
+- Great Fairy's Mask worn (from OOT's pause, human Link): the fairy flies to Link's waist at speed 5 and chimes
+  NA_SE_SY_FAIRY_MASK_SUCCESS once per fairy each time the mask goes on (MM sounds through the native MM sfx player).
+- Hair: MM's ACTORCTX_FLAG_3 is `gComboStrayFairyNear`, raised by a free-floating fairy and by a pot / crate / beehive
+  still holding one (MM's ObjTsubo / ObjKibako2 / ObjTaru / ObjComb do the same, culling off); the mask's hair sim
+  (z_player_lib.c) floats the strands and sheds MM's Player_DrawStrayFairyParticles; cleared at the end of Player_Draw.
+- The check: collection sets the pickup's own flag (randomizer inf / collectible), exactly what touching the EnItem00
+  did, so OOT's queue presents and OOT_DeliverForeign grants the fairy into MM's save (MM's randomizer does the same:
+  VB_GIVE_ITEM_FROM_ELFORG false, flag -> rando queue).
+- Chests: MM's randomizer gives a chest's stray fairy through the get-item path (EnBox VB_GIVE_ITEM_FROM_CHEST), so OOT's
+  chest give is kept, and chests do not raise the hair flag (MM's rando chests hold GI_RECOVERY_HEART). NPC rewards
+  unchanged.
+- Verified headless (file2 seed, Hyrule Field): drift (sfA), touch collect + delivery "OOT delivered foreign item
+  'Stone Tower Stray Fairy' to MM (from check 'LH Grass 9')" (sfB), mask on -> FAIRY_MASK_SUCCESS, target speed 5,
+  fairy flew 150 units to Link and was collected, hair floating (sfC). Harness:
+  `COMBO_DEBUG_SPAWN_STRAYFAIRY=<check name, '+' = space | auto>[,freestanding][,dist=N][,delay=N]` (spawns the real
+  check's pickup in front of Link), trace `COMBO_DEBUG_STRAYFAIRY`.
+- Owed / not ported: OOT fairy-shuffle checks (EnElf healing fairies carrying a stray fairy) stay OOT fairies; MM's
+  bubble / enemy-held / collider stray-fairy types have no OOT counterpart; MM's CosmeticEditor stray-fairy colours not
+  read; container hair flag not verified in a run (code path only); sounds not checked by ear (headless); `auto` may pick
+  a chest check whose randomizer inf does not queue it (use a name).
+
+
+## OOT items in Termina (2026-11-13, branch `feat/oot-items-in-termina`, IN PROGRESS)
+
+Owner bar: every OOT item works in Termina as a PORT of OOT's own code (player item action + OOT actor + OOT
+models/animations/sounds); only damage / puzzle credit maps to MM.
+
+**Design.** OOT items without a Termina twin get their own MM item actions (`PLAYER_IA_COMBO_OOT_*`, appended after
+MM's so no MM range check sees them) and run OOT's item code ported into MM's player
+(`mm/src/overlays/actors/ovl_player_actor/z_player_combo_oot.inc`, included at the end of z_player.c; each function
+names its OOT original). OOT actors are combo files in MM's overlay dirs: OOT's EnBoom as MM EnBoom params
+`COMBO_OOT_BOOMERANG` (`ovl_En_Boom/z_en_boom_combo_oot.c`), OOT's Magic_Dark/Fire/Wind as new actors
+`ACTOR_COMBO_MAGIC_DARK/FIRE/WIND` (`ovl_Combo_Magic_*`). Models are OOT's (`__OTR__@oot:` routed DLs; hand models
+swapped in `Combo_MmOotHeldDL`), animations come from OOT's archive (new `__OTR__@oot:` routing in MM's
+`ResourceMgr_LoadAnimByName`), raw OOT resources via `Combo_MmOotRawResource`. OOT's save stays the owner of ammo
+and age rules (`SOH_ComboTermina_*`, soh `ComboTerminaItems.cpp`, additive). OOT's age rule (`gItemAgeReqs`, SoH
+Timeless Equipment / Adult Masks honoured) greys and blocks items like OOT's pause does. Logic:
+`mm/2s2h/Rando/MiscBehavior/ComboOotItems.cpp`. Harness trace: `COMBO_DEBUG_OOTITEMS=1`.
+
+**Sound.** Measured (sequence emulator over both archives, tool kept outside the repo): every sound these items use
+is byte/note-identical in MM at the same id (boomerang throw/fly/catch, hammer swing/hit, slingshot shot/flick/
+reflect, hookshot, Nayru's Love, FW vanish, spell voices) EXCEPT `NA_SE_PL_MAGIC_FIRE` 0x879 (MM's flamethrower
+sample is a lower-rate copy, corr 0.79), `NA_SE_PL_MAGIC_WIND_NORMAL` 0x87A (MM envelope tail half volume),
+`NA_SE_PL_MAGIC_WIND_WARP` 0x87B (MM layer turns vibrato off), `NA_SE_IT_SLING_DRAW` 0x1821 (same recording,
+re-encoded 2-bit ADPCM), and for later items the four iron-boots sounds and the hookshot-hang voice. No full OOT audio
+port is needed; those ids need a targeted carry of OOT's script + font entry + sample (OWED).
+
+| item | works | ported | verified (headless) | known gaps / owed |
+|---|---|---|---|---|
+| Boomerang (child) | yes | OOT func_80835800 chain + OOT EnBoom (speed 12, homing, 20-frame return, wall bounce, EnItem00/Gold Skulltula fetch, catch r=40), OOT anims, OOT child hand + boomerang model, OOT aim camera (CAM_MODE_BOOMERANG); dmg 0x10 = MM Zora-boomerang bit | throw + catch x3 (log `boomerang thrown/caught`) | flight not yet captured on screenshot (camera angle); item fetch / stun not exercised |
+| Megaton Hammer (adult) | yes | OOT melee path: forward/side choice, OOT hammer anims + hit windows, no combo/lunge, OOT wall hit (hit-stop, quake, rebound), frame-7 / jump-attack frame-2 shockwave; credit DMG_GORON_PUNCH+POUND, impact = Goron ground pound | 4 swings, OOT anims, shockwave each forward swing; OOT hammer model in adult hand (screenshots) | side swing / jump attack / switch+rock credit not exercised in harness |
+| Slingshot (child) | builds, untested | OOT bow/slingshot chain (unk_B28 2), OOT seed (MM kept ARROW_SEED), OOT bullet bag ammo, OOT sling draw/flick sfx, OOT child hand + rubber band + first-person arm | — | test owed; draw sfx re-encoded in MM |
+| Din's Fire | builds, untested | OOT cast action (Player_Action_808507F4) + Magic_Fire port (OOT sphere/texture/tint/vertex alpha), credit DMG_FIRE_ARROW | — | test owed; 0x879 sample degraded in MM |
+| Farore's Wind | builds, untested | Magic_Wind port (OOT curve skeleton), warp point set/return/dispel, point saved in MM save (`shipSaveInfo.comboFaroresWind`), OOT arrival | — | test owed; choice box is Termina's message box with OOT's 0x3B wording; 0x87A/0x87B differ |
+| Nayru's Love | builds, untested | Magic_Dark port (orb, diamond, invincibility -100, 1200 frames, song kills it, carries across scenes via MM's nayrusLoveTimer remnant) | — | test owed |
+| Hookshot / Longshot | builds, untested | no longer twins: OOT lengths (13 / 26 frames), OOT reticle reach, OOT tip + chain models | — | test owed; MM's own Hookshot stays on the Termina face |
+| Skull / Spooky / Gerudo Mask | builds, untested | worn instantly (OOT), OOT model on head limb, one mask at a time | — | test owed |
+| Bow, arrows, bombs, chus, sticks, nuts, lens, beans, ocarina, bottles | twin rule kept (MM's own copy when MM holds it) | — | — | decision: shared items; OOT-identical behaviour not separately verified |
+| Ruto's Letter, OOT trade items | no (MM error sound) | — | — | OWED: hold up / show as OOT does |
+| Hyrule Equipment face (swords, shields, tunics, boots, strength, scale) | no | — | — | OWED |

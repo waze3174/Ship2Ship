@@ -10,8 +10,14 @@ void Audio_SequenceChannelProcessSound(SequenceChannel* channel, s32 recalculate
     s32 i;
 
     if (channel->changes.s.volume || recalculateVolume) {
-        channelVolume = ROUND((channel->volume * (channel->volumeScale * channel->seqPlayer->appliedFadeVolume)) *
-                              channel->seqPlayer->gameVolume);
+        if (SEQ_PLAYER_IS_MM(channel->seqPlayer)) {
+            // ComboShip: MM's AudioScript_SequenceChannelProcessSound (no rounding; gameVolume = 2S2H portVolumeScale).
+            channelVolume = channel->volume * channel->volumeScale * channel->seqPlayer->appliedFadeVolume *
+                            channel->seqPlayer->gameVolume;
+        } else {
+            channelVolume = ROUND((channel->volume * (channel->volumeScale * channel->seqPlayer->appliedFadeVolume)) *
+                                  channel->seqPlayer->gameVolume);
+        }
         if (channel->seqPlayer->muted && (channel->muteBehavior & 0x20)) {
             channelVolume = channel->seqPlayer->muteVolumeScale * channelVolume;
         }
@@ -55,7 +61,8 @@ void Audio_SequenceChannelProcessSound(SequenceChannel* channel, s32 recalculate
 void Audio_SequencePlayerProcessSound(SequencePlayer* seqPlayer) {
     s32 i;
 
-    if (seqPlayer->fadeTimer != 0) {
+    // ComboShip: MM's player also holds its fade while skipping ticks.
+    if ((seqPlayer->fadeTimer != 0) && !(SEQ_PLAYER_IS_MM(seqPlayer) && (seqPlayer->skipTicks != 0))) {
         seqPlayer->fadeVolume += seqPlayer->fadeVelocity;
         seqPlayer->recalculateVolume = true;
 
@@ -195,6 +202,18 @@ void Audio_NoteVibratoInit(Note* note) {
     vib->curve = gWaveSamples[2];
     vib->channel = note->playbackState.parentLayer->channel;
     channel = vib->channel;
+    // ComboShip: under MM's engine a layer can leave its channel's vibrato (layer opcode 0xF0 clearing unk_0A.useVibrato,
+    // MSB-first mask 0x1000) and use its own VibratoSubStruct, which no script ever changes from MM's defaults (rate
+    // 0x800, depth 0, no delay): a vibrato of depth 0, i.e. none. No channel = no extent/rate updates.
+    if (SEQ_PLAYER_IS_MM(channel->seqPlayer) && !(note->playbackState.parentLayer->mmFlags & 0x1000)) {
+        vib->channel = (SequenceChannel*)(-1);
+        vib->extentChangeTimer = 0;
+        vib->extent = 0;
+        vib->rateChangeTimer = 0;
+        vib->rate = 0x800;
+        vib->delay = 0;
+        return;
+    }
     if ((vib->extentChangeTimer = channel->vibratoExtentChangeDelay) == 0) {
         vib->extent = (s32)channel->vibratoExtentTarget;
     } else {

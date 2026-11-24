@@ -69,6 +69,11 @@ ActorProfile En_Holl_Profile = {
 
 #include "overlays/ovl_En_Holl/ovl_En_Holl.h"
 
+#ifdef COMBO_BUILD
+// ComboShip (entrance randomizer, full-coop-sync §B1): walk-through exits go where the shuffle sent them.
+extern s32 Combo_MM_RedirectExit(s32 entrance);
+#endif
+
 static EnHoll* sInstancePlayingSound = NULL;
 
 static EnHollActionFunc sActionFuncs[] = {
@@ -189,6 +194,9 @@ void EnHoll_VisibleIdle(EnHoll* this, PlayState* play) {
                 }
             } else if (this->type == EN_HOLL_TYPE_SCENE_CHANGER) {
                 play->nextEntrance = play->setupExitList[EN_HOLL_GET_EXIT_LIST_INDEX(&this->actor)];
+#ifdef COMBO_BUILD
+                play->nextEntrance = Combo_MM_RedirectExit(play->nextEntrance);
+#endif
                 gSaveContext.retainWeatherMode = true;
                 Scene_SetExitFade(play);
                 play->transitionTrigger = TRANS_TRIGGER_START;

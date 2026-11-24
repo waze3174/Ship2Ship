@@ -1,4 +1,5 @@
 #include "Anchor.h"
+#include "CoopEnemySync.h"
 #include "soh/Enhancements/nametag.h"
 
 extern "C" {
@@ -185,10 +186,16 @@ void DummyPlayer_Update(Actor* actor, PlayState* play) {
         (Anchor::Instance->roomState.pvpMode == 1 &&
          client.teamId == CVarGetString(CVAR_REMOTE_ANCHOR("TeamId"), "default"))) {
         actor->flags |= ACTOR_FLAG_LOCK_ON_DISABLED;
+#ifdef COMBO_BUILD
+        CoopEnemySync_PuppetCoop(player, client.clientId); // enemy attacks on this teammate relay to them
+#endif
         return;
     }
 
     actor->flags &= ~ACTOR_FLAG_LOCK_ON_DISABLED;
+#ifdef COMBO_BUILD
+    player->cylinder.base.acFlags = (player->cylinder.base.acFlags & ~AC_TYPE_ALL) | AC_TYPE_PLAYER; // PvP: swords
+#endif
 
     if (player->cylinder.base.acFlags & AC_HIT && player->invincibilityTimer == 0) {
         Anchor::Instance->SendPacket_DamagePlayer(client.clientId, player->actor.colChkInfo.damageEffect,

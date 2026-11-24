@@ -115,6 +115,13 @@ void EnBoom_Init(Actor* thisx, PlayState* play) {
     EffectBlureInit1 sp30;
     s32 i;
 
+#ifdef COMBO_BUILD
+    if (this->actor.params == COMBO_OOT_BOOMERANG) {
+        EnBoom_ComboOotInit(this, play); // ComboShip: OOT's Boomerang (z_en_boom_combo_oot.c)
+        return;
+    }
+#endif
+
     this->actor.room = -1;
     Actor_ProcessInitChain(&this->actor, sInitChain);
 
@@ -155,6 +162,13 @@ void EnBoom_Destroy(Actor* thisx, PlayState* play) {
     EnBoom* this = (EnBoom*)thisx;
     Player* player = GET_PLAYER(play);
     Actor* otherZoraBoomerangActor;
+
+#ifdef COMBO_BUILD
+    if (this->actor.params == COMBO_OOT_BOOMERANG) {
+        EnBoom_ComboOotDestroy(this, play); // ComboShip: OOT's Boomerang (z_en_boom_combo_oot.c)
+        return;
+    }
+#endif
 
     if (player != NULL) {
         Effect_Destroy(play, this->effectIndex);
@@ -302,6 +316,13 @@ void EnBoom_Update(Actor* thisx, PlayState* play) {
     Player* player = GET_PLAYER(play);
     Actor* actor;
 
+#ifdef COMBO_BUILD
+    if (this->actor.params == COMBO_OOT_BOOMERANG) {
+        EnBoom_ComboOotUpdate(this, play); // ComboShip: OOT's Boomerang (z_en_boom_combo_oot.c)
+        return;
+    }
+#endif
+
     if (!(player->stateFlags1 & PLAYER_STATE1_20000000)) {
         this->actionFunc(this, play);
 
@@ -334,6 +355,12 @@ EnBoomStruct D_808A3078[] = {
 
 void EnBoom_Draw(Actor* thisx, PlayState* play) {
     EnBoom* this = (EnBoom*)thisx;
+#ifdef COMBO_BUILD
+    if (this->actor.params == COMBO_OOT_BOOMERANG) {
+        EnBoom_ComboOotDraw(this, play); // ComboShip: OOT's Boomerang (z_en_boom_combo_oot.c)
+        return;
+    }
+#endif
     EnBoomStruct* sp58 = &D_808A3078[this->actor.params];
     Vec3f sp4C;
     Vec3f sp40;

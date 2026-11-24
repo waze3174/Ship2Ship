@@ -5,6 +5,9 @@
  */
 
 #include "z_bg_hidan_dalm.h"
+#ifdef COMBO_BUILD
+#include "rando/CrossDamageTags.h" // CROSS_MM_TAG_GORON_PUNCH
+#endif
 #include "objects/object_hidan_objects/object_hidan_objects.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 
@@ -127,9 +130,22 @@ void BgHidanDalm_Destroy(Actor* thisx, PlayState* play) {
 void BgHidanDalm_Wait(BgHidanDalm* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
+    s32 hammerSwing = (player->meleeWeaponAnimation == 22 || player->meleeWeaponAnimation == 23);
+#ifdef COMBO_BUILD
+    // ComboShip (owner ruling 2026-11-14): a Goron punch counts as the Megaton Hammer's swing in Hyrule.
+    {
+        s32 i;
+        for (i = 0; i < 2; i++) {
+            ColliderInfo* hit = this->collider.elements[i].info.acHitInfo;
+            if ((this->collider.elements[i].info.bumperFlags & BUMP_HIT) && (hit != NULL) &&
+                (hit->toucher.comboMmDmg == CROSS_MM_TAG_GORON_PUNCH)) {
+                hammerSwing = true;
+            }
+        }
+    }
+#endif
     if (GameInteractor_Should(VB_HAMMER_TOTEM_BREAK,
-                              (this->collider.base.acFlags & AC_HIT) && !Player_InCsMode(play) &&
-                                  (player->meleeWeaponAnimation == 22 || player->meleeWeaponAnimation == 23),
+                              (this->collider.base.acFlags & AC_HIT) && !Player_InCsMode(play) && hammerSwing,
                               this)) {
         this->collider.base.acFlags &= ~AC_HIT;
         if ((this->collider.elements[0].info.bumperFlags & BUMP_HIT) ||

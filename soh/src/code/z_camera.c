@@ -7545,6 +7545,18 @@ Vec3s Camera_Update(Camera* camera) {
 
     if (camera->player != NULL) {
         Actor_GetWorldPosShapeRot(&curPlayerPosRot, &camera->player->actor);
+#ifdef COMBO_BUILD
+        {
+            // ComboShip: during the Deku spin MM's camera holds still while Link's shape spins 20000 a frame (measured:
+            // MM camera yaw within 3 units over the spin; OOT's swung ~1000 left and right chasing the spinning shape
+            // yaw). The camera sees the facing Link had when the spin began.
+            extern s32 Combo_DekuSpinCameraYaw(s16 * outYaw);
+            s16 spinYaw;
+            if ((camera->player == GET_PLAYER(camera->play)) && Combo_DekuSpinCameraYaw(&spinYaw)) {
+                curPlayerPosRot.rot.y = spinYaw;
+            }
+        }
+#endif
         camera->xzSpeed = playerXZSpeed = OLib_Vec3fDistXZ(&curPlayerPosRot.pos, &camera->playerPosRot.pos);
 
         camera->speedRatio = OLib_ClampMaxDist(playerXZSpeed / (func_8002DCE4(camera->player) * PCT(OREG(8))), 1.0f);

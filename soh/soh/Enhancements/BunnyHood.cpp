@@ -1,3 +1,7 @@
+#ifdef COMBO_BUILD
+extern "C" int Combo_PauseIsForeignMask(int item); // ComboPause.cpp
+#endif
+
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
@@ -11,6 +15,16 @@ extern "C" {
 #include "macros.h"
 #include "variables.h"
 extern PlayState* gPlayState;
+}
+
+// ComboShip: an MM mask on a button is a mask too. A function, because MSVC rejects preprocessor directives inside
+// the COND_VB_SHOULD macro's arguments.
+static bool ComboIsForeignMask(u8 item) {
+#ifdef COMBO_BUILD
+    return Combo_PauseIsForeignMask(item) != 0;
+#else
+    return false;
+#endif
 }
 
 // rando's Bunny Hood Effect setting forces the enhancement on, as logic may require it
@@ -49,7 +63,7 @@ static void RegisterBunnyHood() {
     // Masks stay usable where trade items are restricted, so the hood can be equipped there
     COND_VB_SHOULD(VB_DISABLE_TRADE_ITEM_BUTTON, bunnyHoodActive, {
         u8 item = va_arg(args, int);
-        if (item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH) {
+        if ((item >= ITEM_MASK_KEATON && item <= ITEM_MASK_TRUTH) || ComboIsForeignMask(item)) {
             *should = false;
         }
     });

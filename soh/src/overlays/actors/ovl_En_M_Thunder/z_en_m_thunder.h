@@ -25,6 +25,10 @@ typedef struct EnMThunder {
     /* 0x01C8 */ u8 chargeAlpha;
     /* 0x01C9 */ u8 targetScale;
     /* 0x01CA */ u8 isUsingMagic;
+#ifdef COMBO_BUILD
+    u8 comboGfs; // ComboShip: MM's Great Fairy's Sword spin (MM ENMTHUNDER_TYPE_GREAT_FAIRYS_SWORD look)
+    u8 comboBeam; // ComboShip: Fierce Deity's sword beam (MM ENMTHUNDER_SUBTYPE_SWORDBEAM_GREAT / _REGULAR), else 0
+#endif
 } EnMThunder; // size = 0x01CC
 
 #endif

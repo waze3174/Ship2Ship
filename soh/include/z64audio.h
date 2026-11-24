@@ -298,6 +298,10 @@ typedef struct {
     /* 0x0E0 */ u32 scriptCounter;
     /* 0x0E4 */ char unk_E4[0x74]; // unused struct members for sequence/sound font dma management, according to sm64 decomp
     /* 0x158 */ s8 soundScriptIO[8];
+    // ComboShip: the native MM sfx player (SEQ_PLAYER_COMBO_MM_SFX) runs its script with Majora's Mask's sequence
+    // semantics (audio_seqplayer_mm.c); 0 for every vanilla player.
+    u8 mmMode;
+    u16 mmUnk16; // MM SequencePlayer.unk_16 (seq opcode 0xC5, counted per tatum tick)
 } SequencePlayer; // size = 0x160
 
 typedef struct {
@@ -417,6 +421,12 @@ typedef struct SequenceChannel {
     /* 0xC4 */ s8 soundScriptIO[8]; // bridge between sound script and audio lib, "io ports"
     /* 0xCC */ s16* filter;
     /* 0xD0 */ Stereo stereo;
+    // ComboShip: Majora's Mask channel extras, used only by an mmMode player (audio_seqplayer_mm.c).
+    u8 surroundEffectIndex;
+    u8 channelIndex;   // index in its player (set for every player; read only by MM scripts)
+    u8* sfxState;      // MM SfxChannelState bytes (MM channel opcodes 0xA0-0xA3)
+    s32 startSamplePos; // MM channel opcode 0xBD
+    s32 unk_E0;
 } SequenceChannel; // size = 0xD4
 
 // Might also be known as a Track, according to sm64 debug strings (?).
@@ -459,6 +469,10 @@ typedef struct SequenceLayer {
     /* 0x50 */ SequenceChannel* channel;
     /* 0x54 */ SeqScriptState scriptState;
     /* 0x70 */ AudioListItem listItem;
+    // ComboShip: Majora's Mask layer extras, used only under an mmMode player (audio_seqplayer_mm.c).
+    u8 surroundEffectIndex;
+    u8 targetReverbVol;
+    u16 mmFlags; // MM SequenceLayer.unk_0A: bit 2 reverb from channel, bit 3 channel vibrato, bit 9 gain from channel
 } SequenceLayer; // size = 0x80
 
 typedef struct {
@@ -935,8 +949,9 @@ typedef struct {
     /* 0x3524 */ u8* audioHeap;
     /* 0x3528 */ size_t audioHeapSize;
     /* 0x352C */ Note* notes;
-    /* 0x3530 */ SequencePlayer seqPlayers[4];
-    /* 0x3AB0 */ SequenceLayer sequenceLayers[64];
+    // ComboShip: + SEQ_PLAYER_COMBO_MM_SFX (index 4); layers 64 -> 96 so the MM sfx player never starves vanilla ones.
+    /* 0x3530 */ SequencePlayer seqPlayers[5];
+    /* 0x3AB0 */ SequenceLayer sequenceLayers[96];
     /* 0x5AB0 */ SequenceChannel sequenceChannelNone;
     /* 0x5B84 */ s32 noteSubEuOffset;
     /* 0x5B88 */ AudioListItem layerFreeList;
@@ -944,7 +959,7 @@ typedef struct {
     /* 0x5BD8 */ u8 cmdWrPos;
     /* 0x5BD9 */ u8 cmdRdPos;
     /* 0x5BDA */ u8 cmdQueueFinished;
-    /* 0x5BDC */ u16 unk_5BDC[4];
+    /* 0x5BDC */ u16 unk_5BDC[5];
     /* 0x5BE4 */ OSMesgQueue* audioResetQueueP;
     /* 0x5BE8 */ OSMesgQueue* taskStartQueueP;
     /* 0x5BEC */ OSMesgQueue* cmdProcQueueP;
@@ -955,9 +970,14 @@ typedef struct {
     /* 0x5C3C */ OSMesg audioResetMesgs[1];
     /* 0x5C40 */ OSMesg cmdProcMsgs[4];
     /* 0x5C50 */ AudioCmd cmdBuf[0x100];
-    u16 seqToPlay[4];
-    u8 seqReplaced[4];
+    u16 seqToPlay[5];
+    u8 seqReplaced[5];
 } AudioContext; // size = 0x6450
+
+// ComboShip: a 5th sequence player that plays Majora's Mask's sound effects natively (MM's Sequence_0, MM's
+// soundfonts, OOT's notes/synthesis). See audio_seqplayer_mm.c / audio_mm_sfx.c. Vanilla players are 0-3.
+#define SEQ_PLAYER_COMBO_MM_SFX 4
+#define SEQ_PLAYER_IS_MM(seqPlayer) (((seqPlayer) != NULL) && (seqPlayer)->mmMode)
 
 typedef struct {
     /* 0x00 */ u8 reverbVol;

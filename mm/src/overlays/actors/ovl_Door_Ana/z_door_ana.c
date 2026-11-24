@@ -9,6 +9,11 @@
 
 #include "2s2h/GameInteractor/GameInteractor.h"
 
+#ifdef COMBO_BUILD
+// ComboShip (entrance randomizer, full-coop-sync §B1): walk-through exits go where the shuffle sent them.
+extern s32 Combo_MM_RedirectExit(s32 entrance);
+#endif
+
 #define FLAGS (ACTOR_FLAG_UPDATE_DURING_OCARINA)
 
 void DoorAna_Init(Actor* thisx, PlayState* play);
@@ -138,6 +143,9 @@ void DoorAna_WaitOpen(DoorAna* this, PlayState* play) {
                 s32 exitIndex = DOORANA_GET_EXIT_INDEX(&this->actor);
 
                 play->nextEntrance = play->setupExitList[exitIndex];
+#ifdef COMBO_BUILD
+                play->nextEntrance = Combo_MM_RedirectExit(play->nextEntrance);
+#endif
             } else {
                 s32 destinationIdx = DOORANA_GET_ENTRANCE(&this->actor);
 

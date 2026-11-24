@@ -1,0 +1,96 @@
+// soh/soh/Enhancements/randomizer/ComboTerminaItems.cpp — ComboShip: OOT as the OWNING game of items used in Termina
+// (owner ask 2026-11-13: "every item has to work from both games in both games"). Combo-owned, additive file (soh
+// GLOB_RECURSE). The MM side (mm/2s2h/Rando/MiscBehavior/ComboOotItems.cpp) runs OOT's item code inside MM; what it
+// needs from OOT's own save (dormant while MM runs, still resident in this process) comes through these exports, so
+// ammo, upgrades and equipment stay OOT's: a Deku Seed fired in Termina is gone from OOT's bullet bag.
+//
+// C ABI, POD only, resolved by MM with Combo_ResolveSym("soh", ...).
+#include <cstdint>
+#include <cstdio>
+
+#include <libultraship/bridge/consolevariablebridge.h>
+
+#include "ComboExport.h"
+#include "soh/cvar_prefixes.h"
+#include "soh/Enhancements/AdultMasks.h"
+
+extern "C" {
+#include "z64.h"
+#include "macros.h"
+#include "variables.h"
+#include "functions.h"
+extern u8 gItemAgeReqs[];
+}
+
+namespace {
+bool SaveResident() {
+    return gSaveContext.fileNum <= 2; // 0xFF = no OOT save loaded yet
+}
+} // namespace
+
+// OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), with SoH's Timeless
+// Equipment cheat honoured exactly as OOT honours it (VB_ITEM_MEETS_AGE_REQ). adult: Link's age in Termina.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
+    if (ootItem < 0 || ootItem >= ITEM_NONE)
+        return 0;
+    if (CVarGetInteger(CVAR_CHEAT("TimelessEquipment"), 0))
+        return 1;
+    // OOT's masks as adult (SoH enhancement / rando "Masks as Adult"): the same switch OOT's own pause honours.
+    if ((ootItem >= ITEM_MASK_KEATON) && (ootItem <= ITEM_MASK_TRUTH) && Ship_MasksEquippableAsAdult())
+        return 1;
+    const u8 req = gItemAgeReqs[ootItem];
+    return (req == 9) || (req == (adult ? LINK_AGE_ADULT : LINK_AGE_CHILD));
+}
+
+// OOT's ammo for an ammo item (AMMO(item)), -1 when OOT has no save resident.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_Ammo(int ootItem) {
+    if (!SaveResident() || ootItem < 0 || ootItem >= ITEM_NONE)
+        return -1;
+    return AMMO(ootItem);
+}
+
+// OOT's Inventory_ChangeAmmo on OOT's save: the bag/quiver caps are OOT's.
+extern "C" COMBO_EXPORT void SOH_ComboTermina_ChangeAmmo(int ootItem, int delta) {
+    if (!SaveResident())
+        return;
+    Inventory_ChangeAmmo((s16)ootItem, (s16)delta);
+}
+
+// OOT's upgrade value (CUR_UPG_VALUE), e.g. UPG_STRENGTH / UPG_SCALE / UPG_BULLET_BAG.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_UpgradeValue(int upg) {
+    if (!SaveResident() || upg < 0 || upg > UPG_NUTS)
+        return 0;
+    return CUR_UPG_VALUE(upg);
+}
+
+// OOT's equipped value of an equipment row (CUR_EQUIP_VALUE: 0 sword, 1 shield, 2 tunic, 3 boots), 0 = none.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_EquipValue(int equipType) {
+    if (!SaveResident() || equipType < 0 || equipType > EQUIP_TYPE_BOOTS)
+        return 0;
+    return CUR_EQUIP_VALUE(equipType);
+}
+
+// OOT's equipment page (z_kaleido_equipment.c), on OOT's save, for the Hyrule equipment face of Termina's pause menu:
+// equip the tunic or boots in `value` (1 Kokiri, 2 Goron / Iron, 3 Zora / Hover) when OOT owns it and Link's age may
+// wear it, or, with SoH's "Equipment Can Be Removed" on, put the equipped one back to Kokiri. The swords and shields on
+// that page are MM's own in Termina and are not handled here. Returns 1 when OOT would play its decide sound, 0 when
+// it would refuse.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_SetEquipValue(int equipType, int value, int adult) {
+    if (!SaveResident() || ((equipType != EQUIP_TYPE_TUNIC) && (equipType != EQUIP_TYPE_BOOTS)) || (value < 1) ||
+        (value > 3)) {
+        return 0;
+    }
+    const int item = ((equipType == EQUIP_TYPE_TUNIC) ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + (value - 1);
+    if (!SOH_ComboTermina_ItemAgeOk(item, adult)) {
+        return 0;
+    }
+    if (CVarGetInteger(CVAR_ENHANCEMENT("EquipmentCanBeRemoved"), 0) && (value == CUR_EQUIP_VALUE(equipType))) {
+        Inventory_ChangeEquipment(equipType, 1); // OOT: "unequip" = the Kokiri piece
+        return 1;
+    }
+    if (!CHECK_OWNED_EQUIP(equipType, value - 1)) {
+        return 0;
+    }
+    Inventory_ChangeEquipment(equipType, value);
+    return 1;
+}

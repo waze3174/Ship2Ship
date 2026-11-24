@@ -222,3 +222,71 @@ void RegisterColorPictograph() {
 }
 
 static RegisterShipInitFunc initFunc(RegisterColorPictograph, { CVAR_NAME });
+
+#ifdef COMBO_BUILD
+// ComboShip: MM's Pictograph Box used in Hyrule (OOT gameplay) — the OOT side is
+// soh/soh/Enhancements/randomizer/ComboPicto.cpp. The photo is MM's photo: these exports let the OOT port read and
+// write MM's resident save (pictoPhotoI5 + QUEST_PICTOGRAPH), so a photo taken in Hyrule is the one Termina shows and
+// vice versa, and run this file's VB_PICTO_TAKE / VB_PICTO_ACTIVATE / VB_PICTO_DISPLAY behaviour on MM's own buffer.
+#include "ComboExport.h"
+#include "interface/parameter_static/parameter_static.h"
+
+// gSaveContext.pictoPhotoI5 (PICTO_PHOTO_COMPRESSED_SIZE bytes).
+extern "C" COMBO_EXPORT uint8_t* MM_ComboPicto_PhotoI5(void) {
+    return gSaveContext.pictoPhotoI5;
+}
+
+// CHECK_QUEST_ITEM(QUEST_PICTOGRAPH)
+extern "C" COMBO_EXPORT int MM_ComboPicto_HasPhoto(void) {
+    return CHECK_QUEST_ITEM(QUEST_PICTOGRAPH) ? 1 : 0;
+}
+
+// SET_QUEST_ITEM / REMOVE_QUEST_ITEM(QUEST_PICTOGRAPH)
+extern "C" COMBO_EXPORT void MM_ComboPicto_SetHasPhoto(int has) {
+    if (has) {
+        SET_QUEST_ITEM(QUEST_PICTOGRAPH);
+    } else {
+        REMOVE_QUEST_ITEM(QUEST_PICTOGRAPH);
+    }
+}
+
+// Snap_RecordPictographedActors for a Hyrule scene: it clears both flag words, then flags only MM quest subjects
+// (Termina actors / scenes), none of which exist in Hyrule.
+extern "C" COMBO_EXPORT void MM_ComboPicto_RecordNoSubjects(void) {
+    gSaveContext.save.saveInfo.pictoFlags0 = 0;
+    gSaveContext.save.saveInfo.pictoFlags1 = 0;
+}
+
+// Interface_Draw's focus-frame textures: 0 = gPictoBoxFocusBorderTex, 1 = gPictoBoxFocusIconTex,
+// 2 = gPictoBoxFocusTextTex (draw inside a "mm" ResourceManager bracket).
+extern "C" COMBO_EXPORT const char* MM_ComboPicto_FocusTex(int which) {
+    switch (which) {
+        case 0:
+            return gPictoBoxFocusBorderTex;
+        case 1:
+            return gPictoBoxFocusIconTex;
+        case 2:
+            return gPictoBoxFocusTextTex;
+        default:
+            return nullptr;
+    }
+}
+
+// VB_PICTO_TAKE: fbufSave is the 320x240 RGBA16 capture (native endian, as FB_WriteFramebufferSliceToCPU writes it).
+extern "C" COMBO_EXPORT void MM_ComboPicto_ColorTake(const uint16_t* fbufSave) {
+    ConvertImage(pictoPhotoRGBABuffer, (u16*)fbufSave, SCREEN_WIDTH, PICTO_PHOTO_TOPLEFT_X, PICTO_PHOTO_TOPLEFT_Y,
+                 (PICTO_PHOTO_TOPLEFT_X + PICTO_PHOTO_WIDTH) - 1, (PICTO_PHOTO_TOPLEFT_Y + PICTO_PHOTO_HEIGHT) - 1);
+    SavePictoPng();
+}
+
+// VB_PICTO_ACTIVATE
+extern "C" COMBO_EXPORT void MM_ComboPicto_ColorLoad(void) {
+    LoadPictoPNG();
+}
+
+// VB_PICTO_DISPLAY: the colour photo (big-endian RGBA16, 160x112) when the ColorPictograph CVar is on and a colour
+// copy exists; NULL = draw MM's I8 strips.
+extern "C" COMBO_EXPORT const uint16_t* MM_ComboPicto_ColorPhoto(void) {
+    return (CVAR && (pictoPhotoRGBABuffer[0] != 0)) ? pictoPhotoRGBABuffer : nullptr;
+}
+#endif // COMBO_BUILD

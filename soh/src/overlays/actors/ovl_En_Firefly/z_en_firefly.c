@@ -9,6 +9,9 @@
 #include "overlays/actors/ovl_Obj_Syokudai/z_obj_syokudai.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: MM's Stone Mask (COMBO_MM_STONE_MASK)
+#endif
 
 #define FLAGS \
     (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_HOSTILE | ACTOR_FLAG_IGNORE_QUAKE | ACTOR_FLAG_CAN_ATTACH_TO_ARROW)
@@ -414,6 +417,10 @@ void EnFirefly_FlyIdle(EnFirefly* this, PlayState* play) {
         Math_SmoothStepToS(&this->actor.shape.rot.y, this->actor.wallYaw, 2, 0xC00, 0x300);
     }
     if ((this->timer == 0) && (this->actor.xzDistToPlayer < 200.0f) && (Player_GetMask(play) != PLAYER_MASK_SKULL) &&
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Firefly z_en_firefly.c:335) — no dive while it is worn
+        !COMBO_MM_STONE_MASK() &&
+#endif
         GameInteractor_Should(VB_KEESE_DO_DIVE_ATTACK, true, this)) {
         EnFirefly_SetupDiveAttack(this);
     }
@@ -493,6 +500,10 @@ void EnFirefly_DiveAttack(EnFirefly* this, PlayState* play) {
         Math_ScaledStepToS(&this->actor.shape.rot.x, this->targetPitch, 0x100);
     }
     if ((this->timer == 0) || (Player_GetMask(play) == PLAYER_MASK_SKULL) ||
+#ifdef COMBO_BUILD
+        // ComboShip: MM's Stone Mask (MM En_Firefly z_en_firefly.c:474) — abandon the dive and fly away
+        COMBO_MM_STONE_MASK() ||
+#endif
         GameInteractor_Should(VB_KEESE_FORCE_FLY_AWAY, false, this)) {
         EnFirefly_SetupFlyAway(this);
     }

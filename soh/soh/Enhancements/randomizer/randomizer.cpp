@@ -37,6 +37,15 @@ extern "C" {
 #include <functions.h>
 #include "../../../src/overlays/actors/ovl_En_GirlA/z_en_girla.h"
 #include "src/overlays/actors/ovl_Obj_Bean/z_obj_bean.h"
+
+#ifdef COMBO_BUILD
+// ComboShip shared bottles (ComboBottleShelf.cpp). C++ linkage even if this lands in an extern "C" block.
+extern "C++" {
+bool ComboBottles_Active();
+uint8_t ComboBottles_ItemForRg(int rg);
+bool ComboBottles_ShelveIfFull(uint8_t item);
+}
+#endif
 extern void func_80B8FE00(ObjBean*); // trigger planting
 extern PlayState* gPlayState;
 }
@@ -471,6 +480,11 @@ ItemObtainability Randomizer::GetItemObtainabilityFromRandomizerGet(RandomizerGe
         case RG_BOTTLE_WITH_POE:
         case RG_RUTOS_LETTER:
         case RG_BOTTLE_WITH_BIG_POE:
+#ifdef COMBO_BUILD
+            // ComboShip (shared bottles): a full set of slots shelves the bottle instead of replacing it.
+            if (ComboBottles_Active())
+                return CAN_OBTAIN;
+#endif
             return Inventory_HasEmptyBottleSlot() ? CAN_OBTAIN : CANT_OBTAIN_ALREADY_HAVE;
 
         // Bottle Refills
@@ -1192,6 +1206,16 @@ extern "C" u16 Randomizer_Item_Give(PlayState* play, GetItemEntry giEntry) {
 
     // Gameplay stats: Update the time the item was obtained
     Randomizer_GameplayStats_SetTimestamp(item);
+
+#ifdef COMBO_BUILD
+    // ComboShip (shared bottles, owner ruling 2026-11-12): with all four slots in use, a bottle goes onto the
+    // Bottle Shelf (ComboBottleShelf.cpp) instead of being lost.
+    if (ComboBottles_Active() && !Inventory_HasEmptyBottleSlot()) {
+        uint8_t bottleItem = ComboBottles_ItemForRg(item);
+        if (bottleItem != ITEM_NONE && ComboBottles_ShelveIfFull(bottleItem))
+            return Return_Item_Entry(giEntry, RG_NONE);
+    }
+#endif
 
     // open chest: not progressive gives both flags at once, progressive gives large only as the second copy
     if (item == RG_OPEN_CHEST &&

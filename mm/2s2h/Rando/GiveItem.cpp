@@ -6,6 +6,16 @@
 extern "C" {
 #include "variables.h"
 #include "functions.h"
+
+#ifdef COMBO_BUILD
+// ComboShip shared bottles (Rando/MiscBehavior/ComboBottleShelf.cpp). C++ linkage even if this lands in an extern "C"
+// block.
+extern "C++" {
+bool Combo_MM_BottlesActive();
+uint8_t Combo_MM_BottleItemForRi(RandoItemId ri);
+bool Combo_MM_BottlesShelveIfFull(uint8_t item);
+}
+#endif
 }
 
 #ifdef COMBO_BUILD
@@ -19,6 +29,15 @@ extern "C" int Combo_MM_BombchuBagShared(void);
 #endif
 
 void Rando::GiveItem(RandoItemId randoItemId) {
+#ifdef COMBO_BUILD
+    // ComboShip (shared bottles, owner ruling 2026-11-12): with all six slots in use a bottle goes onto the
+    // Bottle Shelf instead of being lost.
+    if (Combo_MM_BottlesActive()) {
+        uint8_t bottleItem = Combo_MM_BottleItemForRi(randoItemId);
+        if (bottleItem != ITEM_NONE && Combo_MM_BottlesShelveIfFull(bottleItem))
+            return;
+    }
+#endif
     switch (randoItemId) {
         case RI_CLOCK_TOWN_STRAY_FAIRY:
             SET_WEEKEVENTREG(WEEKEVENTREG_08_80);

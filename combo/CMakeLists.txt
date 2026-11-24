@@ -41,6 +41,11 @@ set(COMBOUI_SOURCES
     gui/ComboHintTracker.cpp
     gui/ComboTimersWindow.cpp
     gui/ComboCosmeticsSync.cpp
+    gui/ComboSettingsLink.cpp
+    gui/ComboPlayPreset.cpp
+    gui/ComboWorldCvars.cpp
+    gui/ComboCoopWindow.cpp
+    gui/ComboBottleShelfWindow.cpp
 )
 add_library(comboui SHARED ${COMBOUI_SOURCES})
 set_target_properties(comboui PROPERTIES PREFIX "")
@@ -81,6 +86,7 @@ add_dependencies(comboui libultraship)
 # Source files
 set(COMBO_SOURCES
     ComboShip.cpp
+    coop/SeedShare.cpp
 )
 
 # Create executable
@@ -94,6 +100,13 @@ target_include_directories(ComboShip PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 # nlohmann/json is used by combo/rando/CrossForeign.h (header-only, pulled transitively through vcpkg)
 find_package(nlohmann_json REQUIRED)
 target_link_libraries(ComboShip PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
+# full-coop-sync A-M1: SeedShare compresses the room seed (zlib is a top-level REQUIRED package).
+target_link_libraries(ComboShip PRIVATE ZLIB::ZLIB)
+
+# full-coop-sync: headless unit tests for the shared co-op core (combo/coop/*.h). Links no game DLL.
+add_executable(coop_tests EXCLUDE_FROM_ALL coop/tests/coop_tests.cpp)
+target_include_directories(coop_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(coop_tests PRIVATE nlohmann_json::nlohmann_json ZLIB::ZLIB)
 
 # COMBO_RELEASE_VERSION: launcher-only gate for combosave compat (the games don't gate, so no macro there).
 target_compile_definitions(ComboShip PRIVATE COMBO_RELEASE_VERSION="${COMBO_RELEASE_VERSION}")

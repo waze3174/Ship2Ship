@@ -185,6 +185,8 @@ s32 Collider_SetTouch(PlayState* play, ColliderTouch* dest, ColliderTouch* src) 
     dest->dmgFlags = src->dmgFlags;
     dest->effect = src->effect;
     dest->damage = src->damage;
+    dest->comboMmDmg = src->comboMmDmg;
+    dest->comboMmAtDamage = src->comboMmAtDamage;
     return 1;
 }
 
@@ -1447,7 +1449,107 @@ s32 CollisionCheck_SkipBump(ColliderInfo* info) {
 /**
  * If the AT element has no dmgFlags in common with the AC element, no collision happens.
  */
+#ifdef COMBO_BUILD
+// ComboShip: Hyrule's world objects answer a form move the way their Majora's Mask counterpart does (owner 2026-11-14:
+// "goron can just roll straight through boulders"). Each OOT object handler only reads the hit's damage flags, so the
+// MM rule is applied here: MM's own masks (copied from MM's actor source, line cited) decide whether the move
+// registers at all (accept) and whether it breaks / cuts / triggers (brk); the object then receives the OOT flag it
+// reads as that outcome (ootBrk) or a flag it accepts without breaking (ootClink). Only form moves carry an MM tag
+// (toucher.comboMmDmg), so OOT's own weapons are untouched. Full matrix: docs/combo/forms-audit.md §7.
+typedef struct {
+    s16 ootId;
+    s16 paramMask; // variant = params & paramMask == paramValue (paramMask 0: every variant)
+    s16 paramValue;
+    u32 mmAccept;  // MM collider: bits that register a hit
+    u32 mmBrk;     // MM: bits that break / cut / trigger it
+    u32 ootBrk;    // OOT flag the object reads as that
+    u32 ootClink;  // OOT flag it accepts without breaking (hit spark only)
+} CrossObjRow;
+
+static const CrossObjRow sCrossObjects[] = {
+    // Brown boulder. MM z_obj_bombiwa.c:51 accept; :114-123 breaks on Keg / bombs / Goron punch / pound.
+    // (A plain roll doesn't register; spikes and Zora moves only clink -- MM's ball is pushed out by it, not breaking it.)
+    { ACTOR_OBJ_BOMBIWA, 0, 0, 0x81C37FBE, 0x80000508, 0x00000040, 0x00000002 },
+    // Bronze boulder. MM z_obj_hamishi.c:43 accept; :215-235 a Keg / punch / pound counts a hit (2 hits break it).
+    { ACTOR_OBJ_HAMISHI, 0, 0, 0x81C37FB6, 0x80000500, 0x00000040, 0x00000002 },
+    // Small rock. MM z_en_ishi.c:91 accept; :516 breaks on bombs / punch / pound.
+    { ACTOR_EN_ISHI, 1, 0, 0x01C37FBE, 0x00000508, 0x00000040, 0x00000002 },
+    // Silver rock. MM z_en_ishi.c:110 accept; no form move breaks it (a Goron lifts it, mm z_player.c:551).
+    { ACTOR_EN_ISHI, 1, 1, 0x01C37BB6, 0x00000000, 0x00000040, 0x00000002 },
+    // Small crate. MM z_obj_kibako.c:62 accept; :294 any registered hit breaks it.
+    { ACTOR_OBJ_KIBAKO, 0, 0, 0x058BC79C, 0x058BC79C, 0x00000040, 0x00000040 },
+    // Big crate. MM z_obj_kibako2.c:45 accept; :201 punch / pound / bombs break it (:206 the roll's bonk too).
+    { ACTOR_OBJ_KIBAKO2, 0, 0, 0x80000508, 0x80000508, 0x00000040, 0x00000040 },
+    // Pot. MM z_obj_tsubo.c:481 breaks on 0x058BFFBC (incl. the Zora barrier).
+    { ACTOR_OBJ_TSUBO, 0, 0, 0x058BFFBC, 0x058BFFBC, 0x00000040, 0x00000040 },
+    // Grass / bush. MM z_en_kusa.c:89 accept; :468 any hit cuts it.
+    { ACTOR_EN_KUSA, 0, 0, 0x0580C71C, 0x0580C71C, 0x00000100, 0x00000100 },
+    // Tree. MM z_en_wood02.c:64 accept; :397 a hit only plays a sound (the roll's bonk shakes it instead).
+    { ACTOR_EN_WOOD02, 0, 0, 0x0100020A, 0x00000000, 0x00000002, 0x00000002 },
+    // Rusty floor switch. MM z_obj_switch.c:94 / :509: only the pound presses it.
+    { ACTOR_OBJ_SWITCH, 7, 1, 0x00000400, 0x00000400, 0x00000040, 0x00000040 },
+    // Crystal switches. MM z_obj_switch.c:170: any accepted hit triggers.
+    { ACTOR_OBJ_SWITCH, 7, 3, 0x01CBFFBE, 0x01CBFFBE, 0x00000002, 0x00000002 },
+    { ACTOR_OBJ_SWITCH, 7, 4, 0x01CBFFBE, 0x01CBFFBE, 0x00000002, 0x00000002 },
+    // Bomb flower. MM z_en_bombf.c:168 detonates on 0x13828 (incl. the Deku bubble).
+    { ACTOR_EN_BOMBF, 0, 0, 0x00013828, 0x00013828, 0x00000020, 0x00000020 },
+    // Bombable walls and hidden grotto holes. OOT's own hammer opens them (their masks carry 0x40), but every MM
+    // counterpart -- Bg_Astr/Haka/Hakugin/Ikana/Kin2_Bombwall, Bg_Breakwall, Door_Ana -- accepts explosives only
+    // (0x00000008): a Goron can't punch or pound one open (owner 2026-11-14: "goron link can't break bomb walls in MM
+    // just by punching, so that will have to be nerfed"). Of the MM moves only explosions register -- the Powder Keg
+    // (MM's blast is 0x80000008; Hyrule tags it with the keg bit) and the Blast Mask's bomb -- and arrive as OOT's
+    // explosive flag. OOT's own bombs and Megaton Hammer carry no MM tag and skip this table.
+    { ACTOR_BG_BREAKWALL, 0, 0, 0x80000008, 0x80000008, 0x00000008, 0 }, // Dodongo's Cavern walls / KD floor
+    { ACTOR_BG_BOMBWALL, 0, 0, 0x80000008, 0x80000008, 0x00000008, 0 },
+    { ACTOR_DOOR_ANA, 0, 0, 0x80000008, 0x80000008, 0x00000008, 0 },
+    // Owner ruling 2026-11-14: the Fire Temple's hammer-only obstacles are Hyrule's counterpart of the giant snowballs a
+    // Goron punches in Snowhead ("close enough"): punch and pound count as the Megaton Hammer on these, delivered as both
+    // hammer bits (swing 0x40 + pound 0x40000000), the mirror of Termina's hammer = punch + pound (mm z_player.c ~5921).
+    { ACTOR_BG_HIDAN_HAMSTEP, 0, 0, 0x00000500, 0x00000500, 0x40000040, 0 }, // Fire Temple hammer stairs
+    { ACTOR_BG_HIDAN_HROCK, 0, 0, 0x00000500, 0x00000500, 0x40000040, 0 },   // Fire Temple hammer pillars
+    { ACTOR_BG_HIDAN_DALM, 0, 0, 0x00000100, 0x00000100, 0x40000040, 0 },    // totem (a swing: the punch only)
+};
+
+static const CrossObjRow* Combo_CrossObjRow(Actor* actor, ColliderInfo* atInfo) {
+    s32 i;
+
+    if ((actor == NULL) || (atInfo == NULL) || (atInfo->toucher.comboMmDmg == 0)) {
+        return NULL;
+    }
+    for (i = 0; i < ARRAY_COUNT(sCrossObjects); i++) {
+        if ((sCrossObjects[i].ootId == actor->id) &&
+            ((actor->params & sCrossObjects[i].paramMask) == sCrossObjects[i].paramValue)) {
+            return &sCrossObjects[i];
+        }
+    }
+    return NULL;
+}
+
+// The MM damage bit a form move carries (CrossDamageTags.h: tag = MM bit index + 1).
+static u32 Combo_CrossObjMmBit(ColliderInfo* atInfo) {
+    return 1u << (atInfo->toucher.comboMmDmg - 1);
+}
+
+static Collider* sComboCurAC = NULL; // the AC collider CollisionCheck_AC is testing (for the MM-attack mask rule)
+static s32 Combo_CrossDamageMaskAccepts(ColliderInfo* atInfo, ColliderInfo* acInfo);
+static s32 Combo_CrossDamageHardPasses(ColliderInfo* atInfo);
+#endif
+
 s32 CollisionCheck_NoSharedFlags(ColliderInfo* atInfo, ColliderInfo* acInfo) {
+#ifdef COMBO_BUILD
+    if (sComboCurAC != NULL) {
+        const CrossObjRow* obj = Combo_CrossObjRow(sComboCurAC->actor, atInfo);
+        if (obj != NULL) {
+            return (obj->mmAccept & Combo_CrossObjMmBit(atInfo)) ? 0 : 1; // MM's collider decides whether it registers
+        }
+    }
+    if (Combo_CrossDamageHardPasses(atInfo)) {
+        return 1;
+    }
+    if (Combo_CrossDamageMaskAccepts(atInfo, acInfo)) {
+        return 0;
+    }
+#endif
     if (!(atInfo->toucher.dmgFlags & acInfo->bumper.dmgFlags)) {
         return 1;
     }
@@ -1722,8 +1824,187 @@ void CollisionCheck_SetBounce(Collider* at, Collider* ac) {
 /**
  * Performs the AC collision between the AT element and AC element that collided.
  */
+#ifdef COMBO_BUILD
+// ComboShip: MM attacks in Hyrule (MM forms, Zora fins, Deku bubble, Powder Keg, Blast Mask) carry their MM damage
+// type (ColliderTouch.comboMmDmg, combo/rando/CrossDamageTags.h). An OOT enemy that exists in MM reacts to them as
+// MM's version of it does: its MM DamageTable row (combo/rando/CrossDamageMap.h) gives the damage and the reaction
+// class, executed through the OOT actor's own effect code for that class. Untagged (OOT) attacks are untouched.
+#include "soh/Enhancements/randomizer/ComboForms.h"
+#include "rando/CrossDamageMap.h"
+#include "overlays/actors/ovl_En_Ik/z_en_ik.h"
+#include "overlays/actors/ovl_En_Po_Field/z_en_po_field.h"
+#include "overlays/actors/ovl_En_Wf/z_en_wf.h"
+
+// Which MM table row applies to this OOT actor right now (sCrossDamageMap's `variant`).
+static s32 CrossDamage_Variant(Actor* actor) {
+    switch (actor->id) {
+        case ACTOR_EN_WF: // MM: Wolfos (params 0) and White Wolfos use different tables
+            return ((actor->params & 0xFF) == WOLFOS_NORMAL) ? 0 : 1;
+        case ACTOR_EN_IK: // MM: sDamageTableArmor until the armour breaks, then sDamageTableNoArmor
+            return (((EnIk*)actor)->armorStatusFlag == 0) ? 1 : 0;
+        case ACTOR_EN_PO_FIELD: // small field Poe = MM Poe, Big Poe = MM Big Poe
+            return (actor->params == EN_PO_FIELD_BIG) ? 1 : 0;
+        default:
+            return 0;
+    }
+}
+
+// OOT bosses keep their own (mostly flag-driven) hit rules — except that no MM boss ever takes damage from the Zora
+// barrier (MM: 0 on Odolwa/Goht/Majora, immune on Twinmold/Majora's Mask), while OOT reads its DMG_MAGIC_LIGHT bit as
+// a hit (Gohma falls off the ceiling, Phantom Ganon takes 2 and is stunned, Bongo Bongo's hands are knocked back).
+static const CrossDmgRow sCrossBossRow = {
+    0, -1, 0, 0, "OOT boss", "MM bosses (barrier never damages)",
+    {
+        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_PASS, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 },
+    },
+};
+
+// MM CollisionCheck_GetDamageAndEffectOnElementAC's sDamageMultipliers (DMG_ENTRY's damage nibble).
+static const f32 sCrossMmMultipliers[16] = {
+    0.0f, 1.0f, 2.0f, 0.5f, 0.25f, 3.0f, 4.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+};
+
+static const CrossDmgRow* Combo_CrossDamageRow(Actor* actor) {
+    s32 variant = CrossDamage_Variant(actor);
+    s32 i;
+
+    for (i = 0; i < ARRAY_COUNT(sCrossDamageMap); i++) {
+        if ((sCrossDamageMap[i].ootId == actor->id) &&
+            ((sCrossDamageMap[i].variant < 0) || (sCrossDamageMap[i].variant == variant))) {
+            return &sCrossDamageMap[i];
+        }
+    }
+    if (actor->category == ACTORCAT_BOSS) {
+        return &sCrossBossRow;
+    }
+    return NULL;
+}
+
+// The MM reaction of `acActor` to the MM attack in `atInfo`, or NULL (an OOT attack, or an actor MM has no say on:
+// puzzle objects, NPCs, OOT-only enemies kept as OOT).
+static const CrossDmgEntry* Combo_CrossDamageEntry(Actor* acActor, ColliderInfo* atInfo, const CrossDmgRow** rowOut) {
+    const CrossDmgRow* row;
+    s32 attack;
+
+    if ((acActor == NULL) || (atInfo == NULL) || (atInfo->toucher.comboMmDmg == CROSS_MM_TAG_NONE)) {
+        return NULL;
+    }
+    attack = CrossDamage_AttackIndex(atInfo->toucher.comboMmDmg);
+    if (attack < 0) {
+        return NULL;
+    }
+    row = Combo_CrossDamageRow(acActor);
+    if ((row == NULL) || (row->e[attack].cls == CROSS_CLS_OOT)) {
+        return NULL;
+    }
+    if (rowOut != NULL) {
+        *rowOut = row;
+    }
+    return &row->e[attack];
+}
+
+// For the few OOT enemies whose soft hurtbox mask only exists to pick OOT weapons (the withered Deku Baba refuses the
+// hammer, slingshot, bombs and magic; the Skullwalltula refuses nuts and magic), an MM attack that MM's version of the
+// enemy takes lands on it as in MM, whatever OOT bit it carries. Rows opt in (CROSS_ROW_MM_MASK); hard/metal colliders
+// and every other enemy keep OOT's masks (they shape fights: the Skulltula's metal front, a buried Stinger).
+static s32 Combo_CrossDamageMaskAccepts(ColliderInfo* atInfo, ColliderInfo* acInfo) {
+    const CrossDmgRow* row = NULL;
+    const CrossDmgEntry* e;
+
+    if ((sComboCurAC == NULL) || (atInfo->toucher.comboMmDmg == CROSS_MM_TAG_NONE)) {
+        return false;
+    }
+
+    if ((sComboCurAC == NULL) || (atInfo->toucher.comboMmDmg == CROSS_MM_TAG_NONE) ||
+        (sComboCurAC->acFlags & AC_HARD) || (acInfo->bumper.dmgFlags == 0) ||
+        (atInfo->toucher.dmgFlags & acInfo->bumper.dmgFlags)) {
+        return false;
+    }
+    e = Combo_CrossDamageEntry(sComboCurAC->actor, atInfo, &row);
+    return (e != NULL) && (row->flags & CROSS_ROW_MM_MASK) && (e->cls != CROSS_CLS_PASS);
+}
+
+// MM's metal / armour overlays refuse some attacks that OOT's hard colliders accept (MM Dodongo's armour lets the
+// Deku spin through to the body; the Skulltula's metal front refuses the barrier and bombs): for those rows the OOT
+// hard collider is transparent to them (CrossDmgRow.hardPass), and the attack reaches what is behind it.
+static s32 Combo_CrossDamageHardPasses(ColliderInfo* atInfo) {
+    const CrossDmgRow* row;
+    s32 attack;
+
+    if ((sComboCurAC == NULL) || !(sComboCurAC->acFlags & AC_HARD) || (sComboCurAC->actor == NULL) ||
+        (atInfo->toucher.comboMmDmg == CROSS_MM_TAG_NONE)) {
+        return false;
+    }
+    attack = CrossDamage_AttackIndex(atInfo->toucher.comboMmDmg);
+    row = Combo_CrossDamageRow(sComboCurAC->actor);
+    return (attack >= 0) && (row != NULL) && (row->hardPass & (1 << attack));
+}
+
+static f32 Combo_CrossDamageAmount(const CrossDmgEntry* e, ColliderInfo* atInfo) {
+    return atInfo->toucher.comboMmAtDamage * sCrossMmMultipliers[e->mult & 0xF];
+}
+
+// MM CollisionCheck_SetATvsAC: a hit whose damage is < 1 with effect 0 does not register at all — the attack passes
+// through (a Deku spin through a Skulltula, a Goron roll through a Keese). Returns true when MM would not register it.
+static s32 Combo_CrossDamagePasses(Collider* at, ColliderInfo* atInfo, Collider* ac) {
+    const CrossDmgRow* row = NULL;
+    const CrossDmgEntry* e = Combo_CrossDamageEntry(ac->actor, atInfo, &row);
+
+    if (e == NULL) {
+        return false;
+    }
+    if ((e->cls == CROSS_CLS_PASS) || ((Combo_CrossDamageAmount(e, atInfo) < 1.0f) && (e->mmEff == 0))) {
+        if (Combo_DebugEnv("COMBO_DEBUG_CROSSDMG")) {
+            Combo_DebugLog("[CrossDmg] %s (MM %s) <- MM %s: passes through (MM DMG_ENTRY(%d, 0x%X))\n", row->oot,
+                           row->mm, CrossDamage_AttackName(atInfo->toucher.comboMmDmg), e->mult, e->mmEff);
+        }
+        return true;
+    }
+    return false;
+}
+
+// After OOT's own table lookup: the MM damage and the OOT effect code for MM's reaction class.
+static void Combo_CrossDamageApply(Collider* collider, ColliderInfo* info, DamageTable* tbl, f32* damage) {
+    const CrossDmgRow* row = NULL;
+    ColliderInfo* atInfo = info->acHitInfo;
+    const CrossDmgEntry* e = Combo_CrossDamageEntry(collider->actor, atInfo, &row);
+    f32 ootDamage = *damage;
+    u8 ootEffect = collider->actor->colChkInfo.damageEffect;
+
+    if (e == NULL) {
+        return;
+    }
+    // MM stores the result in its u8 colChkInfo.damage (fractions drop).
+    *damage = (u8)Combo_CrossDamageAmount(e, atInfo);
+    if (tbl != NULL) {
+        collider->actor->colChkInfo.damageEffect = e->ootEff;
+    }
+    if (Combo_DebugEnv("COMBO_DEBUG_CROSSDMG")) {
+        Combo_DebugLog("[CrossDmg] %s (MM %s) <- MM %s: OOT alone dmg %d eff 0x%X -> MM DMG_ENTRY(%d, 0x%X) = %s, "
+                       "dmg %d eff 0x%X (health %d)\n",
+                       row->oot, row->mm, CrossDamage_AttackName(atInfo->toucher.comboMmDmg), (s32)ootDamage,
+                       ootEffect, e->mult, e->mmEff, CrossDamage_ClassName(e->cls), (s32)*damage,
+                       collider->actor->colChkInfo.damageEffect, collider->actor->colChkInfo.health);
+    }
+}
+#endif
+
 s32 CollisionCheck_SetATvsAC(PlayState* play, Collider* at, ColliderInfo* atInfo, Vec3f* atPos, Collider* ac,
                              ColliderInfo* acInfo, Vec3f* acPos, Vec3f* hitPos) {
+#ifdef COMBO_BUILD
+    if (Combo_CrossDamagePasses(at, atInfo, ac)) {
+        return 0;
+    }
+    {
+        const CrossObjRow* obj = Combo_CrossObjRow(ac->actor, atInfo);
+        if ((obj != NULL) && !(obj->mmAccept & Combo_CrossObjMmBit(atInfo))) {
+            return 0; // MM's collider doesn't register this move at all
+        }
+    }
+#endif
     if (ac->acFlags & AC_HARD && at->actor != NULL && ac->actor != NULL) {
         CollisionCheck_SetBounce(at, ac);
     }
@@ -1741,6 +2022,28 @@ s32 CollisionCheck_SetATvsAC(PlayState* play, Collider* at, ColliderInfo* atInfo
     ac->ac = at->actor;
     acInfo->acHit = at;
     acInfo->acHitInfo = atInfo;
+#ifdef COMBO_BUILD
+    {
+        const CrossObjRow* obj = Combo_CrossObjRow(ac->actor, atInfo);
+        if (obj != NULL) {
+            // The object reads acHitInfo->toucher.dmgFlags: give it a copy carrying the OOT flag for MM's outcome.
+            static ColliderInfo sObjHits[8];
+            static s32 sObjHitNext = 0;
+            ColliderInfo* copy = &sObjHits[sObjHitNext];
+            const s32 brk = (obj->mmBrk & Combo_CrossObjMmBit(atInfo)) != 0;
+
+            sObjHitNext = (sObjHitNext + 1) % ARRAY_COUNT(sObjHits);
+            *copy = *atInfo;
+            copy->toucher.dmgFlags = brk ? obj->ootBrk : obj->ootClink;
+            acInfo->acHitInfo = copy;
+            if (Combo_DebugEnv("COMBO_DEBUG_CROSSDMG")) {
+                Combo_DebugLog("[CrossObj] actor 0x%04X params 0x%04X <- MM %s: %s (OOT flag 0x%08X)\n", ac->actor->id,
+                               (u16)ac->actor->params, CrossDamage_AttackName(atInfo->toucher.comboMmDmg),
+                               brk ? "break/trigger" : "clink", copy->toucher.dmgFlags);
+            }
+        }
+    }
+#endif
     acInfo->bumperFlags |= BUMP_HIT;
     if (ac->actor != NULL) {
         ac->actor->colChkInfo.acHitEffect = atInfo->toucher.effect;
@@ -2627,7 +2930,13 @@ void CollisionCheck_AC(PlayState* play, CollisionCheckContext* colChkCtx, Collid
                 if (!(colAT->atFlags & AT_SELF) && colAT->actor != NULL && colAC->actor == colAT->actor) {
                     continue;
                 }
+#ifdef COMBO_BUILD
+                sComboCurAC = colAC;
+#endif
                 sACVsFuncs[colAT->shape][colAC->shape](play, colChkCtx, colAT, colAC);
+#ifdef COMBO_BUILD
+                sComboCurAC = NULL;
+#endif
             }
         }
     }
@@ -3024,6 +3333,9 @@ void CollisionCheck_ApplyDamage(PlayState* play, CollisionCheckContext* colChkCt
         damage = tbl->table[i] & 0xF;
         collider->actor->colChkInfo.damageEffect = tbl->table[i] >> 4 & 0xF;
     }
+#ifdef COMBO_BUILD
+    Combo_CrossDamageApply(collider, info, tbl, &damage);
+#endif
     if (!(collider->acFlags & AC_HARD)) {
         collider->actor->colChkInfo.damage += damage;
     }

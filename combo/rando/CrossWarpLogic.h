@@ -8,6 +8,8 @@
 // to the OTHER oracle as reserved pseudo-owned names.
 #pragma once
 
+#include <algorithm>
+
 #include <cstdint>
 #include <string>
 #include <vector>
@@ -37,6 +39,9 @@ enum : uint32_t {
 struct CrossWarpLatch {
     uint32_t ootIn = 0;
     bool mmIn = false;
+    // MM's Zora / Goron Masks as Hyrule abilities (soh logic.cpp ComboFormCredit), pushed once each.
+    bool formZora = false;
+    bool formGoron = false;
 };
 
 // Give each game the other's new teleport-song abilities. True if anything changed: query again.
@@ -44,6 +49,22 @@ inline bool ApplyCrossWarps(uint32_t ootOut, uint32_t mmOut, bool mmOpen, bool m
                             std::vector<std::string>& ootOwned, std::vector<std::string>& mmOwned,
                             CrossWarpLatch& latch) {
     bool changed = false;
+    // Owner rulings 2026-11-14 (plan Part C1): the Zora / Goron Mask (MM's, or OOT's own, which also transforms in
+    // Hyrule) lets Hyrule's logic route through that form's abilities.
+    auto owns = [&](const char* name) {
+        return (std::find(mmOwned.begin(), mmOwned.end(), name) != mmOwned.end()) ||
+               (std::find(ootOwned.begin(), ootOwned.end(), name) != ootOwned.end());
+    };
+    if (!latch.formZora && owns("Zora Mask")) {
+        ootOwned.push_back("@combo:form:zora");
+        latch.formZora = true;
+        changed = true;
+    }
+    if (!latch.formGoron && owns("Goron Mask")) {
+        ootOwned.push_back("@combo:form:goron");
+        latch.formGoron = true;
+        changed = true;
+    }
     if ((ootOut & CW_OOT_OUT_CAN_SOAR) && !latch.mmIn) {
         mmOwned.push_back(kCwOotSoaring);
         latch.mmIn = true;

@@ -383,8 +383,7 @@ void LifeMeter_Draw(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_HEARTS);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     // All of this information was derived from the original call to gSPTextureRectangle below
@@ -432,8 +431,7 @@ void LifeMeter_Draw(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_HEARTS);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                     Mtx_SetTranslateScaleMtx(mtx, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f);
                 } else {

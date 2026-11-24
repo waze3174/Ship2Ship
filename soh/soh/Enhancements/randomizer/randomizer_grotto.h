@@ -29,6 +29,9 @@ void Grotto_SetExitOverride(s16 originalIndex, s16 overrideIndex);
 void Grotto_SetLoadOverride(s16 originalIndex, s16 overrideIndex);
 s16 Grotto_GetEntranceValueHandlingGrottoRando(s16 nextEntranceIndex);
 s16 Grotto_OverrideSpecialEntrance(s16 nextEntranceIndex);
+#ifdef COMBO_BUILD
+s16 Grotto_OverrideSpecialEntranceForCross(s16 nextEntranceIndex);
+#endif
 void Grotto_OverrideActorEntrance(Actor* thisx);
 void Grotto_ForceGrottoReturnOnSpecialEntrance(void);
 void Grotto_ForceGrottoReturn(void);

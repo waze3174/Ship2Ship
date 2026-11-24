@@ -137,6 +137,9 @@ inline void to_json(json& j, const ShipSaveInfo& shipSaveInfo) {
         { "respawn", shipSaveInfo.respawn },
         { "commitHash", commitHash },
     };
+#ifdef COMBO_BUILD
+    j["comboFaroresWind"] = shipSaveInfo.comboFaroresWind; // ComboShip: OOT's Farore's Wind point in Termina
+#endif
 
     if (shipSaveInfo.saveType == SAVETYPE_RANDO) {
         j["rando"] = shipSaveInfo.rando;
@@ -147,6 +150,13 @@ inline void from_json(const json& j, ShipSaveInfo& shipSaveInfo) {
     j.at("dpadEquips").get_to(shipSaveInfo.dpadEquips);
     j.at("pauseSaveEntrance").get_to(shipSaveInfo.pauseSaveEntrance);
     j.at("persistentBunnyHood").get_to(shipSaveInfo.persistentBunnyHood);
+#ifdef COMBO_BUILD
+    if (j.contains("comboFaroresWind")) {
+        j.at("comboFaroresWind").get_to(shipSaveInfo.comboFaroresWind);
+    } else {
+        shipSaveInfo.comboFaroresWind = {};
+    }
+#endif
     j.at("saveType").get_to(shipSaveInfo.saveType);
     j.at("fileCreatedAt").get_to(shipSaveInfo.fileCreatedAt);
     j.at("fileCompletedAt").get_to(shipSaveInfo.fileCompletedAt);

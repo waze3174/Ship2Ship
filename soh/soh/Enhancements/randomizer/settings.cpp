@@ -23,6 +23,8 @@ extern "C" int gComboGoalPieces;
 extern "C" int gComboStartingGameMM;
 // ComboShip: Shared Items bitmask (combo/rando/SharedItems.h), pushed by SOH_SetComboSharedItems.
 extern "C" int gComboSharedMask;
+extern "C" int gComboUnifiedInventory; // ComboUnifiedInventory.cpp
+extern "C" int gComboMirrorStartMask;  // OTRGlobals.cpp
 static constexpr bool kComboOwnsWincon = true;
 // ComboShip (#136): OOT's half of the combo-owned pool, for the menu-side dependent-count ranges.
 // Mirrors CwOotPieces in combo/rando/CrossWorldRando.h — the two splits must stay identical.
@@ -2779,6 +2781,20 @@ void Context::FinalizeSettings(const std::set<RandomizerCheck>& excludedLocation
         if (mOptions[RSK_FOREST].Is(RO_CLOSED_FOREST_ON)) {
             mOptions[RSK_FOREST].Set(RO_CLOSED_FOREST_DEKU_ONLY);
         }
+    }
+    // ComboShip (owner ruling 2026-11-11): Unified Inventory — masks are usable as adult too, with logic support.
+    if (gComboUnifiedInventory) {
+        mOptions[RSK_MASKS_AS_ADULT].Set(RO_GENERIC_ON);
+        // ...and OOT starts with what MM starts with (the forced starts take their copies out of the pool).
+        if ((gComboMirrorStartMask & ComboRando::MSB_OCARINA) &&
+            mOptions[RSK_STARTING_OCARINA].Is(RO_STARTING_OCARINA_OFF))
+            mOptions[RSK_STARTING_OCARINA].Set(RO_STARTING_OCARINA_FAIRY);
+        if (gComboMirrorStartMask & ComboRando::MSB_KOKIRI_SWORD)
+            mOptions[RSK_STARTING_KOKIRI_SWORD].Set(RO_GENERIC_ON);
+        if (gComboMirrorStartMask & ComboRando::MSB_SHIELD)
+            mOptions[RSK_STARTING_HYLIAN_SHIELD].Set(RO_GENERIC_ON);
+        if (gComboMirrorStartMask & ComboRando::MSB_SONG_OF_TIME)
+            mOptions[RSK_STARTING_SONG_OF_TIME].Set(RO_GENERIC_ON);
     }
     // ComboShip: Shared Wallets has no MM equivalent for Child Wallet, so force it off (see deviations/rando.md).
     if (gComboSharedMask & (1 << ComboRando::SF_WALLET)) {

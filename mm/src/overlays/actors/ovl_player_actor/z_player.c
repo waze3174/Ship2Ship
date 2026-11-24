@@ -4,6 +4,8 @@
  * Description: Player
  */
 
+#include <stdio.h>
+#include <stdlib.h>
 #include "global.h"
 #include "z64horse.h"
 #include "z64malloc.h"
@@ -49,6 +51,38 @@
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include "2s2h/CustomMessage/CustomMessage.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+
+#ifdef COMBO_BUILD
+extern s32 sComboHoverBootsTimer; // OOT's hoverBootsTimer for OOT's Hover Boots (defined at func_808430E0)
+// ComboShip (entrance randomizer, full-coop-sync §B1): walk-through exits go where the shuffle sent them.
+extern s32 Combo_MM_RedirectExit(s32 entrance);
+#endif
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboPause.h"     // ComboShip: merged pause menus (foreign items on buttons)
+#include "2s2h/Rando/MiscBehavior/ComboAdultBody.h" // ComboShip: adult Link in Termina
+static PlayerAgeProperties* Combo_AdultAgeProperties(void);
+#endif
+#ifdef COMBO_BUILD
+// ComboShip (OOT items in Termina): OOT's item actions ported into MM's player (z_player_combo_oot.inc, included at
+// the end of this file so the ports call MM's own static helpers).
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
+s32 ComboOot_UpperAction_Boomerang(struct Player* this, struct PlayState* play);
+s32 ComboOot_UpperAction_Hammer(struct Player* this, struct PlayState* play);
+void ComboOot_InitBoomerangIA(struct PlayState* play, struct Player* this);
+void ComboOot_InitSlingshotIA(struct PlayState* play, struct Player* this);
+s32 ComboOot_UseSpell(struct PlayState* play, struct Player* this, s32 itemAction);
+s32 ComboOot_ActionHandlerSpell(struct Player* this, struct PlayState* play);
+void ComboOot_StartMode_FaroresWind(struct PlayState* play, struct Player* this);
+void ComboOot_PlayerInit(struct PlayState* play, struct Player* this);
+void ComboOot_DebugTrace(struct Player* this, struct PlayState* play);
+s32 ComboOot_HammerSelectMwa(struct Player* this, s32* outMwa);
+struct AttackAnimInfo* ComboOot_MeleeInfo(struct Player* this, s32 mwa);
+void ComboOot_HammerHitSurface(struct PlayState* play, struct Player* this);
+void ComboOot_HammerShockwave(struct Player* this, struct PlayState* play);
+#define COMBO_MELEE_INFO(this, mwa) (*ComboOot_MeleeInfo(this, mwa))
+#else
+#define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
+#endif
 
 void Player_Init(Actor* thisx, PlayState* play);
 void Player_Destroy(Actor* thisx, PlayState* play);
@@ -1222,6 +1256,41 @@ PlayerAgeProperties sPlayerAgeProperties[PLAYER_FORM_MAX] = {
         },
     },
 };
+
+#ifdef COMBO_BUILD
+// ComboShip: adult Link's body in MM. Fierce Deity IS OOT's adult Link at 1.5x scale, so its entry already carries the
+// adult animations, the adult voice bank and the adult joint offsets; the lengths are OOT's own adult values
+// (soh z_player.c sAgeProperties[0]) because adult Link keeps the 0.01 actor scale.
+static PlayerAgeProperties* Combo_AdultAgeProperties(void) {
+    static PlayerAgeProperties sAdult;
+    static s32 sInit = false;
+
+    if (!sInit) {
+        sInit = true;
+        sAdult = sPlayerAgeProperties[PLAYER_FORM_FIERCE_DEITY];
+        sAdult.ceilingCheckHeight = 56.0f;
+        sAdult.shadowScale = 90.0f;
+        sAdult.unk_08 = 1.0f; // animation translation scale (child is 11/17)
+        sAdult.unk_0C = 111.0f;
+        sAdult.unk_10 = 70.0f;
+        sAdult.unk_14 = 79.4f;
+        sAdult.unk_18 = 59.0f;
+        sAdult.unk_1C = 41.0f;
+        sAdult.unk_20 = 19.0f;
+        sAdult.unk_24 = 36.0f;
+        sAdult.unk_28 = 44.8f;
+        sAdult.unk_2C = 56.0f;
+        sAdult.unk_30 = 68.0f;
+        sAdult.unk_34 = 70.0f;
+        sAdult.wallCheckRadius = 18.0f;
+        sAdult.unk_3C = 15.0f;
+        sAdult.unk_40 = 70.0f;
+        sAdult.unk_98 = sPlayerAgeProperties[PLAYER_FORM_FIERCE_DEITY].unk_98 / 1.5f;
+        sAdult.unk_9C = sPlayerAgeProperties[PLAYER_FORM_FIERCE_DEITY].unk_9C / 1.5f;
+    }
+    return &sAdult;
+}
+#endif
 
 PlayerAnimationHeader* D_8085BE84[PLAYER_ANIMGROUP_MAX][PLAYER_ANIMTYPE_MAX] = {
     // PLAYER_ANIMGROUP_wait
@@ -2828,6 +2897,21 @@ void Player_ProcessFidgetAnimSfxList(Player* this, s32 fidgetAnimIndex) {
 PlayerAnimationHeader* func_8082EEE0(Player* this) {
     if (this->unk_B64 != 0) {
         return D_8085BE84[PLAYER_ANIMGROUP_damage_run][this->modelAnimType];
+#ifdef COMBO_BUILD
+    } else if (!(this->stateFlags1 & (PLAYER_STATE1_8000000 | PLAYER_STATE1_20000000)) &&
+               (this->currentBoots == PLAYER_BOOTS_COMBO_IRON)) {
+        // OOT func_80833438: the heavy run in Iron Boots out of the water (OOT's PLAYER_ANIMGROUP_heavy_run; the
+        // animation types are the same six in both games).
+        static const char* const sHeavyRun[PLAYER_ANIMTYPE_MAX] = {
+            "__OTR__@oot:objects/gameplay_keep/gPlayerAnim_link_normal_heavy_run_free",
+            "__OTR__@oot:objects/gameplay_keep/gPlayerAnim_link_normal_heavy_run",
+            "__OTR__@oot:objects/gameplay_keep/gPlayerAnim_link_normal_heavy_run_free",
+            "__OTR__@oot:objects/gameplay_keep/gPlayerAnim_link_fighter_heavy_run_long",
+            "__OTR__@oot:objects/gameplay_keep/gPlayerAnim_link_normal_heavy_run_free",
+            "__OTR__@oot:objects/gameplay_keep/gPlayerAnim_link_normal_heavy_run_free",
+        };
+        return (PlayerAnimationHeader*)sHeavyRun[this->modelAnimType];
+#endif
     } else {
         return D_8085BE84[PLAYER_ANIMGROUP_run][this->modelAnimType];
     }
@@ -3105,6 +3189,17 @@ s8 sItemItemActions[] = {
 };
 
 PlayerItemAction Player_ItemToItemAction(Player* this, ItemId item) {
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): a foreign (OOT) item acts as its Termina twin (OOT's masks), or runs OOT's own
+    // item action ported into Termina (OOT items in Termina, z_player_combo_oot.inc), else as nothing.
+    if (Combo_MmPauseIsForeign(item)) {
+        const s32 comboAction = Combo_MmOotItemAction(item);
+        if (comboAction != PLAYER_IA_NONE) {
+            return comboAction;
+        }
+        item = Combo_MmPauseUseItem(item);
+    }
+#endif
     if (item >= ITEM_FD) {
         return PLAYER_IA_NONE;
     } else if (item == ITEM_FC) {
@@ -3202,6 +3297,18 @@ PlayerUpperActionFunc sItemActionUpdateFuncs[PLAYER_IA_MAX] = {
     Player_UpperAction_0,          // PLAYER_IA_MASK_ZORA
     Player_UpperAction_0,          // PLAYER_IA_MASK_DEKU
     Player_UpperAction_0,          // PLAYER_IA_LENS_OF_TRUTH
+#ifdef COMBO_BUILD
+    ComboOot_UpperAction_Boomerang, // PLAYER_IA_COMBO_OOT_BOOMERANG (OOT func_80835800)
+    ComboOot_UpperAction_Hammer,    // PLAYER_IA_COMBO_OOT_HAMMER (OOT func_8083485C)
+    Player_UpperAction_6,           // PLAYER_IA_COMBO_OOT_SLINGSHOT (OOT func_80834EB8 chain = MM's bow chain)
+    Player_UpperAction_0,           // PLAYER_IA_COMBO_OOT_DINS_FIRE
+    Player_UpperAction_0,           // PLAYER_IA_COMBO_OOT_FARORES_WIND
+    Player_UpperAction_0,           // PLAYER_IA_COMBO_OOT_NAYRUS_LOVE
+    Player_UpperAction_6,           // PLAYER_IA_COMBO_OOT_LONGSHOT (MM's hookshot chain, OOT's length)
+    Player_UpperAction_0,           // PLAYER_IA_COMBO_OOT_TRADE
+    Player_UpperAction_6,           // PLAYER_IA_COMBO_OOT_HOOKSHOT (MM's hookshot chain, OOT's length)
+    Player_UpperAction_0,           // PLAYER_IA_COMBO_OOT_MASK
+#endif
 };
 
 typedef void (*PlayerItemActionInitFunc)(PlayState*, Player*);
@@ -3290,6 +3397,18 @@ PlayerItemActionInitFunc sItemActionInitFuncs[PLAYER_IA_MAX] = {
     Player_InitDefaultIA,       // PLAYER_IA_MASK_ZORA
     Player_InitDefaultIA,       // PLAYER_IA_MASK_DEKU
     Player_InitDefaultIA,       // PLAYER_IA_LENS_OF_TRUTH
+#ifdef COMBO_BUILD
+    ComboOot_InitBoomerangIA,  // PLAYER_IA_COMBO_OOT_BOOMERANG (OOT Player_InitBoomerangIA)
+    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_HAMMER (OOT Player_InitHammerIA)
+    ComboOot_InitSlingshotIA,  // PLAYER_IA_COMBO_OOT_SLINGSHOT (OOT Player_InitBowOrSlingshotIA)
+    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_DINS_FIRE
+    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_FARORES_WIND
+    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_NAYRUS_LOVE
+    Player_InitHookshotIA,     // PLAYER_IA_COMBO_OOT_LONGSHOT
+    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_TRADE
+    Player_InitHookshotIA,     // PLAYER_IA_COMBO_OOT_HOOKSHOT
+    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_MASK
+#endif
 };
 
 void Player_InitDefaultIA(PlayState* play, Player* this) {
@@ -3678,6 +3797,12 @@ void func_8082FA5C(PlayState* play, Player* this, PlayerMeleeWeaponState meleeWe
                                                                                      : NA_SE_IT_SWORD_SWING;
                 }
             }
+#ifdef COMBO_BUILD
+            if (this->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) {
+                itemSfxId = NA_SE_IT_HAMMER_SWING; // ComboShip: OOT func_80833A20 (the hammer's swing, never "hard")
+                voiceSfxId = NA_SE_VO_LI_SWORD_N;
+            }
+#endif
         }
 
         if (itemSfxId != NA_SE_NONE) {
@@ -4061,6 +4186,21 @@ void Player_UpdateItems(Player* this, PlayState* play) {
 
 // EN_ARROW ammo related?
 s32 func_808305BC(PlayState* play, Player* this, ItemId* item, ArrowType* typeParam) {
+#ifdef COMBO_BUILD
+    if (this->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT) {
+        // ComboShip: OOT's Slingshot fires OOT's Deku Seeds (EnArrow ARROW_TYPE_SLINGSHOT = OOT ARROW_SEED) from OOT's
+        // bullet bag (OOT func_80834380: ITEM_SLINGSHOT / ARROW_SEED / AMMO(ITEM_SLINGSHOT)).
+        *item = ITEM_SLINGSHOT;
+        *typeParam = ARROW_TYPE_SLINGSHOT;
+        if (this->stateFlags3 & PLAYER_STATE3_400) {
+            return 1;
+        }
+        if (gSaveContext.minigameStatus == MINIGAME_STATUS_ACTIVE) {
+            return play->interfaceCtx.minigameAmmo;
+        }
+        return Combo_MmOotAmmo(COMBO_OOT_ITEM_SLINGSHOT);
+    }
+#endif
     if (this->heldItemAction == PLAYER_IA_DEKU_NUT) {
         *item = ITEM_DEKU_NUT;
         *typeParam = (this->transformation == PLAYER_FORM_DEKU) ? ARROW_TYPE_DEKU_BUBBLE : ARROW_TYPE_SLINGSHOT;
@@ -4120,6 +4260,11 @@ s32 func_808306F8(Player* this, PlayState* play) {
             ArrowType arrowType;
             ArrowMagic magicArrowType;
 
+#ifdef COMBO_BUILD
+            if ((var_v1 == 2) && (this->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT)) {
+                Player_PlaySfx(this, NA_SE_IT_SLING_DRAW); // ComboShip: OOT D_80854398[1]
+            }
+#endif
             if (var_v1 != 2) {
                 // 2S2H [Port] When using action swap, D_8085CFB0 is indexed with -1 leading
                 // to UB sent into Player_PlaySfx. On console this resolves as 1 and nothing noticable happens.
@@ -4404,6 +4549,13 @@ bool func_80831194(PlayState* play, Player* this) {
                 } else if (play->bButtonAmmoPlusOne != 0) {
                     play->bButtonAmmoPlusOne--;
                 } else {
+#ifdef COMBO_BUILD
+                    if (this->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT) {
+                        Combo_MmOotChangeAmmo(COMBO_OOT_ITEM_SLINGSHOT, -1); // ComboShip: OOT's bullet bag
+                        Combo_MmOotLog("slingshot: Deku Seed fired, OOT seeds left %d",
+                                       Combo_MmOotAmmo(COMBO_OOT_ITEM_SLINGSHOT));
+                    } else
+#endif
                     Inventory_ChangeAmmo(item, -1);
                 }
             }
@@ -4626,6 +4778,23 @@ void func_80831944(PlayState* play, Player* this) {
 void Player_UseItem(PlayState* play, Player* this, ItemId item) {
     PlayerItemAction itemAction = Player_ItemToItemAction(this, item);
 
+#ifdef COMBO_BUILD
+    // ComboShip: OOT's Skull / Spooky / Gerudo Mask: on or off at once (OOT Player_UseItem's mask branch), one mask at
+    // a time (an MM mask comes off).
+    if ((itemAction == PLAYER_IA_COMBO_OOT_MASK) && (this->transformation == PLAYER_FORM_HUMAN) &&
+        Combo_MmOotToggleMask(item)) {
+        if (this->currentMask != PLAYER_MASK_NONE) {
+            this->currentMask = PLAYER_MASK_NONE;
+            gSaveContext.save.equippedMask = PLAYER_MASK_NONE;
+        }
+        func_8082E1F0(this, NA_SE_PL_CHANGE_ARMS);
+        return;
+    }
+    if ((itemAction >= PLAYER_IA_MASK_MIN) && (itemAction <= PLAYER_IA_MASK_MAX)) {
+        Combo_MmOotClearMask(); // an MM mask (or a transformation) takes OOT's off
+    }
+#endif
+
     if ((((this->heldItemAction == this->itemAction) &&
           (!(this->stateFlags1 & PLAYER_STATE1_400000) ||
            (Player_MeleeWeaponFromIA(itemAction) != PLAYER_MELEEWEAPON_NONE) || (itemAction == PLAYER_IA_NONE))) ||
@@ -4643,6 +4812,11 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
         f32 sp54;
         PlayerExplosive explosiveType;
 
+#ifdef COMBO_BUILD
+        if (ComboOot_UseSpell(play, this, itemAction)) {
+            return; // ComboShip: OOT's magic spells (OOT Player_UseItem's spell branch)
+        }
+#endif
         if (var_v1 || (CHECK_FLAG_ALL(this->actor.flags, ACTOR_FLAG_TALK) && (itemAction != PLAYER_IA_NONE)) ||
             (itemAction == PLAYER_IA_OCARINA) ||
             ((itemAction > PLAYER_IA_BOTTLE_MIN) && itemAction < PLAYER_IA_MASK_MIN) ||
@@ -4802,6 +4976,9 @@ bool Player_UpdateUpperBody(Player* this, PlayState* play) {
     if (!(this->stateFlags1 & PLAYER_STATE1_800000) && (this->actor.parent != NULL) && Player_IsHoldingHookshot(this)) {
         Player_SetAction(play, this, Player_Action_HookshotFly, 1);
         this->stateFlags3 |= PLAYER_STATE3_FLYING_WITH_HOOKSHOT;
+#ifdef COMBO_BUILD
+        sComboHoverBootsTimer = 0; // OOT Player_UpdateUpperBody: flying on the hookshot ends the hover
+#endif
         Player_Anim_PlayOnce(play, this, &gPlayerAnim_link_hook_fly_start);
         Player_AnimReplace_Setup(
             play, this,
@@ -5696,6 +5873,11 @@ PlayerMeleeWeaponAnimation func_808335F4(Player* this) {
     PlayerMeleeWeaponAnimation meleeWeaponAnim;
 
     controlStickDirection = this->controlStickDirections[this->controlStickDataIndex];
+#ifdef COMBO_BUILD
+    if (ComboOot_HammerSelectMwa(this, (s32*)&meleeWeaponAnim)) {
+        return meleeWeaponAnim; // ComboShip: OOT's hammer swings (OOT func_80837818)
+    }
+#endif
     if ((this->transformation == PLAYER_FORM_ZORA) || (this->transformation == PLAYER_FORM_GORON)) {
         s8* meleeWeaponAnims = (this->transformation == PLAYER_FORM_ZORA) ? D_8085D094[0] : D_8085D094[1];
         s32 unk_ADD = this->unk_ADD;
@@ -5755,6 +5937,12 @@ MeleeWeaponDamageInfo D_8085D09C[PLAYER_MELEEWEAPON_MAX] = {
     { DMG_SWORD, 4, 8, 4, 8 },       // PLAYER_MELEEWEAPON_SWORD_TWO_HANDED
     { DMG_DEKU_STICK, 0, 0, 2, 4 },  // PLAYER_MELEEWEAPON_DEKU_STICK
     { DMG_ZORA_PUNCH, 1, 2, 0, 0 },  // PLAYER_MELEEWEAPON_ZORA_BOOMERANG
+#ifdef COMBO_BUILD
+    // ComboShip: OOT's Megaton Hammer. OOT's hammer bits (DMG_HAMMER_SWING / DMG_HAMMER_JUMP) are credited as MM's
+    // Goron punch + Goron pound (owner rule: damage / puzzle credit maps to the host game), so every Termina rock,
+    // switch and enemy a Goron's fists break, press or hurt reacts to the hammer.
+    { DMG_GORON_PUNCH | DMG_GORON_POUND, 2, 4, 2, 4 }, // PLAYER_MELEEWEAPON_COMBO_OOT_HAMMER
+#endif
 };
 
 // New function in NE0: split out of func_80833864 to be able to call it to patch Power Crouch Stab.
@@ -5805,7 +5993,7 @@ void func_80833864(PlayState* play, Player* this, PlayerMeleeWeaponAnimation mel
     }
 
     this->meleeWeaponAnimation = meleeWeaponAnim;
-    Player_Anim_PlayOnceAdjusted(play, this, sMeleeAttackAnimInfo[meleeWeaponAnim].unk_0);
+    Player_Anim_PlayOnceAdjusted(play, this, COMBO_MELEE_INFO(this, meleeWeaponAnim).unk_0);
     this->unk_ADC = this->skelAnime.animLength + 4.0f;
 
     if ((meleeWeaponAnim < PLAYER_MWA_FLIPSLASH_START) || (meleeWeaponAnim > PLAYER_MWA_ZORA_JUMPKICK_START)) {
@@ -5970,6 +6158,9 @@ void func_80833B18(PlayState* play, Player* this, s32 arg2, f32 speed, f32 veloc
                 }
                 Player_AnimSfx_PlayVoice(this, NA_SE_VO_LI_FALL_L);
             }
+            #ifdef COMBO_BUILD
+            sComboHoverBootsTimer = 0; // OOT func_80837B9C: knocked into the air ends the hover
+            #endif
             this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
         } else if ((this->speedXZ > 4.0f) && !Player_CheckHostileLockOn(this)) {
             this->unk_B64 = 20;
@@ -6304,6 +6495,11 @@ s32 func_80834600(Player* this, PlayState* play) {
 }
 
 void func_80834CD0(Player* this, f32 arg1, u16 sfxId) {
+#ifdef COMBO_BUILD
+    if (this->actor.id == ACTOR_PLAYER) {
+        sComboHoverBootsTimer = 0; // OOT func_80838940 / func_8083BA90: a jump ends the hover
+    }
+#endif
     this->actor.velocity.y = arg1 * sWaterSpeedFactor;
     this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
 
@@ -6492,6 +6688,9 @@ u8 sReturnEntranceGroupIndices[] = {
 // subfunction of OoT's func_80839034
 void func_808354A4(PlayState* play, s32 exitIndex, s32 arg2) {
     play->nextEntrance = play->setupExitList[exitIndex];
+#ifdef COMBO_BUILD
+    play->nextEntrance = Combo_MM_RedirectExit(play->nextEntrance);
+#endif
 
     if (play->nextEntrance == 0xFFFF) {
         gSaveContext.respawnFlag = 4;
@@ -7650,6 +7849,14 @@ void func_8083827C(Player* this, PlayState* play) {
             this->actor.bgCheckFlags |= BGCHECKFLAG_GROUND_TOUCH;
             return;
         }
+#ifdef COMBO_BUILD
+        if ((this->actor.id == ACTOR_PLAYER) && (sComboHoverBootsTimer != 0)) {
+            // OOT: off a ledge in Hover Boots, Link floats on for the rest of the timer instead of falling
+            this->actor.velocity.y = 1.0f;
+            sPrevFloorProperty = FLOOR_PROPERTY_9;
+            return;
+        }
+#endif
 
         temp_t0 = BINANG_SUB(this->yaw, this->actor.shape.rot.y);
         Player_SetAction(play, this, Player_Action_25, 1);
@@ -7706,6 +7913,11 @@ s32 func_8083868C(PlayState* play, Player* this) {
     Camera* camera;
 
     if (this->unk_AA5 == PLAYER_UNKAA5_3) {
+#ifdef COMBO_BUILD
+        if (this->heldItemAction == PLAYER_IA_COMBO_OOT_BOOMERANG) {
+            camMode = CAM_MODE_BOOMERANG; // ComboShip: OOT's boomerang aim camera (OOT CAM_MODE_AIM_BOOMERANG)
+        } else
+#endif
         if (func_800B7118(this)) {
             if (this->transformation == PLAYER_FORM_HUMAN) {
                 camMode = CAM_MODE_SLINGSHOT;
@@ -7912,6 +8124,9 @@ u8 D_8085D1A4[PLAYER_IA_MAX] = {
     GI_MASK_ZORA,           // PLAYER_IA_MASK_ZORA
     GI_MASK_DEKU,           // PLAYER_IA_MASK_DEKU
     GI_LENS_OF_TRUTH,       // PLAYER_IA_LENS_OF_TRUTH
+#ifdef COMBO_BUILD
+    GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, // PLAYER_IA_COMBO_OOT_*
+#endif
 };
 
 PlayerAnimationHeader* D_8085D1F8[] = {
@@ -7931,6 +8146,11 @@ s32 Player_ActionHandler_13(Player* this, PlayState* play) {
             return true;
         }
         if (!Player_StartCsAction(play, this)) {
+#ifdef COMBO_BUILD
+            if ((this->unk_AA5 == PLAYER_UNKAA5_5) && ComboOot_ActionHandlerSpell(this, play)) {
+                return true; // ComboShip: OOT's magic spells (OOT Player_ActionHandler_13's spell branch)
+            }
+#endif
             if (this->unk_AA5 == PLAYER_UNKAA5_5) {
                 if ((this->itemAction >= PLAYER_IA_MASK_MIN) && (this->itemAction <= PLAYER_IA_MASK_MAX)) {
                     PlayerMask maskId = GET_MASK_FROM_IA(this->itemAction);
@@ -9097,7 +9317,9 @@ void func_8083BB4C(PlayState* play, Player* this) {
         Audio_SetBaseFilter(0);
     } else {
         Audio_SetBaseFilter(0x20);
-        if ((this->transformation == PLAYER_FORM_ZORA) || (sp1C < 10.0f)) {
+        // ComboShip: OOT's Iron Boots count from the waterline (OOT func_8083D53C), MM's swimmer from 10 below it.
+        if ((this->transformation == PLAYER_FORM_ZORA) ||
+            (sp1C < ((this->currentBoots == PLAYER_BOOTS_COMBO_IRON) ? 0.0f : 10.0f))) {
             this->underwaterTimer = 0;
         } else if (this->underwaterTimer < 300) {
             this->underwaterTimer++;
@@ -9277,7 +9499,7 @@ void func_8083BF54(PlayState* play, Player* this) {
                                  ? (ABS_ALT(this->unk_B8A) * -0.004f) + (this->unk_B48 * -0.38f)
                                  : this->actor.velocity.y);
 
-            if ((var_fv1 > -1.0f) || ((this->currentBoots == PLAYER_BOOTS_ZORA_UNDERWATER) &&
+            if ((var_fv1 > -1.0f) || (COMBO_BOOTS_SUNK(this->currentBoots) &&
                                       (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
                 if (Rand_ZeroOne() < 0.2f) {
                     numBubbles = 1;
@@ -9600,7 +9822,7 @@ s32 Player_ActionHandler_2(Player* this, PlayState* play) {
                         func_80838830(this, giEntry->objectId);
 
                         if (!(this->stateFlags2 & PLAYER_STATE2_400) ||
-                            (this->currentBoots == PLAYER_BOOTS_ZORA_UNDERWATER)) {
+                            COMBO_BOOTS_SUNK(this->currentBoots)) {
                             Player_StopCutscene(this);
                             Player_SetupWaitForPutAwayWithCs(play, this, func_80837C78,
                                                              play->playerCsIds[PLAYER_CS_ID_ITEM_GET]);
@@ -9751,7 +9973,7 @@ s32 Player_ActionHandler_9(Player* this, PlayState* play) {
 
 s32 func_8083D860(Player* this, PlayState* play) {
     if ((this->yDistToLedge >= 79.0f) &&
-        (!(this->stateFlags1 & PLAYER_STATE1_8000000) || (this->currentBoots == PLAYER_BOOTS_ZORA_UNDERWATER) ||
+        (!(this->stateFlags1 & PLAYER_STATE1_8000000) || COMBO_BOOTS_SUNK(this->currentBoots) ||
          (this->actor.depthInWater < this->ageProperties->unk_2C))) {
         s32 var_t0 = (sPlayerTouchedWallFlags & WALL_FLAG_3) ? 2 : 0;
         s32 temp_t2 = sPlayerTouchedWallFlags & WALL_FLAG_1;
@@ -10158,6 +10380,13 @@ void func_8083EA44(Player* this, f32 arg1) {
 
     sp24 = func_8083E9C4(this->unk_B38, arg1, 29.0f, 10.0f);
 
+#ifdef COMBO_BUILD
+    if (gComboHoverBoots && (this->actor.id == ACTOR_PLAYER) && !(this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
+        (sComboHoverBootsTimer != 0)) {
+        // OOT: hovering, the boots hum instead of footsteps (NA_SE_PL_HOBBERBOOTS_LV, the same id in MM's bank)
+        Actor_PlaySfx_Flagged2(&this->actor, NA_SE_PL_HOBBERBOOTS_LV - SFX_FLAG);
+    } else
+#endif
     if (sp24 || func_8083E9C4(this->unk_B38, arg1, 29.0f, 24.0f)) {
         Player_AnimSfx_PlayFloorWalk(this, this->speedXZ);
         if (this->speedXZ > 4.0f) {
@@ -10702,6 +10931,12 @@ s32 func_808401F4(PlayState* play, Player* this) {
                             if (!SurfaceType_IsIgnoredByEntities(&play->colCtx, poly, bgId) &&
                                 (SurfaceType_GetFloorType(&play->colCtx, poly, bgId) != FLOOR_TYPE_6) &&
                                 !func_800B90AC(play, &this->actor, poly, bgId, &pos)) {
+#ifdef COMBO_BUILD
+                                if (this->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) {
+                                    ComboOot_HammerHitSurface(play, this); // ComboShip: OOT's hammer meets a wall
+                                    return true;
+                                }
+#endif
                                 if (this->transformation == PLAYER_FORM_GORON) {
                                     MtxF sp64;
                                     Vec3s actorRot;
@@ -10781,7 +11016,11 @@ s32 func_808401F4(PlayState* play, Player* this) {
                 }
             }
 
-            if (!func_8083FF30(play, this)) {
+            if (!func_8083FF30(play, this)
+#ifdef COMBO_BUILD
+                && (this->heldItemAction != PLAYER_IA_COMBO_OOT_HAMMER) // ComboShip: OOT skips this for the hammer
+#endif
+            ) {
                 func_8083FFEC(play, this);
                 if (this->actor.colChkInfo.atHitEffect == 1) {
                     this->actor.colChkInfo.damage = 8;
@@ -11254,6 +11493,39 @@ Color_RGBA8 D_8085D338 = { 0, 0, 15, 100 };
 // sTireMarkOtherColor ?
 Color_RGBA8 D_8085D33C = { 0, 0, 0, 150 };
 
+#ifdef COMBO_BUILD
+// ComboShip softlock checker (owner 2026-11-14: "if i come out of the sunken woodfall temple as deku link, it's a
+// death sentence softlock where you keep bouncing and drowning forever"). A Deku who drowns respawns at the room's
+// respawn point still a Deku (MM unmasks only in Great Bay / Zora Cape / the Pirates' Fortress, func_808345C8). When
+// that point itself puts him in deep water (a shuffled exit, a sunken platform) he drowns again forever. The tell: he
+// never stood on solid ground between spawning and drowning. Then the spawn is the problem, and he respawns human
+// (the human swims out), as MM's own func_808345C8 does for those scenes. A Deku who walked around first and then fell
+// in keeps vanilla behaviour: his respawn point is proven safe.
+void Combo_MmOotLog(const char* fmt, ...); // ComboShip log (2s2h)
+static s32 sComboStoodSinceSpawn = false;
+static void Combo_SoftlockCheckStand(Player* this) {
+    if ((this->actor.id == ACTOR_PLAYER) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
+        !(this->stateFlags1 & PLAYER_STATE1_8000000) && (this->actor.depthInWater <= 0.0f)) {
+        sComboStoodSinceSpawn = true;
+    }
+}
+// Every void-out (z_play.c func_80169EFC) and the Deku's drown respawn ask this. A transformed Link who has not stood
+// on dry ground since he (re)spawned comes back human: the spot he keeps being put on is the problem.
+s32 Combo_SoftlockGuard(PlayState* play) {
+    Player* player = GET_PLAYER(play);
+    if ((player == NULL) || sComboStoodSinceSpawn || (gSaveContext.save.playerForm == PLAYER_FORM_HUMAN)) {
+        return false;
+    }
+    Combo_MmOotLog("softlock checker: form %d voided out without standing anywhere since it spawned (scene %d, "
+                   "respawn entrance 0x%X) -> respawns human",
+                   (int)gSaveContext.save.playerForm, (int)play->sceneId,
+                   (unsigned)gSaveContext.respawn[RESPAWN_MODE_DOWN].entrance);
+    gSaveContext.save.playerForm = PLAYER_FORM_HUMAN;
+    gSaveContext.save.equippedMask = PLAYER_MASK_NONE;
+    return true;
+}
+#endif
+
 void Player_Init(Actor* thisx, PlayState* play) {
     s32 pad;
     Player* this = (Player*)thisx;
@@ -11261,6 +11533,11 @@ void Player_Init(Actor* thisx, PlayState* play) {
     s32 respawnFlag;
     s32 var_a1;
     PlayerStartMode startMode;
+#ifdef COMBO_BUILD
+    if (thisx->id == ACTOR_PLAYER) {
+        sComboStoodSinceSpawn = false; // a fresh spawn (scene entry, respawn, void-out)
+    }
+#endif
 
     play->playerInit = Player_InitCommon;
     play->playerUpdate = Player_UpdateCommon;
@@ -11340,6 +11617,12 @@ void Player_Init(Actor* thisx, PlayState* play) {
     }
 
     this->ageProperties = &sPlayerAgeProperties[this->transformation];
+#ifdef COMBO_BUILD
+    // ComboShip (owner ruling 2026-11-12, age kept across games): adult Link in Termina has the adult body.
+    if (Combo_MM_AdultBodyActive(&this->actor)) {
+        this->ageProperties = Combo_AdultAgeProperties();
+    }
+#endif
 
     this->itemAction = PLAYER_IA_NONE;
     this->heldItemAction = PLAYER_IA_NONE;
@@ -11484,7 +11767,16 @@ void Player_Init(Actor* thisx, PlayState* play) {
         gSaveContext.save.isOwlSave = false;
     }
 
-    sStartModeFuncs[startMode](play, this);
+#ifdef COMBO_BUILD
+    if (Combo_MmOotFaroresWindArrivalPending(-1)) {
+        Combo_MmOotFaroresWindArrivalPending(0);
+        ComboOot_StartMode_FaroresWind(play, this); // ComboShip: OOT's Farore's Wind arrival
+    } else
+#endif
+        sStartModeFuncs[startMode](play, this);
+#ifdef COMBO_BUILD
+    ComboOot_PlayerInit(play, this); // ComboShip: OOT's Nayru's Love carries into the new scene
+#endif
 
     if ((this->actor.draw != NULL) && gSaveContext.save.hasTatl &&
         ((gSaveContext.gameMode == GAMEMODE_NORMAL) || (gSaveContext.gameMode == GAMEMODE_END_CREDITS)) &&
@@ -11784,7 +12076,38 @@ void Player_UpdateInterface(PlayState* play, Player* this) {
     }
 }
 
+#ifdef COMBO_BUILD
+// OOT Player_UpdateHoverBoots for OOT's Hover Boots on Link in Termina (MM's Player has no hoverBootsTimer): counts
+// down while hovering, 19 frames refilled on solid ground; over water, a damage floor or a sinking floor the boots
+// never count as standing (OOT func_80838144 = MM func_808340AC, OOT func_8083816C = MM func_808340D4).
+s32 sComboHoverBootsTimer = 0;
+static void Combo_HoverBootsUpdate(Player* this) {
+    s32 canHoverOnGround;
+
+    if (this->actor.id != ACTOR_PLAYER) {
+        return;
+    }
+    if (gComboHoverBoots && (sComboHoverBootsTimer != 0)) {
+        sComboHoverBootsTimer--;
+    } else {
+        sComboHoverBootsTimer = 0;
+    }
+    canHoverOnGround = gComboHoverBoots && ((this->actor.depthInWater >= 0.0f) ||
+                                            (func_808340AC(sPlayerFloorType) >= 0) ||
+                                            func_808340D4(sPlayerFloorType));
+    if (canHoverOnGround && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && (sComboHoverBootsTimer != 0)) {
+        this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
+    }
+    if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && !canHoverOnGround) {
+        sComboHoverBootsTimer = 19;
+    }
+}
+#endif
+
 s32 func_808430E0(Player* this) {
+#ifdef COMBO_BUILD
+    Combo_HoverBootsUpdate(this);
+#endif
     if ((this->transformation == PLAYER_FORM_DEKU) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
         func_8083784C(this)) {
         this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
@@ -11904,7 +12227,11 @@ void Player_ProcessSceneCollision(PlayState* play, Player* this) {
         if (sPlayerConveyorSpeedIndex != CONVEYOR_SPEED_DISABLED) {
             sPlayerIsOnFloorConveyor = SurfaceType_IsFloorConveyor(&play->colCtx, floorPoly, this->actor.floorBgId);
 
-            if ((!sPlayerIsOnFloorConveyor && (this->actor.depthInWater > 20.0f)) ||
+            if ((!sPlayerIsOnFloorConveyor && (this->actor.depthInWater > 20.0f)
+#ifdef COMBO_BUILD
+                 && (this->currentBoots != PLAYER_BOOTS_COMBO_IRON) // OOT: water currents don't move Iron Boots
+#endif
+                 ) ||
                 (sPlayerIsOnFloorConveyor && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
                 sPlayerConveyorYaw = CONVEYOR_DIRECTION_TO_BINANG(
                     SurfaceType_GetConveyorDirection(&play->colCtx, floorPoly, this->actor.floorBgId));
@@ -12426,8 +12753,14 @@ void func_80844784(PlayState* play, Player* this) {
     s16 temp_v0;
     f32 temp_fv0_2;
 
-    if ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && (sPlayerFloorType == FLOOR_TYPE_5) &&
-        (this->currentBoots < PLAYER_BOOTS_ZORA_UNDERWATER)) {
+    if (((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && (sPlayerFloorType == FLOOR_TYPE_5) &&
+         (this->currentBoots < PLAYER_BOOTS_ZORA_UNDERWATER))
+#ifdef COMBO_BUILD
+        // OOT: Hover Boots slide like ice everywhere out of the water (OOT z_player.c, PLAYER_BOOTS_HOVER)
+        || (gComboHoverBoots && (this->actor.id == ACTOR_PLAYER) &&
+            !(this->stateFlags1 & (PLAYER_STATE1_8000000 | PLAYER_STATE1_20000000)))
+#endif
+    ) {
         var_a3 = this->yaw;
         var_fv0 = this->speedXZ;
         temp_v0 = this->actor.world.rot.y - var_a3;
@@ -12469,6 +12802,11 @@ void func_80844784(PlayState* play, Player* this) {
         temp_fv1_2 = 10.0f - this->actor.velocity.y;
         if (temp_fv1_2 > 0.0f) {
             sp58 = D_8085D3E0[this->transformation];
+#ifdef COMBO_BUILD
+            if (this->currentBoots == PLAYER_BOOTS_COMBO_IRON) {
+                sp58 = 0.0f; // OOT's fans (Bg_Haka_Trap) don't push Iron Boots: MM's wind doesn't either
+            }
+#endif
             sp54 = this->windSpeed * sp58;
             sp50 = Math_SinS(this->windAngleX) * sp54;
             sp4C = Math_CosS(this->windAngleX) * sp54;
@@ -12572,6 +12910,20 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
     f32 temp_fv1;
 
     sPlayerControlInput = input;
+#ifdef COMBO_BUILD
+    Combo_SoftlockCheckStand(this);
+    if ((this->actor.id == ACTOR_PLAYER) && (this->transformation == PLAYER_FORM_HUMAN) &&
+        (this->csAction == PLAYER_CSACTION_NONE)) {
+        // OOT's boots changed on OOT's save (Termina's pause, a co-op partner, a cross-game switch): apply them now, as
+        // OOT applies a boots change when its pause menu closes (Player_SetEquipmentData).
+        extern int Combo_MmOotBootsValue(void);
+        const int ootBoots = Combo_MmOotBootsValue();
+        const s32 wantIron = (ootBoots == 2);
+        if ((wantIron != (this->currentBoots == PLAYER_BOOTS_COMBO_IRON)) || ((ootBoots == 3) != gComboHoverBoots)) {
+            Player_SetEquipmentData(play, this);
+        }
+    }
+#endif
     if (this->unk_D6A < 0) {
         this->unk_D6A++;
         if (this->unk_D6A == 0) {
@@ -12663,7 +13015,7 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         s32 pad;
 
         if (this->currentBoots != this->prevBoots) {
-            if (this->currentBoots == PLAYER_BOOTS_ZORA_UNDERWATER) {
+            if (COMBO_BOOTS_SUNK(this->currentBoots)) {
                 if (this->stateFlags1 & PLAYER_STATE1_8000000) {
                     func_8082DC64(play, this);
                     if (this->ageProperties->unk_2C < this->actor.depthInWater) {
@@ -12671,7 +13023,7 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
                     }
                 }
             } else if ((this->stateFlags1 & PLAYER_STATE1_8000000) &&
-                       ((this->prevBoots == PLAYER_BOOTS_ZORA_UNDERWATER) ||
+                       (COMBO_BOOTS_SUNK(this->prevBoots) ||
                         (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
                 func_8083B930(play, this);
                 this->stateFlags2 &= ~PLAYER_STATE2_400;
@@ -12736,7 +13088,11 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         }
 
         Player_HandleExitsAndVoids(play, this, this->actor.floorPoly, this->actor.floorBgId);
-        if (sPlayerConveyorSpeedIndex != CONVEYOR_SPEED_DISABLED) {
+        if ((sPlayerConveyorSpeedIndex != CONVEYOR_SPEED_DISABLED)
+#ifdef COMBO_BUILD
+            && (this->currentBoots != PLAYER_BOOTS_COMBO_IRON) // OOT: no conveyor moves Iron Boots
+#endif
+        ) {
             f32 conveyorSpeed;
             s32 pad2;
 
@@ -13114,6 +13470,9 @@ void Player_Update(Actor* thisx, PlayState* play) {
     s32 pad;
     Input input;
     s32 pad2;
+#ifdef COMBO_BUILD
+    ComboOot_DebugTrace(this, play); // ComboShip debug (env COMBO_DEBUG_OOTITEMS only)
+#endif
 
     // 2S2H [port] bring over SoH's noclip
     // Could be an if else. I think this looks nicer.
@@ -13171,6 +13530,13 @@ void Player_Update(Actor* thisx, PlayState* play) {
     GameInteractor_ExecuteOnPassPlayerInputs(&input);
 
     Player_UpdateCommon(this, play, &input);
+#ifdef COMBO_BUILD
+    if (getenv("COMBO_DEBUG_FINS") != NULL) { // ComboShip debug: MM's Zora fins (upper action, boomerang, B)
+        fprintf(stderr, "[ComboShip/MM] fins B %d upper %p act %p held %d mwa %d adc %d boom %p\n",
+                CHECK_BTN_ALL(input.cur.button, BTN_B), (void*)this->upperActionFunc, (void*)this->actionFunc,
+                this->heldItemAction, this->meleeWeaponAnimation, this->unk_ADC, (void*)this->zoraBoomerangActor);
+    }
+#endif
 skipUpdate:
     play->actorCtx.isOverrideInputOn = false;
     memset(&play->actorCtx.overrideInput, 0, sizeof(Input));
@@ -13495,6 +13861,39 @@ void Player_Draw(Actor* thisx, PlayState* play) {
         }
 
         func_80122D44(play, &this->unk_3D0);
+
+#ifdef COMBO_BUILD
+        // OOT Player_Draw: the Hover Boots' circle under Link while he hovers (gHoverBootsCircleDL, OOT's alpha curve).
+        if (gComboHoverBoots && (this->actor.id == ACTOR_PLAYER) && !(this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
+            !(this->stateFlags1 & PLAYER_STATE1_800000) && (sComboHoverBootsTimer != 0)) {
+            static s32 sCircleAlpha = 255; // OOT D_8085486C
+            static Vec3s sCircleRot = { 0, 0, 0 };
+            s32 timer = sComboHoverBootsTimer;
+
+            if (timer < 19) {
+                if (timer >= 15) {
+                    sCircleAlpha = (19 - timer) * 51.0f;
+                } else {
+                    s32 t = (timer > 9) ? 9 : timer;
+
+                    sCircleAlpha = (-t * 4) + 36;
+                    sCircleAlpha = sCircleAlpha * sCircleAlpha;
+                    sCircleAlpha = (s32)((Math_CosS(sCircleAlpha) * 100.0f) + 100.0f) + 55.0f;
+                    sCircleAlpha = sCircleAlpha * (t * (1.0f / 9.0f));
+                }
+                Matrix_SetTranslateRotateYXZ(this->actor.world.pos.x, this->actor.world.pos.y + 2.0f,
+                                             this->actor.world.pos.z, &sCircleRot);
+                Matrix_Scale(4.0f, 4.0f, 4.0f, MTXMODE_APPLY);
+                MATRIX_FINALIZE_AND_LOAD(POLY_XLU_DISP++, play->state.gfxCtx);
+                gSPSegment(POLY_XLU_DISP++, 0x08,
+                           Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 0, 0, 16, 32, 1, 0,
+                                              (play->gameplayFrames * -15) % 128, 16, 32, 0, 0, 0, -15));
+                gDPSetPrimColor(POLY_XLU_DISP++, 0x80, 0x80, 255, 255, 255, sCircleAlpha);
+                gDPSetEnvColor(POLY_XLU_DISP++, 120, 90, 30, 128);
+                gSPDisplayList(POLY_XLU_DISP++, (Gfx*)"__OTR__@oot:objects/gameplay_keep/gHoverBootsCircleDL");
+            }
+        }
+#endif
 
         CLOSE_DISPS(play->state.gfxCtx);
     }
@@ -14301,7 +14700,13 @@ s32 Player_UpperAction_7(Player* this, PlayState* play) {
                     if (this->unk_B28 - 1 < 0) {
                         Ship_HandleConsoleCrashAsReset();
                         Player_PlaySfx(this, NA_SE_NONE);
-                    } else {
+                    } else
+#ifdef COMBO_BUILD
+                        if (this->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT) {
+                        Player_PlaySfx(this, NA_SE_IT_SLING_FLICK); // ComboShip: OOT D_808543DC[1] (empty bullet bag)
+                    } else
+#endif
+                    {
                         Player_PlaySfx(this, D_8085D5FC[this->unk_B28 - 1]);
                     }
                 }
@@ -14569,6 +14974,15 @@ void Player_Action_1(Player* this, PlayState* play) {
                 this->unk_B86[0] = 1;
                 func_8082DE50(play, this);
             } else {
+#ifdef COMBO_BUILD
+                // ComboShip softlock checker: the drown puts him back on the respawn point in place. If he never stood
+                // anywhere since landing there, that point drowns him forever: void out for real, as a human.
+                if (Combo_SoftlockGuard(play)) {
+                    func_80169EFC(play);
+                    return;
+                }
+                sComboStoodSinceSpawn = false; // put back on the respawn point: a fresh spawn
+#endif
                 R_PLAY_FILL_SCREEN_ON = -20;
                 this->stateFlags1 &= ~PLAYER_STATE1_8000000;
                 this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
@@ -15791,7 +16205,7 @@ void Player_Action_28(Player* this, PlayState* play) {
 }
 
 void Player_Action_29(Player* this, PlayState* play) {
-    AttackAnimInfo* attackInfoEntry = &sMeleeAttackAnimInfo[this->meleeWeaponAnimation];
+    AttackAnimInfo* attackInfoEntry = &COMBO_MELEE_INFO(this, this->meleeWeaponAnimation);
     f32 speedTarget;
     s16 yawTarget;
 
@@ -18785,7 +19199,7 @@ void Player_Action_83(Player* this, PlayState* play) {
 }
 
 void Player_Action_84(Player* this, PlayState* play) {
-    AttackAnimInfo* attackInfoEntry = &sMeleeAttackAnimInfo[this->meleeWeaponAnimation];
+    AttackAnimInfo* attackInfoEntry = &COMBO_MELEE_INFO(this, this->meleeWeaponAnimation);
 
     if (this->skelAnime.curFrame < (this->skelAnime.endFrame - 6.0f)) {
         this->stateFlags2 |= PLAYER_STATE2_20;
@@ -18808,7 +19222,11 @@ void Player_Action_84(Player* this, PlayState* play) {
     //! @bug Lunge Storage: If this block is prevented from running at the end of an animation that produces a lunge,
     //! the prepared lunge will be retained until next time execution passes through here, which usually means the next
     //! sword slash.
-    if ((this->stateFlags2 & PLAYER_STATE2_40000000) && PlayerAnimation_OnFrame(&this->skelAnime, 0.0f)) {
+    if ((this->stateFlags2 & PLAYER_STATE2_40000000) &&
+#ifdef COMBO_BUILD
+        (this->heldItemAction != PLAYER_IA_COMBO_OOT_HAMMER) && // ComboShip: OOT's hammer never lunges
+#endif
+        PlayerAnimation_OnFrame(&this->skelAnime, 0.0f)) {
         this->speedXZ = 15.0f;
         this->stateFlags2 &= ~PLAYER_STATE2_40000000;
     }
@@ -18856,7 +19274,13 @@ void Player_Action_84(Player* this, PlayState* play) {
             }
             this->stateFlags3 |= PLAYER_STATE3_8;
         }
-    } else if (((this->transformation == PLAYER_FORM_ZORA) &&
+    }
+#ifdef COMBO_BUILD
+    else if (this->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) {
+        ComboOot_HammerShockwave(this, play); // ComboShip: OOT Player_Action_808502D0's hammer block
+    }
+#endif
+    else if (((this->transformation == PLAYER_FORM_ZORA) &&
                 (this->meleeWeaponAnimation != PLAYER_MWA_ZORA_PUNCH_KICK) &&
                 (this->meleeWeaponAnimation != PLAYER_MWA_ZORA_JUMPKICK_FINISH)) ||
                ((this->transformation == PLAYER_FORM_GORON) &&
@@ -19773,6 +20197,13 @@ void Player_Action_95(Player* this, PlayState* play) {
             func_8083CB58(this, speedTarget, yawTarget);
         }
 
+#ifdef COMBO_BUILD
+        if (getenv("COMBO_DEBUG_SPINCAM") != NULL) { // ComboShip debug: MM's camera during the Deku spin
+            Camera* cam = Play_GetCamera(play, CAM_ID_MAIN);
+            fprintf(stderr, "[ComboShip/MM] spincam shape %d yaw %d eye %.1f %.1f %.1f camyaw %d\n",
+                    this->actor.shape.rot.y, this->yaw, cam->eye.x, cam->eye.y, cam->eye.z, Camera_GetCamDirYaw(cam));
+        }
+#endif
         this->unk_B10[0] += -800.0f;
         this->actor.shape.rot.y += BINANG_ADD(TRUNCF_BINANG(this->unk_B10[0]), BINANG_SUB(this->yaw, prevYaw));
 
@@ -21743,3 +22174,7 @@ s32 func_8085B930(PlayState* play, PlayerAnimationHeader* talkAnim, AnimationMod
                            PLAYER_ANIM_ADJUSTED_SPEED, 0.0f, Animation_GetLastFrame(talkAnim), animMode, -6.0f);
     return true;
 }
+
+#ifdef COMBO_BUILD
+#include "z_player_combo_oot.inc" // ComboShip: OOT items in Termina
+#endif

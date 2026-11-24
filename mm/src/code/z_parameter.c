@@ -9,6 +9,10 @@
 #include "archives/icon_item_static/icon_item_static_yar.h"
 #include "interface/parameter_static/parameter_static.h"
 #include "interface/do_action_static/do_action_static.h"
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboPause.h" // ComboShip: merged pause menus (foreign items on buttons)
+#include "2s2h/Rando/MiscBehavior/ComboOotHud.h" // ComboShip: Termina HUD drawn as OOT's
+#endif
 #include "misc/story_static/story_static.h"
 
 #include "2s2h_assets.h"
@@ -901,7 +905,7 @@ Gfx* Gfx_DrawTexRectIA8(Gfx* gfx, TexturePtr texture, s16 textureWidth, s16 text
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -935,6 +939,9 @@ Gfx* Gfx_DrawTexRectIA16_DropShadow(Gfx* gfx, TexturePtr texture, s16 textureWid
     if (a > 100) {
         dropShadowAlpha = 100;
     }
+    if (ComboOotHud_FlatActive()) {
+        dropShadowAlpha = 0; // ComboShip: OOT-style HUD, OOT draws no drop shadows (ComboOotHud.h)
+    }
 
     gDPPipeSync(gfx++);
     gDPSetPrimColor(gfx++, 0, 0, 0, 0, 0, dropShadowAlpha);
@@ -945,7 +952,7 @@ Gfx* Gfx_DrawTexRectIA16_DropShadow(Gfx* gfx, TexturePtr texture, s16 textureWid
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -998,6 +1005,9 @@ Gfx* Gfx_DrawTexRectIA8_DropShadow(Gfx* gfx, TexturePtr texture, s16 textureWidt
     if (a > 100) {
         dropShadowAlpha = 100;
     }
+    if (ComboOotHud_FlatActive()) {
+        dropShadowAlpha = 0; // ComboShip: OOT-style HUD, OOT draws no drop shadows (ComboOotHud.h)
+    }
 
     gDPPipeSync(gfx++);
     gDPSetPrimColor(gfx++, 0, 0, 0, 0, 0, dropShadowAlpha);
@@ -1008,7 +1018,7 @@ Gfx* Gfx_DrawTexRectIA8_DropShadow(Gfx* gfx, TexturePtr texture, s16 textureWidt
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -1056,10 +1066,13 @@ Gfx* Gfx_DrawRect_DropShadow(Gfx* gfx, s16 rectLeft, s16 rectTop, s16 rectWidth,
     if (a > 100) {
         dropShadowAlpha = 100;
     }
+    if (ComboOotHud_FlatActive()) {
+        dropShadowAlpha = 0; // ComboShip: OOT-style HUD, OOT draws no drop shadows (ComboOotHud.h)
+    }
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -1115,6 +1128,9 @@ Gfx* Gfx_DrawTexRectIA8_DropShadowOffset(Gfx* gfx, TexturePtr texture, s16 textu
     if (a > 100) {
         dropShadowAlpha = 100;
     }
+    if (ComboOotHud_FlatActive()) {
+        dropShadowAlpha = 0; // ComboShip: OOT-style HUD, OOT draws no drop shadows (ComboOotHud.h)
+    }
 
     gDPPipeSync(gfx++);
     gDPSetPrimColor(gfx++, 0, 0, 0, 0, 0, dropShadowAlpha);
@@ -1124,7 +1140,7 @@ Gfx* Gfx_DrawTexRectIA8_DropShadowOffset(Gfx* gfx, TexturePtr texture, s16 textu
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -1173,7 +1189,7 @@ Gfx* Gfx_DrawTexRectI8(Gfx* gfx, TexturePtr texture, s16 textureWidth, s16 textu
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -1224,7 +1240,7 @@ Gfx* Gfx_DrawTexRect4b(Gfx* gfx, TexturePtr texture, s32 fmt, s16 textureWidth, 
 
     // #region 2S2H [Cosmetic] Hud Editor
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             return gfx;
@@ -3157,8 +3173,17 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
             if (GameInteractor_Should(VB_DISABLE_ITEM_UNDERWATER, GET_CUR_FORM_BTN_ITEM(i) != ITEM_MASK_ZORA,
                                       (s32)GET_CUR_FORM_BTN_ITEM(i))) {
                 if (Player_GetEnvironmentalHazard(play) == PLAYER_ENV_HAZARD_UNDERWATER_FLOOR) {
+#ifdef COMBO_BUILD
+                    // ComboShip: in OOT's Iron Boots OOT's floor rule holds (z_parameter.c: only the Hookshot /
+                    // Longshot); MM's (bottles) is the sunk Zora's.
+                    extern int Combo_MmIronFloorItemOk(int item);
+                    if ((player->currentBoots == PLAYER_BOOTS_COMBO_IRON) ? !Combo_MmIronFloorItemOk(GET_CUR_FORM_BTN_ITEM(i))
+                                                                         : !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
+                                                                             (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK))) {
+#else
                     if (!((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
                           (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK))) {
+#endif
                         if (gSaveContext.buttonStatus[i] == BTN_ENABLED) {
                             restoreHudVisibility = true;
                         }
@@ -3185,8 +3210,17 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
             if (GameInteractor_Should(VB_DISABLE_ITEM_UNDERWATER, DPAD_GET_CUR_FORM_BTN_ITEM(j) != ITEM_MASK_ZORA,
                                       (s32)DPAD_GET_CUR_FORM_BTN_ITEM(j))) {
                 if (Player_GetEnvironmentalHazard(play) == PLAYER_ENV_HAZARD_UNDERWATER_FLOOR) {
+#ifdef COMBO_BUILD
+                    // ComboShip: in OOT's Iron Boots OOT's floor rule holds (z_parameter.c: only the Hookshot /
+                    // Longshot); MM's (bottles) is the sunk Zora's.
+                    extern int Combo_MmIronFloorItemOk(int item);
+                    if ((player->currentBoots == PLAYER_BOOTS_COMBO_IRON) ? !Combo_MmIronFloorItemOk(DPAD_GET_CUR_FORM_BTN_ITEM(j))
+                                                                         : !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
+                                                                             (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK))) {
+#else
                     if (!((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
                           (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK))) {
+#endif
                         if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_ENABLED) {
                             restoreHudVisibility = true;
                         }
@@ -4041,7 +4075,10 @@ void Interface_Dpad_LoadItemIconImpl(PlayState* play, u8 btn) {
     if (DPAD_GET_CUR_FORM_BTN_ITEM(btn) < ARRAY_COUNT(gItemIcons)) {
         interfaceCtx->iconItemSegment[DPAD_BUTTON(btn) + EQUIP_SLOT_MAX] = gItemIcons[DPAD_GET_CUR_FORM_BTN_ITEM(btn)];
     } else {
-        interfaceCtx->iconItemSegment[btn] = gEmptyTexture;
+        // ComboShip: upstream wrote iconItemSegment[btn] here, so emptying a D-pad direction blanked the B / C
+        // icon with the same index (Right->B, Left->C-left, Down->C-down, Up->C-right) while the item stayed usable.
+        // ComboEquipShare empties D-pad directions on every crossing, which made Hyrule's equips arrive iconless.
+        interfaceCtx->iconItemSegment[DPAD_BUTTON(btn) + EQUIP_SLOT_MAX] = gEmptyTexture;
     }
 }
 
@@ -5695,8 +5732,7 @@ void Magic_DrawMeter(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_MAGIC_METER);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     // All of this information was derived from the original call to gSPTextureRectangle below
@@ -5736,8 +5772,7 @@ void Magic_DrawMeter(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_MAGIC_METER);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     // All of this information was derived from the original call to gSPTextureRectangle below
@@ -5781,8 +5816,7 @@ void Magic_DrawMeter(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_MAGIC_METER);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     // All of this information was derived from the original call to gSPTextureRectangle below
@@ -5836,7 +5870,7 @@ void Interface_SetPerspectiveView(PlayState* play, s32 topY, s32 bottomY, s32 le
     // #region 2S2H [Cosmetic] Hud Editor
     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_A);
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             interfaceCtx->viewport.leftX = 0;
             interfaceCtx->viewport.rightX = 0;
@@ -5935,12 +5969,22 @@ void Interface_DrawItemButtons(PlayState* play) {
     // #endregion
 
     // B Button Color & Texture
+    // ComboShip: with the OOT-style HUD, the button sprite is Ship of Harkinian's own (OOT's archive). C-left/down/right,
+    // Start and C-up draw rectangles on the tile this loads, so they all take OOT's sprite from here.
+    const s32 comboOotSprite = ComboOotHud_Enabled();
+    if (comboOotSprite) {
+        gSPComboRMPush(OVERLAY_DISP++, "oot");
+    }
     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_B);
     OVERLAY_DISP = Gfx_DrawTexRectIA8_DropShadowOverride(
-        OVERLAY_DISP, gButtonBackgroundTex, 32, 32, sBCButtonXPositions[EQUIP_SLOT_B],
+        OVERLAY_DISP, comboOotSprite ? (TexturePtr)COMBO_OOT_BUTTON_TEX : (TexturePtr)gButtonBackgroundTex, 32, 32,
+        sBCButtonXPositions[EQUIP_SLOT_B],
         sBCButtonYPositions[EQUIP_SLOT_B], sBCButtonSizes[EQUIP_SLOT_B], sBCButtonSizes[EQUIP_SLOT_B],
         sBCButtonScales[EQUIP_SLOT_B] * 2, sBCButtonScales[EQUIP_SLOT_B] * 2, 100, 255, 120, interfaceCtx->bAlpha,
         COSMETIC_ID("Buttons.B"));
+    if (comboOotSprite) {
+        gSPComboRMPop(OVERLAY_DISP++);
+    }
     gDPPipeSync(OVERLAY_DISP++);
 
     // C-Left Button Color & Texture
@@ -5974,14 +6018,22 @@ void Interface_DrawItemButtons(PlayState* play) {
             gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 0, 0);
             gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0,
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
-            gDPLoadTextureBlock_4b(OVERLAY_DISP++, interfaceCtx->doActionSegment[DO_ACTION_SEG_START].mainTex,
+            { // ComboShip: OOT-style HUD -> OOT's label art for actions OOT has (ComboOotHud_ActionLabel)
+                const char* ootLabel = ComboOotHud_ActionLabel(interfaceCtx->doActionSegment[DO_ACTION_SEG_START].mainTex);
+                if (ootLabel != NULL) {
+                    gSPComboRMPush(OVERLAY_DISP++, "oot");
+                }
+                gDPLoadTextureBlock_4b(OVERLAY_DISP++, (ootLabel != NULL) ? (TexturePtr)ootLabel : (TexturePtr)interfaceCtx->doActionSegment[DO_ACTION_SEG_START].mainTex,
                                    G_IM_FMT_IA, DO_ACTION_TEX_WIDTH, DO_ACTION_TEX_HEIGHT, 0, G_TX_NOMIRROR | G_TX_WRAP,
                                    G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+                if (ootLabel != NULL) {
+                    gSPComboRMPop(OVERLAY_DISP++);
+                }
+            }
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_START);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     // All of this information was derived from the original call to gSPTextureRectangle below
@@ -6025,7 +6077,12 @@ void Interface_DrawItemButtons(PlayState* play) {
             }
 
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_C_UP);
-            OVERLAY_DISP = Gfx_DrawRect_DropShadow(OVERLAY_DISP, 254, 16, 16, 16, 2 << 10, 2 << 10, 255, 240, 0, temp);
+            {
+                Color_RGB8 cUp = { 255, 240, 0 };
+                ComboOotHud_ColorFor("Buttons.CUp", &cUp); // ComboShip: OOT's C-up colour with the OOT-style HUD
+                OVERLAY_DISP = Gfx_DrawRect_DropShadow(OVERLAY_DISP, 254, 16, 16, 16, 2 << 10, 2 << 10, cUp.r, cUp.g,
+                                                       cUp.b, temp);
+            }
 
             gDPPipeSync(OVERLAY_DISP++);
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, temp);
@@ -6039,8 +6096,7 @@ void Interface_DrawItemButtons(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_C_UP);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     // All of this information was derived from the original call to gSPTextureRectangle below
@@ -6123,12 +6179,24 @@ void Interface_Dpad_DrawItemIconTexture(PlayState* play, TexturePtr texture, s16
 
     OPEN_DISPS(play->state.gfxCtx);
 
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): a foreign (OOT) item's icon is OOT's own, from OOT's ResourceManager.
+    const bool comboForeign = Combo_MmPauseIsForeign(DPAD_GET_CUR_FORM_BTN_ITEM(button));
+    if (comboForeign) {
+        gSPComboRMPush(OVERLAY_DISP++, "oot");
+    }
+#endif
     gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0, G_TX_NOMIRROR | G_TX_WRAP,
                         G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+#ifdef COMBO_BUILD
+    if (comboForeign) {
+        gSPComboRMPop(OVERLAY_DISP++);
+    }
+#endif
 
     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_D_PAD);
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
         } else {
@@ -6247,14 +6315,26 @@ void Interface_DrawItemIconTexture(PlayState* play, TexturePtr texture, s16 butt
 
     OPEN_DISPS(play->state.gfxCtx);
 
+#ifdef COMBO_BUILD
+    // ComboShip (merged pause menus): a foreign (OOT) item's icon is OOT's own, from OOT's ResourceManager.
+    const bool comboForeign = (button != EQUIP_SLOT_B) && Combo_MmPauseIsForeign(GET_CUR_FORM_BTN_ITEM(button));
+    if (comboForeign) {
+        gSPComboRMPush(OVERLAY_DISP++, "oot");
+    }
+#endif
     gDPLoadTextureBlock(OVERLAY_DISP++, texture, G_IM_FMT_RGBA, G_IM_SIZ_32b, ICON_ITEM_TEX_WIDTH, ICON_ITEM_TEX_HEIGHT,
                         0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
                         G_TX_NOLOD);
+#ifdef COMBO_BUILD
+    if (comboForeign) {
+        gSPComboRMPop(OVERLAY_DISP++);
+    }
+#endif
 
     // #region 2S2H [Cosmetic] Hud Editor
     HudEditor_SetActiveElement(button);
     if (HudEditor_ShouldOverrideDraw()) {
-        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+        if (HudEditor_GetActiveElementMode() ==
             HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
         } else {
@@ -6422,9 +6502,18 @@ void Interface_DrawBButtonIcons(PlayState* play) {
         //! from the wallet icon) prior to obtaining magic.
         GameInteractor_Should(VB_SET_BUTTON_ENV_COLOR, false);
         gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
-        gDPLoadTextureBlock_4b(OVERLAY_DISP++, interfaceCtx->doActionSegment[DO_ACTION_SEG_B].mainTex, G_IM_FMT_IA,
+        { // ComboShip: OOT-style HUD -> OOT's label art for actions OOT has (ComboOotHud_ActionLabel)
+            const char* ootLabel = ComboOotHud_ActionLabel(interfaceCtx->doActionSegment[DO_ACTION_SEG_B].mainTex);
+            if (ootLabel != NULL) {
+                gSPComboRMPush(OVERLAY_DISP++, "oot");
+            }
+            gDPLoadTextureBlock_4b(OVERLAY_DISP++, (ootLabel != NULL) ? (TexturePtr)ootLabel : (TexturePtr)interfaceCtx->doActionSegment[DO_ACTION_SEG_B].mainTex, G_IM_FMT_IA,
                                DO_ACTION_TEX_WIDTH, DO_ACTION_TEX_HEIGHT, 0, G_TX_NOMIRROR | G_TX_WRAP,
                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+            if (ootLabel != NULL) {
+                gSPComboRMPop(OVERLAY_DISP++);
+            }
+        }
 
         sBButtonDoActionTextureScale =
             1024.0f / (sBButtonDoActionTextureScales[gSaveContext.options.language] / 100.0f);
@@ -6432,7 +6521,7 @@ void Interface_DrawBButtonIcons(PlayState* play) {
         // #region 2S2H [Cosmetic] Hud Editor
         HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_B);
         if (HudEditor_ShouldOverrideDraw()) {
-            if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+            if (HudEditor_GetActiveElementMode() ==
                 HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                 hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             } else {
@@ -6469,9 +6558,18 @@ void Interface_DrawBButtonIcons(PlayState* play) {
         //! from the wallet icon) prior to obtaining magic.
         GameInteractor_Should(VB_SET_BUTTON_ENV_COLOR, false);
         gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
-        gDPLoadTextureBlock_4b(OVERLAY_DISP++, interfaceCtx->doActionSegment[DO_ACTION_SEG_B].subTex, G_IM_FMT_IA,
+        { // ComboShip: OOT-style HUD -> OOT's label art for actions OOT has (ComboOotHud_ActionLabel)
+            const char* ootLabel = ComboOotHud_ActionLabel(interfaceCtx->doActionSegment[DO_ACTION_SEG_B].subTex);
+            if (ootLabel != NULL) {
+                gSPComboRMPush(OVERLAY_DISP++, "oot");
+            }
+            gDPLoadTextureBlock_4b(OVERLAY_DISP++, (ootLabel != NULL) ? (TexturePtr)ootLabel : (TexturePtr)interfaceCtx->doActionSegment[DO_ACTION_SEG_B].subTex, G_IM_FMT_IA,
                                DO_ACTION_TEX_WIDTH, DO_ACTION_TEX_HEIGHT, 0, G_TX_NOMIRROR | G_TX_WRAP,
                                G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+            if (ootLabel != NULL) {
+                gSPComboRMPop(OVERLAY_DISP++);
+            }
+        }
 
         sBButtonDoActionTextureScale =
             1024.0f / (sBButtonDoActionTextureScales[gSaveContext.options.language] / 100.0f);
@@ -6479,7 +6577,7 @@ void Interface_DrawBButtonIcons(PlayState* play) {
         // #region 2S2H [Cosmetic] Hud Editor
         HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_B);
         if (HudEditor_ShouldOverrideDraw()) {
-            if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar, HUD_EDITOR_ELEMENT_MODE_VANILLA) ==
+            if (HudEditor_GetActiveElementMode() ==
                 HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                 hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             } else {
@@ -6654,9 +6752,16 @@ void Interface_DrawAButton(PlayState* play) {
     MATRIX_FINALIZE_AND_LOAD(OVERLAY_DISP++, play->state.gfxCtx);
     gDPPipeSync(OVERLAY_DISP++);
     gSPVertex(OVERLAY_DISP++, &interfaceCtx->actionVtx[4], 4, 0);
-    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, aAlpha);
+    // ComboShip: OOT-style HUD -> OOT draws no shadow under the A button, and its sprite is OOT's own.
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, ComboOotHud_Enabled() ? 0 : aAlpha);
 
-    OVERLAY_DISP = Gfx_DrawTexQuadIA8(OVERLAY_DISP, gButtonBackgroundTex, 32, 32, 0);
+    if (ComboOotHud_Enabled()) {
+        gSPComboRMPush(OVERLAY_DISP++, "oot");
+        OVERLAY_DISP = Gfx_DrawTexQuadIA8(OVERLAY_DISP, (TexturePtr)COMBO_OOT_BUTTON_TEX, 32, 32, 0);
+        gSPComboRMPop(OVERLAY_DISP++);
+    } else {
+        OVERLAY_DISP = Gfx_DrawTexQuadIA8(OVERLAY_DISP, gButtonBackgroundTex, 32, 32, 0);
+    }
 
     // Draw A Button Colored
     gDPPipeSync(OVERLAY_DISP++);
@@ -6684,11 +6789,29 @@ void Interface_DrawAButton(PlayState* play) {
     // Draw Action Label
     if ((interfaceCtx->aButtonState <= A_BTN_STATE_CHANGE_1_UNPAUSED) ||
         (interfaceCtx->aButtonState == A_BTN_STATE_CHANGE_1_PAUSED)) {
-        OVERLAY_DISP = Gfx_DrawTexQuad4b(OVERLAY_DISP, interfaceCtx->doActionSegment[DO_ACTION_SEG_A].mainTex,
+        { // ComboShip: OOT-style HUD -> OOT's label art for actions OOT has (ComboOotHud_ActionLabel)
+            const char* ootLabel = ComboOotHud_ActionLabel(interfaceCtx->doActionSegment[DO_ACTION_SEG_A].mainTex);
+            if (ootLabel != NULL) {
+                gSPComboRMPush(OVERLAY_DISP++, "oot");
+            }
+            OVERLAY_DISP = Gfx_DrawTexQuad4b(OVERLAY_DISP, (ootLabel != NULL) ? (TexturePtr)ootLabel : (TexturePtr)interfaceCtx->doActionSegment[DO_ACTION_SEG_A].mainTex,
                                          G_IM_FMT_IA, DO_ACTION_TEX_WIDTH, DO_ACTION_TEX_HEIGHT, 0);
+            if (ootLabel != NULL) {
+                gSPComboRMPop(OVERLAY_DISP++);
+            }
+        }
     } else {
-        OVERLAY_DISP = Gfx_DrawTexQuad4b(OVERLAY_DISP, interfaceCtx->doActionSegment[DO_ACTION_SEG_A].subTex,
+        { // ComboShip: OOT-style HUD -> OOT's label art for actions OOT has (ComboOotHud_ActionLabel)
+            const char* ootLabel = ComboOotHud_ActionLabel(interfaceCtx->doActionSegment[DO_ACTION_SEG_A].subTex);
+            if (ootLabel != NULL) {
+                gSPComboRMPush(OVERLAY_DISP++, "oot");
+            }
+            OVERLAY_DISP = Gfx_DrawTexQuad4b(OVERLAY_DISP, (ootLabel != NULL) ? (TexturePtr)ootLabel : (TexturePtr)interfaceCtx->doActionSegment[DO_ACTION_SEG_A].subTex,
                                          G_IM_FMT_IA, DO_ACTION_TEX_WIDTH, DO_ACTION_TEX_HEIGHT, 0);
+            if (ootLabel != NULL) {
+                gSPComboRMPop(OVERLAY_DISP++);
+            }
+        }
     }
 
     CLOSE_DISPS(play->state.gfxCtx);
@@ -8824,8 +8947,7 @@ void Interface_DrawMinigameIcons(PlayState* play) {
             // #region 2S2H [Cosmetic] Hud Editor
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_MINIGAME_COUNTER);
             if (HudEditor_ShouldOverrideDraw()) {
-                if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                   HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                     hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                 } else {
                     s16 newRectX = rectX;
@@ -9010,8 +9132,19 @@ void Interface_Draw(PlayState* play) {
                            sRupeeCounterIconEnvColors[CUR_UPG_VALUE(UPG_WALLET)].g,
                            sRupeeCounterIconEnvColors[CUR_UPG_VALUE(4)].b, 255);
             HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_RUPEE_COUNTER);
-            OVERLAY_DISP =
-                Gfx_DrawTexRectIA8(OVERLAY_DISP, gRupeeCounterIconTex, 16, 16, 26, 206, 16, 16, 1 << 10, 1 << 10);
+            if (ComboOotHud_Enabled()) {
+                // ComboShip: OOT's rupee icon -- OOT's sprite, tinted by the primary colour only (OOT modulates; MM
+                // blends towards a dark per-wallet environment colour, which gave the icon an outline OOT's lacks).
+                gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
+                gSPComboRMPush(OVERLAY_DISP++, "oot");
+                OVERLAY_DISP = Gfx_DrawTexRectIA8(OVERLAY_DISP, (TexturePtr) "__OTR__textures/parameter_static/gRupeeCounterIconTex",
+                                                  16, 16, 26, 206, 16, 16, 1 << 10, 1 << 10);
+                gSPComboRMPop(OVERLAY_DISP++);
+                Gfx_SetupDL39_Overlay(play->state.gfxCtx); // back to the state MM's next draws expect
+            } else {
+                OVERLAY_DISP =
+                    Gfx_DrawTexRectIA8(OVERLAY_DISP, gRupeeCounterIconTex, 16, 16, 26, 206, 16, 16, 1 << 10, 1 << 10);
+            }
         }
 
         switch (play->sceneId) {
@@ -9028,8 +9161,18 @@ void Interface_Draw(PlayState* play) {
                     gDPSetEnvColor(OVERLAY_DISP++, 0, 0, 20, 255);
 
                     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_KEY_COUNTER);
-                    OVERLAY_DISP = Gfx_DrawTexRectIA8(OVERLAY_DISP, gSmallKeyCounterIconTex, 16, 16, 26, 190, 16, 16,
-                                                      1 << 10, 1 << 10);
+                    // ComboShip: OOT-style HUD -> OOT's key sprite (same colours as OOT's: 200,230,255 on 0,0,20).
+                    if (ComboOotHud_Enabled()) {
+                        gSPComboRMPush(OVERLAY_DISP++, "oot");
+                    }
+                    OVERLAY_DISP = Gfx_DrawTexRectIA8(
+                        OVERLAY_DISP,
+                        ComboOotHud_Enabled() ? (TexturePtr) "__OTR__textures/parameter_static/gSmallKeyCounterIconTex"
+                                              : (TexturePtr)gSmallKeyCounterIconTex,
+                        16, 16, 26, 190, 16, 16, 1 << 10, 1 << 10);
+                    if (ComboOotHud_Enabled()) {
+                        gSPComboRMPop(OVERLAY_DISP++);
+                    }
 
                     // Small Key Counter
                     gDPPipeSync(OVERLAY_DISP++);
@@ -9048,7 +9191,7 @@ void Interface_Draw(PlayState* play) {
 
                     if (counterDigits[2] != 0) {
                         gDPPipeSync(OVERLAY_DISP++);
-                        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, interfaceCtx->magicAlpha);
+                        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, ComboOotHud_Enabled() ? 0 : interfaceCtx->magicAlpha); // shadow
 
                         OVERLAY_DISP = Gfx_DrawTexRectI8(OVERLAY_DISP, sCounterTextures[counterDigits[2]], 8, 16, 43,
                                                          191, 8, 16, 1 << 10, 1 << 10);
@@ -9062,7 +9205,7 @@ void Interface_Draw(PlayState* play) {
                     }
 
                     gDPPipeSync(OVERLAY_DISP++);
-                    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, interfaceCtx->magicAlpha);
+                    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, ComboOotHud_Enabled() ? 0 : interfaceCtx->magicAlpha); // shadow
 
                     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_KEY_COUNTER);
                     OVERLAY_DISP = Gfx_DrawTexRectI8(OVERLAY_DISP, sCounterTextures[counterDigits[3]], 8, 16, sp2CA + 1,
@@ -9074,8 +9217,7 @@ void Interface_Draw(PlayState* play) {
                     // #region 2S2H [Cosmetic] Hud Editor
                     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_KEY_COUNTER);
                     if (HudEditor_ShouldOverrideDraw()) {
-                        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                           HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                        if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                         } else {
                             // All of this information was derived from the original call to gSPTextureRectangle below
@@ -9119,8 +9261,7 @@ void Interface_Draw(PlayState* play) {
                 // #region 2S2H [Cosmetic] Hud Editor
                 HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER);
                 if (HudEditor_ShouldOverrideDraw()) {
-                    if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                       HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                    if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                         hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                     } else {
                         // All of this information was derived from the original call to gSPTextureRectangle below
@@ -9162,7 +9303,7 @@ void Interface_Draw(PlayState* play) {
 
                 if (counterDigits[2] != 0) {
                     gDPPipeSync(OVERLAY_DISP++);
-                    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, interfaceCtx->magicAlpha);
+                    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, ComboOotHud_Enabled() ? 0 : interfaceCtx->magicAlpha); // shadow
 
                     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER);
                     OVERLAY_DISP = Gfx_DrawTexRectI8(OVERLAY_DISP, sCounterTextures[counterDigits[2]], 8, 16, 43, 191,
@@ -9173,8 +9314,7 @@ void Interface_Draw(PlayState* play) {
                     // #region 2S2H [Cosmetic] Hud Editor
                     HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER);
                     if (HudEditor_ShouldOverrideDraw()) {
-                        if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                           HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                        if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                             hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                         } else {
                             // All of this information was derived from the original call to gSPTextureRectangle below
@@ -9203,7 +9343,7 @@ void Interface_Draw(PlayState* play) {
                 }
 
                 gDPPipeSync(OVERLAY_DISP++);
-                gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, interfaceCtx->magicAlpha);
+                gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, ComboOotHud_Enabled() ? 0 : interfaceCtx->magicAlpha); // shadow
 
                 HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER);
                 OVERLAY_DISP = Gfx_DrawTexRectI8(OVERLAY_DISP, sCounterTextures[counterDigits[3]], 8, 16, sp2CA + 1,
@@ -9215,8 +9355,7 @@ void Interface_Draw(PlayState* play) {
                 // #region 2S2H [Cosmetic] Hud Editor
                 HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER);
                 if (HudEditor_ShouldOverrideDraw()) {
-                    if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                       HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                    if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                         hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                     } else {
                         // All of this information was derived from the original call to gSPTextureRectangle below
@@ -9276,6 +9415,9 @@ void Interface_Draw(PlayState* play) {
             if (magicAlpha > 180) {
                 magicAlpha = 180;
             }
+            if (ComboOotHud_Enabled()) {
+                magicAlpha = 0; // ComboShip: the rupee digits' shadow pass -- OOT's digits have none
+            }
 
             for (sp2CE = 0, sp2CA = 42; sp2CE < sp2C8; sp2CE++, sp2CC++, sp2CA += 8) {
                 gDPPipeSync(OVERLAY_DISP++);
@@ -9298,8 +9440,7 @@ void Interface_Draw(PlayState* play) {
                 // #region 2S2H [Cosmetic] Hud Editor
                 HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_RUPEE_COUNTER);
                 if (HudEditor_ShouldOverrideDraw()) {
-                    if (CVarGetInteger(hudEditorElements[hudEditorActiveElement].modeCvar,
-                                       HUD_EDITOR_ELEMENT_MODE_VANILLA) == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+                    if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                         hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
                     } else {
                         // All of this information was derived from the original call to gSPTextureRectangle below
@@ -9706,13 +9847,23 @@ void Interface_Update(PlayState* play) {
 
     // Update environmental hazard (remnant of OoT)
     sEnvHazard = Player_GetEnvironmentalHazard(play);
+#ifdef COMBO_BUILD
+    // ComboShip: OOT's tunics on Link in Termina (OOT's save owns them; they help the human bodies, human and Fierce
+    // Deity, as in Hyrule: COMBO_TUNIC_COUNTS). MM's own save never holds a tunic.
+#define COMBO_MM_TUNIC_VALUE()                                                                     \
+    (((CUR_FORM == PLAYER_FORM_HUMAN) || (CUR_FORM == PLAYER_FORM_FIERCE_DEITY)) ? Combo_MmOotTunicValue() \
+                                                                                 : GET_CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC))
+    extern int Combo_MmOotTunicValue(void);
+#else
+#define COMBO_MM_TUNIC_VALUE() GET_CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC)
+#endif
     if (sEnvHazard == PLAYER_ENV_HAZARD_HOTROOM) {
-        if (GET_CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_GORON) {
+        if (COMBO_MM_TUNIC_VALUE() == EQUIP_VALUE_TUNIC_GORON) {
             sEnvHazard = PLAYER_ENV_HAZARD_NONE;
         }
     } else if ((Player_GetEnvironmentalHazard(play) >= PLAYER_ENV_HAZARD_UNDERWATER_FLOOR) &&
                (Player_GetEnvironmentalHazard(play) <= PLAYER_ENV_HAZARD_UNDERWATER_FREE)) {
-        if (GET_CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC) == EQUIP_VALUE_TUNIC_ZORA) {
+        if (COMBO_MM_TUNIC_VALUE() == EQUIP_VALUE_TUNIC_ZORA) {
             sEnvHazard = PLAYER_ENV_HAZARD_NONE;
         }
     }
@@ -9920,7 +10071,11 @@ void Interface_Update(PlayState* play) {
 
     // Update environmental hazard timer
     if (gSaveContext.timerStates[TIMER_ID_ENV_HAZARD] == TIMER_STATE_OFF) {
-        if ((sEnvHazard == PLAYER_ENV_HAZARD_HOTROOM) || (sEnvHazard == PLAYER_ENV_HAZARD_UNDERWATER_FREE)) {
+        if ((sEnvHazard == PLAYER_ENV_HAZARD_HOTROOM) || (sEnvHazard == PLAYER_ENV_HAZARD_UNDERWATER_FREE)
+#ifdef COMBO_BUILD
+            || (sEnvHazard == PLAYER_ENV_HAZARD_UNDERWATER_FLOOR) // OOT: walking the bottom in Iron Boots runs it too
+#endif
+        ) {
             if (CUR_FORM != PLAYER_FORM_ZORA) {
                 if (play->gameOverCtx.state == GAMEOVER_INACTIVE) {
                     if ((gSaveContext.save.saveInfo.playerData.health >> 1) != 0) {

@@ -7,6 +7,12 @@
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
+#ifdef COMBO_BUILD
+// ComboShip co-op combat: every SkelAnime an actor initializes is registered, so the enemy-sync glue can find
+// the skeletons inside an actor instance (combo/coop/CoopMirror.h). Defined in Network/Anchor/CoopEnemySync.cpp.
+void SohCoop_SkelInit(SkelAnime* skelAnime);
+#endif
+
 #define ANIM_INTERP 1
 
 s32 LinkAnimation_Loop(PlayState* play, SkelAnime* skelAnime);
@@ -1448,6 +1454,9 @@ s32 LinkAnimation_OnFrame(SkelAnime* skelAnime, f32 frame) {
  */
 s32 SkelAnime_Init(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skeletonHeaderSeg, AnimationHeader* animation,
                    Vec3s* jointTable, Vec3s* morphTable, s32 limbCount) {
+#ifdef COMBO_BUILD
+    SohCoop_SkelInit(skelAnime); // co-op enemy mirrors: SkelAnime registry
+#endif
     if (ResourceMgr_OTRSigCheck(skeletonHeaderSeg))
         skeletonHeaderSeg = ResourceMgr_LoadSkeletonByName(skeletonHeaderSeg, skelAnime);
 
@@ -1480,6 +1489,9 @@ s32 SkelAnime_Init(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skelet
  */
 s32 SkelAnime_InitFlex(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeader* skeletonHeaderSeg,
                        AnimationHeader* animation, Vec3s* jointTable, Vec3s* morphTable, s32 limbCount) {
+#ifdef COMBO_BUILD
+    SohCoop_SkelInit(skelAnime); // co-op enemy mirrors: SkelAnime registry
+#endif
     if (ResourceMgr_OTRSigCheck(skeletonHeaderSeg) != 0)
         skeletonHeaderSeg = ResourceMgr_LoadSkeletonByName(skeletonHeaderSeg, skelAnime);
 
@@ -1516,6 +1528,9 @@ s32 SkelAnime_InitFlex(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeader
  */
 s32 SkelAnime_InitSkin(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skeletonHeaderSeg,
                        AnimationHeader* animation) {
+#ifdef COMBO_BUILD
+    SohCoop_SkelInit(skelAnime); // co-op enemy mirrors: SkelAnime registry
+#endif
     if (ResourceMgr_OTRSigCheck(skeletonHeaderSeg) != 0)
         animation = ResourceMgr_LoadAnimByName(skeletonHeaderSeg);
 

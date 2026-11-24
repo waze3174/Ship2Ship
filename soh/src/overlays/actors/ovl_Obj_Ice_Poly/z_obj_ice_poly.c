@@ -6,6 +6,9 @@
 
 #include "z_obj_ice_poly.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboMmItems.h"
+#endif
 
 #define FLAGS ACTOR_FLAG_UPDATE_CULLING_DISABLED
 
@@ -70,6 +73,32 @@ static ColliderCylinderInit sCylinderInitHard = {
     { 50, 120, 0, { 0, 0, 0 } },
 };
 
+#ifdef COMBO_BUILD
+// ComboShip: MM's hot spring water melts the ice (MM ObjIcePoly sCylinderInit2, z_obj_ice_poly.c:63-82): a second,
+// wider cylinder that takes AC_TYPE_OTHER hits, which only MM's poured water (ovl_Obj_Aqua) lands on it. MM's also
+// takes the player's fire arrows (AC_TYPE_PLAYER, 0x800); OOT's colliderIce already does that, so this one takes only
+// the water (COMBO_DMG_MM_AQUA) and leaves every vanilla hit to OOT's colliders.
+static ColliderCylinderInit sCylinderInitComboAqua = {
+    {
+        COLTYPE_NONE,
+        AT_NONE,
+        AC_ON | AC_TYPE_OTHER,
+        OC1_NONE,
+        OC2_TYPE_2,
+        COLSHAPE_CYLINDER,
+    },
+    {
+        ELEMTYPE_UNK5,
+        { 0x00000000, 0x00, 0x00 },
+        { COMBO_DMG_MM_AQUA, 0x00, 0x00 },
+        TOUCH_NONE | TOUCH_SFX_NORMAL,
+        BUMP_ON,
+        OCELEM_NONE,
+    },
+    { 50, 120, 0, { 0, 0, 0 } },
+};
+#endif
+
 static f32 sScale[] = { 0.5f, 1.0f, 1.5f };
 static s16 sOffsetY[] = { -25, 0, -20 };
 static Color_RGBA8 sColorWhite = { 250, 250, 250, 255 };
@@ -92,12 +121,22 @@ void ObjIcePoly_Init(Actor* thisx, PlayState* play) {
     Collider_SetCylinder(play, &this->colliderHard, thisx, &sCylinderInitHard);
     Collider_UpdateCylinder(thisx, &this->colliderIce);
     Collider_UpdateCylinder(thisx, &this->colliderHard);
+#ifdef COMBO_BUILD
+    // ComboShip: MM's hot-water melt collider (MM ObjIcePoly_Init: colliders2)
+    Collider_InitCylinder(play, &this->colliderComboAqua);
+    Collider_SetCylinder(play, &this->colliderComboAqua, thisx, &sCylinderInitComboAqua);
+    Collider_UpdateCylinder(thisx, &this->colliderComboAqua);
+#endif
     thisx->colChkInfo.mass = MASS_IMMOVABLE;
     this->alpha = 255;
     this->colliderIce.dim.radius *= thisx->scale.x;
     this->colliderIce.dim.height *= thisx->scale.y;
     this->colliderHard.dim.radius *= thisx->scale.x;
     this->colliderHard.dim.height *= thisx->scale.y;
+#ifdef COMBO_BUILD
+    this->colliderComboAqua.dim.radius = this->colliderIce.dim.radius + 17; // MM: colliders2 = colliders1 radius + 17
+    this->colliderComboAqua.dim.height = this->colliderIce.dim.height;      // MM: same height
+#endif
     Actor_SetFocus(thisx, thisx->scale.y * 30.0f);
     this->actionFunc = ObjIcePoly_Idle;
 }
@@ -109,6 +148,9 @@ void ObjIcePoly_Destroy(Actor* thisx, PlayState* play) {
     if ((this->actor.params >= 0) && (this->actor.params < 3)) {
         Collider_DestroyCylinder(play, &this->colliderIce);
         Collider_DestroyCylinder(play, &this->colliderHard);
+#ifdef COMBO_BUILD
+        Collider_DestroyCylinder(play, &this->colliderComboAqua);
+#endif
     }
 }
 
@@ -117,6 +159,19 @@ void ObjIcePoly_Idle(ObjIcePoly* this, PlayState* play) {
     s32 pad;
     Vec3f pos;
 
+#ifdef COMBO_BUILD
+    // ComboShip: MM's hot spring water melts the ice; MM's (cold) spring water touches it and does nothing
+    // (MM ObjIcePoly func_80931A38, z_obj_ice_poly.c:189-200: ac->id == ACTOR_OBJ_AQUA && ac->params == AQUA_TYPE_HOT).
+    // MM then plays NA_SE_EV_ICE_MELT and melts for 40 frames at once (func_80931E58): meltTimer -1 runs OOT's melt
+    // (its sound, its 40 frames) from the next frame, as MM's starts once its cutscene is up.
+    if ((this->colliderComboAqua.base.acFlags & AC_HIT) &&
+        Combo_IsMmAqua(this->colliderComboAqua.base.ac, COMBO_AQUA_TYPE_HOT)) {
+        this->meltTimer = -1;
+        this->actor.focus.rot.y = this->actor.yawTowardsPlayer;
+        OnePointCutscene_Init(play, 5120, 40, &this->actor, CAM_ID_MAIN);
+        this->actionFunc = ObjIcePoly_Melt;
+    } else
+#endif
     if (this->colliderIce.base.acFlags & AC_HIT) {
         this->meltTimer = -this->colliderIce.info.acHitInfo->toucher.damage;
         this->actor.focus.rot.y = this->actor.yawTowardsPlayer;
@@ -128,6 +183,9 @@ void ObjIcePoly_Idle(ObjIcePoly* this, PlayState* play) {
         CollisionCheck_SetAC(play, &play->colChkCtx, &this->colliderIce.base);
         CollisionCheck_SetOC(play, &play->colChkCtx, &this->colliderIce.base);
         CollisionCheck_SetAC(play, &play->colChkCtx, &this->colliderHard.base);
+#ifdef COMBO_BUILD
+        CollisionCheck_SetAC(play, &play->colChkCtx, &this->colliderComboAqua.base); // MM's water (see above)
+#endif
     } else {
         Actor_Kill(&this->actor);
     }

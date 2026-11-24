@@ -21,6 +21,7 @@
 #include "gui/ComboGenProgress.h"
 #include "CrossForeign.h" // for ComboRando::GameId
 #include "SharedItems.h"
+#include "CrossEntrance.h"
 #include "CrossWarpLogic.h"
 
 namespace ComboRando {
@@ -237,7 +238,11 @@ struct CombinedFillResult {
 // only reproduce in-game ones while both loops agree.
 // Measured: 25 seeds over 3 adult/Overworld-Keys configs all succeeded on pass 1 with 0 retries, so 6
 // total passes is ~6x headroom while capping the worst-case wait (15 passes was ~3 min).
-constexpr int kFillAttempts = 2;   // whole-fill retries (re-derives the seed, re-rolls the dumps)
+constexpr int kFillAttempts = 2; // whole-fill retries (re-derives the seed, re-rolls the dumps)
+// full-coop-sync §B1: with entrances shuffled, an attempt can fail on logic the any-items connectivity check
+// can't see (a door that needs Deku to use, a dungeon behind its own item). Each attempt reshuffles, so allow
+// more of them. Only used when entrance randomization is on; plain seeds keep kFillAttempts.
+constexpr int kEntranceFillAttempts = 12;
 constexpr int kMaxPasses = 3;      // passes within one fill
 constexpr int kMaxPrereqTries = 4; // Tier-1 repicks of just the portal prerequisites
 
@@ -457,6 +462,12 @@ inline CombinedFillResult CrossWorldCombinedFill(const std::string& sohDumpJson,
             if (!(sharedMask & (1u << i)))
                 continue;
             const auto& def = SharedFamilyByIndex(i);
+            if (def.pooled) {
+                // Pooled (bottles): every copy in both pools stays; the fixpoint mirrors them both ways.
+                effectiveSharedMask |= (1u << i);
+                std::cout << "[ComboShip] Shared " << def.key << ": pooled, every copy kept in both games\n";
+                continue;
+            }
             if (def.isMask && !maskQuestShuffle) {
                 std::cout << "[ComboShip] Shared " << def.key << ": skipped (OOT Shuffle Masks is off)\n";
                 continue;
@@ -783,11 +794,14 @@ inline CombinedFillResult CrossWorldCombinedFill(const std::string& sohDumpJson,
         // Shared Items mirror: how many copies of each effective family have already been pushed onto
         // mmOwned this call, so re-querying doesn't duplicate them as ootOwned grows.
         size_t sharedGiven[SF_COUNT] = { 0 };
+        PooledMirrorState pooledGiven; // pooled families (bottles): both directions
         // Cross-game teleport songs: what each side can do for the other, latched.
         CrossWarpLatch crossLatch;
+        CrossEntranceLatch doorLatch; // cross-game entrances (age-tagged arrivals)
         for (;;) {
             ootReachable = queryReachable(ootOracle, ootOwned);
             const uint32_t ootCrossOut = OracleCrossOut(ootOracle);
+            const std::vector<std::string> ootDoors = ReadOotCrossExits(); // read right after the OOT search
             // Read the portal off THIS OOT query, before any MM check is credited below — that ordering
             // is what stops the fill proving the portal with an item that lives behind it.
             if (!portalOpen)
@@ -797,8 +811,8 @@ inline CombinedFillResult CrossWorldCombinedFill(const std::string& sohDumpJson,
                     if (!(effectiveSharedMask & (1u << i)))
                         continue;
                     const auto& def = SharedFamilyByIndex(i);
-                    if (!def.mmHasItem)
-                        continue; // nothing to push; MM logic doesn't need it
+                    if (!def.mmHasItem || def.pooled)
+                        continue; // nothing to push / pooled families mirror below
                     size_t k =
                         static_cast<size_t>(std::count(ootOwned.begin(), ootOwned.end(), std::string(def.ootName)));
                     size_t target = std::min<size_t>(k, static_cast<size_t>(def.mmTierCap));
@@ -806,11 +820,18 @@ inline CombinedFillResult CrossWorldCombinedFill(const std::string& sohDumpJson,
                         mmOwned.push_back(def.mmName);
                     sharedGiven[i] = target;
                 }
+                ApplyPooledMirror(effectiveSharedMask, ootOwned, mmOwned, pooledGiven);
             }
-            mmReachable = portalOpen ? queryReachable(mmOracle, mmOwned) : std::unordered_set<std::string>{};
+            // Cross-game entrances: Termina can be entered through a crossed door before the portal opens.
+            const bool mmQueried = portalOpen || HasMmCrossArrival(mmOwned);
+            mmReachable = !mmQueried   ? std::unordered_set<std::string>{}
+                          : portalOpen ? queryReachable(mmOracle, mmOwned)
+                                       : queryReachable(mmOracle, MmOwnedNoRoot(mmOwned));
+            const std::vector<std::string> mmDoors = mmQueried ? ReadMmCrossExits() : std::vector<std::string>{};
             // Push each side's new warp abilities onto the other's owned list and repeat.
             bool changed = ApplyCrossWarps(ootCrossOut, portalOpen ? OracleCrossOut(mmOracle) : 0u, portalOpen, mmStart,
                                            ootOwned, mmOwned, crossLatch);
+            changed |= ApplyCrossEntrances(ootDoors, mmDoors, ootOwned, mmOwned, doorLatch);
             for (size_t i = 0; i < placements.size(); ++i) {
                 if (credited[i])
                     continue;
