@@ -68,6 +68,7 @@ CrowdControl* CrowdControl::Instance;
 #include "ComboMenuSharedContext.h"               // ComboShip: shared per-DLL ImGui context helper (combo-owned)
 #include "rando/SharedItems.h"                    // ComboShip: Shared Items family table
 #include "rando/ComboGames.h"                     // ComboShip: Games (OoT only / MM only / Combo)
+#include "rando/ComboLostWoodsLink.h"             // ComboShip: the Lost Woods link seed setting
 #include "rando/CrossWarpLogic.h"                 // ComboShip (teleport songs): cross-game warp logic bits
 #include "2s2h/Rando/MiscBehavior/MiscBehavior.h" // ComboShip: MM_LoadComboRando cache invalidation + ComboRando types
 // ComboShip: the Lost Woods link
@@ -1186,7 +1187,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
         // the save) scene-hops through here, and would both teleport the player to OOT and persist the
         // wiped save over the slot.
         // Not in a solo seed (ComboGames.h): the Clock Tower is just MM's Clock Tower there. With the Lost Woods link
-        // on, the door ends in the hall and the Happy Mask Salesman is the portal (ComboLostWoodsLink.cpp).
+        // on, the door ends in the hall (ComboLostWoodsLink.cpp).
         if (sceneId == SCENE_INSIDETOWER && spawnNum == 1 && gSaveContext.gameMode == GAMEMODE_NORMAL &&
             !Combo_GamesSolo() && !Combo_MM_ClockTowerEntryStaysInMm()) {
             Combo_RequestPortalReturn();
@@ -4388,6 +4389,14 @@ extern "C" COMBO_EXPORT void MM_SetComboGames(int games) {
 }
 extern "C" int Combo_GamesSolo(void) {
     return ComboRando::ComboGamesSolo(static_cast<ComboRando::ComboGames>(gMMComboGames)) ? 1 : 0;
+}
+// The Lost Woods link (combo/rando/ComboLostWoodsLink.h) of the loaded seed, pushed by the launcher.
+extern "C" int gMMComboLostWoodsLink = ComboRando::LostWoodsLink::kDefault;
+extern "C" COMBO_EXPORT void MM_SetComboLostWoodsLink(int on) {
+    gMMComboLostWoodsLink = on ? 1 : 0;
+}
+extern "C" int Combo_LostWoodsLinkOn(void) {
+    return gMMComboLostWoodsLink && !Combo_GamesSolo();
 }
 extern "C" int Combo_MM_BombchuBagShared(void) {
     return (gMMComboSharedMask >> ComboRando::SF_BOMBCHU_BAG) & 1;

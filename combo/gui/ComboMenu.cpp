@@ -1808,7 +1808,8 @@ void ComboMenu::DrawComboPanel() {
     if (solo)
         ImGui::TextDisabled("A one-game seed starts in its game.");
     ImGui::TextDisabled("Majora's Mask starts the file in South Clock Town. It forces Child age, an openable forest,\n"
-                        "and the Mask Shop key/entrance exclusions, so Ocarina of Time stays enterable from nothing.");
+                        "and the Mask Shop key/entrance exclusions, so Ocarina of Time stays enterable from nothing.\n"
+                        "With the Lost Woods link it forces Child age and no Climb shuffle instead.");
     ImGui::Separator();
 
     // Owner ruling 2026-11-11: Unified Inventory — both Links use every item (seed setting).
@@ -1921,6 +1922,8 @@ void ComboMenu::DrawComboPanel() {
             ComboRando::ComboMenu_PushCheckbox(goalTheme);
             if (ImGui::Checkbox("Lost Woods link (OoT <-> Termina)", &woodsLink)) {
                 CVarSetInteger(ComboRando::LostWoodsLink::kCVar, woodsLink ? 1 : 0);
+                if (sRefreshStartingGameUI)
+                    sRefreshStartingGameUI(); // an MM start forces different OoT options with the link
                 if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
                     ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
             }
@@ -1930,8 +1933,10 @@ void ComboMenu::DrawComboPanel() {
                 "Mask's Lost Woods, and its east end to the far end of the Clock Tower's twisting corridor. The\n"
                 "corridor is open to the Tower hall, and its far end leads back to the Lost Woods.\n"
                 "Clock Town's door ends in the Tower hall. The Happy Mask Salesman and the Market's Mask Shop\n"
-                "work as in vanilla, so the corridor is the only way between the games. A shortcut the seed's\n"
-                "logic does not know about.");
+                "work as in vanilla, so the corridor is the only way between the games.\n"
+                "Seed setting: the seed's logic counts the Lost Woods, not the Mask Shop, as the way into Termina,\n"
+                "and the Mask Shop Key no longer matters for crossing. Off: the Mask Shop and the Clock Tower\n"
+                "door are the way between the games.");
             ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextDisabled("Walk between the games through the Lost Woods.");

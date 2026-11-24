@@ -161,6 +161,7 @@
 #include "rando/CrossForeign.h"     // ComboShip (#164): g_comboForeignJson for the hint-key map replay
 #include "rando/SharedItems.h"      // ComboShip: Shared Items family table
 #include "rando/ComboGames.h"       // ComboShip: Games (OoT only / MM only / Combo)
+#include "rando/ComboLostWoodsLink.h" // ComboShip: the Lost Woods link seed setting
 #include "rando/ComboMode.h"        // ComboShip: save modes (vanilla OoT, kSohQuest*)
 #include "rando/CrossWarpLogic.h"   // ComboShip (teleport songs): cross-game warp logic bits
 #include "soh/Enhancements/randomizer/hook_handlers.h" // ComboShip (#164): OOT_ForeignMapGen
@@ -3643,6 +3644,13 @@ extern "C" int gComboFormLogicCredit;
 extern "C" COMBO_EXPORT void SOH_SetComboFormLogicCredit(int on) {
     gComboFormLogicCredit = on ? 1 : 0;
 }
+// The Lost Woods link (combo/rando/ComboLostWoodsLink.h): whether the seed in play, or the one being generated, has it
+// on. Logic reads the raw flag (the portal is the Lost Woods hub, an MM start is shaped for it); play also needs a
+// combo save where both games are played.
+extern "C" int gComboLostWoodsLink = ComboRando::LostWoodsLink::kDefault;
+extern "C" COMBO_EXPORT void SOH_SetComboLostWoodsLink(int on) {
+    gComboLostWoodsLink = on ? 1 : 0;
+}
 // Owner ruling 2026-11-12: OOT starts with what MM starts with (ComboRando::MirrorStartBit, SharedItems.h).
 extern "C" int gComboMirrorStartMask = 0;
 extern "C" COMBO_EXPORT void SOH_SetComboMirrorStart(uint32_t mask) {
@@ -3666,7 +3674,9 @@ extern "C" COMBO_EXPORT const char* SOH_ReadComboEntranceCVars(void) {
         { "mm", mm },
         { "cross", cross },
         { "unifiedInventory", CVarGetInteger("gCombo.Rando.UnifiedInventory", 0) != 0 },
-        { "formLogicCredit", CVarGetInteger("gCombo.Rando.FormLogicCredit", 0) != 0 }
+        { "formLogicCredit", CVarGetInteger("gCombo.Rando.FormLogicCredit", 0) != 0 },
+        { ComboRando::LostWoodsLink::kSeedKey,
+          CVarGetInteger(ComboRando::LostWoodsLink::kCVar, ComboRando::LostWoodsLink::kDefault) != 0 }
     }.dump();
     return cached.c_str();
 }
@@ -3693,8 +3703,12 @@ extern "C" COMBO_EXPORT int SOH_ReadComboGamesCVar(void) {
 extern "C" int Combo_GamesSolo(void) {
     return ComboRando::ComboGamesSolo(static_cast<ComboRando::ComboGames>(gComboGames)) ? 1 : 0;
 }
-// An explicit MM start forces these three, so grey them out. Under Random they stay editable — the
-// force is silent when MM rolls. HandleStartingAgeUI owns RSK_STARTING_AGE in both directions.
+extern "C" int Combo_LostWoodsLinkOn(void) {
+    return gComboLostWoodsLink && !Combo_GamesSolo();
+}
+// An explicit MM start forces these, so grey them out. Under Random they stay editable — the force is silent when MM
+// rolls. HandleStartingAgeUI owns RSK_STARTING_AGE in both directions. FinalizeSettings decides which of them an MM
+// start forces: with the Lost Woods link the Mask Shop exclusions are not needed and Climb must not be shuffled.
 extern "C" COMBO_EXPORT void SOH_RefreshComboStartingGameUI(void) {
     auto settings = Rando::Settings::GetInstance();
     if (settings == nullptr) {
@@ -3702,14 +3716,23 @@ extern "C" COMBO_EXPORT void SOH_RefreshComboStartingGameUI(void) {
     }
     settings->HandleStartingAgeUI();
     // Games = MM only starts in MM too (ComboGames.h).
-    const bool mmOnly = CVarGetInteger(ComboRando::kComboGamesCVar, 0) == ComboRando::COMBO_GAMES_MM;
+    const auto games = ComboRando::ComboGamesFromInt(CVarGetInteger(ComboRando::kComboGamesCVar, 0));
+    const bool mmOnly = games == ComboRando::COMBO_GAMES_MM;
     const bool mmStart = mmOnly || CVarGetInteger("gCombo.Rando.StartingGame", 0) == 1;
+    const bool linkOn = !ComboRando::ComboGamesSolo(games) &&
+                        CVarGetInteger(ComboRando::LostWoodsLink::kCVar, ComboRando::LostWoodsLink::kDefault) != 0;
+    const char* reason = mmOnly ? "Games is Majora's Mask only" : "Starting Game is Majora's Mask";
     for (const RandomizerSettingKey key : { RSK_EXCLUDE_MASK_SHOP_KEY, RSK_EXCLUDE_MASK_SHOP_ENTRANCE }) {
-        if (mmStart) {
-            settings->GetOption(key).Disable(mmOnly ? "Games is Majora's Mask only" : "Starting Game is Majora's Mask");
+        if (mmStart && !linkOn) {
+            settings->GetOption(key).Disable(reason);
         } else {
             settings->GetOption(key).Enable();
         }
+    }
+    if (mmStart && linkOn) {
+        settings->GetOption(RSK_SHUFFLE_CLIMB).Disable("Starting Game is Majora's Mask with the Lost Woods link");
+    } else {
+        settings->GetOption(RSK_SHUFFLE_CLIMB).Enable();
     }
 }
 
@@ -6208,7 +6231,7 @@ extern "C" COMBO_EXPORT void Combo_SOH_Rando_SetOwnedItems(const char* itemNames
 }
 
 #ifdef COMBO_BUILD
-// ComboShip: OOT->MM portal (Happy Mask Shop) region access, stashed by the search below.
+// ComboShip: OOT->MM portal (ComboPortalRegion) region access, stashed by the search below.
 static bool sComboPortalOpen = false;
 #endif
 
@@ -6218,9 +6241,9 @@ extern "C" COMBO_EXPORT const char* Combo_SOH_Rando_GetReachableChecks(void) {
     auto reachable = ReachabilitySearch(ctx->allLocations);
 #ifdef COMBO_BUILD
     ComboCross_CollectReached(); // which crossed doors each age reached in this search
-    // RR_MARKET_MASK_SHOP holds no real checks, so the cross-fill gates MM on REGION access. Any age:
+    // The portal region holds no real checks, so the cross-fill gates MM on REGION access. Any age:
     // the requirement lives in the entrance condition, so this survives entrance shuffle moving it.
-    Region* portal = RegionTable(RR_MARKET_MASK_SHOP);
+    Region* portal = RegionTable(Rando::ComboPortalRegion());
     sComboPortalOpen = portal->Child() || portal->Adult();
     // ComboShip (teleport songs): can this owned-set play Song of Soaring? Item-only.
     {

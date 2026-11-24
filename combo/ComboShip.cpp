@@ -40,6 +40,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL_net.h>
 
+#include "rando/ComboLostWoodsLink.h"
 #include "rando/ComboMode.h"
 #include "rando/CrossForeign.h"
 #include "rando/CrossWorldRando.h"
@@ -513,6 +514,18 @@ static bool Combo_ReadFormLogicCreditSetting() {
     try {
         return nlohmann::json::parse(SOH_ReadComboEntranceCVars()).value("formLogicCredit", false);
     } catch (...) { return false; }
+}
+
+// Seed-bound (gCombo.LostWoodsLink, ComboLostWoodsLink.h): the walk between the games through the Lost Woods is the
+// OOT->MM portal in logic.
+static bool g_genLostWoodsLink = false; // the menu setting a generation runs with (worker thread)
+static bool Combo_ReadLostWoodsLinkSetting() {
+    const bool dflt = ComboRando::LostWoodsLink::kDefault != 0;
+    if (!SOH_ReadComboEntranceCVars)
+        return dflt;
+    try {
+        return nlohmann::json::parse(SOH_ReadComboEntranceCVars()).value(ComboRando::LostWoodsLink::kSeedKey, dflt);
+    } catch (...) { return dflt; }
 }
 
 static ComboRando::CrossSettings Combo_ReadCrossSettings() {
@@ -1212,6 +1225,16 @@ static void Combo_PushFormLogicCredit(bool on) {
     if (SOH_SetComboFormLogicCredit)
         SOH_SetComboFormLogicCredit(on ? 1 : 0);
 }
+// The Lost Woods link of the seed in play or being generated, pushed to both DLLs (logic and the walk itself).
+static FnSetInt SOH_SetComboLostWoodsLink = nullptr;
+static FnSetInt MM_SetComboLostWoodsLink = nullptr;
+static bool g_lostWoodsLink = false; // of the LOADED slot
+static void Combo_PushLostWoodsLink(bool on) {
+    if (SOH_SetComboLostWoodsLink)
+        SOH_SetComboLostWoodsLink(on ? 1 : 0);
+    if (MM_SetComboLostWoodsLink)
+        MM_SetComboLostWoodsLink(on ? 1 : 0);
+}
 // Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
 // follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.
 static FnDumpData SOH_DumpComboMasterQuestDungeons = nullptr;
@@ -1780,6 +1803,7 @@ static void LoadComboCompletion(int slot) {
     g_sharedMask = 0;
     g_unifiedInventory = false;
     g_comboGames = ComboRando::COMBO_GAMES_BOTH;
+    g_lostWoodsLink = false;
     g_activeMode = ComboRando::ComboMode{};
     if (MM_SetComboSharedItems)
         MM_SetComboSharedItems(0); // clear before the slot read below re-pushes the loaded value (or stays 0)
@@ -1806,9 +1830,14 @@ static void LoadComboCompletion(int slot) {
         g_activeMode = ComboRando::ComboMode::FromJson(combo.value(ComboRando::kComboModeKey, nlohmann::json()));
         const std::string seedGames = rando.value("games", std::string("ootmm"));
         g_comboGames = g_activeMode.IsVanilla() ? g_activeMode.game : ComboRando::ComboGamesFromKey(seedGames);
+        // Lost Woods link: absent = a seed made before it was a setting, played with it on. A one-game slot has none.
+        g_lostWoodsLink =
+            !ComboRando::ComboGamesSolo(g_comboGames) &&
+            rando.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kPlayedWhenSeedLacksKey);
     }
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
+    Combo_PushLostWoodsLink(g_lostWoodsLink);
     if (MM_SetComboVanillaSlot)
         MM_SetComboVanillaSlot(g_activeMode.IsVanillaMm() ? 1 : 0);
     if (SOH_SetComboGoal)
@@ -1833,6 +1862,7 @@ static void RestoreLoadedSlotGoal() {
     if (g_comboCompletionSlot < 0)
         return;
     PushComboGames(g_comboGames);
+    Combo_PushLostWoodsLink(g_lostWoodsLink);
     if (SOH_SetComboGoal)
         SOH_SetComboGoal(g_goalHunt ? 1 : 0, g_goalRequired, ComboRando::CwOotPieces(g_goalTotal, g_comboGames));
     if (MM_SetComboGoal)
@@ -2257,6 +2287,7 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
     g_Cross = {};
     g_genUnifiedInventory = !solo && Combo_ReadUnifiedInventorySetting();
     g_genFormLogicCredit = !solo && Combo_ReadFormLogicCreditSetting();
+    g_genLostWoodsLink = !solo && Combo_ReadLostWoodsLinkSetting();
     const int kFillAttempts = (g_MmEntranceSettings.Any() || g_CrossSettings.Any()) ? ComboRando::kEntranceFillAttempts
                                                                                     : ComboRando::kFillAttempts;
     for (int attempt = 0; attempt < kFillAttempts && !usedCombinedFill; ++attempt) {
@@ -2290,6 +2321,7 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
         if (SOH_SetComboUnifiedInventory) // before the dump: FinalizeSettings + logic read it
             SOH_SetComboUnifiedInventory(g_genUnifiedInventory ? 1 : 0);
         Combo_PushFormLogicCredit(g_genFormLogicCredit);
+        Combo_PushLostWoodsLink(g_genLostWoodsLink);
         Combo_PushMirrorStart(g_genUnifiedInventory, MM_DumpRandoSettings ? MM_DumpRandoSettings() : "{}");
 
         sohDump = SOH_DumpRandoStaticData();
@@ -2601,6 +2633,8 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
             consolidated["unifiedInventory"] = true;
         if (g_genFormLogicCredit) // seed-bound: logic credited the Zora / Goron forms
             consolidated["formLogicCredit"] = true;
+        // Seed-bound: logic modelled the Lost Woods link as the crossing; the runtime reads it back, not the menu.
+        consolidated[ComboRando::LostWoodsLink::kSeedKey] = g_genLostWoodsLink;
         // Seed-bound: the MQ dungeons logic was filled against, so a reload plays the same layout.
         const nlohmann::json mqDungeons = Combo_DumpMasterQuestDungeons();
         if (mqDungeons.is_array())
@@ -2742,6 +2776,7 @@ static int RunComboGenTest(int numSeeds, uint32_t seedBase) {
         if (SOH_SetComboUnifiedInventory)
             SOH_SetComboUnifiedInventory(Combo_ReadUnifiedInventorySetting() ? 1 : 0);
         Combo_PushFormLogicCredit(Combo_ReadFormLogicCreditSetting());
+        Combo_PushLostWoodsLink(Combo_ReadLostWoodsLinkSetting());
         Combo_PushMirrorStart(Combo_ReadUnifiedInventorySetting(),
                               MM_DumpRandoSettings ? MM_DumpRandoSettings() : "{}");
         for (int attempt = 0; attempt < attempts && !result.success; ++attempt) {
@@ -2866,6 +2901,7 @@ static void RunComboPlaythrough(const std::string& inputSeed) {
     if (SOH_SetComboUnifiedInventory)
         SOH_SetComboUnifiedInventory(Combo_ReadUnifiedInventorySetting() ? 1 : 0);
     Combo_PushFormLogicCredit(Combo_ReadFormLogicCreditSetting());
+    Combo_PushLostWoodsLink(Combo_ReadLostWoodsLinkSetting());
     Combo_PushMirrorStart(Combo_ReadUnifiedInventorySetting(), MM_DumpRandoSettings ? MM_DumpRandoSettings() : "{}");
     for (int attempt = 0; attempt < attempts && !fill.success; ++attempt) {
         const uint32_t masterSeed = baseSeed + attempt * 0x9E3779B9u;
@@ -3202,6 +3238,9 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
             if (SOH_SetComboUnifiedInventory) // owner ruling 2026-11-11: shapes OOT logic + masks-as-adult force
                 SOH_SetComboUnifiedInventory(j.value("unifiedInventory", false) ? 1 : 0);
             Combo_PushFormLogicCredit(j.value("formLogicCredit", false)); // a seed without the key was made without it
+            Combo_PushLostWoodsLink(
+                !ComboRando::ComboGamesSolo(seedGames) &&
+                j.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kModelledWhenSeedLacksKey));
             Combo_PushMirrorStart(
                 j.value("unifiedInventory", false),
                 j.value("mm", nlohmann::json::object()).value("settings", nlohmann::json::object()).dump());
@@ -3970,6 +4009,8 @@ int main(int argc, char** argv) {
     SOH_ReadComboGamesCVar = (FnReadComboGamesCVar)GetSym(sohModule, "SOH_ReadComboGamesCVar");
     SOH_SetComboGames = (FnSetComboGames)GetSym(sohModule, "SOH_SetComboGames");
     MM_SetComboGames = (FnSetComboGames)GetSym(mmModule, "MM_SetComboGames");
+    SOH_SetComboLostWoodsLink = (FnSetInt)GetSym(sohModule, "SOH_SetComboLostWoodsLink");
+    MM_SetComboLostWoodsLink = (FnSetInt)GetSym(mmModule, "MM_SetComboLostWoodsLink");
 
     // Shared Items seam — SOH_SetComboSharedItems is OOT-only (shapes the gen-time wallet force).
     SOH_SetComboSharedItems = (FnSetComboSharedItems)GetSym(sohModule, "SOH_SetComboSharedItems");

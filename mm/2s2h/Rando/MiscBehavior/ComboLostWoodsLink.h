@@ -8,6 +8,9 @@
 extern "C" {
 #endif
 
+// 1 when the loaded seed has the link on and both games are played (BenPort.cpp).
+int Combo_LostWoodsLinkOn(void);
+
 // An exit Link walked through (Combo_MM_RedirectExit). Returns the entrance the link wants instead, or `entrance`
 // unchanged when the link has no say. The Clock Tower corridor's far end returns it unchanged too, after asking for
 // the switch to OoT.

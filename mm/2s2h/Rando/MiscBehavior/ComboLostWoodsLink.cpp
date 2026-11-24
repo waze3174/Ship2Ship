@@ -12,7 +12,6 @@
 //                is where Clock Town's door now ends). The Happy Mask Salesman there is left as in vanilla.
 #ifdef COMBO_BUILD
 
-#include <libultraship/bridge/consolevariablebridge.h>
 #include <spdlog/spdlog.h>
 
 #include "rando/ComboLostWoodsLink.h"
@@ -27,7 +26,6 @@ extern "C" {
 #include "functions.h"
 #include "overlays/actors/ovl_Bg_Ctower_Rot/z_bg_ctower_rot.h"
 // BenPort.cpp
-int Combo_GamesSolo(void);
 void Combo_RequestCrossSwitch(int ootEntrance);
 extern int gComboCrossArrival;
 }
@@ -64,7 +62,7 @@ constexpr u32 kInsideTowerSwitchBits = 1 << 0;
 bool sSkipCorridorEndCutscene = false;
 
 bool Active() {
-    return CVarGetInteger(Link::kCVar, Link::kDefault) != 0 && !Combo_GamesSolo();
+    return Combo_LostWoodsLinkOn() != 0;
 }
 
 // The Clock Tower is entered without the intro, so the Salesman's flag is set by hand, in the cycle flags the scene
