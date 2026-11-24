@@ -4,8 +4,8 @@
 //
 // The route, both ways:
 //   OoT Lost Woods, the north wrong turn in room 0 -> MM Lost Woods (spawn 0)
-//   MM Lost Woods, east end -> Before Clock Town (the Butler area, not the sky drop)
-//   Before Clock Town, beside the studded door -> OoT Lost Woods (the north tunnel mouth)
+//   MM Lost Woods, east end -> the Clock Tower's twisting corridor, at its far end (not the sky drop)
+//   Clock Tower, the corridor's far end -> OoT Lost Woods (the north tunnel mouth)
 //   Clock Tower: the stone doors stay open, and the Happy Mask Salesman leads to OoT's Mask Shop
 //
 // It is a play-time shortcut: the CVar is not stored in the seed and the fill does not model it, so reachability only

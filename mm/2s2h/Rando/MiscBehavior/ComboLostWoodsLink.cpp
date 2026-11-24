@@ -3,10 +3,11 @@
 //
 //   Arrival      From OoT's Lost Woods Link lands at Z2_LOST_WOODS spawn 0 without the intro's entrance cutscene. The
 //                intro actors (Skull Kid, Epona, Tatl) remove themselves when no cutscene is playing.
-//   East exit    The sky drop to Before Clock Town (OPENINGDAN spawn 0, the intro fall) becomes OPENINGDAN spawn 1, the
-//                Deku Butler area, and the intro's leftovers there (the Deku Nuts chest, the Butler scene) are marked
-//                done the way SkipIntroSequence does.
-//   Return       Walking up to the studded door in OPENINGDAN room 1 leaves for OoT's Lost Woods.
+//   East exit    The sky drop to Before Clock Town (OPENINGDAN spawn 0, the intro fall) becomes Clock Tower spawn 0,
+//                the far end of the twisting corridor, without that spawn's entrance cutscene. Link never enters the
+//                Deku Butler area, which needs the Deku Mask.
+//   Return       The corridor's exit polygons (INSIDETOWER exit 1, normally to OPENINGDAN spawn 1) leave for OoT's
+//                Lost Woods.
 //   Clock Tower  The two stone door leaves in the hall no longer block the way down to the twisting corridor, and the
 //                Happy Mask Salesman leads to OoT's Mask Shop (the hall is where Clock Town's door now ends).
 #ifdef COMBO_BUILD
@@ -44,22 +45,16 @@ static_assert(Link::kMmLostWoodsSpawn0 == ENTRANCE(LOST_WOODS, 0), "the OoT side
 // Happy Mask Salesman there leads to OoT's Mask Shop. Off: Clock Town's door goes straight to OoT, as without the link.
 constexpr bool kClockTowerEntryStaysInMm = true;
 
-// Lost Woods' east exit leads to the intro fall; the Butler area has no cutscene.
+// Lost Woods' east exit leads to the intro fall; the link sends it to the Clock Tower's corridor end instead (spawn 0,
+// (11,-296,-2317), facing up the corridor, 63 units from the exit polygons behind it).
 constexpr int kSkyDropEntrance = ENTRANCE(OPENING_DUNGEON, 0);
-constexpr int kButlerAreaEntrance = ENTRANCE(OPENING_DUNGEON, 1);
+constexpr int kCorridorEndEntrance = ENTRANCE(CLOCK_TOWER_INTERIOR, 0);
+constexpr int kCorridorEndSpawn = 0;
+
+// The Clock Tower corridor's far end (INSIDETOWER exit 1, polygons 551 and 552) normally leads to the Deku Butler area.
+constexpr int kCorridorEndExit = ENTRANCE(OPENING_DUNGEON, 1);
 
 constexpr int kLostWoodsArrivalSpawn = 0;
-
-// A box in OPENINGDAN room 1 between the studded door (1230,0,-1140) and the pit respawn at spawn 3 (1380,0,-1140),
-// so a respawn never lands inside it.
-struct Box {
-    f32 minX, maxX, minY, maxY, minZ, maxZ;
-
-    bool Contains(const Vec3f& pos) const {
-        return pos.x >= minX && pos.x <= maxX && pos.y >= minY && pos.y <= maxY && pos.z >= minZ && pos.z <= maxZ;
-    }
-};
-constexpr Box kStuddedDoorBox = { 1235.0f, 1320.0f, -30.0f, 80.0f, -1210.0f, -1070.0f };
 
 // The Happy Mask Salesman stands at (-106,-30,-79) in the hall (EN_OSN in Z2_INSIDETOWER room 0). Link triggers the
 // way to OoT by pushing against him: within this distance of his centre (his collider is 30 wide, Link's 12), for this
@@ -75,10 +70,7 @@ constexpr int kSalesmanPushFrames = 15;
 // The stone door leaves are BgCtowerRot params 1 and 2; params 0 is the twisting corridor itself.
 constexpr int kStoneDoorFirstParams = BGCTOWERROT_STONE_DOOR_MAIN;
 
-// What SkipIntroSequence marks after the intro: the Butler area's switches and chest (the free Deku Nuts) and the
-// Happy Mask Salesman's flag in the Clock Tower.
-constexpr u32 kOpeningDanSwitchBits = (1 << 0) | (1 << 2);
-constexpr u32 kOpeningDanChestBits = 1 << 0;
+// What SkipIntroSequence marks after the intro: the Happy Mask Salesman's flag in the Clock Tower.
 constexpr u32 kInsideTowerSwitchBits = 1 << 0;
 
 // Fires once Link has been clear of the trigger and then stays in it for `pushFrames` frames.
@@ -105,38 +97,25 @@ struct Trigger {
     }
 };
 
-Trigger sStuddedDoor;
 Trigger sSalesman;
+
+// Set by the east exit: the next scene load is the corridor end, whose entrance cutscene is skipped. Any scene init
+// clears it.
+bool sSkipCorridorEndCutscene = false;
 
 bool Active() {
     return CVarGetInteger(Link::kCVar, Link::kDefault) != 0 && !Combo_GamesSolo();
 }
 
-void OrSceneFlags(s16 sceneId, u32 switchBits, u32 chestBits) {
-    gSaveContext.cycleSceneFlags[sceneId].switch0 |= switchBits;
-    gSaveContext.cycleSceneFlags[sceneId].chest |= chestBits;
-    gSaveContext.save.saveInfo.permanentSceneFlags[sceneId].switch0 |= switchBits;
-    gSaveContext.save.saveInfo.permanentSceneFlags[sceneId].chest |= chestBits;
-}
-
-// Before Clock Town is entered without the intro, so its intro flags are set by hand, in the cycle flags the scene
+// The Clock Tower is entered without the intro, so the Salesman's flag is set by hand, in the cycle flags the scene
 // loads from and in the permanent ones a new cycle starts from.
 void MarkIntroDone() {
-    OrSceneFlags(SCENE_OPENINGDAN, kOpeningDanSwitchBits, kOpeningDanChestBits);
-    OrSceneFlags(SCENE_INSIDETOWER, kInsideTowerSwitchBits, 0);
+    gSaveContext.cycleSceneFlags[SCENE_INSIDETOWER].switch0 |= kInsideTowerSwitchBits;
+    gSaveContext.save.saveInfo.permanentSceneFlags[SCENE_INSIDETOWER].switch0 |= kInsideTowerSwitchBits;
 }
 
 f32 DistanceXZ(const Vec3f& pos, f32 x, f32 z) {
     return sqrtf(SQ(pos.x - x) + SQ(pos.z - z));
-}
-
-void UpdateStuddedDoorTrigger(const Vec3f& pos) {
-    const bool inside = kStuddedDoorBox.Contains(pos);
-
-    if (sStuddedDoor.Update(inside, !inside, 1)) {
-        SPDLOG_INFO("[ComboLostWoodsLink] studded door -> OOT Lost Woods 0x{:X}", Link::kOotLostWoodsFromTermina);
-        Combo_RequestCrossSwitch(Link::kOotLostWoodsFromTermina | Link::kOotEntranceFinalBit);
-    }
 }
 
 void UpdateSalesmanTrigger(const Vec3f& pos) {
@@ -152,21 +131,16 @@ void UpdateSalesmanTrigger(const Vec3f& pos) {
 void UpdateTriggers() {
     PlayState* play = gPlayState;
 
-    if (play == nullptr || !Active() || gSaveContext.gameMode != GAMEMODE_NORMAL ||
-        play->transitionTrigger != TRANS_TRIGGER_OFF || Player_InCsMode(play)) {
+    if (play == nullptr || !kClockTowerEntryStaysInMm || play->sceneId != SCENE_INSIDETOWER || !Active() ||
+        gSaveContext.gameMode != GAMEMODE_NORMAL || play->transitionTrigger != TRANS_TRIGGER_OFF ||
+        Player_InCsMode(play)) {
         return;
     }
-    const Vec3f& pos = GET_PLAYER(play)->actor.world.pos;
-
-    if (play->sceneId == SCENE_OPENINGDAN) {
-        UpdateStuddedDoorTrigger(pos);
-    } else if (play->sceneId == SCENE_INSIDETOWER && kClockTowerEntryStaysInMm) {
-        UpdateSalesmanTrigger(pos);
-    }
+    UpdateSalesmanTrigger(GET_PLAYER(play)->actor.world.pos);
 }
 
 void HandleSceneInit(s8 sceneId, s8 spawnNum) {
-    sStuddedDoor.Reset();
+    sSkipCorridorEndCutscene = false;
     sSalesman.Reset();
     if (Active() && (sceneId == SCENE_LOST_WOODS || sceneId == SCENE_INSIDETOWER)) {
         MarkIntroDone();
@@ -191,17 +165,32 @@ RegisterShipInitFunc sLostWoodsLinkInit(RegisterComboLostWoodsLink, {});
 } // namespace
 
 extern "C" int Combo_MM_LostWoodsLinkExit(int entrance) {
-    if (gPlayState == nullptr || gPlayState->sceneId != SCENE_LOST_WOODS || entrance != kSkyDropEntrance || !Active()) {
+    if (gPlayState == nullptr || !Active()) {
         return entrance;
     }
-    MarkIntroDone();
-    SPDLOG_INFO("[ComboLostWoodsLink] Lost Woods east exit -> Before Clock Town, Butler area");
-    return kButlerAreaEntrance;
+    if (gPlayState->sceneId == SCENE_LOST_WOODS && entrance == kSkyDropEntrance) {
+        MarkIntroDone();
+        sSkipCorridorEndCutscene = true;
+        SPDLOG_INFO("[ComboLostWoodsLink] Lost Woods east exit -> Clock Tower corridor end");
+        return kCorridorEndEntrance;
+    }
+    if (gPlayState->sceneId == SCENE_INSIDETOWER && entrance == kCorridorEndExit) {
+        SPDLOG_INFO("[ComboLostWoodsLink] Clock Tower corridor end -> OOT Lost Woods 0x{:X}",
+                    Link::kOotLostWoodsFromTermina);
+        Combo_RequestCrossSwitch(Link::kOotLostWoodsFromTermina | Link::kOotEntranceFinalBit);
+    }
+    return entrance;
 }
 
 extern "C" int Combo_MM_LostWoodsLinkSkipsEntranceCs(void) {
-    return gComboCrossArrival != 0 && gPlayState != nullptr && gPlayState->sceneId == SCENE_LOST_WOODS &&
-           gPlayState->curSpawn == kLostWoodsArrivalSpawn && Active();
+    if (gPlayState == nullptr || !Active()) {
+        return 0;
+    }
+    const bool fromOotLostWoods = gComboCrossArrival != 0 && gPlayState->sceneId == SCENE_LOST_WOODS &&
+                                  gPlayState->curSpawn == kLostWoodsArrivalSpawn;
+    const bool atCorridorEnd = sSkipCorridorEndCutscene && gPlayState->sceneId == SCENE_INSIDETOWER &&
+                               gPlayState->curSpawn == kCorridorEndSpawn;
+    return fromOotLostWoods || atCorridorEnd;
 }
 
 extern "C" int Combo_MM_ClockTowerEntryStaysInMm(void) {
