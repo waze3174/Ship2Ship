@@ -85,6 +85,8 @@ void Setup_InitImpl(SetupState* this) {
                 gSaveContext.save.isOwlSave = false;
                 gSaveContext.save.entrance = ENTRANCE(SOUTH_CLOCK_TOWN, 0);
             }
+        } else if (Combo_StartVanillaOpening()) {
+            // A vanilla Majora's Mask slot's first entry: its opening, not the portal's South Clock Town.
         } else if (gComboEntryIsResume && CVarGetInteger("gEnhancements.Saving.RememberSaveLocation", 0) &&
                    gSaveContext.save.shipSaveInfo.pauseSaveEntrance != -1) {
             // South Clock Town is the default arrival for both portal entry and a resume. Only a resume

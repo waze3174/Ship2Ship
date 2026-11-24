@@ -19,6 +19,8 @@ void SaveManager_WriteSaveFile(const std::filesystem::path& fileName, nlohmann::
 void SaveManager_PersistSariaHintsAvailable();
 // ComboShip: cross-game save activation/persistence entry points
 void SaveManager_InitNewSaveForSlot(int mmFileNum, const unsigned char* ootName8 = nullptr);
+// A new vanilla Majora's Mask save (SAVETYPE_VANILLA, opening not yet played), written to the slot.
+void SaveManager_InitVanillaNewSaveForSlot(int mmFileNum, const unsigned char* ootName8);
 // 0 = loaded; negative = nothing usable was loaded (codes at the definition). Never creates or persists:
 // a failure is logged and leaves the fail-closed sentinel behind, and play still proceeds.
 int SaveManager_LoadSaveFile(int mmFileNum);

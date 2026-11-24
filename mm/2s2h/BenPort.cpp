@@ -2730,18 +2730,27 @@ extern "C" void Combo_AdoptOOTGlobalOptions(void) {
     gSaveContext.options.audioSetting = (u8)audio;
 }
 
+// ComboShip: the loaded slot's MM save is a vanilla Majora's Mask save (a vanilla MM slot, combo/rando/ComboMode.h),
+// pushed by the launcher with the slot's mode. Every other slot's MM save is a rando save.
+extern "C" int gComboVanillaMmSlot = 0;
+extern "C" COMBO_EXPORT void MM_SetComboVanillaSlot(int vanilla) {
+    gComboVanillaMmSlot = vanilla ? 1 : 0;
+}
+
 // C-callable wrapper used by title_setup.c (which is a C file) to load a MM save from disk.
-// 0 = loaded a usable rando save; negative = nothing usable (SaveManager codes, plus -6 = loaded but not
-// a rando save). The caller REBUILDS on a negative code — it never refuses entry.
+// 0 = loaded a usable save of the slot's kind; negative = nothing usable (SaveManager codes, plus -6 = loaded but
+// not the kind the slot's mode calls for). The caller REBUILDS on a negative code — it never refuses entry.
 extern "C" int Combo_LoadMMSaveFile(int mmFileNum) {
     int result = SaveManager_LoadSaveFile(mmFileNum);
     if (result != 0) {
         return result;
     }
-    // No vanilla mode in ComboShip: a non-rando save means the slot was created wrong, and every
-    // IS_RANDO hook stays unregistered (COND_HOOK tests the condition once, at OnSaveLoad).
-    if (gSaveContext.save.shipSaveInfo.saveType != SAVETYPE_RANDO) {
-        SPDLOG_ERROR("[ComboShip] MM save file{} is not SAVETYPE_RANDO — rebuilding a baseline", mmFileNum);
+    // A save of the wrong kind means the slot was created wrong, and every IS_RANDO hook stays unregistered
+    // (COND_HOOK tests the condition once, at OnSaveLoad) in a rando slot, or registered in a vanilla one.
+    const SaveType expectedType = gComboVanillaMmSlot ? SAVETYPE_VANILLA : SAVETYPE_RANDO;
+    if (gSaveContext.save.shipSaveInfo.saveType != expectedType) {
+        SPDLOG_ERROR("[ComboShip] MM save file{} is not the expected save type {} — rebuilding a baseline", mmFileNum,
+                     (int)expectedType);
         // The load above already set fileNum to this slot; re-mark "no save" or it reads as resident.
         SaveManager_MarkNoSaveLoaded();
         return -6;
@@ -3067,6 +3076,16 @@ extern "C" COMBO_EXPORT int MM_InitRandoSaveFile(int fileNum, const char* placem
     // Persist the rando save to the slot file.
     SaveManager_SaveCurrentForCombo();
     return 0;
+}
+
+// ComboShip: create a vanilla Majora's Mask save for the given OOT slot, for a vanilla MM slot. It is MM's own
+// new-file save with the player's name and the opening not yet played (SaveManager_InitVanillaNewSaveForSlot);
+// title_setup.c starts it at the opening, or at South Clock Town when Skip Intro Sequence is on.
+extern "C" COMBO_EXPORT void MM_InitVanillaSaveFile(int fileNum, const unsigned char* ootName8) {
+    SaveManager_InitVanillaNewSaveForSlot(fileNum + 1, ootName8);
+    // Sram_InitNewSave (inside the call above) resets fileNum; restore it so SaveManager_SaveCurrentForCombo
+    // re-writes the correct slot (it targets gSaveContext.fileNum + 1).
+    gSaveContext.fileNum = (s16)fileNum;
 }
 
 // ComboShip (issue #1): cross-game erase seam. A save slot is one combined OOT+MM playthrough, so

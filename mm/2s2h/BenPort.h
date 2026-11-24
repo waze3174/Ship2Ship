@@ -198,6 +198,8 @@ int Combo_LoadMMSaveFile(int mmFileNum);
 extern int gComboOwlBlobSlot;
 // ComboShip (#182): mirrors Sram_OpenSave's owl branch; resolveEntrance = 0 keeps combo's arrival point.
 void Combo_ApplyOwlSaveOpen(s32 resolveEntrance);
+// ComboShip: sets up the opening cutscene as the start of a vanilla MM slot that hasn't played it; 0 = not that slot.
+s32 Combo_StartVanillaOpening(void);
 // ComboShip (#182): vanilla's "consume the owl save on continue" — promotes it, then drops the key.
 void Combo_MMDropOwlSaveBlob(void);
 

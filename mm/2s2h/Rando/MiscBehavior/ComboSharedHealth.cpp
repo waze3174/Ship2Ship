@@ -81,9 +81,10 @@ static void ComboSharedHealthTick() {
         }
     }
     ComboHealth::TickIfEnabled(sRt, ComboHealth::kGameMm, n);
-    {
+    if (!Combo_GamesSolo()) {
         // The watched-transformation record is one for both games: MM's weekEventReg flags (z_player.c D_8085D908)
-        // and the shared bits, merged both ways, so a transformation watched in Hyrule is skippable in Termina.
+        // and the shared bits, merged both ways, so a transformation watched in Hyrule is skippable in Termina. A
+        // one-game slot has no Hyrule to share with, and the record may still hold another slot's.
         static const u16 sFlags[] = { WEEKEVENTREG_30_80, WEEKEVENTREG_30_20, WEEKEVENTREG_30_40, WEEKEVENTREG_30_10 };
         for (int f = 0; f < 4; f++) {
             if (CHECK_WEEKEVENTREG(sFlags[f])) {

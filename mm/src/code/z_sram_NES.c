@@ -1478,6 +1478,20 @@ void Combo_ApplyOwlSaveOpen(s32 resolveEntrance) {
                sizeof(gSaveContext.save.saveInfo.scarecrowSpawnSong));
     }
 }
+
+// ComboShip: a vanilla Majora's Mask slot (SAVETYPE_VANILLA) whose opening hasn't been played yet starts the way
+// Sram_OpenSave starts a new file: at the opening cutscene, which 2S2H's Skip Intro Sequence turns into South Clock
+// Town. Returns 1 and sets that start up, or 0 when the slot isn't one.
+s32 Combo_StartVanillaOpening(void) {
+    if (gSaveContext.save.shipSaveInfo.saveType != SAVETYPE_VANILLA || gSaveContext.fileNum == 0xFF ||
+        gSaveContext.save.isFirstCycle || gSaveContext.save.isOwlSave) {
+        return 0;
+    }
+    gSaveContext.save.entrance = ENTRANCE(CUTSCENE, 0);
+    gSaveContext.nextCutsceneIndex = 0;
+    gSaveContext.save.playerForm = PLAYER_FORM_HUMAN;
+    return 1;
+}
 #endif
 
 // Similar to func_80145698, but accounts for owl saves?

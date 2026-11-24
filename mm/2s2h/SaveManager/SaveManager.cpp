@@ -198,18 +198,49 @@ int SaveManager_ReadSaveFile(const std::filesystem::path& fileName, nlohmann::js
 // ComboShip (#182): the slot whose owlSave blob populated gSaveContext, so the writers below know
 // whether the blob is still current (refresh it) or has been overtaken by live state (drop it).
 extern "C" int gComboOwlBlobSlot = -1;
+
+// ComboShip: carry the OOT-entered file name over (same font codes in both games; anything
+// outside the shared 0x00-0x3F range, e.g. JP glyphs, becomes a space).
+static void SaveManager_CopyOotPlayerName(const unsigned char* ootName8) {
+    if (ootName8 == nullptr) {
+        return;
+    }
+    for (int i = 0; i < 8; i++) {
+        gSaveContext.save.saveInfo.playerData.playerName[i] = (ootName8[i] <= 0x3F) ? ootName8[i] : 0x3E;
+    }
+}
+
+// ComboShip: Sram_InitNewSave uses sSaveDefaultPlayerData which has empty newf. Vanilla sets
+// "ZELDA3" in file select (Sram_OpenSave), but combo bypasses that. Without valid newf,
+// IS_VALID_FILE fails and owl saves (pause menu, owl statues) get discarded on write.
+static void SaveManager_SetValidNewf() {
+    gSaveContext.save.saveInfo.playerData.newf[0] = 'Z';
+    gSaveContext.save.saveInfo.playerData.newf[1] = 'E';
+    gSaveContext.save.saveInfo.playerData.newf[2] = 'L';
+    gSaveContext.save.saveInfo.playerData.newf[3] = 'D';
+    gSaveContext.save.saveInfo.playerData.newf[4] = 'A';
+    gSaveContext.save.saveInfo.playerData.newf[5] = '3';
+}
 #endif
+
+// Writes gSaveContext.save as a new file in the slot: fresh json with no owlSave, and Combo_WriteGameSave replaces the
+// whole mm section — that is what drops a stale owl blob on a new file or a rebake. Do not turn this into a
+// read-modify-write.
+static void SaveManager_WriteNewSave(int mmFileNum) {
+    nlohmann::json j;
+    j["newCycleSave"]["save"] = gSaveContext.save;
+    j["version"] = CURRENT_SAVE_VERSION;
+    j["type"] = "2S2H_SAVE";
+#ifdef COMBO_BUILD
+    gComboOwlBlobSlot = -1;
+#endif
+    SaveManager_WriteSaveFile(SaveManager_GetFileName(mmFileNum), j);
+}
 
 void SaveManager_InitNewSaveForSlot(int mmFileNum, const unsigned char* ootName8) {
     Sram_InitNewSave();
 #ifdef COMBO_BUILD
-    // ComboShip: carry the OOT-entered file name over (same font codes in both games; anything
-    // outside the shared 0x00-0x3F range, e.g. JP glyphs, becomes a space).
-    if (ootName8 != nullptr) {
-        for (int i = 0; i < 8; i++) {
-            gSaveContext.save.saveInfo.playerData.playerName[i] = (ootName8[i] <= 0x3F) ? ootName8[i] : 0x3E;
-        }
-    }
+    SaveManager_CopyOotPlayerName(ootName8);
     // ComboShip: a fresh MM save is always entered mid-playthrough from OOT, never via MM's title/intro.
     // Set it up post-first-cycle — Human Link in South Clock Town, no intro, no Tatl arrival — mirroring
     // the SkipIntroSequence + SkipFirstCycle enhancements and the Rando port's OnFileCreate. gPlayState
@@ -231,29 +262,26 @@ void SaveManager_InitNewSaveForSlot(int mmFileNum, const unsigned char* ootName8
     SET_WEEKEVENTREG(WEEKEVENTREG_ENTERED_NORTH_CLOCK_TOWN);
     // ComboShip: stamp RANDO before the write, not after. Every caller re-stamps it moments later, but
     // this function PERSISTS, so leaving it VANILLA opened a window where the container briefly held a
-    // vanilla MM save, which silently disables every IS_RANDO hook. Combo has no vanilla mode.
+    // vanilla MM save, which silently disables every IS_RANDO hook. A vanilla MM slot has its own creator,
+    // SaveManager_InitVanillaNewSaveForSlot.
     gSaveContext.save.shipSaveInfo.saveType = SAVETYPE_RANDO;
-    // ComboShip: Sram_InitNewSave uses sSaveDefaultPlayerData which has empty newf. Vanilla sets
-    // "ZELDA3" in file select (Sram_OpenSave), but combo bypasses that. Without valid newf,
-    // IS_VALID_FILE fails and owl saves (pause menu, owl statues) get discarded on write.
-    gSaveContext.save.saveInfo.playerData.newf[0] = 'Z';
-    gSaveContext.save.saveInfo.playerData.newf[1] = 'E';
-    gSaveContext.save.saveInfo.playerData.newf[2] = 'L';
-    gSaveContext.save.saveInfo.playerData.newf[3] = 'D';
-    gSaveContext.save.saveInfo.playerData.newf[4] = 'A';
-    gSaveContext.save.saveInfo.playerData.newf[5] = '3';
+    SaveManager_SetValidNewf();
 #endif
-    nlohmann::json j;
-    // Fresh json with no owlSave, and Combo_WriteGameSave replaces the whole mm section — that is what
-    // drops a stale owl blob on a new file or a rebake. Do not turn this into a read-modify-write.
-    j["newCycleSave"]["save"] = gSaveContext.save;
-    j["version"] = CURRENT_SAVE_VERSION;
-    j["type"] = "2S2H_SAVE";
-#ifdef COMBO_BUILD
-    gComboOwlBlobSlot = -1;
-#endif
-    SaveManager_WriteSaveFile(SaveManager_GetFileName(mmFileNum), j);
+    SaveManager_WriteNewSave(mmFileNum);
 }
+
+#ifdef COMBO_BUILD
+// ComboShip: a new vanilla Majora's Mask save, as MM's own file select makes one (Sram_InitSave): Sram_InitNewSave's
+// empty save with the player's name, the opening not yet played and SAVETYPE_VANILLA. MM's OnSaveInit hooks are not
+// run: they would turn the file into a randomizer save when gRando.Enabled is set, and a combo slot's randomizer save
+// is only ever made from a seed (MM_InitRandoSaveFile).
+void SaveManager_InitVanillaNewSaveForSlot(int mmFileNum, const unsigned char* ootName8) {
+    Sram_InitNewSave();
+    SaveManager_CopyOotPlayerName(ootName8);
+    SaveManager_SetValidNewf();
+    SaveManager_WriteNewSave(mmFileNum);
+}
+#endif
 
 void SaveManager_SaveCurrentForCombo() {
 #ifdef COMBO_BUILD
