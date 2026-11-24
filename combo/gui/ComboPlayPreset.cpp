@@ -12,8 +12,8 @@
 //   * ShipInit registries are per-DLL, so one game's apply never re-runs the other's init funcs.
 // So this writes LEAF CVars only, and hands each key to the owning game's live-apply export.
 //
-// The preset data in ComboPlayPresetData.inl is generated from a real comboship.json by
-// scripts/wombo/gen-play-preset.py — regenerate it rather than editing the .inl by hand.
+// The shipped presets are the compiled-in kPresets table below (none yet; the menu hides the preset
+// section while the table is empty).
 #include <libultraship/libultraship.h>
 #include <ship/Context.h>
 #include <ship/controller/controldeck/ControlDeck.h>
@@ -49,9 +49,8 @@ struct PresetDef {
     const char* json; // {"bindings":{...},"colors":{...},"prefs":{...}} of leaf CVar -> value
 };
 
-#include "ComboPlayPresetData.inl" // kPresets[]
-
-constexpr int kPresetCount = static_cast<int>(sizeof(kPresets) / sizeof(kPresets[0]));
+const std::vector<PresetDef> kPresets;
+const int kPresetCount = static_cast<int>(kPresets.size());
 
 // Which game's ShipInit should re-run for a key. MM's cosmetic prefix is SINGULAR ("gCosmetic")
 // on purpose — that is the thing keeping its keys from colliding with OOT's "gCosmetics".
