@@ -3054,14 +3054,11 @@ void Rupees_ChangeBy(s16 rupeeChange) {
     if (gPlayState == NULL) {
         gSaveContext.rupees += rupeeChange;
 #ifdef COMBO_BUILD
-        // ComboShip: Clamp rupees value to prevent interface crashing. Randomizer saves only; a vanilla save adds
-        // rupees as SoH does.
-        if (IS_RANDO) {
-            if (gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
-                gSaveContext.rupees = CUR_CAPACITY(UPG_WALLET);
-            } else if (gSaveContext.rupees < 0) {
-                gSaveContext.rupees = 0;
-            }
+        // ComboShip: Clamp rupees value to prevent interface crashing.
+        if (gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
+            gSaveContext.rupees = CUR_CAPACITY(UPG_WALLET);
+        } else if (gSaveContext.rupees < 0) {
+            gSaveContext.rupees = 0;
         }
 #endif
     } else {
@@ -6862,8 +6859,8 @@ void Interface_Update(PlayState* play) {
         !Play_InCsMode(play)) {}
 
 #ifdef COMBO_BUILD
-    // ComboShip: repair any latent unclamped rupee value. Randomizer saves only.
-    if (IS_RANDO && gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
+    // ComboShip: repair any latent unclamped rupee value.
+    if (gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
         gSaveContext.rupees = CUR_CAPACITY(UPG_WALLET);
     }
 #endif
