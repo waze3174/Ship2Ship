@@ -4,8 +4,8 @@
 //   Exit:   the north wrong turn in Lost Woods room 0 switches to MM's Lost Woods instead of looping back to Kokiri
 //           Forest. Player_HandleExitsAndVoids asks Combo_OOT_LostWoodsLinkExit before the entrance override, so the
 //           entrance tracker and the cross-game entrance redirect never see the wrong turn's own destination.
-//   Marker: a stump (MM's cut tree) beside that tunnel while the link is on. A small combo actor, registered in
-//           ActorDB like MM's Obj_Aqua (ComboMmItems.cpp); it only draws.
+//   Marker: a stump (MM's cut tree) in front of that tunnel's mouth while the link is on. A small combo actor,
+//           registered in ActorDB like MM's Obj_Aqua (ComboMmItems.cpp); it only draws.
 #ifdef COMBO_BUILD
 
 // C++ headers first: z64.h pulls <memory> under the extern "C" below
@@ -35,11 +35,12 @@ namespace Link = ComboRando::LostWoodsLink;
 
 constexpr s16 kMarkerRoom = 0;
 
-// Beside the north tunnel mouth (floor triangle (-60,0,-400) (60,0,-400) (0,0,-800)), clear of the Termina arrival at
-// (-2,0,-308).
-constexpr f32 kMarkerX = -90.0f;
+// On the open hub floor (y 0, collision polygon 195) left of the north tunnel mouth, which is the opening in the wall
+// at z -200. At least 80 units from every wall, off the walk from the Kokiri Forest arrival (x 0) up to the mouth, and
+// beside the way out of the tunnel, where the Termina arrival is (spawn 3 at (-2,0,-308)).
+constexpr f32 kMarkerX = -120.0f;
 constexpr f32 kMarkerY = 0.0f;
-constexpr f32 kMarkerZ = -380.0f;
+constexpr f32 kMarkerZ = -110.0f;
 
 // MM's cut tree is about 2200 units tall at scale 1; this makes it about 1.5 Link heights.
 constexpr f32 kMarkerScale = 0.05f;

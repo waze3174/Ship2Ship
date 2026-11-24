@@ -1927,8 +1927,8 @@ void ComboMenu::DrawComboPanel() {
             ComboRando::ComboMenu_PopCheckbox();
             ImGui::SetItemTooltip(
                 "Ocarina of Time's Lost Woods: the north wrong turn, marked by a tree stump, leads to Majora's\n"
-                "Mask's Lost Woods, and its east end to Before Clock Town. There the twisting path up to the Clock\n"
-                "Tower is open, and the studded door beside the Deku Butler's area leads back to the Lost Woods.\n"
+                "Mask's Lost Woods, and its east end to the far end of the Clock Tower's twisting corridor. The\n"
+                "corridor is open to the Tower hall, and its far end leads back to the Lost Woods.\n"
                 "The Happy Mask Salesman in the Clock Tower leads to the Mask Shop. Clock Town's door ends in the\n"
                 "Tower hall. A shortcut the seed's logic does not know about.");
             ImGui::EndDisabled();
