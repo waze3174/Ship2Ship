@@ -12796,6 +12796,21 @@ static void Combo_ZoraBarrierUpdate(PlayState* play, Player* this) {
     }
 }
 
+// MM func_80846460: a curled Goron (the ball, the guard) draws no skeleton to place the body parts, so they and the
+// focus sit low on the ball. The body cylinder is sized from them (Player_UpdateCommon), so they must follow the ball.
+void Combo_GoronCurledBodyParts(Player* this) {
+    s32 i;
+
+    this->actor.focus.pos.x = this->actor.world.pos.x;
+    this->actor.focus.pos.z = this->actor.world.pos.z;
+    this->actor.focus.pos.y = this->actor.world.pos.y + 24.0f;
+    for (i = 0; i < PLAYER_BODYPART_MAX; i++) {
+        this->bodyPartsPos[i] = this->actor.world.pos;
+    }
+    this->bodyPartsPos[PLAYER_BODYPART_HEAD].y = this->actor.world.pos.y + 24.0f;
+    this->bodyPartsPos[PLAYER_BODYPART_WAIST].y = this->actor.world.pos.y + 60.0f;
+}
+
 // MM Player_UpdateCommon 12995-13030: the guard / barrier cylinder. Returns 1 when it set the body cylinder's height
 // itself (the forms' guard), so OOT's "shielding = 0.8 height" is skipped.
 static s32 Combo_FormGuardColliders(Player* this, PlayState* play, f32 top, f32 bottom) {
@@ -12842,16 +12857,7 @@ static s32 Combo_FormGuardColliders(Player* this, PlayState* play, f32 top, f32 
         this->cylinder.dim.yShift = 0;
         this->cylinder.dim.height = sComboGuardCyl.dim.height;
         if (form == COMBO_FORM_GORON) {
-            // MM func_80846460: curled up, the body parts and focus sit low around the ball of the guard
-            s32 i;
-            this->actor.focus.pos.x = this->actor.world.pos.x;
-            this->actor.focus.pos.z = this->actor.world.pos.z;
-            this->actor.focus.pos.y = this->actor.world.pos.y + 24.0f;
-            for (i = 0; i < PLAYER_BODYPART_MAX; i++) {
-                this->bodyPartsPos[i] = this->actor.world.pos;
-            }
-            this->bodyPartsPos[PLAYER_BODYPART_HEAD].y = this->actor.world.pos.y + 24.0f;
-            this->bodyPartsPos[PLAYER_BODYPART_WAIST].y = this->actor.world.pos.y + 60.0f;
+            Combo_GoronCurledBodyParts(this);
         }
         return 1;
     }
