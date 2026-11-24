@@ -6,7 +6,7 @@ Preserved deviations — keep across upstream merges. See [../UPSTREAM_MERGES.md
 
 **Why:** Anchor (upstream SoH online co-op) owned its own TCP socket + receive thread inside
 `soh.dll`, so the connection died on every OOT↔MM portal transition and could never be shared with
-MM. ComboShip now owns ONE persistent connection in `ComboShip.exe` that survives transitions and
+MM. ComboShip now owns ONE persistent connection in `Ship2Ship.exe` that survives transitions and
 will later route packets to whichever game is active. OOT's Anchor is **not relocated** — only its
 transport is redirected through a minimal COMBO_BUILD seam; all packet/handler/menu/dummy-player
 logic stays byte-intact in `soh/soh/Network/Anchor/`. A relay probe (since removed) confirmed the
@@ -37,7 +37,7 @@ Anchor). `declspec` follows `extern "C"` (the export-visibility ordering trap).
   `SOH_Anchor_RecvJson`. `ComboAnchor::Shutdown()` joins the thread BEFORE any `FreeDll` (the thread
   calls into soh.dll). `#define SDL_MAIN_HANDLED` precedes the SDL include so SDL doesn't hijack
   `main`.
-- `combo/CMakeLists.txt` — `ComboShip` now links `SDL2_net` (`-static` on the static-md triplet),
+- `combo/CMakeLists.txt` — `Ship2Ship` now links `SDL2_net` (`-static` on the static-md triplet),
   mirroring soh's linkage; SDL2main is intentionally not linked.
 
 On future merges: if upstream restructures `Network`/`Anchor` transport, re-apply the COMBO_BUILD

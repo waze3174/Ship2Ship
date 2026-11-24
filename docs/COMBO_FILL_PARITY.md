@@ -101,7 +101,7 @@ winning walk exceeding the wallet held at its sphere fails the run (exit 1), cat
 of the "shops are free" class.
 
 Related validator requirement (settled in planning): `--playthrough` must be hermetic — settings
-and prices come from the spoiler it reads, never from the neighboring `comboship.json`.
+and prices come from the spoiler it reads, never from the neighboring `ship2ship.json`.
 
 ## Resolved-gap ledger (for merge regression checks)
 

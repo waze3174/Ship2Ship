@@ -22,10 +22,10 @@ placeholder blue-rupee grant on receive; real seed generation, pickup-intercepti
 markers and the gift presentation are later increments.
 
 **New, non-upstream files (no merge risk):**
-- `combo/rando/CrossMailbox.h` — the shared mailbox module (compiled into soh.dll, 2ship.dll, ComboShip.exe).
+- `combo/rando/CrossMailbox.h` — the shared mailbox module (compiled into soh.dll, 2ship.dll, Ship2Ship.exe).
 
 **Build glue (preserve on merges):**
-- `combo/CMakeLists.txt` — `find_package(nlohmann_json)` + link to `ComboShip`; `target_include_directories(ComboShip PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})`.
+- `combo/CMakeLists.txt` — `find_package(nlohmann_json)` + link to `Ship2Ship`; `target_include_directories(Ship2Ship PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})`.
 - `soh/CMakeLists.txt` and `mm/CMakeLists.txt` — added `${CMAKE_CURRENT_SOURCE_DIR}/../combo` to each game target's include dirs so `"rando/CrossMailbox.h"` resolves.
 
 **soh (`soh/soh/...`, all COMBO_BUILD-guarded):**
@@ -518,7 +518,7 @@ hint data. Mostly combo-owned (`combo/ComboShip.cpp`, `combo/rando/CrossForeign.
   before re-applying placements — the dump now calls it), `SOH_RequestComboReload`/
   `SOH_SetOnComboReloadCallback` (launcher reload seam), `SOH_GetActiveFileNum`, and
   `Combo_SOH_GetObtainedChecks` (hint state).
-- **`soh` `randomizer.cpp`** — `Rando_HandleSpoilerDrop` also accepts `fileType=="ComboShipRandomizer"`
+- **`soh` `randomizer.cpp`** — `Rando_HandleSpoilerDrop` also accepts `fileType=="Ship2ShipRandomizer"` (and the older `"ComboShipRandomizer"`)
   (sets `CVAR_GENERAL("ComboDroppedFile")`). The native SoH spoiler branch is compiled out under
   `COMBO_BUILD` (2026-10-09): such a file has no MM half, and parsing it set `SpoilerLoaded`, which
   could enable Start Randomizer after a failed combo generation. `OTRGlobals.cpp` also clears a leftover `SpoilerLog` CVar at boot.
@@ -803,7 +803,7 @@ Greg, Saria, Mido, Fishing Pole) still say "an Isolated Place" for a cross-place
 
 **Settings-persistence fix (2026-07-16):** the silent file-select auto-reload
 (`Combo_OnReloadRequest(NULL)`) was writing the pending seed's `gRando.*` CVars over the user's
-configured settings, which then leaked into `comboship.json`. Fix, all in `combo/ComboShip.cpp`:
+configured settings, which then leaked into `ship2ship.json`. Fix, all in `combo/ComboShip.cpp`:
 - OOT: snapshot the user's settings (`SOH_DumpRandoSettings`) before the seed's are restored for
   reproduction, then restore the snapshot right after `SOH_ApplyRandoPlacements`/hints — OOT only
   reads settings CVars at that prep step, never again during play.
@@ -819,7 +819,7 @@ generate, not a reload) now clears `g_PendingMMSettingsJson`/`g_UserMMSettingsSn
 `g_ComboReloadRestoreUserMM` — a stale pending-seed's MM settings were otherwise left to apply at the
 next slot-bind over the freshly generated seed's placements. An explicit drop also applies its MM
 settings to CVars immediately (not just at slot-bind), matching OOT's immediate baseline switch, so
-quit-before-Start can't persist a mixed OOT=seed/MM=old-user `comboship.json`.
+quit-before-Start can't persist a mixed OOT=seed/MM=old-user `ship2ship.json`.
 
 Known limitation (not fixed — see `randomizer_check_objects.cpp` `UpdateImGuiVisibility`, called from
 `SohMenuRandomizer.cpp`): it reads ~67 `CVAR_RANDOMIZER_SETTING(...)` CVars directly rather than
@@ -1774,7 +1774,7 @@ two hooks, and they are the only other consumers, so firing the hooks fixes them
   `SOH_MenuApplyCVarChange`; the cosmetic consumers patch OOT gfx). Vanilla fires this from the rando
   worker thread — we fire from the main thread, which is strictly safer. The `ExecuteHooks` call is
   wrapped in `try`/`catch(...)` with `SPDLOG_ERROR`, like the MM side: subscribers reach `std::map::at`
-  and allocate, and a throw must not unwind across the C ABI into `ComboShip.exe`.
+  and allocate, and a throw must not unwind across the C ABI into `Ship2Ship.exe`.
 - `soh/soh/Enhancements/cosmetics/CosmeticsEditor.cpp` and `soh/soh/Enhancements/audio/AudioEditor.cpp` —
   both seeded branches (`RandomizeColor`, `RandomizeGroup`) fold in the `Rando::Context` seed in one
   strictly degenerate case: `!IS_RANDO && fileCreatedAt == 0`. Vanilla seeds from
@@ -2216,7 +2216,7 @@ wins if both are present):
 | `CompleteMaskQuest` = 2 (Shuffle) | `ShuffleMasks` 1 |
 
 Before applying, every `GetAllOptions()` CVar is cleared (and `ExcludedLocations` emptied), so a key an
-older spoiler lacks reads as the default, not the local machine's value. A user's `comboship.json`
+older spoiler lacks reads as the default, not the local machine's value. A user's `ship2ship.json`
 keeps its stale leaf keys (no clash); those settings fall back to defaults.
 
 ## Majora's Mask entrance randomizer, B-M1 (2026-11-11)

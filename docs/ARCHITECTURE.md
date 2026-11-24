@@ -1,8 +1,8 @@
-# ComboShip Architecture
+# Ship2Ship Architecture
 
 ## Overview
 
-ComboShip runs **Ocarina of Time** (Ship of Harkinian) and **Majora's Mask** (2 Ship 2 Harkinian)
+Ship2Ship runs **Ocarina of Time** (Ship of Harkinian) and **Majora's Mask** (2 Ship 2 Harkinian)
 as a single program that can hand off back and forth between the two games at runtime, while keeping
 each game's source close enough to upstream that updates can still be merged in.
 
@@ -31,7 +31,7 @@ loop that boots one game and resumes the other across transitions.
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  ComboShip.exe  (combo/ComboShip.cpp)                          │
+│  Ship2Ship.exe  (combo/ComboShip.cpp)                          │
 │   • LoadLibrary soh.dll + 2ship.dll, resolve exports           │
 │   • Ensure O2R archives exist (extract if missing)             │
 │   • Bidirectional game-switch loop (boot once, resume after)   │
@@ -126,7 +126,7 @@ callbacks) is larger and lives in `combo/ComboShip.cpp`; see [`deviations/`](dev
 
 When a new OOT save is created, the launcher's `Combo_OnOOTSaveInit` calls `MM_InitRandoSaveFile` to
 create the matching MM save (**OOT slot N → MM file N+1**), deriving MM's placement payload fresh
-from the bound consolidated seed. The MM save is always `SAVETYPE_RANDO` — ComboShip has no vanilla
+from the bound consolidated seed. The MM save is always `SAVETYPE_RANDO` — Ship2Ship has no vanilla
 mode, and a vanilla MM save would silently disable every `IS_RANDO` behavior. On the OOT→MM handoff, MM's
 `title_setup` loads that file and spawns the player in South Clock Town. This is save *linkage by
 slot*, not a unified/merged save format. Cross-game item grants are written directly into the linked
@@ -134,7 +134,7 @@ save of whichever game is dormant (see [Cross-Game Features](#cross-game-feature
 
 ## Cross-Game Features
 
-These are what ComboShip adds on top of the two ports. Each is summarized here; the load-bearing
+These are what Ship2Ship adds on top of the two ports. Each is summarized here; the load-bearing
 details and merge-survival notes live in [`deviations/`](deviations/).
 
 - **Cross-world randomizer** — one seed shuffles items across *both* games; an OOT check can hold an
@@ -196,8 +196,8 @@ void SomeUpstreamFunction(void) {
 
 - The top-level `CMakeLists.txt` defines `COMBO_BUILD`, adds the shared `libultraship`, `ZAPD`, and
   `OTRExporter`, and `add_subdirectory(combo)` for the launcher.
-- A meta target builds everything: `add_custom_target(combo ALL DEPENDS soh 2ship ComboShip)`.
-- `combo/CMakeLists.txt` builds `ComboShip.exe` from `combo/ComboShip.cpp` and, as a POST_BUILD step,
+- A meta target builds everything: `add_custom_target(combo ALL DEPENDS soh 2ship Ship2Ship)`.
+- `combo/CMakeLists.txt` builds `Ship2Ship.exe` from `combo/ComboShip.cpp` and, as a POST_BUILD step,
   copies the three DLLs, the port `.o2r` archives, and extractor assets next to the exe.
 - Convenience build scripts live in `scripts/` (`build-libultraship.ps1`, `build-soh.ps1`,
   `build-2ship.ps1`, `build-comboship.ps1`). Build targets individually rather than rebuilding

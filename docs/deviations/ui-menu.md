@@ -600,10 +600,10 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 `Config::SetBlock`, and `gSettings` / `gEnhancements` are shared, so it wipes both games' mod lists and every key MM owns
 (see the residuals under the mod menu above). Players also keep one install per play style only because of that.
 
-**What:** Settings > Presets and Settings > Import from ComboShip in the combo menu (`combo/gui/ComboPresetsPanel.cpp`,
+**What:** Settings > Presets and Settings > Import from Ship2Ship or ComboShip in the combo menu (`combo/gui/ComboPresetsPanel.cpp`,
 `ComboConfigImportPanel.cpp`).
-- **Storage:** `presets/<name>.json` beside `comboship.json` (`ComboRando::DataDir()`: the working directory on
-  Windows, `$SHIP_HOME` on Linux, the AppImage and macOS). Format `{"format":"ComboShipPreset","version":1,"settings":{"<dotted CVar>": value}}`;
+- **Storage:** `presets/<name>.json` beside `ship2ship.json` (`ComboRando::DataDir()`: the working directory on
+  Windows, `$SHIP_HOME` on Linux, the AppImage and macOS). Format `{"format":"Ship2ShipPreset","version":1,"settings":{"<dotted CVar>": value}}`;
   colours are 3 or 4 number arrays. Names are ASCII letters, digits, space and `- _ . ( )`, so the file name is the same on every OS.
 - **Scope:** `combo/ComboPresetScope.h` is the one allowlist, used by save, apply, the menu import and the first-launch
   import. Roots found in the trees: soh `gRandoSettings gRandoEnhancements gCosmetics gEnhancements gSettings gTrackers
@@ -622,11 +622,11 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
   line says how many were skipped. Everything else applies live.
 - **File check:** `ComboConfigTree::ReadConfigFile` is the one check for both imports. It returns a reason
   (`ComboConfigCheck` in `combo/ComboSettingsImport.h`): can't open, not JSON, no `CVars`, no `gCombo` (ComboShip files
-  only), or this install's own `comboship.json`, which is never a source. Both screens show the reason in plain words
+  only), or this install's own `ship2ship.json`, which is never a source. Both screens show the reason in plain words
   (`ComboPresets::DescribeConfigCheck`), and a file that fails is not imported.
-- **Menu import:** checks the file as above, copies the current config to `comboship.json.bak-<timestamp>`, then applies
+- **Menu import:** checks the file as above, copies the current config to `ship2ship.json.bak-<timestamp>`, then applies
   through the same writer. Only the `CVars` block is read, never `Window`.
-- **First launch:** the import screen has a third slot for a `comboship.json` (`ComboSettingsImportResult::comboPath`).
+- **First launch:** the import screen has a third slot for a `ship2ship.json` or `comboship.json` (it auto-detects both; `ComboSettingsImportResult::comboPath`).
   The launcher runs the same check on Import that the screen showed, for every slot. It filters the ComboShip file's
   CVars with the same scope and merges it as the lowest-priority base under 2Ship and SoH. `ConfigVersion` comes from
   the SoH file, else from the ComboShip file; without one, `RunVersionUpdates` would re-run every OoT updater over

@@ -1,12 +1,12 @@
-# Building and running ComboShip on Linux
+# Building and running Ship2Ship on Linux
 
 The Linux build is developed and CI-tested on Ubuntu 24.04 (noble). Three ways
-to get a runnable ComboShip, easiest first:
+to get a runnable Ship2Ship, easiest first:
 
-1. **AppImage** (recommended for players) — the `ComboShip-linux-appimage` CI
+1. **AppImage** (recommended for players) — the `Ship2Ship-linux-appimage` CI
    artifact. Self-contained: bundles SDL2, tinyxml2, spdlog and the rest of the
    shared-library dependencies, runs on any reasonably current x86_64 distro.
-2. **Plain CI artifact** (`ComboShip-linux`) — the raw binary tree. It links
+2. **Plain CI artifact** (`Ship2Ship-linux`) — the raw binary tree. It links
    against the *build host's* system libraries (Ubuntu 24.04), so on another
    distro it fails unless the same ABI versions are installed — e.g.
    `libtinyxml2.so.10: cannot open shared object file`. Use the AppImage or
@@ -20,11 +20,11 @@ copyrighted ships in the artifacts.
 ## Running the AppImage
 
 ```sh
-chmod +x ComboShip-*-linux-x86_64.AppImage   # the exec bit is lost in the artifact zip
-./ComboShip-0.2.1-linux-x86_64.AppImage
+chmod +x Ship2Ship-*-linux-x86_64.AppImage   # the exec bit is lost in the artifact zip
+./Ship2Ship-0.1.0-linux-x86_64.AppImage
 ```
 
-On first run it creates a writable `ComboShip-data/` directory next to the
+On first run it creates a writable `Ship2Ship-data/` directory next to the
 AppImage holding saves, config, mods and the game archives; set `SHIP_HOME` to
 put it somewhere else. Drop already-extracted `oot.o2r` / `mm.o2r` files in
 there to skip the extraction screen.
@@ -55,7 +55,7 @@ libpng, libusb).
 
 ```sh
 cmake -B build-cmake -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
-cmake --build build-cmake --target libultraship soh 2ship comboui ComboShip -j 4
+cmake --build build-cmake --target libultraship soh 2ship comboui Ship2Ship -j 4
 cmake --build build-cmake --target GenerateSohOtr Generate2ShipOtr -j 4   # port o2rs
 ```
 
@@ -80,7 +80,7 @@ so:
 ```sh
 cd build-cmake/combo
 cp ../soh/soh.o2r ../mm/2ship.o2r .   # once, after GenerateSohOtr/Generate2ShipOtr
-./ComboShip
+./Ship2Ship
 ```
 
 If you copy the tree elsewhere (or to another machine), the baked-in RUNPATH
@@ -88,7 +88,7 @@ pointing at the build tree goes dead — run with the directory on the library
 path:
 
 ```sh
-LD_LIBRARY_PATH="$PWD" ./ComboShip
+LD_LIBRARY_PATH="$PWD" ./Ship2Ship
 ```
 
 (That still requires the system libraries above; the AppImage exists so end
@@ -101,9 +101,9 @@ users don't need any of this.)
 ```
 
 Produces `_packages/stage/` (the plain runnable tree, same layout as the
-`ComboShip-linux` CI artifact) and
-`_packages/ComboShip-<version>-linux-x86_64.AppImage`. Downloads `linuxdeploy`
+`Ship2Ship-linux` CI artifact) and
+`_packages/Ship2Ship-<version>-linux-x86_64.AppImage`. Downloads `linuxdeploy`
 into `_packages/` on first use; needs `curl`, no FUSE required. The AppImage
-pieces live in `combo/linux/` (`AppRun`, `ComboShip.desktop`, `ComboShip.png`)
+pieces live in `combo/linux/` (`AppRun`, `Ship2Ship.desktop`, `Ship2Ship.png`)
 and the version comes from `COMBO_RELEASE_VERSION` in the top-level
 `CMakeLists.txt`.

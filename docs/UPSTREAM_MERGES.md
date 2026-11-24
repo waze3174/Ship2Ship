@@ -152,7 +152,7 @@ build's `gBuildVersion{Major,Minor,Patch}`, which both `soh` and `2ship` `build.
 top-level project) changes on every merge, and the rando-save gate fires on its own. **No vendored
 `SaveManager.cpp` edit, no per-merge version bump.** The opaque numeric triple is made legible by the
 `PROJECT_BUILD_NAME` label (shown in-game) and the package filename
-(`ComboShip-e<epoch>-soh<sha>-mm<sha>`).
+(`Ship2Ship-e<epoch>-soh<sha>-mm<sha>`).
 
 **`COMBO_RELEASE_VERSION` (manual, e.g. `0.1.1`)** is separate from the pin-derived triple and is the
 **sole authority for combosave compatibility** (gated at the launcher container level — see

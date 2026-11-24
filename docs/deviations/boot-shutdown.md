@@ -82,7 +82,7 @@ OOT↔MM round-trips now work.**
 **`soh/soh/OTRGlobals.cpp` (`SOH_PrepareForTransition`):** the founding-commit declaration put
 `__declspec(dllexport)` on its own line BEFORE `extern "C"` — MSVC silently ignores the declspec
 in that arrangement (warning C4091, invisible because soh compiles with `/w`). The function was
-never in soh.dll's export table, so ComboShip.exe's eager-MM-boot gate (which requires all four
+never in soh.dll's export table, so Ship2Ship.exe's eager-MM-boot gate (which requires all four
 transition exports) failed on EVERY launch since 2026-06-05, printing one stderr line nobody saw.
 Consequences while hidden: `ShipInit::InitAll` never ran at startup, `Rando::Logic::Regions`
 stayed empty (0 of 315), the settings-scoped `MM_DumpRandoStaticData` emitted 0 checks, and the
@@ -112,7 +112,7 @@ already-joined OOT audio thread).
 **`mm/2s2h/BenPort.cpp` (`MM_Deinit`, new export):** 2ship holds a `shared_ptr` to the SHARED
 Context (forward-transition reuse path in the OTRGlobals ctor) and nothing ever released it, so
 `~Ship::Context` — the ONLY place window geometry is saved (`SaveWindowToConfig` + `Config::Save`)
-and spdlog is shut down — never ran. `MM_Deinit` wraps MM's `DeinitOTR`. ComboShip.exe calls it
+and spdlog is shut down — never ran. `MM_Deinit` wraps MM's `DeinitOTR`. Ship2Ship.exe calls it
 BEFORE `SOH_Deinit` (BenGui::Destroy dereferences the live Context), so soh's `DeinitOTR` releases
 the LAST reference and `~Context` runs on the main thread. This is what fixed window-resize
 persistence.
@@ -204,7 +204,7 @@ suspect is the statically-linked SDL's `WH_KEYBOARD_LL` hook (`WIN_UpdateKeyboar
 only `SetWindowsHookExW` site), unconfirmed. Immaterial to this fix — the FreeDll order (2ship
 before soh) crashes either way — but it means soh.dll static dtors can ALWAYS run at process exit:
 never let them depend on another game DLL. Frames were recovered without PDBs by downloading the
-matching nightly `ComboShip-windows` artifact, adding the logged displacements to the export RVAs
+matching nightly `Ship2Ship-windows` artifact, adding the logged displacements to the export RVAs
 (`SOH_NotifyComboReturn`/`SOH_RunGameLoop`), and `objdump -d --start-address` at each RVA; the
 log's unresolved frames sit BELOW the lowest export RVA (dbghelp's nearest-export synthesis fails
 there), which also pins the module base (64K-aligned) and thus the crash PC's RVA.
@@ -264,11 +264,11 @@ container, since there's no per-game `.sav` to copy).
 
 **Release-version save gate:** `COMBO_RELEASE_VERSION` (root `CMakeLists.txt`, manual — e.g. `0.1.1`)
 is the sole authority for combosave compatibility, enforced at the launcher container level, not in
-either game. It is compiled into the `ComboShip` target only. Every container write stamps
+either game. It is compiled into the `Ship2Ship` target only. Every container write stamps
 `comboRelease`; on load, a container missing it or differing in `major.minor` (patch releases keep
 saves) is renamed aside to a timestamped `.bak`, its slot recorded, and a fresh container created. OOT drains the recorded slots on
 its main thread (`SOH_SetOutdatedSaveNotice` → `Combo_TakeEvictionNotice`) and shows an "Outdated
-ComboShip Save" popup — the launcher never touches ImGui (`Combo_ReadGameSave` may run off-thread). The
+Ship2Ship Save" popup — the launcher never touches ImGui (`Combo_ReadGameSave` may run off-thread). The
 old pin-derived `major.minor.patch` triple + MM git commit hash remain for the in-game banner/diagnostics
 only (the MM rando `commitHash` strcmp throw is now `#ifndef COMBO_BUILD`). **Why:** the release identity
 is a deliberate human decision, and one launcher-level gate is simpler and more correct than two
@@ -291,7 +291,8 @@ cross-game item map + cross-hints) is stored in `combo.rando` at save creation (
 and pushed once per save-load into both DLLs via `SOH_LoadComboRando` / `MM_LoadComboRando` →
 `ComboRando::Combo_SetForeignJson`. The three `CrossForeign.h` loaders read that in-memory blob, not a
 file; the per-slot `save{N}-Randomizer-<hash>.json` sidecar is retired. `Last-Generated-Randomizer.json`
-survives only as the pre-save generation output + `ComboShipRandomizer` drop-import vehicle.
+survives only as the pre-save generation output + `Ship2ShipRandomizer` drop-import vehicle (the old
+`ComboShipRandomizer` marker is still accepted on read).
 
 **Fallout — MM pictograph photos (issue #91, 2026-07-25).** Because per-slot writes now return before
 `create_directories(savesFolderPath)`, MM's `saves/` dir is never created in a combo build (only
@@ -449,16 +450,16 @@ broke; restored in `soh/soh/Extractor/Extract.cpp` to mirror the MM sibling (cat
 archive exists → `return true`). Also Release links `/SUBSYSTEM:WINDOWS` (no console window; Debug
 keeps it), `+/ENTRY:mainCRTStartup` since ComboShip has its own `main()` and doesn't link SDL2main.
 
-**Combined config renamed to `comboship.json` (issue 24).** OOT + MM share one libultraship Context, so
-there is a single config file. `OTRGlobals.cpp` now names it `comboship.json` (COMBO_BUILD-guarded; `#else`
+**Combined config named `ship2ship.json` (issue 24; `comboship.json` before the Ship2Ship rename).** OOT + MM share one libultraship Context, so
+there is a single config file. `OTRGlobals.cpp` names it `ship2ship.json` (COMBO_BUILD-guarded; `#else`
 keeps `shipofharkinian.json` for standalone soh) to make the combined nature explicit and to gate the
 first-launch settings import (absent file = fresh install). New combo-owned export `SOH_ApplyImportedConfig`
 installs a launcher-merged config into the live `Config` (`SetBlock` + `Save` + `CVarLoad` + controller
 reload). MM's `2ship2harkinian.json` literals are untouched (standalone-only, off the combo path).
 
-The Context name in the same guarded call is `"ComboShip"` (2026-10-08): LUS builds the window title
-(`ComboShip (DirectX 11)`), the logger name and `logs/ComboShip.log` from it, plus the crash dialog
-title and `logs/ComboShip-crash.dmp`. Ask players for those two files. The headless `comborando`
+The Context name in the same guarded call is `"Ship2Ship"`: LUS builds the window title
+(`Ship2Ship (DirectX 11)`), the logger name and `logs/Ship2Ship.log` from it, plus the crash dialog
+title and `logs/Ship2Ship-crash.dmp`. Ask players for those two files. The headless `comborando`
 Context uses the same name. Per-game boot banners and log prefixes keep their upstream names.
 
 ## MM resume: reset magicLevel like Sram_OpenSave (magic meter outline, 2026-07-03)
@@ -511,13 +512,13 @@ defect 3 (export-table guesses in PDB-less builds) is no longer marked. Only the
 `combo/menu/ComboForeignAnim.h:403`, matching the Debug trace exactly.
 
 **Deliberately NOT shared with `combo/ComboShip.cpp`'s late filter**, which does the same job
-correctly. `ComboShip.exe` does not link libultraship on purpose — its filter has to survive the
+correctly. `Ship2Ship.exe` does not link libultraship on purpose — its filter has to survive the
 window after `FreeLibrary`, when `libultraship.dll` may be gone. The ~15 duplicated lines are the
 price of that; do not "DRY" them.
 
 **Known gap:** the RVA is only actionable where we hold the matching linker PDB. Release currently
 produces PDBs for soh/2ship (via the unconditional `/DEBUG` in `mm/CMakeLists.txt`) but **not** for
-libultraship or ComboShip.exe — which is where the crash above actually faulted. PDBs must never ship
+libultraship or Ship2Ship.exe — which is where the crash above actually faulted. PDBs must never ship
 (they are ~5x the download), but they should be generated and archived per tagged release.
 
 ## Extraction-screen ROM drop: FileDropMgr early init + backend null-guards (2026-08-08)
