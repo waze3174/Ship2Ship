@@ -3398,16 +3398,16 @@ PlayerItemActionInitFunc sItemActionInitFuncs[PLAYER_IA_MAX] = {
     Player_InitDefaultIA,       // PLAYER_IA_MASK_DEKU
     Player_InitDefaultIA,       // PLAYER_IA_LENS_OF_TRUTH
 #ifdef COMBO_BUILD
-    ComboOot_InitBoomerangIA,  // PLAYER_IA_COMBO_OOT_BOOMERANG (OOT Player_InitBoomerangIA)
-    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_HAMMER (OOT Player_InitHammerIA)
-    ComboOot_InitSlingshotIA,  // PLAYER_IA_COMBO_OOT_SLINGSHOT (OOT Player_InitBowOrSlingshotIA)
-    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_DINS_FIRE
-    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_FARORES_WIND
-    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_NAYRUS_LOVE
-    Player_InitHookshotIA,     // PLAYER_IA_COMBO_OOT_LONGSHOT
-    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_TRADE
-    Player_InitHookshotIA,     // PLAYER_IA_COMBO_OOT_HOOKSHOT
-    Player_InitDefaultIA,      // PLAYER_IA_COMBO_OOT_MASK
+    ComboOot_InitBoomerangIA, // PLAYER_IA_COMBO_OOT_BOOMERANG (OOT Player_InitBoomerangIA)
+    Player_InitDefaultIA,     // PLAYER_IA_COMBO_OOT_HAMMER (OOT Player_InitHammerIA)
+    ComboOot_InitSlingshotIA, // PLAYER_IA_COMBO_OOT_SLINGSHOT (OOT Player_InitBowOrSlingshotIA)
+    Player_InitDefaultIA,     // PLAYER_IA_COMBO_OOT_DINS_FIRE
+    Player_InitDefaultIA,     // PLAYER_IA_COMBO_OOT_FARORES_WIND
+    Player_InitDefaultIA,     // PLAYER_IA_COMBO_OOT_NAYRUS_LOVE
+    Player_InitHookshotIA,    // PLAYER_IA_COMBO_OOT_LONGSHOT
+    Player_InitDefaultIA,     // PLAYER_IA_COMBO_OOT_TRADE
+    Player_InitHookshotIA,    // PLAYER_IA_COMBO_OOT_HOOKSHOT
+    Player_InitDefaultIA,     // PLAYER_IA_COMBO_OOT_MASK
 #endif
 };
 
@@ -4556,7 +4556,7 @@ bool func_80831194(PlayState* play, Player* this) {
                                        Combo_MmOotAmmo(COMBO_OOT_ITEM_SLINGSHOT));
                     } else
 #endif
-                    Inventory_ChangeAmmo(item, -1);
+                        Inventory_ChangeAmmo(item, -1);
                 }
             }
 
@@ -6158,9 +6158,9 @@ void func_80833B18(PlayState* play, Player* this, s32 arg2, f32 speed, f32 veloc
                 }
                 Player_AnimSfx_PlayVoice(this, NA_SE_VO_LI_FALL_L);
             }
-            #ifdef COMBO_BUILD
+#ifdef COMBO_BUILD
             sComboHoverBootsTimer = 0; // OOT func_80837B9C: knocked into the air ends the hover
-            #endif
+#endif
             this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
         } else if ((this->speedXZ > 4.0f) && !Player_CheckHostileLockOn(this)) {
             this->unk_B64 = 20;
@@ -7918,7 +7918,7 @@ s32 func_8083868C(PlayState* play, Player* this) {
             camMode = CAM_MODE_BOOMERANG; // ComboShip: OOT's boomerang aim camera (OOT CAM_MODE_AIM_BOOMERANG)
         } else
 #endif
-        if (func_800B7118(this)) {
+            if (func_800B7118(this)) {
             if (this->transformation == PLAYER_FORM_HUMAN) {
                 camMode = CAM_MODE_SLINGSHOT;
             } else if (this->transformation == PLAYER_FORM_DEKU) {
@@ -8125,7 +8125,16 @@ u8 D_8085D1A4[PLAYER_IA_MAX] = {
     GI_MASK_DEKU,           // PLAYER_IA_MASK_DEKU
     GI_LENS_OF_TRUTH,       // PLAYER_IA_LENS_OF_TRUTH
 #ifdef COMBO_BUILD
-    GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, GI_NONE, // PLAYER_IA_COMBO_OOT_*
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE,
+    GI_NONE, // PLAYER_IA_COMBO_OOT_*
 #endif
 };
 
@@ -9499,8 +9508,8 @@ void func_8083BF54(PlayState* play, Player* this) {
                                  ? (ABS_ALT(this->unk_B8A) * -0.004f) + (this->unk_B48 * -0.38f)
                                  : this->actor.velocity.y);
 
-            if ((var_fv1 > -1.0f) || (COMBO_BOOTS_SUNK(this->currentBoots) &&
-                                      (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
+            if ((var_fv1 > -1.0f) ||
+                (COMBO_BOOTS_SUNK(this->currentBoots) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
                 if (Rand_ZeroOne() < 0.2f) {
                     numBubbles = 1;
                 }
@@ -9821,8 +9830,7 @@ s32 Player_ActionHandler_2(Player* this, PlayState* play) {
                         Player_DetachHeldActor(play, this);
                         func_80838830(this, giEntry->objectId);
 
-                        if (!(this->stateFlags2 & PLAYER_STATE2_400) ||
-                            COMBO_BOOTS_SUNK(this->currentBoots)) {
+                        if (!(this->stateFlags2 & PLAYER_STATE2_400) || COMBO_BOOTS_SUNK(this->currentBoots)) {
                             Player_StopCutscene(this);
                             Player_SetupWaitForPutAwayWithCs(play, this, func_80837C78,
                                                              play->playerCsIds[PLAYER_CS_ID_ITEM_GET]);
@@ -10387,7 +10395,7 @@ void func_8083EA44(Player* this, f32 arg1) {
         Actor_PlaySfx_Flagged2(&this->actor, NA_SE_PL_HOBBERBOOTS_LV - SFX_FLAG);
     } else
 #endif
-    if (sp24 || func_8083E9C4(this->unk_B38, arg1, 29.0f, 24.0f)) {
+        if (sp24 || func_8083E9C4(this->unk_B38, arg1, 29.0f, 24.0f)) {
         Player_AnimSfx_PlayFloorWalk(this, this->speedXZ);
         if (this->speedXZ > 4.0f) {
             this->stateFlags2 |= PLAYER_STATE2_8;
@@ -12093,8 +12101,7 @@ static void Combo_HoverBootsUpdate(Player* this) {
         sComboHoverBootsTimer = 0;
     }
     canHoverOnGround = gComboHoverBoots && ((this->actor.depthInWater >= 0.0f) ||
-                                            (func_808340AC(sPlayerFloorType) >= 0) ||
-                                            func_808340D4(sPlayerFloorType));
+                                            (func_808340AC(sPlayerFloorType) >= 0) || func_808340D4(sPlayerFloorType));
     if (canHoverOnGround && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) && (sComboHoverBootsTimer != 0)) {
         this->actor.bgCheckFlags &= ~BGCHECKFLAG_GROUND;
     }
@@ -13023,8 +13030,7 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
                     }
                 }
             } else if ((this->stateFlags1 & PLAYER_STATE1_8000000) &&
-                       (COMBO_BOOTS_SUNK(this->prevBoots) ||
-                        (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
+                       (COMBO_BOOTS_SUNK(this->prevBoots) || (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND))) {
                 func_8083B930(play, this);
                 this->stateFlags2 &= ~PLAYER_STATE2_400;
                 if (Player_Action_54 == this->actionFunc) {
@@ -19281,10 +19287,10 @@ void Player_Action_84(Player* this, PlayState* play) {
     }
 #endif
     else if (((this->transformation == PLAYER_FORM_ZORA) &&
-                (this->meleeWeaponAnimation != PLAYER_MWA_ZORA_PUNCH_KICK) &&
-                (this->meleeWeaponAnimation != PLAYER_MWA_ZORA_JUMPKICK_FINISH)) ||
-               ((this->transformation == PLAYER_FORM_GORON) &&
-                (this->meleeWeaponAnimation != PLAYER_MWA_GORON_PUNCH_BUTT))) {
+              (this->meleeWeaponAnimation != PLAYER_MWA_ZORA_PUNCH_KICK) &&
+              (this->meleeWeaponAnimation != PLAYER_MWA_ZORA_JUMPKICK_FINISH)) ||
+             ((this->transformation == PLAYER_FORM_GORON) &&
+              (this->meleeWeaponAnimation != PLAYER_MWA_GORON_PUNCH_BUTT))) {
         this->av2.actionVar2 |= CHECK_BTN_ALL(sPlayerControlInput->press.button, BTN_B) ? 1 : 0;
     }
 }

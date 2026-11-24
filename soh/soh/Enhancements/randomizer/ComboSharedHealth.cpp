@@ -55,9 +55,8 @@ void Combo_SharedHealthRegister() {
         if ((gPlayState == nullptr) || (gSaveContext.fileNum > 2) || (gSaveContext.gameMode != GAMEMODE_NORMAL)) {
             return;
         }
-        ComboHealth::Native n{ &gSaveContext.healthCapacity, &gSaveContext.health,
-                               &gSaveContext.inventory.questItems, &gSaveContext.isDoubleDefenseAcquired,
-                               &gSaveContext.inventory.defenseHearts };
+        ComboHealth::Native n{ &gSaveContext.healthCapacity, &gSaveContext.health, &gSaveContext.inventory.questItems,
+                               &gSaveContext.isDoubleDefenseAcquired, &gSaveContext.inventory.defenseHearts };
         n.magic = &gSaveContext.magic;
         n.magicLevel = &gSaveContext.magicLevel;
         n.isMagicAcquired = &gSaveContext.isMagicAcquired;
@@ -82,8 +81,8 @@ void Combo_SharedHealthRegister() {
             n.ammo[ComboHealth::kAmmoSeeds] = slot(ITEM_SLINGSHOT, CUR_CAPACITY(UPG_BULLET_BAG));
         }
         {
-            // Test hook (launch env only, Combo_HarnessEnv): COMBO_DEBUG_MAGIC=<n> sets OOT's meter to n once it is idle,
-            // so a crossing can show the amount arriving in Termina.
+            // Test hook (launch env only, Combo_HarnessEnv): COMBO_DEBUG_MAGIC=<n> sets OOT's meter to n once it is
+            // idle, so a crossing can show the amount arriving in Termina.
             static bool sMagicSet = false;
             const char* mp = Combo_HarnessEnv("COMBO_DEBUG_MAGIC") ? std::getenv("COMBO_DEBUG_MAGIC") : nullptr;
             if ((mp != nullptr) && !sMagicSet && gSaveContext.isMagicAcquired && (gSaveContext.magicLevel > 0) &&
@@ -98,10 +97,10 @@ void Combo_SharedHealthRegister() {
             Combo_DebugLog("[ComboShip] health OOT: %d/%d (q oot %d mm %d, dd %d) magic %d shared %d state %d\n",
                            gSaveContext.health, gSaveContext.healthCapacity, sRt.s.quarters[0], sRt.s.quarters[1],
                            sRt.s.doubleDefense, gSaveContext.magic, sRt.s.magic, gSaveContext.magicState);
-            Combo_DebugLog("[ComboShip] ammo OOT: arrows %d/%d bombs %d/%d chus %d/%d sticks %d/%d nuts %d/%d beans %d/%d\n",
-                           AMMO(ITEM_BOW), sRt.s.ammo[0], AMMO(ITEM_BOMB), sRt.s.ammo[1], AMMO(ITEM_BOMBCHU),
-                           sRt.s.ammo[2], AMMO(ITEM_STICK), sRt.s.ammo[3], AMMO(ITEM_NUT), sRt.s.ammo[4],
-                           AMMO(ITEM_BEAN), sRt.s.ammo[5]);
+            Combo_DebugLog(
+                "[ComboShip] ammo OOT: arrows %d/%d bombs %d/%d chus %d/%d sticks %d/%d nuts %d/%d beans %d/%d\n",
+                AMMO(ITEM_BOW), sRt.s.ammo[0], AMMO(ITEM_BOMB), sRt.s.ammo[1], AMMO(ITEM_BOMBCHU), sRt.s.ammo[2],
+                AMMO(ITEM_STICK), sRt.s.ammo[3], AMMO(ITEM_NUT), sRt.s.ammo[4], AMMO(ITEM_BEAN), sRt.s.ammo[5]);
             Combo_DebugLog("[ComboShip] ammo OOT: seeds %d/%d\n", AMMO(ITEM_SLINGSHOT), sRt.s.ammo[6]);
         }
     });
@@ -110,14 +109,14 @@ void Combo_SharedHealthRegister() {
 // Shared consumables: a refill the launcher found for MM while Hyrule is being played goes into OOT's bag now (the
 // count is shared; the tick carries the gain). 1 = taken, 0 = OOT doesn't carry that consumable (deliver it to MM).
 extern "C" COMBO_EXPORT int SOH_ComboAmmoAdd(int kind, int count) {
-    static const u8 kItem[ComboHealth::kAmmoKinds] = { ITEM_BOW, ITEM_BOMB, ITEM_BOMBCHU, ITEM_STICK,
+    static const u8 kItem[ComboHealth::kAmmoKinds] = { ITEM_BOW, ITEM_BOMB, ITEM_BOMBCHU,  ITEM_STICK,
                                                        ITEM_NUT, ITEM_BEAN, ITEM_SLINGSHOT };
     if ((gPlayState == nullptr) || (gSaveContext.fileNum > 2) || (kind < 0) || (kind >= ComboHealth::kAmmoKinds) ||
         (INV_CONTENT(kItem[kind]) != kItem[kind])) {
         return 0;
     }
-    const int caps[ComboHealth::kAmmoKinds] = { CUR_CAPACITY(UPG_QUIVER), CUR_CAPACITY(UPG_BOMB_BAG), 50,
-                                                CUR_CAPACITY(UPG_STICKS), CUR_CAPACITY(UPG_NUTS), 20,
+    const int caps[ComboHealth::kAmmoKinds] = { CUR_CAPACITY(UPG_QUIVER),    CUR_CAPACITY(UPG_BOMB_BAG), 50,
+                                                CUR_CAPACITY(UPG_STICKS),    CUR_CAPACITY(UPG_NUTS),     20,
                                                 CUR_CAPACITY(UPG_BULLET_BAG) };
     int v = AMMO(kItem[kind]) + count;
     AMMO(kItem[kind]) = (s8)((v > caps[kind]) ? caps[kind] : v);

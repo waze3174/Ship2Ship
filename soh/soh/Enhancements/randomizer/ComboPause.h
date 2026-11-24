@@ -56,8 +56,8 @@ int Combo_PauseIsForeignMask(int item);
 int Combo_PauseIsForeignGfs(int item); // MM Great Fairy's Sword on an OOT button
 void Combo_PauseToggleMmMask(int item);
 void Combo_PauseClearMmMask(void);
-const void* Combo_PauseWornMmMaskDL(void); // routed "@mm:" DL of the worn MM mask, NULL = none
-int Combo_PauseWornMmMaskItem(void);       // MM item id of the worn MM mask, -1 = none
+const void* Combo_PauseWornMmMaskDL(void);               // routed "@mm:" DL of the worn MM mask, NULL = none
+int Combo_PauseWornMmMaskItem(void);                     // MM item id of the worn MM mask, -1 = none
 const void* Combo_TransformMaskDL(int mmForm, int face); // MM's transformation mask model (face: fused variant)
 void Combo_PauseLogUse(int item, const char* what);
 
@@ -91,8 +91,8 @@ enum ComboMmItem {
 // counterparts check a mask call this at the same decision (e.g. the Stone Mask: COMBO_MM_STONE_MASK()).
 int Combo_MmMaskIs(int mmItem);
 #define COMBO_MM_STONE_MASK() Combo_MmMaskIs(COMBO_MM_ITEM_MASK_STONE)
-int Combo_PauseLiveMmItem(int item); // the MM item id a foreign id names right now, -1 = none
-int Combo_PauseForeignBottleAction(int item);              // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
+int Combo_PauseLiveMmItem(int item);                         // the MM item id a foreign id names right now, -1 = none
+int Combo_PauseForeignBottleAction(int item);                // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
 int Combo_PauseSetForeignBottle(int foreignId, int ootItem); // write the new content into MM's slot; 1 = done
 int Combo_PauseMmBottleColor(int foreignId, unsigned char* rgb); // MM's bottle content colour; 1 = an MM bottle
 void Combo_ChateauDrink(void); // MM Chateau Romani drunk in Hyrule: infinite magic until next dawn

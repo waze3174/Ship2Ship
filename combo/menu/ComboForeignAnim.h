@@ -945,8 +945,8 @@ inline bool ComboForeignTexAnim_Run(PlayState* play, const char* game, const cha
 inline int32_t ComboForeignAnim_InitInstance(const CwItemAnimDrawInfo* info, const char* game, PlayState* play,
                                              SkelAnime* skelAnime, Vec3s* jointTable, int32_t tableCount) {
     if (info == NULL || game == NULL || play == NULL || skelAnime == NULL || jointTable == NULL ||
-        info->skelPath == NULL || info->animPath == NULL || info->opa || !info->xlu ||
-        tableCount != info->limbCount || Ship::CrossRMRegistry::Get(game) == nullptr) {
+        info->skelPath == NULL || info->animPath == NULL || info->opa || !info->xlu || tableCount != info->limbCount ||
+        Ship::CrossRMRegistry::Get(game) == nullptr) {
         return 0;
     }
     CfaEnsureTeardownHook();

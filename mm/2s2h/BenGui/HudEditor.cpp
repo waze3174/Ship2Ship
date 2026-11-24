@@ -49,11 +49,11 @@ namespace {
 enum OotPosType { OOT_ORIGINAL_LOCATION, OOT_ANCHOR_LEFT, OOT_ANCHOR_RIGHT, OOT_ANCHOR_NONE, OOT_HIDDEN };
 
 struct OotHudSpec {
-    const char* oot;   // OOT's gCosmetics.HUD.<oot>.* element, or nullptr when OOT has none (MM-only element)
-    int8_t side;       // where OOT pins it at ORIGINAL_LOCATION: -1 left edge, 1 right edge, 0 the 4:3 box
-    bool bottom;       // bottom of the screen: OOT applies the bottom margin instead of the top one
-    float ootScale;    // OOT's default scale for the element (its Scale CVar is absolute; MM's is relative)
-    int16_t x, y;      // OOT's original coordinate
+    const char* oot; // OOT's gCosmetics.HUD.<oot>.* element, or nullptr when OOT has none (MM-only element)
+    int8_t side;     // where OOT pins it at ORIGINAL_LOCATION: -1 left edge, 1 right edge, 0 the 4:3 box
+    bool bottom;     // bottom of the screen: OOT applies the bottom margin instead of the top one
+    float ootScale;  // OOT's default scale for the element (its Scale CVar is absolute; MM's is relative)
+    int16_t x, y;    // OOT's original coordinate
 };
 
 const OotHudSpec* OotSpec(HudEditorElementID id) {
@@ -73,31 +73,50 @@ const OotHudSpec* OotSpec(HudEditorElementID id) {
     static const OotHudSpec kHearts = { "HeartsCount", -1, false, 0.7f, 30, 26 };
     static const OotHudSpec kMagic = { "MagicBar", -1, false, 1.0f, 18, 34 };
     static const OotHudSpec kTimers = { "Timers", -1, false, 1.0f, 26, 46 };
-    static const OotHudSpec kMoon = { nullptr, 0, true, 1.0f, 115, 200 };       // MM only: centred, as MM's preset
-    static const OotHudSpec kMinigame = { nullptr, -1, false, 1.0f, 20, 67 };   // MM only: left, with the hearts
+    static const OotHudSpec kMoon = { nullptr, 0, true, 1.0f, 115, 200 };     // MM only: centred, as MM's preset
+    static const OotHudSpec kMinigame = { nullptr, -1, false, 1.0f, 20, 67 }; // MM only: left, with the hearts
     static const OotHudSpec kRupees = { "Rupees", -1, true, 1.0f, 26, 206 };
     static const OotHudSpec kKeys = { "SmallKey", -1, true, 1.0f, 26, 190 };
-    static const OotHudSpec kSkulls = { nullptr, -1, true, 1.0f, 26, 190 };     // MM only: where OOT's key counter sits
+    static const OotHudSpec kSkulls = { nullptr, -1, true, 1.0f, 26, 190 }; // MM only: where OOT's key counter sits
     switch (id) {
-        case HUD_EDITOR_ELEMENT_B: return &kB;
-        case HUD_EDITOR_ELEMENT_C_LEFT: return &kCL;
-        case HUD_EDITOR_ELEMENT_C_DOWN: return &kCD;
-        case HUD_EDITOR_ELEMENT_C_RIGHT: return &kCR;
-        case HUD_EDITOR_ELEMENT_A: return &kA;
-        case HUD_EDITOR_ELEMENT_C_UP: return &kCU;
-        case HUD_EDITOR_ELEMENT_D_PAD: return &kDpad;
-        case HUD_EDITOR_ELEMENT_MINIMAP: return &kMap;
-        case HUD_EDITOR_ELEMENT_START: return &kStart;
-        case HUD_EDITOR_ELEMENT_CARROT: return &kCarrot;
-        case HUD_EDITOR_ELEMENT_HEARTS: return &kHearts;
-        case HUD_EDITOR_ELEMENT_MAGIC_METER: return &kMagic;
-        case HUD_EDITOR_ELEMENT_TIMERS: return &kTimers;
-        case HUD_EDITOR_ELEMENT_TIMERS_MOON_CRASH: return &kMoon;
-        case HUD_EDITOR_ELEMENT_MINIGAME_COUNTER: return &kMinigame;
-        case HUD_EDITOR_ELEMENT_RUPEE_COUNTER: return &kRupees;
-        case HUD_EDITOR_ELEMENT_KEY_COUNTER: return &kKeys;
-        case HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER: return &kSkulls;
-        default: return nullptr; // HUD_EDITOR_ELEMENT_CLOCK: MM's own, untouched
+        case HUD_EDITOR_ELEMENT_B:
+            return &kB;
+        case HUD_EDITOR_ELEMENT_C_LEFT:
+            return &kCL;
+        case HUD_EDITOR_ELEMENT_C_DOWN:
+            return &kCD;
+        case HUD_EDITOR_ELEMENT_C_RIGHT:
+            return &kCR;
+        case HUD_EDITOR_ELEMENT_A:
+            return &kA;
+        case HUD_EDITOR_ELEMENT_C_UP:
+            return &kCU;
+        case HUD_EDITOR_ELEMENT_D_PAD:
+            return &kDpad;
+        case HUD_EDITOR_ELEMENT_MINIMAP:
+            return &kMap;
+        case HUD_EDITOR_ELEMENT_START:
+            return &kStart;
+        case HUD_EDITOR_ELEMENT_CARROT:
+            return &kCarrot;
+        case HUD_EDITOR_ELEMENT_HEARTS:
+            return &kHearts;
+        case HUD_EDITOR_ELEMENT_MAGIC_METER:
+            return &kMagic;
+        case HUD_EDITOR_ELEMENT_TIMERS:
+            return &kTimers;
+        case HUD_EDITOR_ELEMENT_TIMERS_MOON_CRASH:
+            return &kMoon;
+        case HUD_EDITOR_ELEMENT_MINIGAME_COUNTER:
+            return &kMinigame;
+        case HUD_EDITOR_ELEMENT_RUPEE_COUNTER:
+            return &kRupees;
+        case HUD_EDITOR_ELEMENT_KEY_COUNTER:
+            return &kKeys;
+        case HUD_EDITOR_ELEMENT_SKULLTULA_COUNTER:
+            return &kSkulls;
+        default:
+            return nullptr; // HUD_EDITOR_ELEMENT_CLOCK: MM's own, untouched
     }
 }
 
@@ -126,8 +145,9 @@ int OotMarginX(const OotHudSpec* o, int side) {
     if (!OotInt(o, ".UseMargins", 0)) {
         return 0;
     }
-    return (side < 0) ? CVarGetInteger("gCosmetics.HUD.Margin.L", 0)
-                      : (side > 0) ? CVarGetInteger("gCosmetics.HUD.Margin.R", 0) : 0;
+    return (side < 0)   ? CVarGetInteger("gCosmetics.HUD.Margin.L", 0)
+           : (side > 0) ? CVarGetInteger("gCosmetics.HUD.Margin.R", 0)
+                        : 0;
 }
 
 int OotMarginY(const OotHudSpec* o) {
@@ -150,13 +170,18 @@ int EffMode() {
         return RawMode();
     }
     switch (OotPosType(o)) {
-        case OOT_ANCHOR_LEFT: return HUD_EDITOR_ELEMENT_MODE_MOVABLE_LEFT;
-        case OOT_ANCHOR_RIGHT: return HUD_EDITOR_ELEMENT_MODE_MOVABLE_RIGHT;
-        case OOT_ANCHOR_NONE: return HUD_EDITOR_ELEMENT_MODE_MOVABLE_43;
-        case OOT_HIDDEN: return HUD_EDITOR_ELEMENT_MODE_HIDDEN;
+        case OOT_ANCHOR_LEFT:
+            return HUD_EDITOR_ELEMENT_MODE_MOVABLE_LEFT;
+        case OOT_ANCHOR_RIGHT:
+            return HUD_EDITOR_ELEMENT_MODE_MOVABLE_RIGHT;
+        case OOT_ANCHOR_NONE:
+            return HUD_EDITOR_ELEMENT_MODE_MOVABLE_43;
+        case OOT_HIDDEN:
+            return HUD_EDITOR_ELEMENT_MODE_HIDDEN;
         default:
-            return (o->side < 0) ? HUD_EDITOR_ELEMENT_MODE_MOVABLE_LEFT
-                   : (o->side > 0) ? HUD_EDITOR_ELEMENT_MODE_MOVABLE_RIGHT : HUD_EDITOR_ELEMENT_MODE_MOVABLE_43;
+            return (o->side < 0)   ? HUD_EDITOR_ELEMENT_MODE_MOVABLE_LEFT
+                   : (o->side > 0) ? HUD_EDITOR_ELEMENT_MODE_MOVABLE_RIGHT
+                                   : HUD_EDITOR_ELEMENT_MODE_MOVABLE_43;
     }
 }
 
@@ -207,7 +232,6 @@ extern "C" int HudEditor_GetActiveElementMode() {
     return (hudEditorActiveElement == HUD_EDITOR_ELEMENT_NONE) ? HUD_EDITOR_ELEMENT_MODE_VANILLA : EffMode();
 }
 
-
 // Allows specifying an override mode to the next active element.
 // Must be called again with HUD_EDITOR_ELEMENT_MODE_NONE when done overriding.
 extern "C" void HudEditor_OverrideNextElementMode(HudEditorElementMode mode) {
@@ -249,16 +273,12 @@ extern "C" void HudEditor_ModifyRectPosValuesFromBase(s16 baseX, s16 baseY, s16*
 void HudEditor_ModifyRectPosValuesFloat(f32* rectLeft, f32* rectTop) {
     f32 offsetFromBaseX = *rectLeft - hudEditorElements[hudEditorActiveElement].defaultX;
     f32 offsetFromBaseY = *rectTop - hudEditorElements[hudEditorActiveElement].defaultY;
-    *rectLeft = EffX() +
-                (offsetFromBaseX * EffScale());
-    *rectTop = EffY() +
-               (offsetFromBaseY * EffScale());
+    *rectLeft = EffX() + (offsetFromBaseX * EffScale());
+    *rectTop = EffY() + (offsetFromBaseY * EffScale());
 
-    if (EffMode() ==
-        HUD_EDITOR_ELEMENT_MODE_MOVABLE_LEFT) {
+    if (EffMode() == HUD_EDITOR_ELEMENT_MODE_MOVABLE_LEFT) {
         *rectLeft = OTRGetRectDimensionFromLeftEdge(*rectLeft);
-    } else if (EffMode() ==
-               HUD_EDITOR_ELEMENT_MODE_MOVABLE_RIGHT) {
+    } else if (EffMode() == HUD_EDITOR_ELEMENT_MODE_MOVABLE_RIGHT) {
         *rectLeft = OTRGetRectDimensionFromRightEdge(*rectLeft);
     }
 }
@@ -356,10 +376,12 @@ enum Presets {
 
 void HudEditorWindow::DrawElement() {
     if (CVarGetInteger("gCombo.MmHud.OotStyle", 1)) {
-        // ComboShip: the OOT-style HUD takes its layout from OOT's HUD Placement settings instead (see the layer above).
-        ImGui::TextWrapped("The Ocarina of Time-style HUD is on (Settings tab): Termina's HUD follows Ocarina of Time's "
-                           "HUD Placement and colour settings, so the positions below apply only when it is off. "
-                           "The Three Day Clock still uses its settings here.");
+        // ComboShip: the OOT-style HUD takes its layout from OOT's HUD Placement settings instead (see the layer
+        // above).
+        ImGui::TextWrapped(
+            "The Ocarina of Time-style HUD is on (Settings tab): Termina's HUD follows Ocarina of Time's "
+            "HUD Placement and colour settings, so the positions below apply only when it is off. "
+            "The Three Day Clock still uses its settings here.");
         ImGui::Separator();
     }
     static HudEditor::Presets preset = HudEditor::Presets::VANILLA;

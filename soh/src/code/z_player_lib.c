@@ -532,8 +532,8 @@ void Player_SetBootData(PlayState* play, Player* this) {
             case COMBO_FORM_ZORA:
                 // MM: PLAYER_BOOTS_ZORA_UNDERWATER in water steps one row on (currentBoots++), onto the row labelled
                 // PLAYER_BOOTS_GORON (gravity -140, REG(38) 200) -- the same values as the port's Goron row.
-                row = ((this->currentBoots == PLAYER_BOOTS_IRON) && (this->stateFlags1 & PLAYER_STATE1_IN_WATER)) ? 1
-                                                                                                                   : 3;
+                row =
+                    ((this->currentBoots == PLAYER_BOOTS_IRON) && (this->stateFlags1 & PLAYER_STATE1_IN_WATER)) ? 1 : 3;
                 break;
             case COMBO_FORM_DEKU:
                 row = 4;
@@ -611,7 +611,7 @@ s32 Player_IsChildWithHylianShield(Player* this) {
 // swing, reach, giant-sword damage), but it is MM's sword: MM's model, no durability, the B sword stays sheathed.
 s32 gComboGfsInHand = false;
 s16 gComboBlastMaskTimer = 0; // ComboShip: MM's blastMaskTimer for the Blast Mask worn in Hyrule (z_player.c ticks it)
-#include "ComboGfsGrip.h" // adult grip for MM's GFS blade, shared with MM's adult-in-Termina draw
+#include "ComboGfsGrip.h"     // adult grip for MM's GFS blade, shared with MM's adult-in-Termina draw
 static Vec3f sComboGfsAdultGrip = { COMBO_GFS_ADULT_GRIP_X, COMBO_GFS_ADULT_GRIP_Y, COMBO_GFS_ADULT_GRIP_Z };
 #define kComboGfsAdultScale COMBO_GFS_ADULT_SCALE
 s32 Combo_GfsInHand(Player* this) {
@@ -811,10 +811,10 @@ void Player_UpdateBottleHeld(PlayState* play, Player* this, s32 item, s32 itemAc
 #ifdef COMBO_BUILD
     // ComboShip (MM items in Hyrule): an MM bottle on this button lives in MM's save; drinking / pouring / catching
     // changes MM's own slot (the button keeps its foreign id, which now names the new content).
-    if ((this->heldItemButton >= 0) &&
-        Combo_PauseIsForeign(gSaveContext.equips.buttonItems[this->heldItemButton]) &&
+    if ((this->heldItemButton >= 0) && Combo_PauseIsForeign(gSaveContext.equips.buttonItems[this->heldItemButton]) &&
         Combo_PauseSetForeignBottle(gSaveContext.equips.buttonItems[this->heldItemButton], item)) {
-        gSaveContext.buttonStatus[(this->heldItemButton >= 4) ? (this->heldItemButton + 1) : this->heldItemButton] = BTN_ENABLED;
+        gSaveContext.buttonStatus[(this->heldItemButton >= 4) ? (this->heldItemButton + 1) : this->heldItemButton] =
+            BTN_ENABLED;
     } else
 #endif
         Inventory_UpdateBottleItem(play, item, this->heldItemButton);
@@ -1251,8 +1251,7 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
     // treated the array as a Player and pausing as Zora crashed (owner 2026-11-14, Gerudo Valley / the hideout).
     extern s32 Player_OverrideLimbDrawPause(PlayState * play, s32 limbIndex, Gfx * *dList, Vec3f * pos, Vec3s * rot,
                                             void* arg);
-    const s32 comboForm =
-        (overrideLimbDraw != Player_OverrideLimbDrawPause) && Combo_OotFormDrawActive(data);
+    const s32 comboForm = (overrideLimbDraw != Player_OverrideLimbDrawPause) && Combo_OotFormDrawActive(data);
     if (comboForm) {
         POLY_OPA_DISP = (Gfx*)Combo_OotFormDrawPrep(POLY_OPA_DISP, eyeIndex, mouthIndex);
         skeleton = Combo_OotFormLimbs(&dListCount);
@@ -1389,7 +1388,7 @@ void func_8008F87C(PlayState* play, Player* this, SkelAnime* skelAnime, Vec3f* p
             // made the IK see his feet under the floor and lift them (owner 2026-11-15: "his feet float").
             // Indexed by ComboForm (human = OOT's own above).
             static Vec3f sFormShin[COMBO_FORM_MAX] = {
-                { 0.0f, 0.0f, 0.0f }, { 1156.0f, 0.0f, 0.0f }, { 1406.0f, 0.0f, 0.0f },
+                { 0.0f, 0.0f, 0.0f },   { 1156.0f, 0.0f, 0.0f }, { 1406.0f, 0.0f, 0.0f },
                 { 408.0f, 0.0f, 0.0f }, { 1304.0f, 0.0f, 0.0f },
             };
             static const f32 sFormFoot[COMBO_FORM_MAX] = { 0.0f, 1056.0f, 1506.0f, 359.0f, 1265.0f };
@@ -2073,7 +2072,7 @@ extern s32 gComboGoronPunchLimb; // z_player.c: the Goron fist (or butt) whose m
 // ready to throw, gone while that fin is in flight. The Zora's left jab / right combo jab hit from these fins (MM
 // D_801C0A00 over D_801C09DC, under the fin's scale), not from the fists.
 s32 gComboZoraFinBlure[2] = { TOTAL_EFFECT_COUNT, TOTAL_EFFECT_COUNT }; // z_player.c Player_Init / Player_Destroy
-s16 Combo_ZoraRollVel(void);                                             // z_player.c: MM unk_B8A
+s16 Combo_ZoraRollVel(void);                                            // z_player.c: MM unk_B8A
 
 // MM func_80124618: a keyframed scale (frame, percent xyz) at curFrame.
 typedef struct {
@@ -2108,10 +2107,12 @@ static s32 Combo_AnimIs(Player* this, const char* mmAnim) {
 static void Combo_ZoraSwimFin(PlayState* play, Player* this, s32 side) {
     static const char* const sSwimFinDL[2] = { "objects/object_link_zora/object_link_zora_DL_010868",
                                                "objects/object_link_zora/object_link_zora_DL_010978" };
-    static Vec3f sTip[2] = { { 5400.0f, 1700.0f, 1800.0f }, { 5400.0f, 1700.0f, -1800.0f } };   // MM D_801C0AC4
-    static Vec3f sBase[2] = { { 5250.0f, 570.0f, 2400.0f }, { 5250.0f, 570.0f, -2400.0f } };    // MM D_801C0ADC
-    static ComboScaleKey sRollIn[] = { { 0, { 0, 0, 0 } }, { 17, { 50, 50, 50 } } };             // MM D_801C05C8
-    static ComboScaleKey sToWait[] = { { 0, { 100, 100, 100 } }, { 5, { 100, 100, 100 } }, { 9, { 0, 0, 0 } } }; // D_801C05F0
+    static Vec3f sTip[2] = { { 5400.0f, 1700.0f, 1800.0f }, { 5400.0f, 1700.0f, -1800.0f } }; // MM D_801C0AC4
+    static Vec3f sBase[2] = { { 5250.0f, 570.0f, 2400.0f }, { 5250.0f, 570.0f, -2400.0f } };  // MM D_801C0ADC
+    static ComboScaleKey sRollIn[] = { { 0, { 0, 0, 0 } }, { 17, { 50, 50, 50 } } };          // MM D_801C05C8
+    static ComboScaleKey sToWait[] = { { 0, { 100, 100, 100 } },
+                                       { 5, { 100, 100, 100 } },
+                                       { 9, { 0, 0, 0 } } }; // D_801C05F0
     static WeaponInfo sInfo[2];
     Vec3f scale;
     Vec3f tip;
@@ -2156,17 +2157,22 @@ static void Combo_ZoraSwimFin(PlayState* play, Player* this, s32 side) {
 // instrument grows in over the start animation by MM's keyframes, then holds). Owner 2026-11-14: "get the instruments
 // visible ... for all transformations in OOT".
 static void Combo_FormInstrumentDraw(PlayState* play, Player* this, s32 limbIndex) {
-    static ComboScaleKey sGoronStart[] = { { 0, { 0, 0, 0 } },      { 6, { 0, 0, 0 } },        { 7, { 60, 60, 50 } },
+    static ComboScaleKey sGoronStart[] = { { 0, { 0, 0, 0 } },       { 6, { 0, 0, 0 } },      { 7, { 60, 60, 50 } },
                                            { 8, { 120, 130, 100 } }, { 9, { 100, 120, 80 } }, { 11, { 100, 100, 100 } },
-                                           { 13, { 100, 100, 100 } } };                                    // D_801C0428
-    static ComboScaleKey sDekuBase[] = { { 0, { 0, 0, 0 } },       { 5, { 0, 0, 0 } },        { 7, { 100, 100, 100 } },
-                                         { 9, { 110, 110, 110 } }, { 11, { 100, 100, 100 } } };           // D_801C0340
-    static ComboScaleKey sDekuPipes[] = { { 0, { 0, 0, 0 } },      { 4, { 0, 0, 0 } },      { 6, { 120, 150, 60 } },
-                                          { 8, { 130, 80, 160 } }, { 9, { 100, 100, 100 } }, { 10, { 90, 100, 90 } },
-                                          { 11, { 100, 100, 100 } } };                                    // D_801C0368
+                                           { 13, { 100, 100, 100 } } }; // D_801C0428
+    static ComboScaleKey sDekuBase[] = { { 0, { 0, 0, 0 } },
+                                         { 5, { 0, 0, 0 } },
+                                         { 7, { 100, 100, 100 } },
+                                         { 9, { 110, 110, 110 } },
+                                         { 11, { 100, 100, 100 } } }; // D_801C0340
+    static ComboScaleKey sDekuPipes[] = { { 0, { 0, 0, 0 } },       { 4, { 0, 0, 0 } },       { 6, { 120, 150, 60 } },
+                                          { 8, { 130, 80, 160 } },  { 9, { 100, 100, 100 } }, { 10, { 90, 100, 90 } },
+                                          { 11, { 100, 100, 100 } } }; // D_801C0368
     static const char* const sDrums[] = {
-        "objects/object_link_goron/object_link_goron_DL_010590", "objects/object_link_goron/object_link_goron_DL_010368",
-        "objects/object_link_goron/object_link_goron_DL_010140", "objects/object_link_goron/object_link_goron_DL_00FF18",
+        "objects/object_link_goron/object_link_goron_DL_010590",
+        "objects/object_link_goron/object_link_goron_DL_010368",
+        "objects/object_link_goron/object_link_goron_DL_010140",
+        "objects/object_link_goron/object_link_goron_DL_00FF18",
         "objects/object_link_goron/object_link_goron_DL_00FCF0",
     };
     static const char* const sPipes[] = {
@@ -2186,8 +2192,11 @@ static void Combo_FormInstrumentDraw(PlayState* play, Player* this, s32 limbInde
     extern f32 gComboDrumTimer[5];
     extern f32 gComboPipeScale[5];
     extern Vec3f gComboDrumAll;
-    static ComboScaleKey sDrumHit[] = { { 0, { 100, 100, 100 } }, { 4, { 100, 100, 100 } }, { 5, { 90, 110, 100 } },
-                                        { 6, { 110, 105, 100 } }, { 8, { 100, 100, 100 } } }; // D_801C0510
+    static ComboScaleKey sDrumHit[] = { { 0, { 100, 100, 100 } },
+                                        { 4, { 100, 100, 100 } },
+                                        { 5, { 90, 110, 100 } },
+                                        { 6, { 110, 105, 100 } },
+                                        { 8, { 100, 100, 100 } } }; // D_801C0510
     if ((Combo_OotForm() == COMBO_FORM_GORON) && (limbIndex == PLAYER_LIMB_TORSO)) {
         const s32 start = Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_gakkistart");
         const s32 wait = Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pg_gakkiwait");
@@ -2257,7 +2266,6 @@ static void Combo_FormInstrumentDraw(PlayState* play, Player* this, s32 limbInde
     }
 }
 
-
 // MM func_8012669C for the forms: entry [0] is the swing's trail line (MM's white melee blur, which the Goron doesn't
 // draw) and the line the wall tests follow; [1] and [2] are the hit quads, armed only once the swing is live
 // (meleeWeaponState >= 1, not during the windup). Matrix = the limb (or the scaled fin) the move hits from.
@@ -2314,17 +2322,21 @@ static void Combo_ZoraArmFin(PlayState* play, Player* this, s32 side) {
     }
     // MM func_80126BD0: the arm fins grow, shrink and pop by the animation's own keyframes.
     if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_gakkistart")) {
-        static ComboScaleKey sKeys[] = { { 0, { 100, 100, 100 } }, { 9, { 100, 100, 100 } }, { 10, { 150, 150, 150 } },
-                                         { 12, { 0, 0, 0 } },      { 14, { 0, 0, 0 } } }; // D_801C0580
+        static ComboScaleKey sKeys[] = { { 0, { 100, 100, 100 } },
+                                         { 9, { 100, 100, 100 } },
+                                         { 10, { 150, 150, 150 } },
+                                         { 12, { 0, 0, 0 } },
+                                         { 14, { 0, 0, 0 } } }; // D_801C0580
         Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale);
     } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_waterroll")) {
-        static ComboScaleKey sKeys[] = { { 0, { 100, 100, 100 } },
-                                         { 6, { 100, 100, 100 } },
-                                         { 7, { 0, 0, 0 } },
-                                         { 17, { 0, 0, 0 } } }; // D_801C05A8
+        static ComboScaleKey sKeys[] = {
+            { 0, { 100, 100, 100 } }, { 6, { 100, 100, 100 } }, { 7, { 0, 0, 0 } }, { 17, { 0, 0, 0 } }
+        }; // D_801C05A8
         Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale);
     } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_swimtowait")) {
-        static ComboScaleKey sKeys[] = { { 0, { 0, 0, 0 } }, { 5, { 0, 0, 0 } }, { 9, { 100, 100, 100 } } }; // D_801C05D8
+        static ComboScaleKey sKeys[] = { { 0, { 0, 0, 0 } },
+                                         { 5, { 0, 0, 0 } },
+                                         { 9, { 100, 100, 100 } } }; // D_801C05D8
         Combo_KeyframeScale(sKeys, this->skelAnime.curFrame, &scale);
     } else if (Combo_AnimIs(this, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_bladeon")) {
         static ComboScaleKey sKeys[] = { { 0, { 40, 60, 70 } },    { 3, { 40, 60, 70 } },    { 4, { 75, 90, 85 } },
@@ -2620,7 +2632,8 @@ static void Combo_DrawMmGreatFairyHair(PlayState* play, Player* player) {
 // head-limb space, D_801F59B0 / D_801F59C8 state). OOT's Effect_Ss_Dt_Bubble lacks MM's colour profile 3, so the
 // bubble is spawned with that profile's colours (prim 255,255,255,255 / env 150,150,150,0) as a custom colour.
 static void Combo_DrawMmCircusLeaderTears(PlayState* play, Player* player) {
-    static Vec3f sTearOffsets[2] = { // MM D_801C0B90
+    static Vec3f sTearOffsets[2] = {
+        // MM D_801C0B90
         { 950.0f, -800.0f, 300.0f },
         { 950.0f, -800.0f, -300.0f },
     };
@@ -3015,8 +3028,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
 #endif
 #ifdef COMBO_BUILD
         if ((limbIndex == PLAYER_LIMB_HAT) && (Combo_OotForm() == COMBO_FORM_DEKU)) {
-            // ComboShip: MM's white trail off the tip of Deku Link's hat while he spins (MM Player_PostLimbDrawGameplay,
-            // PLAYER_LIMB_HAT with PLAYER_STATE3_100000: hat-space x 3000 -> 2300 into the melee weapon trail).
+            // ComboShip: MM's white trail off the tip of Deku Link's hat while he spins (MM
+            // Player_PostLimbDrawGameplay, PLAYER_LIMB_HAT with PLAYER_STATE3_100000: hat-space x 3000 -> 2300 into the
+            // melee weapon trail).
             extern s32 Combo_DekuSpinCameraYaw(s16 * outYaw);
             static s32 sComboHatTrail = false;
             s16 spinYaw;

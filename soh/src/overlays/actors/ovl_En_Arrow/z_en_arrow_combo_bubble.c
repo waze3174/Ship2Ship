@@ -325,8 +325,7 @@ static void Bubble_CheckWater(EnArrow* this, PlayState* play) {
     Vec3f sp44;
     f32 temp_f0;
 
-    if (WaterBox_GetSurface1(play, &play->colCtx, this->actor.world.pos.x, this->actor.world.pos.z, &sp50,
-                             &waterBox) &&
+    if (WaterBox_GetSurface1(play, &play->colCtx, this->actor.world.pos.x, this->actor.world.pos.z, &sp50, &waterBox) &&
         (this->actor.world.pos.y < sp50) && !(this->actor.bgCheckFlags & BGCHECKFLAG_WATER)) {
         this->actor.bgCheckFlags |= BGCHECKFLAG_WATER;
 
@@ -367,8 +366,7 @@ static s32 EnArrow_ComboBubble_Fly(EnArrow* this, PlayState* play) {
     if ((DECR(this->timer) == 0) || (this->touchedPoly != 0) ||
         (phi_a2 = (this->collider.base.atFlags & AT_HIT) != 0)) {
         if (phi_a2 && (this->collider.info.atHitInfo != NULL) &&
-            (this->collider.info.atHitInfo->elemType != ELEMTYPE_UNK4) &&
-            (this->collider.base.atFlags & AT_BOUNCED)) {
+            (this->collider.info.atHitInfo->elemType != ELEMTYPE_UNK4) && (this->collider.base.atFlags & AT_BOUNCED)) {
             if ((this->collider.base.at != NULL) && (this->collider.base.at->id != ACTOR_OBJ_SYOKUDAI)) {
                 // A reflective hit (a shield, metal): the bubble bounces off instead of popping.
                 Math_Vec3f_Copy(&this->actor.world.pos, &this->actor.prevPos);
@@ -443,8 +441,7 @@ static s32 EnArrow_ComboBubble_Fly(EnArrow* this, PlayState* play) {
     }
 
     if ((this->touchedPoly = BgCheck_ProjectileLineTest(&play->colCtx, &this->actor.prevPos, &this->actor.world.pos,
-                                                        &sp9C, &this->actor.wallPoly, true, true, true, true,
-                                                        &bgId))) {
+                                                        &sp9C, &this->actor.wallPoly, true, true, true, true, &bgId))) {
         Math_Vec3f_Copy(&this->actor.world.pos, &sp9C);
         this->actor.wallBgId = bgId;
     }
@@ -584,14 +581,17 @@ void EnArrow_ComboBubbleDraw(EnArrow* this, PlayState* play) {
 
             gSPDisplayList(POLY_XLU_DISP++, MM_DL("gameplay_keep_DL_06F380"));
             gDPSetRenderMode(POLY_XLU_DISP++, G_RM_FOG_SHADE_A, G_RM_AA_ZB_XLU_SURF2);
-            gDPSetCombineLERP(POLY_XLU_DISP++, TEXEL1, 0, PRIM_LOD_FRAC, TEXEL0, TEXEL1, TEXEL0, PRIM_LOD_FRAC,
-                              TEXEL0, COMBINED, 0, ENVIRONMENT, 0, COMBINED, 0, ENVIRONMENT, 0);
+            gDPSetCombineLERP(POLY_XLU_DISP++, TEXEL1, 0, PRIM_LOD_FRAC, TEXEL0, TEXEL1, TEXEL0, PRIM_LOD_FRAC, TEXEL0,
+                              COMBINED, 0, ENVIRONMENT, 0, COMBINED, 0, ENVIRONMENT, 0);
             gDPSetEnvColor(POLY_XLU_DISP++, 230, 225, 150, spA4);
 
             Matrix_ReplaceRotation(&gMtxFClear); // MM gIdentityMtxF
 
             gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
-            gSPMatrix(POLY_XLU_DISP++, (0x01000000 | 1), G_MTX_NOPUSH | G_MTX_MUL | G_MTX_MODELVIEW); // billboard, seg 1 (2S2H D_01000000_TO_SEGMENTED: low bit = segmented for LUS)
+            gSPMatrix(
+                POLY_XLU_DISP++, (0x01000000 | 1),
+                G_MTX_NOPUSH | G_MTX_MUL |
+                    G_MTX_MODELVIEW); // billboard, seg 1 (2S2H D_01000000_TO_SEGMENTED: low bit = segmented for LUS)
             gSPDisplayList(POLY_XLU_DISP++, MM_DL("gameplay_keep_DL_06F9F0"));
         } else {
             func_8002EBCC(&this->actor, play, 0); // MM func_800B8050 (opa hilite)
@@ -603,8 +603,8 @@ void EnArrow_ComboBubbleDraw(EnArrow* this, PlayState* play) {
                                   (uintptr_t)(play->state.gfxCtx->curFrameBuffer) + ((104 * 320 + 144) * 2));
 
             gSPDisplayList(POLY_OPA_DISP++, MM_DL("gameplay_keep_DL_06F380"));
-            gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL1, 0, PRIM_LOD_FRAC, TEXEL0, TEXEL1, TEXEL0, PRIM_LOD_FRAC,
-                              TEXEL0, COMBINED, 0, PRIMITIVE, 0, 0, 0, 0, COMBINED);
+            gDPSetCombineLERP(POLY_OPA_DISP++, TEXEL1, 0, PRIM_LOD_FRAC, TEXEL0, TEXEL1, TEXEL0, PRIM_LOD_FRAC, TEXEL0,
+                              COMBINED, 0, PRIMITIVE, 0, 0, 0, 0, COMBINED);
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0x7F, 230, 225, 150, 255);
             gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
             gSPDisplayList(POLY_OPA_DISP++, MM_DL("gameplay_keep_DL_06FAE0"));

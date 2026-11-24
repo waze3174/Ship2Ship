@@ -331,9 +331,9 @@ void EnCrow_DiveAttack(EnCrow* this, PlayState* play) {
         // ComboShip: MM's Stone Mask (MM En_Crow z_en_crow.c:275) — abandon the dive
         COMBO_MM_STONE_MASK() ||
 #endif
-        (this->collider.base.atFlags & AT_HIT) ||
-        (this->actor.bgCheckFlags & 9) || (player->stateFlags1 & PLAYER_STATE1_ON_HORSE) ||
-        (this->actor.yDistToWater > -40.0f) || GameInteractor_Should(VB_GUAY_FORCE_FLY_AWAY, false, this)) {
+        (this->collider.base.atFlags & AT_HIT) || (this->actor.bgCheckFlags & 9) ||
+        (player->stateFlags1 & PLAYER_STATE1_ON_HORSE) || (this->actor.yDistToWater > -40.0f) ||
+        GameInteractor_Should(VB_GUAY_FORCE_FLY_AWAY, false, this)) {
         if (this->collider.base.atFlags & AT_HIT) {
             this->collider.base.atFlags &= ~AT_HIT;
             Audio_PlayActorSound2(&this->actor, NA_SE_EN_KAICHO_ATTACK);

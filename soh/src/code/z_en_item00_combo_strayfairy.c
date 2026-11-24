@@ -180,8 +180,7 @@ static void ComboElforg_MoveToTarget(ComboStrayFairy* this, EnItem00* item, Vec3
 
     item->actor.shape.yOffset += 100.0f * Math_SinS(this->timer * 0x200);
     ComboElforg_ApproachTargetYPosition(item, targetPos);
-    targetAngle =
-        Math_Atan2S(-(item->actor.world.pos.z - targetPos->z), -(item->actor.world.pos.x - targetPos->x));
+    targetAngle = Math_Atan2S(-(item->actor.world.pos.z - targetPos->z), -(item->actor.world.pos.x - targetPos->x));
 
     if (this->targetSpeedXZ > 2.0f) {
         Math_SmoothStepToS(&item->actor.world.rot.y, targetAngle, 2, 0x400, 0x100);
@@ -345,8 +344,7 @@ static void EnItem00_ComboStrayFairy_Draw(Actor* thisx, PlayState* play) {
     if (this == NULL) {
         return;
     }
-    hiddenLimb =
-        (this->direction < 0) ? MM_STRAY_FAIRY_LIMB_LEFT_FACING_HEAD : MM_STRAY_FAIRY_LIMB_RIGHT_FACING_HEAD;
+    hiddenLimb = (this->direction < 0) ? MM_STRAY_FAIRY_LIMB_LEFT_FACING_HEAD : MM_STRAY_FAIRY_LIMB_RIGHT_FACING_HEAD;
     if (!Randomizer_DrawComboStrayFairy(play, this->rc, &this->skelAnime, hiddenLimb) && DBG) {
         Combo_DebugLog("[ComboShip] stray fairy rc=%d: MM model unavailable this frame\n", this->rc);
     }

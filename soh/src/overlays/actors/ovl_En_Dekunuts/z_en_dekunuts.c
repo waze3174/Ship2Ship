@@ -270,7 +270,7 @@ void EnDekunuts_Wait(EnDekunuts* this, PlayState* play) {
             EnDekunuts_SetupLookAround(this);
         } else
 #endif
-        if (this->actor.xzDistToPlayer < 120.0f) {
+            if (this->actor.xzDistToPlayer < 120.0f) {
             EnDekunuts_SetupBurrow(this);
         } else if ((this->animFlagAndTimer == 0) && (this->actor.xzDistToPlayer > 320.0f)) {
             EnDekunuts_SetupLookAround(this);
@@ -310,7 +310,8 @@ void EnDekunuts_Stand(EnDekunuts* this, PlayState* play) {
         Math_ApproachS(&this->actor.shape.rot.y, this->actor.yawTowardsPlayer, 2, 0xE38);
     }
     if (this->animFlagAndTimer == 0x1000) {
-        if ((this->actor.xzDistToPlayer > 480.0f) || (this->actor.xzDistToPlayer < 120.0f)
+        if ((this->actor.xzDistToPlayer > 480.0f) ||
+            (this->actor.xzDistToPlayer < 120.0f)
 #ifdef COMBO_BUILD
             // ComboShip: MM's Stone Mask (MM En_Dekunuts z_en_dekunuts.c:267) — burrow instead of spitting again
             || COMBO_MM_STONE_MASK()

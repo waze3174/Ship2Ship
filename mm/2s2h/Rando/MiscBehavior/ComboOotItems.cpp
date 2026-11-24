@@ -188,8 +188,7 @@ extern "C" const void* Combo_MmOotHeldDL(Player* player, int limbIndex) {
     switch (player->heldItemAction) {
         case PLAYER_IA_COMBO_OOT_BOOMERANG:
             // OOT Player_OverrideLimbDrawGameplayDefault: the open hand while the boomerang is out.
-            if ((limbIndex == PLAYER_LIMB_LEFT_HAND) &&
-                !(player->stateFlags1 & PLAYER_STATE1_ZORA_BOOMERANG_THROWN)) {
+            if ((limbIndex == PLAYER_LIMB_LEFT_HAND) && !(player->stateFlags1 & PLAYER_STATE1_ZORA_BOOMERANG_THROWN)) {
                 return RoutedChild("gLinkChildLeftFistAndBoomerangNearDL");
             }
             break;

@@ -432,7 +432,9 @@ static void ComboApplyPendingMask() {
             mask = MmMaskForItem(item);
         }
     } else if ((token >= 0) && !Combo_MmOotWearMask(token)) {
-        static const int sTwins[][2] = { { 0x24, ITEM_MASK_KEATON }, { 0x27, ITEM_MASK_BUNNY }, { 0x2B, ITEM_MASK_TRUTH } };
+        static const int sTwins[][2] = { { 0x24, ITEM_MASK_KEATON },
+                                         { 0x27, ITEM_MASK_BUNNY },
+                                         { 0x2B, ITEM_MASK_TRUTH } };
         for (const auto& t : sTwins) {
             if ((t[0] == token) && (INV_CONTENT(t[1]) == t[1])) {
                 mask = MmMaskForItem(t[1]);
@@ -451,8 +453,8 @@ extern "C" COMBO_EXPORT void MM_SetComboLinkState(int adult, int tunic) {
     sTunic = tunic;
 }
 
-// ComboShip: adult Link in Termina holding MM's Great Fairy's Sword: MM's own blade in OOT's adult closed fist (the hand
-// limb's matrix is current; called from Player_PostLimbDrawGameplay's left-hand branch).
+// ComboShip: adult Link in Termina holding MM's Great Fairy's Sword: MM's own blade in OOT's adult closed fist (the
+// hand limb's matrix is current; called from Player_PostLimbDrawGameplay's left-hand branch).
 extern "C" void Combo_MM_AdultDrawHeld(PlayState* play) {
     if (!sAdultGfsPending) {
         return;

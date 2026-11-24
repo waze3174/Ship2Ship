@@ -33,8 +33,8 @@ void ComboFrameCtrl_Init(ComboFrameControl* frameCtrl) {
 /**
  * @note Original name: cKF_FrameControl_setFrame
  */
-void ComboFrameCtrl_SetProperties(ComboFrameControl* frameCtrl, f32 startTime, f32 endTime, f32 frameCount, f32 t, f32 speed,
-                             s32 animMode) {
+void ComboFrameCtrl_SetProperties(ComboFrameControl* frameCtrl, f32 startTime, f32 endTime, f32 frameCount, f32 t,
+                                  f32 speed, s32 animMode) {
     frameCtrl->start = startTime;
     frameCtrl->end = (endTime < 1.0f) ? frameCount : endTime;
     frameCtrl->frameCount = frameCount;
@@ -171,8 +171,9 @@ void ComboKeyframe_ResetFlex(ComboKFSkelAnimeFlex* kfSkelAnime) {
  *
  * @note Original name unknown
  */
-void ComboKeyframe_InitFlex(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlexSkeleton* skeleton, ComboKeyFrameAnimation* animation,
-                       Vec3s* jointTable, Vec3s* morphTable, ComboKeyframeTransformCallback* transformCallbacks) {
+void ComboKeyframe_InitFlex(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlexSkeleton* skeleton,
+                            ComboKeyFrameAnimation* animation, Vec3s* jointTable, Vec3s* morphTable,
+                            ComboKeyframeTransformCallback* transformCallbacks) {
     // (2ship's by-name loading dropped: the caller passes data MM's resource manager already loaded.)
 
     ComboKeyframe_ResetFlex(kfSkelAnime);
@@ -192,8 +193,9 @@ void ComboKeyframe_InitFlex(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlex
 void ComboKeyframe_DestroyFlex(ComboKFSkelAnimeFlex* kfSkelAnime) {
 }
 
-void ComboKeyframe_FlexChangeAnim(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlexSkeleton* skeleton, ComboKeyFrameAnimation* animation,
-                             f32 startTime, f32 endTime, f32 t, f32 speed, f32 morphFrames, s32 animMode);
+void ComboKeyframe_FlexChangeAnim(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlexSkeleton* skeleton,
+                                  ComboKeyFrameAnimation* animation, f32 startTime, f32 endTime, f32 t, f32 speed,
+                                  f32 morphFrames, s32 animMode);
 
 /**
  * Immediately changes to an animation that plays once from start to end at the default speed.
@@ -204,8 +206,8 @@ void ComboKeyframe_FlexChangeAnim(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFra
  */
 void ComboKeyframe_FlexPlayOnce(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation) {
     ComboKeyframe_FlexChangeAnim(kfSkelAnime, kfSkelAnime->skeleton, animation, 1.0f,
-                            ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f, 0.0f,
-                            KEYFRAME_ANIM_ONCE);
+                                 ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f,
+                                 0.0f, KEYFRAME_ANIM_ONCE);
 }
 
 /**
@@ -216,10 +218,11 @@ void ComboKeyframe_FlexPlayOnce(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrame
  *
  * @note Original name unknown
  */
-void ComboKeyframe_FlexPlayOnceSetSpeed(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation, f32 speed) {
+void ComboKeyframe_FlexPlayOnceSetSpeed(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation,
+                                        f32 speed) {
     ComboKeyframe_FlexChangeAnim(kfSkelAnime, kfSkelAnime->skeleton, animation, 1.0f,
-                            ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, speed, 0.0f,
-                            KEYFRAME_ANIM_ONCE);
+                                 ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, speed,
+                                 0.0f, KEYFRAME_ANIM_ONCE);
 }
 
 /**
@@ -234,10 +237,11 @@ void ComboKeyframe_FlexPlayOnceSetSpeed(ComboKFSkelAnimeFlex* kfSkelAnime, Combo
  *
  * @note Original name unknown
  */
-void ComboKeyframe_FlexMorphToPlayOnce(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation, f32 morphFrames) {
+void ComboKeyframe_FlexMorphToPlayOnce(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation,
+                                       f32 morphFrames) {
     ComboKeyframe_FlexChangeAnim(kfSkelAnime, kfSkelAnime->skeleton, animation, 1.0f,
-                            ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f,
-                            morphFrames, KEYFRAME_ANIM_ONCE);
+                                 ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f,
+                                 morphFrames, KEYFRAME_ANIM_ONCE);
 }
 
 /**
@@ -249,8 +253,8 @@ void ComboKeyframe_FlexMorphToPlayOnce(ComboKFSkelAnimeFlex* kfSkelAnime, ComboK
  */
 void ComboKeyframe_FlexPlayLoop(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation) {
     ComboKeyframe_FlexChangeAnim(kfSkelAnime, kfSkelAnime->skeleton, animation, 1.0f,
-                            ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f, 0.0f,
-                            KEYFRAME_ANIM_LOOP);
+                                 ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f,
+                                 0.0f, KEYFRAME_ANIM_LOOP);
 }
 
 /**
@@ -261,10 +265,11 @@ void ComboKeyframe_FlexPlayLoop(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrame
  *
  * @note Original name unknown
  */
-void ComboKeyframe_FlexPlayLoopSetSpeed(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation, f32 speed) {
+void ComboKeyframe_FlexPlayLoopSetSpeed(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation,
+                                        f32 speed) {
     ComboKeyframe_FlexChangeAnim(kfSkelAnime, kfSkelAnime->skeleton, animation, 1.0f,
-                            ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, speed, 0.0f,
-                            KEYFRAME_ANIM_LOOP);
+                                 ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, speed,
+                                 0.0f, KEYFRAME_ANIM_LOOP);
 }
 
 /**
@@ -279,10 +284,11 @@ void ComboKeyframe_FlexPlayLoopSetSpeed(ComboKFSkelAnimeFlex* kfSkelAnime, Combo
  *
  * @note Original name unknown
  */
-void ComboKeyframe_FlexMorphToPlayLoop(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation, f32 morphFrames) {
+void ComboKeyframe_FlexMorphToPlayLoop(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameAnimation* animation,
+                                       f32 morphFrames) {
     ComboKeyframe_FlexChangeAnim(kfSkelAnime, kfSkelAnime->skeleton, animation, 1.0f,
-                            ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f,
-                            morphFrames, KEYFRAME_ANIM_LOOP);
+                                 ((ComboKeyFrameAnimation*)Lib_SegmentedToVirtual(animation))->frameCount, 1.0f, 1.0f,
+                                 morphFrames, KEYFRAME_ANIM_LOOP);
 }
 
 /**
@@ -307,8 +313,9 @@ void ComboKeyframe_FlexMorphToPlayLoop(ComboKFSkelAnimeFlex* kfSkelAnime, ComboK
  *
  * @note Original name unknown
  */
-void ComboKeyframe_FlexChangeAnim(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlexSkeleton* skeleton, ComboKeyFrameAnimation* animation,
-                             f32 startTime, f32 endTime, f32 t, f32 speed, f32 morphFrames, s32 animMode) {
+void ComboKeyframe_FlexChangeAnim(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFrameFlexSkeleton* skeleton,
+                                  ComboKeyFrameAnimation* animation, f32 startTime, f32 endTime, f32 t, f32 speed,
+                                  f32 morphFrames, s32 animMode) {
     // (2ship's by-name loading dropped: the caller passes data MM's resource manager already loaded.)
 
     kfSkelAnime->morphFrames = morphFrames;
@@ -318,8 +325,8 @@ void ComboKeyframe_FlexChangeAnim(ComboKFSkelAnimeFlex* kfSkelAnime, ComboKeyFra
     }
     kfSkelAnime->animation = Lib_SegmentedToVirtual(animation);
 
-    ComboFrameCtrl_SetProperties(&kfSkelAnime->frameCtrl, startTime, endTime, kfSkelAnime->animation->frameCount, t, speed,
-                            animMode);
+    ComboFrameCtrl_SetProperties(&kfSkelAnime->frameCtrl, startTime, endTime, kfSkelAnime->animation->frameCount, t,
+                                 speed, animMode);
 }
 
 /**
@@ -390,9 +397,9 @@ s16 ComboKeyframe_KeyCalc(s16 kfStart, s16 kfNum, ComboKeyFrame* keyFrames, f32 
 
             if (!IS_ZERO(delta)) {
                 // Between two keyframes, interpolate a value and round to nearest integer
-                return nearbyint(ComboKeyframe_Interpolate((t - keyFramesOffset[kf1].frame) / delta, delta * (1.0f / 30),
-                                                      keyFramesOffset[kf1].value, keyFramesOffset[kf2].value,
-                                                      keyFramesOffset[kf1].velocity, keyFramesOffset[kf2].velocity));
+                return nearbyint(ComboKeyframe_Interpolate(
+                    (t - keyFramesOffset[kf1].frame) / delta, delta * (1.0f / 30), keyFramesOffset[kf1].value,
+                    keyFramesOffset[kf2].value, keyFramesOffset[kf1].velocity, keyFramesOffset[kf2].velocity));
             } else {
                 // Close enough to a keyframe, take the specified value with no interpolation
                 return keyFramesOffset[kf1].value;
@@ -582,7 +589,8 @@ s32 ComboKeyframe_UpdateFlex(ComboKFSkelAnimeFlex* kfSkelAnime) {
             for (j = 0; j < 3; j++) {
                 if (bitFlags[limbIndex] & bit) {
                     // If the bit is set, interpolate with keyframes
-                    *outputValues = ComboKeyframe_KeyCalc(kfStart, kfNums[kfn], keyFrames, kfSkelAnime->frameCtrl.curTime);
+                    *outputValues =
+                        ComboKeyframe_KeyCalc(kfStart, kfNums[kfn], keyFrames, kfSkelAnime->frameCtrl.curTime);
                     kfStart += kfNums[kfn];
                     kfn++;
                 } else {
@@ -624,8 +632,8 @@ s32 ComboKeyframe_UpdateFlex(ComboKFSkelAnimeFlex* kfSkelAnime) {
 }
 
 /**
- * Draws the limb specified by `limbIndex` of type `ComboKeyFrameFlexLimb` belonging to a flex-type keyframe skeleton to the
- * display buffer specified by the limb's drawFlags.
+ * Draws the limb specified by `limbIndex` of type `ComboKeyFrameFlexLimb` belonging to a flex-type keyframe skeleton to
+ * the display buffer specified by the limb's drawFlags.
  *
  * @param limbIndex Pointer to the index of the limb to draw
  * @param overrideKeyframeDraw Callback for before submitting the limb to be drawn. The matrix state will not include
@@ -638,8 +646,8 @@ s32 ComboKeyframe_UpdateFlex(ComboKFSkelAnimeFlex* kfSkelAnime) {
  * @note Original name unknown
  */
 void ComboKeyframe_DrawFlexLimb(PlayState* play, ComboKFSkelAnimeFlex* kfSkelAnime, s32* limbIndex,
-                           ComboOverrideKeyframeDrawScaled overrideKeyframeDraw, ComboPostKeyframeDrawScaled postKeyframeDraw,
-                           void* arg, Mtx** mtxStack) {
+                                ComboOverrideKeyframeDrawScaled overrideKeyframeDraw,
+                                ComboPostKeyframeDrawScaled postKeyframeDraw, void* arg, Mtx** mtxStack) {
     ComboKeyFrameFlexLimb* limb = Lib_SegmentedToVirtual(kfSkelAnime->skeleton->limbs);
     s32 i;
     Gfx* newDList;
@@ -738,8 +746,8 @@ void ComboKeyframe_DrawFlexLimb(PlayState* play, ComboKFSkelAnimeFlex* kfSkelAni
  * @note Original name unknown
  */
 void ComboKeyframe_DrawFlex(PlayState* play, ComboKFSkelAnimeFlex* kfSkelAnime, Mtx* mtxStack,
-                       ComboOverrideKeyframeDrawScaled overrideKeyframeDraw, ComboPostKeyframeDrawScaled postKeyframeDraw,
-                       void* arg) {
+                            ComboOverrideKeyframeDrawScaled overrideKeyframeDraw,
+                            ComboPostKeyframeDrawScaled postKeyframeDraw, void* arg) {
     s32 limbIndex;
 
     if (mtxStack == NULL) {

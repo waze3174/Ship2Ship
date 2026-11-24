@@ -67,9 +67,9 @@ static InitChainEntry sInitChain[] = {
     ICHAIN_VEC3S(world.rot, 0, ICHAIN_CONTINUE),
     ICHAIN_F32_DIV1000(gravity, -900, ICHAIN_CONTINUE),
     ICHAIN_F32_DIV1000(minVelocityY, -4000, ICHAIN_CONTINUE), // MM terminalVelocity
-    ICHAIN_F32(uncullZoneForward, 4000, ICHAIN_CONTINUE),  // MM cullingVolumeDistance
-    ICHAIN_F32(uncullZoneScale, 300, ICHAIN_CONTINUE),     // MM cullingVolumeScale
-    ICHAIN_F32(uncullZoneDownward, 300, ICHAIN_STOP),      // MM cullingVolumeDownward
+    ICHAIN_F32(uncullZoneForward, 4000, ICHAIN_CONTINUE),     // MM cullingVolumeDistance
+    ICHAIN_F32(uncullZoneScale, 300, ICHAIN_CONTINUE),        // MM cullingVolumeScale
+    ICHAIN_F32(uncullZoneDownward, 300, ICHAIN_STOP),         // MM cullingVolumeDownward
 };
 
 static Vec3f D_80ACC308 = { 1.0f / 1000.0f, 7.0f / 10000.0f, 1.0f / 1000.0f };
@@ -476,7 +476,7 @@ void ObjAqua_Update(Actor* thisx, PlayState* play) {
             MmMath_Vec3f_StepTo(&this->actor.scale, &D_80ACC320, 0.0004f);
         }
         this->actor.velocity.y *= 0.9f;
-        Actor_MoveXZGravity(&this->actor); // MM Actor_MoveWithGravity
+        Actor_MoveXZGravity(&this->actor);                                     // MM Actor_MoveWithGravity
         Actor_UpdateBgCheckInfo(play, &this->actor, 12.0f, 4.0f, 0.0f, 1 | 4); // MM UPDBGCHECKINFO_FLAG_1 | _FLAG_4
         if (this->actionFunc != func_80ACBDFC) {
             Collider_UpdateCylinder(&this->actor, &this->collider);

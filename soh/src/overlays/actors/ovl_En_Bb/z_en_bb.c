@@ -601,7 +601,8 @@ void EnBb_Blue(EnBb* this, PlayState* play) {
                 this->vMoveAngleY = Math_SinF(this->bobPhase) * 65535.0f;
             }
         }
-        if ((this->actor.xzDistToPlayer < 150.0f) && (this->actionState != BBBLUE_NORMAL)
+        if ((this->actor.xzDistToPlayer < 150.0f) &&
+            (this->actionState != BBBLUE_NORMAL)
 #ifdef COMBO_BUILD
             // ComboShip: MM's Stone Mask (MM En_Bb z_en_bb.c:252/286) — never turns aggro while it is worn
             && !COMBO_MM_STONE_MASK()

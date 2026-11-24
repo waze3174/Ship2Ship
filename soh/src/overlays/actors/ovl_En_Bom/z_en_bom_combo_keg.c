@@ -57,15 +57,15 @@
 #define MM_CLEAR_TAG_SMOKE 200
 
 // MM macros OOT lacks (or defines differently).
-#define KEG_PI 3.14159265358979323846f                        // M_PIf
-#define KEG_BINANG_ROT180(angle) ((s16)((angle) + 0x8000))    // OOT's BINANG_ROT180 is off by one
+#define KEG_PI 3.14159265358979323846f                     // M_PIf
+#define KEG_BINANG_ROT180(angle) ((s16)((angle) + 0x8000)) // OOT's BINANG_ROT180 is off by one
 #define KEG_TRUNCF_BINANG(f) (s16)(s32)(f)
 #define KEG_ABS_ALT(x) ((x) < 0 ? -(x) : (x))
 
-#define KEG_SCALE 0.03f            // enBomScales[1]
-#define KEG_EXPLOSION_RADIUS 200   // D_80872E8C[1]
-#define KEG_QUAKE_Y 5              // sQuakeY[1]
-#define KEG_QUAKE_DURATION 15      // sQuakeDurations[1]
+#define KEG_SCALE 0.03f          // enBomScales[1]
+#define KEG_EXPLOSION_RADIUS 200 // D_80872E8C[1]
+#define KEG_QUAKE_Y 5            // sQuakeY[1]
+#define KEG_QUAKE_DURATION 15    // sQuakeDurations[1]
 
 s16 gComboPowderKegTimer = 0;
 
@@ -387,8 +387,8 @@ static void EnBomKeg_DrawFuse(PlayState* play, s32 timer) {
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIDECALA, G_CC_MODULATEI_PRIM2);
     gDPSetRenderMode(POLY_OPA_DISP++, G_RM_FOG_SHADE_A, G_RM_AA_ZB_OPA_SURF2);
     gSPTexture(POLY_OPA_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
-    gDPLoadTextureBlock(POLY_OPA_DISP++, sKegFuseTexLarger, G_IM_FMT_I, G_IM_SIZ_8b, 8, 8, 0,
-                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, 1, 1, G_TX_NOLOD, G_TX_NOLOD);
+    gDPLoadTextureBlock(POLY_OPA_DISP++, sKegFuseTexLarger, G_IM_FMT_I, G_IM_SIZ_8b, 8, 8, 0, G_TX_NOMIRROR | G_TX_WRAP,
+                        G_TX_NOMIRROR | G_TX_WRAP, 1, 1, G_TX_NOLOD, G_TX_NOLOD);
     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 200, 200, 0, 255);
     gSPVertex(POLY_OPA_DISP++, (uintptr_t)fuseVtx, 4, 0);
 
@@ -558,7 +558,7 @@ static void EnBomKeg_Move(EnBom* this, PlayState* play) {
         sp38 = sqrtf(SQ(sp40) + SQ(sp3C));
 
         if ((sp38 < this->actor.speedXZ) || (SurfaceType_GetFloorEffect(&play->colCtx, this->actor.floorPoly,
-                                                                         this->actor.floorBgId) == FLOOR_EFFECT_1)) {
+                                                                        this->actor.floorBgId) == FLOOR_EFFECT_1)) {
             if (sp38 > 16.0f) {
                 this->actor.speedXZ = 16.0f;
             } else {
@@ -778,10 +778,9 @@ static void EnBomKeg_Update(EnBom* this, PlayState* play) {
         effPos.y += 3.0f;
         func_8002829C(play, &effPos, &effVelocity, &dustAccel, &dustColor, &dustColor, 50, 5); // MM func_800B0DE0
 
-        if ((this->bombCollider.base.acFlags & AC_HIT) ||
-            ((this->bombCollider.base.ocFlags1 & OC1_HIT) &&
-             ((this->bombCollider.base.oc->category == ACTORCAT_ENEMY) ||
-              (this->bombCollider.base.oc->category == ACTORCAT_BOSS)))) {
+        if ((this->bombCollider.base.acFlags & AC_HIT) || ((this->bombCollider.base.ocFlags1 & OC1_HIT) &&
+                                                           ((this->bombCollider.base.oc->category == ACTORCAT_ENEMY) ||
+                                                            (this->bombCollider.base.oc->category == ACTORCAT_BOSS)))) {
             this->timer = 0;
             thisx->shape.rot.z = 0;
         } else {
@@ -822,8 +821,7 @@ static void EnBomKeg_Update(EnBom* this, PlayState* play) {
                         ENBOM_COMBO_CLEARTAG_PARAMS(MM_CLEAR_TAG_LARGE_EXPLOSION));
             Actor_RequestQuakeAndRumble(thisx, play, KEG_QUAKE_Y, KEG_QUAKE_DURATION);
             play->envCtx.adjLight1Color[0] = play->envCtx.adjLight1Color[1] = play->envCtx.adjLight1Color[2] = 250;
-            play->envCtx.adjAmbientColor[0] = play->envCtx.adjAmbientColor[1] = play->envCtx.adjAmbientColor[2] =
-                250;
+            play->envCtx.adjAmbientColor[0] = play->envCtx.adjAmbientColor[1] = play->envCtx.adjAmbientColor[2] = 250;
             Camera_AddQuake(&play->mainCamera, 2, 11, 8);
             thisx->params = BOMB_EXPLOSION;
             this->timer = 10;
@@ -981,8 +979,16 @@ static const ALIGN_ASSET(2) char sWaterSplash7Tex[] = "__OTR__objects/gameplay_k
 static const ALIGN_ASSET(2) char sWaterSplash8Tex[] = "__OTR__objects/gameplay_keep/gEffWaterSplash8Tex";
 
 static const char* sWaterSplashTextures[] = {
-    sWaterSplash1Tex, sWaterSplash2Tex, sWaterSplash3Tex, sWaterSplash4Tex, sWaterSplash5Tex,
-    sWaterSplash6Tex, sWaterSplash7Tex, sWaterSplash8Tex, NULL,             NULL,
+    sWaterSplash1Tex,
+    sWaterSplash2Tex,
+    sWaterSplash3Tex,
+    sWaterSplash4Tex,
+    sWaterSplash5Tex,
+    sWaterSplash6Tex,
+    sWaterSplash7Tex,
+    sWaterSplash8Tex,
+    NULL,
+    NULL,
     NULL,
 };
 
@@ -1146,8 +1152,7 @@ static void ClearTag_CreateLightRayEffect(struct EnBomComboClearTag* this, Vec3f
     }
 }
 
-static void ClearTag_CreateShockwaveEffect(struct EnBomComboClearTag* this, Vec3f* pos, f32 maxScale,
-                                           s16 actionTimer) {
+static void ClearTag_CreateShockwaveEffect(struct EnBomComboClearTag* this, Vec3f* pos, f32 maxScale, s16 actionTimer) {
     KegClearTagEffect* effect = this->effect;
     s16 i;
 
@@ -1605,8 +1610,8 @@ static void EnBomClearTag_Draw(EnBom* this, PlayState* play) {
             gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, (s8)effect->primColor.r, (s8)effect->primColor.g,
                             (s8)effect->primColor.b, (s8)effect->primColor.a);
             gSPSegment(POLY_XLU_DISP++, 0x08,
-                       (uintptr_t)Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 0, -effect->actionTimer * 5, 32, 64, 1, 0, 0, 32, 32,
-                                          0, -5, 0, 0));
+                       (uintptr_t)Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, 0, -effect->actionTimer * 5, 32, 64, 1, 0,
+                                                     0, 32, 32, 0, -5, 0, 0));
             Matrix_Translate(effect->pos.x, effect->pos.y, effect->pos.z, MTXMODE_NEW);
             Matrix_ReplaceRotation(&play->billboardMtxF);
             Matrix_Scale(effect->smokeScaleX * effect->scale, effect->smokeScaleY * effect->scale, 1.0f, MTXMODE_APPLY);
@@ -1700,8 +1705,7 @@ static void EnBomClearTag_Draw(EnBom* this, PlayState* play) {
                         Matrix_RotateY(2.0f * (j * KEG_PI) * (1.0f / 16.0f), MTXMODE_APPLY);
                         Matrix_RotateX(effect->rotationX, MTXMODE_APPLY);
                         Matrix_Scale(effect->scale, effect->scale, effect->scale, MTXMODE_APPLY);
-                        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(gfxCtx),
-                                  G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+                        gSPMatrix(POLY_XLU_DISP++, MATRIX_NEWMTX(gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
                         gSPDisplayList(POLY_XLU_DISP++, MM_KEEP_DL("gEffWaterSplashDL"));
                     }
                 }

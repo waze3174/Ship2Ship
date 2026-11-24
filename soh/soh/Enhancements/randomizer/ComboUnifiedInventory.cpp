@@ -1,6 +1,6 @@
 // soh/soh/Enhancements/randomizer/ComboUnifiedInventory.cpp — ComboShip "Unified Inventory" (owner ruling
-// 2026-11-11, WomboComboShip's docs/plans/full-coop-sync.md Findings log): both Links get every item. Combo-owned file, picked up
-// by soh's GLOB_RECURSE; only built into the combo DLL's behavior when the seed turns it on.
+// 2026-11-11, WomboComboShip's docs/plans/full-coop-sync.md Findings log): both Links get every item. Combo-owned file,
+// picked up by soh's GLOB_RECURSE; only built into the combo DLL's behavior when the seed turns it on.
 //
 // OOT side of the ruling: child and adult can use every OOT item the engine allows at either age. This is SoH's
 // Timeless Equipment behavior (the same three age-requirement VB hooks), driven by the SEED (gComboUnifiedInventory,

@@ -10,18 +10,18 @@
 #include "CrossDamageTags.h"
 
 enum CrossDmgAttack {
-    CROSS_ATK_DEKU_SPIN, // Deku spin: MM DMG_DEKU_SPIN, AT damage 1
-    CROSS_ATK_DEKU_BUBBLE, // Deku bubble: MM DMG_DEKU_BUBBLE, AT damage 2
-    CROSS_ATK_GORON_PUNCH, // Goron punch: MM DMG_GORON_PUNCH, AT damage 2
-    CROSS_ATK_GORON_POUND, // Goron pound: MM DMG_GORON_POUND, AT damage 4
-    CROSS_ATK_GORON_SPIKES, // Goron spike roll: MM DMG_GORON_SPIKES, AT damage 1
-    CROSS_ATK_NORMAL_ROLL, // Goron roll: MM DMG_NORMAL_ROLL, AT damage 1
-    CROSS_ATK_ZORA_PUNCH, // Zora jab / jump kick: MM DMG_ZORA_PUNCH, AT damage 1/2
+    CROSS_ATK_DEKU_SPIN,      // Deku spin: MM DMG_DEKU_SPIN, AT damage 1
+    CROSS_ATK_DEKU_BUBBLE,    // Deku bubble: MM DMG_DEKU_BUBBLE, AT damage 2
+    CROSS_ATK_GORON_PUNCH,    // Goron punch: MM DMG_GORON_PUNCH, AT damage 2
+    CROSS_ATK_GORON_POUND,    // Goron pound: MM DMG_GORON_POUND, AT damage 4
+    CROSS_ATK_GORON_SPIKES,   // Goron spike roll: MM DMG_GORON_SPIKES, AT damage 1
+    CROSS_ATK_NORMAL_ROLL,    // Goron roll: MM DMG_NORMAL_ROLL, AT damage 1
+    CROSS_ATK_ZORA_PUNCH,     // Zora jab / jump kick: MM DMG_ZORA_PUNCH, AT damage 1/2
     CROSS_ATK_ZORA_BOOMERANG, // Zora fins: MM DMG_ZORA_BOOMERANG, AT damage 2
-    CROSS_ATK_ZORA_BARRIER, // Zora barrier: MM DMG_ZORA_BARRIER, AT damage 2
-    CROSS_ATK_EXPLOSIVES, // Blast Mask: MM DMG_EXPLOSIVES, AT damage 2
-    CROSS_ATK_POWDER_KEG, // Powder Keg: MM DMG_POWDER_KEG, AT damage 4
-    CROSS_ATK_SWORD_BEAM, // Fierce Deity beam: MM DMG_SWORD_BEAM, AT damage 3
+    CROSS_ATK_ZORA_BARRIER,   // Zora barrier: MM DMG_ZORA_BARRIER, AT damage 2
+    CROSS_ATK_EXPLOSIVES,     // Blast Mask: MM DMG_EXPLOSIVES, AT damage 2
+    CROSS_ATK_POWDER_KEG,     // Powder Keg: MM DMG_POWDER_KEG, AT damage 4
+    CROSS_ATK_SWORD_BEAM,     // Fierce Deity beam: MM DMG_SWORD_BEAM, AT damage 3
     CROSS_ATK_COUNT,
 };
 
@@ -53,8 +53,8 @@ typedef struct {
 
 typedef struct {
     short ootId;
-    signed char variant; // -1 = every variant (CrossDamage_Variant)
-    unsigned char flags; // CROSS_ROW_*
+    signed char variant;     // -1 = every variant (CrossDamage_Variant)
+    unsigned char flags;     // CROSS_ROW_*
     unsigned short hardPass; // attacks (1 << CROSS_ATK_*) MM's metal/armour collider lets through
     const char* oot;
     const char* mm;
@@ -124,7 +124,8 @@ static inline const char* CrossDamage_AttackName(unsigned char tag) {
 }
 
 static inline const char* CrossDamage_ClassName(unsigned char cls) {
-    static const char* const sNames[] = { "oot", "pass", "damage", "stun", "fire", "ice", "light", "electric", "knockback", "noreact" };
+    static const char* const sNames[] = { "oot", "pass",  "damage",   "stun",      "fire",
+                                          "ice", "light", "electric", "knockback", "noreact" };
     return (cls < sizeof(sNames) / sizeof(sNames[0])) ? sNames[cls] : "?";
 }
 

@@ -79,11 +79,11 @@ static s32 AudioSeqMm_Trace(SequenceChannel* channel) {
     }
     return (sMmSeqTraceMask >> channel->channelIndex) & 1;
 }
-#define MMSEQ_TRACE(channel, fmt, ...)                                                   \
-    do {                                                                                 \
-        if (AudioSeqMm_Trace(channel)) {                                                 \
+#define MMSEQ_TRACE(channel, fmt, ...)                                                       \
+    do {                                                                                     \
+        if (AudioSeqMm_Trace(channel)) {                                                     \
             fprintf(stderr, "[mmseq ch%d] " fmt "\n", (channel)->channelIndex, __VA_ARGS__); \
-        }                                                                                \
+        }                                                                                    \
     } while (0)
 
 // audio_mm_sfx.c: MM's AUDIO_CUSTOM_FUNCTION_SEQ_0 (AudioSfx_SetFreqAndStereoBits).
@@ -1449,7 +1449,7 @@ static void AudioSeqMm_SequenceChannelProcessScript(SequenceChannel* channel) {
                     channel->gateTimeRandomVariance = cmdArgs[0];
                     break;
 
-                case 0xBB: // channel: comb filter
+                case 0xBB:                        // channel: comb filter
                     channel->unk_0F = cmdArgs[0]; // combFilterSize
                     channel->unk_20 = cmdArgs[1]; // combFilterGain
                     break;

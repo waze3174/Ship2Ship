@@ -326,7 +326,8 @@ static void EnNwc_ComboFollow(EnNwcChick* chick, EnNwc* this, PlayState* play) {
     chick->comboYaw = newRotY;
     Math_SmoothStepToS(&chick->rot.y, chick->comboYaw, 2, 0xBB8, 0xC8);
 
-    // MM EnNwc_PlayerReleasedBremanMarch (En_Nwc:135, the march check at :144). Its first clause (all ten grown into cuccos) never holds here.
+    // MM EnNwc_PlayerReleasedBremanMarch (En_Nwc:135, the march check at :144). Its first clause (all ten grown into
+    // cuccos) never holds here.
     if (!Combo_BremenMarching()) {
         this->comboCount = 0; // reset chick follow count
 
@@ -399,7 +400,7 @@ void EnNwc_UpdateChicks(EnNwc* this, PlayState* play) {
         // ComboShip: MM's Bremen Mask (MM En_Nwc:144, 162): marching chicks run MM's states instead
         if (!EnNwc_ComboChickUpdate(chick, this, play))
 #endif
-        chickActionFuncs[chick->type](chick, this, play);
+            chickActionFuncs[chick->type](chick, this, play);
 
         element->dim.worldSphere.center.x = chick->pos.x;
         element->dim.worldSphere.center.y = chick->pos.y;

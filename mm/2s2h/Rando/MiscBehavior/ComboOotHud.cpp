@@ -12,11 +12,11 @@ namespace {
 constexpr int kOotColorSchemeGameCube = 1;
 
 struct OotColorRule {
-    const char* mmId;       // MM's cosmetic id at the draw site
-    const char* ootKey;     // gCosmetics.<ootKey>.{Changed,Value}
+    const char* mmId;        // MM's cosmetic id at the draw site
+    const char* ootKey;      // gCosmetics.<ootKey>.{Changed,Value}
     const char* ootFallback; // read first, like OOT's HUD.CButtons seed for each C button (nullptr = none)
-    Color_RGB8 n64;         // OOT's default
-    Color_RGB8 gamecube;    // OOT's default with the GameCube scheme
+    Color_RGB8 n64;          // OOT's default
+    Color_RGB8 gamecube;     // OOT's default with the GameCube scheme
 };
 
 // Defaults and resolution order copied from OOT: soh/src/code/z_parameter.c (Interface_DrawItemButtons,
@@ -61,8 +61,8 @@ int Resolve(const OotColorRule* rules, size_t count, const char* mmId, Color_RGB
         if (std::strcmp(r.mmId, mmId) != 0) {
             continue;
         }
-        Color_RGB8 c = (CVarGetInteger("gCosmetics.DefaultColorScheme", 0) == kOotColorSchemeGameCube) ? r.gamecube
-                                                                                                         : r.n64;
+        Color_RGB8 c =
+            (CVarGetInteger("gCosmetics.DefaultColorScheme", 0) == kOotColorSchemeGameCube) ? r.gamecube : r.n64;
         if (r.ootFallback != nullptr && Changed(r.ootFallback)) {
             c = Value(r.ootFallback, c);
         }
@@ -118,10 +118,9 @@ extern "C" const char* ComboOotHud_ActionLabel(const char* mmTex) {
         return nullptr;
     }
     // MM: ".../gDoAction<Name>ENGTex"  ->  OOT: "__OTR__textures/do_action_static/g<Name>DoActionENGTex"
-    static const char* kOotHas[] = { "Attack", "Check",  "Enter", "Return", "Open", "Jump",  "Decide", "Dive",
-                                     "Faster", "Throw",  "Climb", "Drop",   "Down", "Speak", "Next",   "Grab",
-                                     "Stop",   "PutAway", "Reel", "Num1",   "Num2", "Num3",  "Num4",   "Num5",
-                                     "Num6",   "Num7",   "Num8" };
+    static const char* kOotHas[] = { "Attack", "Check", "Enter", "Return", "Open",  "Jump", "Decide", "Dive", "Faster",
+                                     "Throw",  "Climb", "Drop",  "Down",   "Speak", "Next", "Grab",   "Stop", "PutAway",
+                                     "Reel",   "Num1",  "Num2",  "Num3",   "Num4",  "Num5", "Num6",   "Num7", "Num8" };
     static std::unordered_map<std::string, std::string> sCache;
     const char* p = std::strstr(mmTex, "gDoAction");
     if (p == nullptr) {

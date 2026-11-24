@@ -38,8 +38,8 @@ extern const MmSfxParams* const gMmSfxParams[7];
 extern const u16 gMmSfxParamsCount[7];
 
 #define MMSFX_BANK_SHIFT(sfxId) (((sfxId) >> 12) & 0xFF)
-#define MMSFX_BANK_MASK(sfxId) ((sfxId) & 0xF000)
-#define MMSFX_INDEX(sfxId) ((sfxId) & 0x3FF)
+#define MMSFX_BANK_MASK(sfxId) ((sfxId)&0xF000)
+#define MMSFX_INDEX(sfxId) ((sfxId)&0x3FF)
 #define MMSFX_BANK(sfxId) MMSFX_BANK_SHIFT(MMSFX_BANK_MASK(sfxId))
 #define MMSFX_FLAG_MASK 0xC00
 #define MMSFX_NONE 0
@@ -62,16 +62,7 @@ extern const u16 gMmSfxParamsCount[7];
 #define MMSFX_FLAG2_SURROUND_NO_HIGHPASS_FILTER (1 << 5)
 #define MMSFX_FLAG2_APPLY_LOWPASS_FILTER (1 << 7)
 
-enum {
-    MMBANK_PLAYER,
-    MMBANK_ITEM,
-    MMBANK_ENV,
-    MMBANK_ENEMY,
-    MMBANK_SYSTEM,
-    MMBANK_OCARINA,
-    MMBANK_VOICE,
-    MMBANK_MAX
-};
+enum { MMBANK_PLAYER, MMBANK_ITEM, MMBANK_ENV, MMBANK_ENEMY, MMBANK_SYSTEM, MMBANK_OCARINA, MMBANK_VOICE, MMBANK_MAX };
 
 enum {
     MMSFX_STATE_EMPTY,
@@ -173,7 +164,7 @@ static u16 sMmSfxChannelLowVolumeFlag = 0;
 static MmSfxChannelState sMmSfxChannelState[MMSFX_NUM_CHANNELS];
 
 static MmSfxBankEntry* const sMmSfxBanks[MMBANK_MAX] = {
-    sMmSfxPlayerBank, sMmSfxItemBank,   sMmSfxEnvironmentBank, sMmSfxEnemyBank,
+    sMmSfxPlayerBank, sMmSfxItemBank,    sMmSfxEnvironmentBank, sMmSfxEnemyBank,
     sMmSfxSystemBank, sMmSfxOcarinaBank, sMmSfxVoiceBank,
 };
 

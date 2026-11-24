@@ -11,8 +11,7 @@
 // tables, so the MM animation drives OOT's skeleton directly.
 static const ALIGN_ASSET(2) char sComboMmStalchildIdleAnim[] = "__OTR__@mm:objects/object_skb/gStalchildIdleAnim";
 // MM STALCHILD_ANIM_11 (gStalchildSaluteAnim, ANIMMODE_ONCE, -4.0): the salute when Link talks to it.
-static const ALIGN_ASSET(2) char sComboMmStalchildSaluteAnim[] =
-    "__OTR__@mm:objects/object_skb/gStalchildSaluteAnim";
+static const ALIGN_ASSET(2) char sComboMmStalchildSaluteAnim[] = "__OTR__@mm:objects/object_skb/gStalchildSaluteAnim";
 u16 Combo_MmTextPrepare(u16 mmTextId); // ComboMmText.cpp: MM's own message (MM's table), OOT's textbox
 #endif
 
@@ -283,7 +282,8 @@ static void EnSkb_ComboSalute(EnSkb* this) {
     Animation_Change(&this->skelAnime, (AnimationHeader*)sComboMmStalchildSaluteAnim, 1.0f, 0.0f,
                      Animation_GetLastFrame((void*)sComboMmStalchildSaluteAnim), ANIMMODE_ONCE, -4.0f);
 }
-// MM func_80995190 / func_80995244: the talk, then back to the walk (which turns it friendly again while the hat is on).
+// MM func_80995190 / func_80995244: the talk, then back to the walk (which turns it friendly again while the hat is
+// on).
 static void EnSkb_ComboCaptainTalk(EnSkb* this, PlayState* play) {
     SkelAnime_Update(&this->skelAnime);
     switch (Message_GetState(&play->msgCtx)) {

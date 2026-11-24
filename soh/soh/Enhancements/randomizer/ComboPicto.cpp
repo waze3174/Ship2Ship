@@ -7,7 +7,8 @@
 //                            and Interface_Draw's pictograph parts (focus frame, photo strips).
 //  - src/code/z_play.c       Play_TakePictoPhoto, Play_ConvertRgba16ToIntensityImage (8-bit path),
 //                            Play_CompressI8ToI5, Play_DecompressI5ToI8, the R_PICTO_PHOTO_STATE machine and 2S2H's
-//                            CPU capture (FB_WriteFramebufferSliceToCPU, the same helper soh/framebuffer_effects.c has).
+//                            CPU capture (FB_WriteFramebufferSliceToCPU, the same helper soh/framebuffer_effects.c
+//                            has).
 //  - 2s2h/Enhancements/Items/ColorPictograph.cpp  VB_PICTO_TAKE / VB_PICTO_ACTIVATE / VB_PICTO_DISPLAY, through MM's
 //                            own buffer and CVar (MM_ComboPicto_Color* exports appended to that file).
 //
@@ -97,9 +98,9 @@ s32 sPictoPhotoState = PICTO_PHOTO_STATE_OFF; // R_PICTO_PHOTO_STATE
 bool sPictoBoxOn = false;                     // ACTORCTX_FLAG_PICTO_BOX_ON
 bool sPromptOpen = false;                     // our 0xF8 textbox is up and unanswered
 
-u16 sFbufSave[SCREEN_WIDTH * SCREEN_HEIGHT];          // prerender->fbufSave (MM: gfxCtx->zbuffer)
-alignas(64) u8 sPictoPhotoI8[PICTO_PHOTO_SIZE];       // MM: gHiBuffer.pictoPhotoI8 (play->pictoPhotoI8)
-u8 sLocalPhotoI5[PICTO_PHOTO_COMPRESSED_SIZE];        // only when MM's exports are missing
+u16 sFbufSave[SCREEN_WIDTH * SCREEN_HEIGHT];    // prerender->fbufSave (MM: gfxCtx->zbuffer)
+alignas(64) u8 sPictoPhotoI8[PICTO_PHOTO_SIZE]; // MM: gHiBuffer.pictoPhotoI8 (play->pictoPhotoI8)
+u8 sLocalPhotoI5[PICTO_PHOTO_COMPRESSED_SIZE];  // only when MM's exports are missing
 bool sLocalHasPhoto = false;
 
 // ---- MM exports (mm/2s2h/Enhancements/Items/ColorPictograph.cpp, COMBO_BUILD block) --------------------------------
@@ -265,7 +266,8 @@ void SavePhoto() {
 // Play_TakePictoPhoto (PreRender_ApplyFilters is a no-op here: 2S2H passes cvgSave = NULL).
 void TakePictoPhoto() {
     ConvertRgba16ToI8(sPictoPhotoI8, sFbufSave, SCREEN_WIDTH, PICTO_PHOTO_TOPLEFT_X, PICTO_PHOTO_TOPLEFT_Y,
-                      (PICTO_PHOTO_TOPLEFT_X + PICTO_PHOTO_WIDTH) - 1, (PICTO_PHOTO_TOPLEFT_Y + PICTO_PHOTO_HEIGHT) - 1);
+                      (PICTO_PHOTO_TOPLEFT_X + PICTO_PHOTO_WIDTH) - 1,
+                      (PICTO_PHOTO_TOPLEFT_Y + PICTO_PHOTO_HEIGHT) - 1);
     // GameInteractor_Should(VB_PICTO_TAKE, true, prerender): ColorPictograph keeps the colour copy + its PNG.
     Resolve();
     if (sMmColorTake != nullptr) {
@@ -400,8 +402,7 @@ int Combo_PictoInterfaceUpdate(PlayState* play) {
                 sPictoPhotoBeingTaken = true;
                 Log("shutter");
             }
-        } else if ((sPictoState == PICTO_BOX_STATE_PHOTO) && sPromptOpen &&
-                   (play->msgCtx.msgMode == MSGMODE_NONE)) {
+        } else if ((sPictoState == PICTO_BOX_STATE_PHOTO) && sPromptOpen && (play->msgCtx.msgMode == MSGMODE_NONE)) {
             // The answer itself is taken in Combo_PictoMessageUpdate (before OOT's Message_Update, which would
             // otherwise close the choice box on its own). Safety net: the box went away some other way.
             Log("prompt closed without an answer");
@@ -475,21 +476,18 @@ void Combo_PictoInterfaceDraw(PlayState* play) {
                                 R_PICTO_FOCUS_BORDER_TOPLEFT_Y << 2, (R_PICTO_FOCUS_BORDER_TOPLEFT_X << 2) + (16 << 2),
                                 (R_PICTO_FOCUS_BORDER_TOPLEFT_Y << 2) + (16 << 2), G_TX_RENDERTILE, 0, 0, 1 << 10,
                                 1 << 10);
-            gSPTextureRectangle(OVERLAY_DISP++, R_PICTO_FOCUS_BORDER_TOPRIGHT_X << 2,
-                                R_PICTO_FOCUS_BORDER_TOPRIGHT_Y << 2,
-                                (R_PICTO_FOCUS_BORDER_TOPRIGHT_X << 2) + (16 << 2),
-                                (R_PICTO_FOCUS_BORDER_TOPRIGHT_Y << 2) + (16 << 2), G_TX_RENDERTILE, 512, 0, 1 << 10,
-                                1 << 10);
-            gSPTextureRectangle(OVERLAY_DISP++, R_PICTO_FOCUS_BORDER_BOTTOMLEFT_X << 2,
-                                R_PICTO_FOCUS_BORDER_BOTTOMLEFT_Y << 2,
-                                (R_PICTO_FOCUS_BORDER_BOTTOMLEFT_X << 2) + (16 << 2),
-                                (R_PICTO_FOCUS_BORDER_BOTTOMLEFT_Y << 2) + (16 << 2), G_TX_RENDERTILE, 0, 512, 1 << 10,
-                                1 << 10);
-            gSPTextureRectangle(OVERLAY_DISP++, R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_X << 2,
-                                R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_Y << 2,
-                                (R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_X << 2) + (16 << 2),
-                                (R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_Y << 2) + (16 << 2), G_TX_RENDERTILE, 512, 512,
-                                1 << 10, 1 << 10);
+            gSPTextureRectangle(
+                OVERLAY_DISP++, R_PICTO_FOCUS_BORDER_TOPRIGHT_X << 2, R_PICTO_FOCUS_BORDER_TOPRIGHT_Y << 2,
+                (R_PICTO_FOCUS_BORDER_TOPRIGHT_X << 2) + (16 << 2), (R_PICTO_FOCUS_BORDER_TOPRIGHT_Y << 2) + (16 << 2),
+                G_TX_RENDERTILE, 512, 0, 1 << 10, 1 << 10);
+            gSPTextureRectangle(
+                OVERLAY_DISP++, R_PICTO_FOCUS_BORDER_BOTTOMLEFT_X << 2, R_PICTO_FOCUS_BORDER_BOTTOMLEFT_Y << 2,
+                (R_PICTO_FOCUS_BORDER_BOTTOMLEFT_X << 2) + (16 << 2),
+                (R_PICTO_FOCUS_BORDER_BOTTOMLEFT_Y << 2) + (16 << 2), G_TX_RENDERTILE, 0, 512, 1 << 10, 1 << 10);
+            gSPTextureRectangle(
+                OVERLAY_DISP++, R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_X << 2, R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_Y << 2,
+                (R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_X << 2) + (16 << 2),
+                (R_PICTO_FOCUS_BORDER_BOTTOMRIGHT_Y << 2) + (16 << 2), G_TX_RENDERTILE, 512, 512, 1 << 10, 1 << 10);
 
             gSPComboRMPush(OVERLAY_DISP++, "mm");
             gDPLoadTextureBlock_4b(OVERLAY_DISP++, (void*)iconTex, G_IM_FMT_I, 32, 16, 0, G_TX_NOMIRROR | G_TX_WRAP,
@@ -582,8 +580,8 @@ void Combo_PictoInterfaceDraw(PlayState* play) {
                         u16* stripTex = (u16*)color + (0x500 * strip);
                         gDPSetCombineMode(OVERLAY_DISP++, G_CC_DECALRGBA, G_CC_DECALRGBA);
                         gSPInvalidateTexCache(OVERLAY_DISP++, (uintptr_t)stripTex);
-                        gDPLoadTextureBlock(OVERLAY_DISP++, stripTex, G_IM_FMT_RGBA, G_IM_SIZ_16b, PICTO_PHOTO_WIDTH,
-                                            8, 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK,
+                        gDPLoadTextureBlock(OVERLAY_DISP++, stripTex, G_IM_FMT_RGBA, G_IM_SIZ_16b, PICTO_PHOTO_WIDTH, 8,
+                                            0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK,
                                             G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
                     }
                     gSPTextureRectangle(OVERLAY_DISP++, pictoRectLeft << 2, pictoRectTop << 2,

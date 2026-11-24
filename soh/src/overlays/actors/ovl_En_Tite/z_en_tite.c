@@ -335,7 +335,7 @@ void EnTite_Attack(EnTite* this, PlayState* play) {
                     EnTite_SetupIdle(this);
                 } else
 #endif
-                if (this->vQueuedJumps != 0) {
+                    if (this->vQueuedJumps != 0) {
                     this->vQueuedJumps--;
                     this->vAttackState = TEKTITE_BEGIN_LUNGE;
                     this->collider.base.atFlags &= ~AT_HIT;
@@ -497,7 +497,7 @@ void EnTite_TurnTowardPlayer(EnTite* this, PlayState* play) {
         EnTite_SetupIdle(this);
     } else
 #endif
-    if ((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f)) {
+        if ((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f)) {
         EnTite_SetupIdle(this);
     } else if (Actor_IsFacingPlayer(&this->actor, 3640)) {
         if ((this->actor.xzDistToPlayer <= 180.0f) && (this->actor.yDistToPlayer <= 80.0f)) {
@@ -587,7 +587,7 @@ void EnTite_MoveTowardPlayer(EnTite* this, PlayState* play) {
             EnTite_SetupIdle(this);
         } else
 #endif
-        if (((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f))) {
+            if (((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f))) {
             EnTite_SetupIdle(this);
         } else if (((this->actor.xzDistToPlayer <= 180.0f)) && ((this->actor.yDistToPlayer <= 80.0f))) {
             if (this->vQueuedJumps <= 0) {
@@ -687,10 +687,10 @@ void EnTite_Recoil(EnTite* this, PlayState* play) {
             EnTite_SetupIdle(this);
         } else
 #endif
-        if ((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f) &&
-            (ABS(this->actor.shape.rot.x) < 4000) && (ABS(this->actor.shape.rot.z) < 4000) &&
-            ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
-             ((this->actor.params == TEKTITE_BLUE) && (this->actor.bgCheckFlags & 0x20)))) {
+            if ((this->actor.xzDistToPlayer > 300.0f) && (this->actor.yDistToPlayer > 80.0f) &&
+                (ABS(this->actor.shape.rot.x) < 4000) && (ABS(this->actor.shape.rot.z) < 4000) &&
+                ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
+                 ((this->actor.params == TEKTITE_BLUE) && (this->actor.bgCheckFlags & 0x20)))) {
             EnTite_SetupIdle(this);
         } else if ((this->actor.xzDistToPlayer < 180.0f) && (this->actor.yDistToPlayer <= 80.0f) &&
                    (ABS(angleToPlayer) <= 6000)) {

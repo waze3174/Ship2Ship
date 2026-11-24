@@ -202,9 +202,10 @@ void Audio_NoteVibratoInit(Note* note) {
     vib->curve = gWaveSamples[2];
     vib->channel = note->playbackState.parentLayer->channel;
     channel = vib->channel;
-    // ComboShip: under MM's engine a layer can leave its channel's vibrato (layer opcode 0xF0 clearing unk_0A.useVibrato,
-    // MSB-first mask 0x1000) and use its own VibratoSubStruct, which no script ever changes from MM's defaults (rate
-    // 0x800, depth 0, no delay): a vibrato of depth 0, i.e. none. No channel = no extent/rate updates.
+    // ComboShip: under MM's engine a layer can leave its channel's vibrato (layer opcode 0xF0 clearing
+    // unk_0A.useVibrato, MSB-first mask 0x1000) and use its own VibratoSubStruct, which no script ever changes from
+    // MM's defaults (rate 0x800, depth 0, no delay): a vibrato of depth 0, i.e. none. No channel = no extent/rate
+    // updates.
     if (SEQ_PLAYER_IS_MM(channel->seqPlayer) && !(note->playbackState.parentLayer->mmFlags & 0x1000)) {
         vib->channel = (SequenceChannel*)(-1);
         vib->extentChangeTimer = 0;

@@ -1,9 +1,9 @@
 /*
  * File: z_kaleido_combo.c
  * Overlay: ovl_kaleido_scope
- * Description: ComboShip merged pause menus — the Hyrule items and Hyrule equipment faces of MM's pause prism (OOT's pages, OOT's live
- * inventory). Logic + exports: mm/2s2h/Rando/MiscBehavior/ComboPause.cpp; encoding: combo/menu/ComboPauseABI.h;
- * deviation record: docs/deviations/ui-menu.md "Merged pause menus".
+ * Description: ComboShip merged pause menus — the Hyrule items and Hyrule equipment faces of MM's pause prism (OOT's
+ * pages, OOT's live inventory). Logic + exports: mm/2s2h/Rando/MiscBehavior/ComboPause.cpp; encoding:
+ * combo/menu/ComboPauseABI.h; deviation record: docs/deviations/ui-menu.md "Merged pause menus".
  *
  * A Hyrule face is OOT's page as OOT draws and drives it: OOT's own page tiles ("SELECT ITEM"), OOT's icons, name
  * plates and ammo digits, and OOT's cursor rules (the cursor only ever rests on an owned item, skipping empty slots).
@@ -89,7 +89,6 @@ static u8 Combo_ItemOnEquipTarget(u16 target) {
     return DPAD_BUTTON_ITEM_EQUIP(0, sDpad[target - PAUSE_EQUIP_D_RIGHT]);
 }
 
-
 // ---- the Hyrule equipment face: OOT's equipment page (KaleidoScope_DrawEquipment's grid), drawn and driven as OOT
 // does it: row = sword / shield / tunic / boots, column 0 = that row's upgrade, columns 1-3 = the pieces; the cursor
 // rests only on what Link owns; the equipped piece of each row is outlined. Equipping an OOT piece has no Termina
@@ -168,8 +167,8 @@ static void KaleidoScope_ComboUpdateEquipCursor(PlayState* play) {
                 }
             }
             if (!found) {
-                KaleidoScope_MoveCursorToSpecialPos(play, enterFromLeft ? PAUSE_CURSOR_PAGE_RIGHT
-                                                                        : PAUSE_CURSOR_PAGE_LEFT);
+                KaleidoScope_MoveCursorToSpecialPos(play,
+                                                    enterFromLeft ? PAUSE_CURSOR_PAGE_RIGHT : PAUSE_CURSOR_PAGE_LEFT);
             }
         }
     }
@@ -477,7 +476,8 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                 sEquipMagicArrowSlotHoldTimer = 0;
                 sEquipState = EQUIP_STATE_MOVE_TO_C_BTN;
                 sEquipAnimTimer = 10;
-                if ((equipItem == ITEM_ARROW_FIRE) || (equipItem == ITEM_ARROW_ICE) || (equipItem == ITEM_ARROW_LIGHT)) {
+                if ((equipItem == ITEM_ARROW_FIRE) || (equipItem == ITEM_ARROW_ICE) ||
+                    (equipItem == ITEM_ARROW_LIGHT)) {
                     u8 magicArrowIndex = (equipItem == ITEM_ARROW_FIRE) ? 0 : ((equipItem == ITEM_ARROW_ICE) ? 1 : 2);
                     Audio_PlaySfx(NA_SE_SY_SET_FIRE_ARROW + magicArrowIndex);
                     pauseCtx->equipTargetItem = 0xB5 + magicArrowIndex;

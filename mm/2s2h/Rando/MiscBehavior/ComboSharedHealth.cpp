@@ -97,14 +97,13 @@ static void ComboSharedHealthTick() {
     static int sCount = 0;
     if (sDbg && ((++sCount % 60) == 0)) {
         SPDLOG_INFO("[ComboShip] health MM: {}/{} (q oot {} mm {}, dd {}) magic {} shared {} state {}",
-                    gSaveContext.save.saveInfo.playerData.health,
-                    gSaveContext.save.saveInfo.playerData.healthCapacity, sRt.s.quarters[0], sRt.s.quarters[1],
-                    sRt.s.doubleDefense, gSaveContext.save.saveInfo.playerData.magic, sRt.s.magic,
-                    gSaveContext.magicState);
+                    gSaveContext.save.saveInfo.playerData.health, gSaveContext.save.saveInfo.playerData.healthCapacity,
+                    sRt.s.quarters[0], sRt.s.quarters[1], sRt.s.doubleDefense,
+                    gSaveContext.save.saveInfo.playerData.magic, sRt.s.magic, gSaveContext.magicState);
         SPDLOG_INFO("[ComboShip] ammo MM: arrows {}/{} bombs {}/{} chus {}/{} sticks {}/{} nuts {}/{} beans {}/{}",
                     AMMO(ITEM_BOW), sRt.s.ammo[0], AMMO(ITEM_BOMB), sRt.s.ammo[1], AMMO(ITEM_BOMBCHU), sRt.s.ammo[2],
-                    AMMO(ITEM_DEKU_STICK), sRt.s.ammo[3], AMMO(ITEM_DEKU_NUT), sRt.s.ammo[4],
-                    AMMO(ITEM_MAGIC_BEANS), sRt.s.ammo[5]);
+                    AMMO(ITEM_DEKU_STICK), sRt.s.ammo[3], AMMO(ITEM_DEKU_NUT), sRt.s.ammo[4], AMMO(ITEM_MAGIC_BEANS),
+                    sRt.s.ammo[5]);
         SPDLOG_INFO("[ComboShip] ammo MM: seeds shared {}", sRt.s.ammo[ComboHealth::kAmmoSeeds]);
     }
 }
@@ -134,9 +133,9 @@ extern "C" COMBO_EXPORT int MM_ComboAmmoAdd(int kind, int count) {
         (INV_CONTENT(kItem[kind]) != kItem[kind])) {
         return 0;
     }
-    const int caps[ComboHealth::kAmmoKinds - 1] = { CUR_CAPACITY(UPG_QUIVER),      CUR_CAPACITY(UPG_BOMB_BAG),
-                                                CUR_CAPACITY(UPG_BOMB_BAG),    CUR_CAPACITY(UPG_DEKU_STICKS),
-                                                CUR_CAPACITY(UPG_DEKU_NUTS),   20 };
+    const int caps[ComboHealth::kAmmoKinds - 1] = { CUR_CAPACITY(UPG_QUIVER),    CUR_CAPACITY(UPG_BOMB_BAG),
+                                                    CUR_CAPACITY(UPG_BOMB_BAG),  CUR_CAPACITY(UPG_DEKU_STICKS),
+                                                    CUR_CAPACITY(UPG_DEKU_NUTS), 20 };
     int v = AMMO(kItem[kind]) + count;
     AMMO(kItem[kind]) = (s8)((v > caps[kind]) ? caps[kind] : v);
     return 1;

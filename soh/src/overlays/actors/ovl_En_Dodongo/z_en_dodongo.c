@@ -577,7 +577,8 @@ void EnDodongo_Walk(EnDodongo* this, PlayState* play) {
         }
     } else {
         this->actor.flags &= ~ACTOR_FLAG_ATTENTION_ENABLED;
-        if ((Math_Vec3f_DistXZ(&this->actor.world.pos, &this->actor.home.pos) > 150.0f) || (this->retreatTimer != 0)
+        if ((Math_Vec3f_DistXZ(&this->actor.world.pos, &this->actor.home.pos) > 150.0f) ||
+            (this->retreatTimer != 0)
 #ifdef COMBO_BUILD
             // ComboShip: MM's Stone Mask (MM En_Dodongo z_en_dodongo.c:608) — head back home
             || COMBO_MM_STONE_MASK()
@@ -617,7 +618,8 @@ void EnDodongo_SweepTail(EnDodongo* this, PlayState* play) {
     s16 yawDiff1 = this->actor.yawTowardsPlayer - this->actor.shape.rot.y;
 
     if (SkelAnime_Update(&this->skelAnime)) {
-        if ((this->timer != 0) || (ABS(yawDiff1) < 0x4000)
+        if ((this->timer != 0) ||
+            (ABS(yawDiff1) < 0x4000)
 #ifdef COMBO_BUILD
             // ComboShip: MM's Stone Mask (MM En_Dodongo z_en_dodongo.c:403) — no tail sweep while it is worn
             || COMBO_MM_STONE_MASK()

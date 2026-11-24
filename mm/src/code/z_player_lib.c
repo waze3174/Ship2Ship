@@ -1902,7 +1902,7 @@ s32 Player_GetEnvironmentalHazard(PlayState* play) {
         // OOT's Iron Boots (OOT Player_GetEnvironmentalHazard): deep after 80 frames; on the floor = UNDERWATER_FLOOR
         // (the hookshot works there), off it = UNDERWATER_FREE.
         envHazard = (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ? (PLAYER_ENV_HAZARD_UNDERWATER_FLOOR - 1)
-                                                                       : (PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1);
+                                                                      : (PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1);
 #endif
     } else if ((player->transformation != PLAYER_FORM_ZORA) && (player->underwaterTimer > 80)) {
         envHazard = PLAYER_ENV_HAZARD_UNDERWATER_FREE - 1;
@@ -4071,9 +4071,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                 static Vec3f sComboSlingshotStringPos = { 606.0f, 236.0f, 0.0f };
                 const s32 comboSlingshot = (player->heldItemAction == PLAYER_IA_COMBO_OOT_SLINGSHOT);
                 Vec3f* stringPos = comboSlingshot ? &sComboSlingshotStringPos : &D_801C0D98;
-                Gfx* stringDL =
-                    comboSlingshot ? (Gfx*)"__OTR__@oot:objects/object_link_child/gLinkChildSlinghotStringDL"
-                                   : D_801C0D94;
+                Gfx* stringDL = comboSlingshot
+                                    ? (Gfx*)"__OTR__@oot:objects/object_link_child/gLinkChildSlinghotStringDL"
+                                    : D_801C0D94;
 #else
                 Vec3f* stringPos = &D_801C0D98;
                 Gfx* stringDL = D_801C0D94;
@@ -4153,9 +4153,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                         Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
 #ifdef COMBO_BUILD
                         // ComboShip: OOT's reticle reach (OOT: Hookshot 38600, Longshot 77600).
-                        Player_DrawHookshotReticle(
-                            play, player,
-                            (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f : 77600.0f);
+                        Player_DrawHookshotReticle(play, player,
+                                                   (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f
+                                                                                                            : 77600.0f);
 #else
                         Player_DrawHookshotReticle(play, player, 77600.0f);
 #endif

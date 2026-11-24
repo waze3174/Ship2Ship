@@ -64,7 +64,8 @@ void LoadTable() {
     }
     const std::vector<char>& d = *file->Buffer;
     auto rd32 = [&](size_t p) -> uint32_t {
-        return (uint8_t)d[p] | ((uint8_t)d[p + 1] << 8) | ((uint8_t)d[p + 2] << 16) | ((uint32_t)(uint8_t)d[p + 3] << 24);
+        return (uint8_t)d[p] | ((uint8_t)d[p + 1] << 8) | ((uint8_t)d[p + 2] << 16) |
+               ((uint32_t)(uint8_t)d[p + 3] << 24);
     };
     size_t p = 0x40;
     if (d.size() < p + 4) {

@@ -32,17 +32,17 @@ constexpr const char* kCvarEnabled = "gCombo.Shared.HealthMagicAmmo";
 
 constexpr int kGameOot = 0;
 constexpr int kGameMm = 1;
-constexpr int16_t kBaseCapacity = 0x30;  // 3 hearts
-constexpr int16_t kMaxCapacity = 0x140;  // 20 hearts
-constexpr int kHeartPieceShift = 28;     // both games: questItems bits 28-31 = heart pieces toward the next heart
+constexpr int16_t kBaseCapacity = 0x30; // 3 hearts
+constexpr int16_t kMaxCapacity = 0x140; // 20 hearts
+constexpr int kHeartPieceShift = 28;    // both games: questItems bits 28-31 = heart pieces toward the next heart
 constexpr uint32_t kHeartPieceMask = 0xF0000000u;
 
 struct State {
     int quarters[2] = { 0, 0 }; // each game's own pickups: piece = 1, container = 4
     bool seen[2] = { false, false };
-    int health = -1;            // shared current health (OOT/MM units: 0x10 per heart), -1 = not yet known
+    int health = -1; // shared current health (OOT/MM units: 0x10 per heart), -1 = not yet known
     bool doubleDefense = false;
-    int magic = -1;             // shared current magic (both games: 0x30 per meter level), -1 = not yet known
+    int magic = -1; // shared current magic (both games: 0x30 per meter level), -1 = not yet known
     // What each game's save last held from us (capacity, pieces), carried with the shared state: on arrival, anything
     // above it was added while that game was dormant (an item delivered into its save from the other game, a
     // teammate's pickup) and is counted. -1 = not yet written.
@@ -60,7 +60,16 @@ struct State {
 // The consumables both games carry, one count for both.
 // Seeds: only OOT has a bullet bag, but OOT's Slingshot fires in Termina too (ComboOotItems.cpp), and spends from
 // this shared count there (MM_ComboSharedSeeds), so a seed shot in Termina is gone in Hyrule.
-enum AmmoKind { kAmmoArrows = 0, kAmmoBombs, kAmmoBombchus, kAmmoSticks, kAmmoNuts, kAmmoBeans, kAmmoSeeds, kAmmoKinds };
+enum AmmoKind {
+    kAmmoArrows = 0,
+    kAmmoBombs,
+    kAmmoBombchus,
+    kAmmoSticks,
+    kAmmoNuts,
+    kAmmoBeans,
+    kAmmoSeeds,
+    kAmmoKinds
+};
 
 struct AmmoSlot {
     int8_t* count = nullptr; // the game's AMMO() cell; nullptr = this game has no such consumable
@@ -77,7 +86,7 @@ struct Native {
     int8_t* defenseHearts;      // 20 with Double Defense, as both games set it
     // Magic (same fields, same units in both games; nullptr = this game doesn't take part)
     int8_t* magic = nullptr;
-    int8_t* magicLevel = nullptr;      // 0 none, 1 normal, 2 double
+    int8_t* magicLevel = nullptr; // 0 none, 1 normal, 2 double
     uint8_t* isMagicAcquired = nullptr;
     int16_t* magicState = nullptr;
     int16_t* magicFillTarget = nullptr;
@@ -93,8 +102,8 @@ struct Runtime {
     int16_t lastCapacity = -1; // what this game last wrote (to tell a native pickup from our own write)
     int lastPieces = -1;
     int16_t lastHealth = -1;
-    bool pendingEntry = true;  // first tick after a save load: shared health goes INTO the game
-    bool pendingMagic = true;  // same for magic, which waits for the game's own load refill to start / finish
+    bool pendingEntry = true; // first tick after a save load: shared health goes INTO the game
+    bool pendingMagic = true; // same for magic, which waits for the game's own load refill to start / finish
     int lastAmmo[kAmmoKinds] = { -1, -1, -1, -1, -1, -1, -1 }; // the count this game showed last frame (-1 = not owned)
 };
 
@@ -156,7 +165,8 @@ inline void TickMagic(Runtime& rt, const Native& n) {
         if (s.magic < 0) {
             rt.pendingMagic = false; // nothing shared yet: this game's own amount becomes the shared one below
         } else if ((state == kMagicStateStepCapacity) || (state == kMagicStateFill)) {
-            *n.magicFillTarget = (int16_t)((s.magic > cap) ? cap : s.magic); // the load refill stops at the shared amount
+            *n.magicFillTarget =
+                (int16_t)((s.magic > cap) ? cap : s.magic); // the load refill stops at the shared amount
             rt.pendingMagic = false;
         } else if (state == kMagicStateIdle) {
             *n.magic = (int8_t)((s.magic > cap) ? cap : s.magic);

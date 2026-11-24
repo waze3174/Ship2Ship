@@ -457,7 +457,8 @@ void KaleidoScope_DrawQuestStatus(PlayState* play, GraphicsContext* gfxCtx) {
     // strength (owner 2026-11-14: "show 1/8ths of hearts").
     extern int Combo_HeartPieceEighths(void);
     const s32 comboEighths = Combo_HeartPieceEighths();
-    const s32 comboQuarters = (comboEighths >= 0) ? (comboEighths / 2) : (s32)(gSaveContext.inventory.questItems >> 0x1C);
+    const s32 comboQuarters =
+        (comboEighths >= 0) ? (comboEighths / 2) : (s32)(gSaveContext.inventory.questItems >> 0x1C);
     const s32 comboHalf = (comboEighths >= 0) && (comboEighths & 1);
     if ((comboQuarters != 0) || comboHalf) {
         u8 comboAlpha;

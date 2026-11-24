@@ -230,8 +230,7 @@ void Apply() {
             u8 item, slot;
             bool clear;
             const nlohmann::json key = d.value(name, std::string());
-            if (!ResolveButton(key, dx.is_object() && dx.contains(name) ? &dx[name] : nullptr, &item, &slot,
-                               &clear)) {
+            if (!ResolveButton(key, dx.is_object() && dx.contains(name) ? &dx[name] : nullptr, &item, &slot, &clear)) {
                 if (clear) {
                     DPAD_SLOT_EQUIP(form, btn) = SLOT_NONE;
                     DPAD_BUTTON_ITEM_EQUIP(form, btn) = ITEM_NONE;
@@ -245,12 +244,13 @@ void Apply() {
             Interface_Dpad_LoadItemIconImpl(gPlayState, btn);
         }
     }
-    fprintf(stderr,
-            "[ComboPause/MM] shared layout applied in Termina: C %02X/%02X/%02X D-up/down/left/right %02X/%02X/%02X/%02X\n",
-            BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_C_LEFT), BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_C_DOWN),
-            BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_C_RIGHT), DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_UP),
-            DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_DOWN), DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_LEFT),
-            DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_RIGHT));
+    fprintf(
+        stderr,
+        "[ComboPause/MM] shared layout applied in Termina: C %02X/%02X/%02X D-up/down/left/right %02X/%02X/%02X/%02X\n",
+        BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_C_LEFT), BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_C_DOWN),
+        BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_C_RIGHT), DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_UP),
+        DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_DOWN), DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_LEFT),
+        DPAD_BUTTON_ITEM_EQUIP(form, EQUIP_SLOT_D_RIGHT));
 }
 
 void RegisterComboEquipShare() {

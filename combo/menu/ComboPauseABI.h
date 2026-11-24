@@ -50,7 +50,8 @@ static inline int ComboPause_OotDecode(int id) { /* -1 = native / none */
     if (id >= COMBO_PAUSE_OOT_FOREIGN_FIRST && id < COMBO_PAUSE_OOT_ARROW_ANIM_FIRST)
         return id - COMBO_PAUSE_OOT_FOREIGN_FIRST;
     if (id > COMBO_PAUSE_OOT_ARROW_ANIM_LAST && id <= COMBO_PAUSE_OOT_FOREIGN_LAST)
-        return id - COMBO_PAUSE_OOT_FOREIGN_FIRST - (COMBO_PAUSE_OOT_ARROW_ANIM_LAST - COMBO_PAUSE_OOT_ARROW_ANIM_FIRST + 1);
+        return id - COMBO_PAUSE_OOT_FOREIGN_FIRST -
+               (COMBO_PAUSE_OOT_ARROW_ANIM_LAST - COMBO_PAUSE_OOT_ARROW_ANIM_FIRST + 1);
     return -1;
 }
 

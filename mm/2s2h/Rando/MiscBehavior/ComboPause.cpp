@@ -281,7 +281,7 @@ int sDrawTab = -1;
 int CurTab() {
     if (sDrawTab >= 0)
         return sDrawTab;
-    return sFace == COMBO_MM_PAUSE_FACE_HYRULE ? COMBO_MM_PAUSE_TAB_HYRULE
+    return sFace == COMBO_MM_PAUSE_FACE_HYRULE  ? COMBO_MM_PAUSE_TAB_HYRULE
            : sFace == COMBO_MM_PAUSE_FACE_EQUIP ? COMBO_MM_PAUSE_TAB_HYRULE_EQUIP
                                                 : COMBO_MM_PAUSE_TAB_TERMINA;
 }
@@ -329,7 +329,7 @@ extern "C" int Combo_MmPauseIsForeignName(int item) {
 
 // ---- the prism ------------------------------------------------------------------------------------------------------
 extern "C" int Combo_MmPauseFacePage(int face) {
-    static const int kPages[COMBO_MM_PAUSE_FACE_COUNT] = { PAUSE_ITEM, PAUSE_ITEM, PAUSE_MAP,
+    static const int kPages[COMBO_MM_PAUSE_FACE_COUNT] = { PAUSE_ITEM,  PAUSE_ITEM, PAUSE_MAP,
                                                            PAUSE_QUEST, PAUSE_MASK, PAUSE_ITEM };
     return kPages[((face % COMBO_MM_PAUSE_FACE_COUNT) + COMBO_MM_PAUSE_FACE_COUNT) % COMBO_MM_PAUSE_FACE_COUNT];
 }
@@ -343,7 +343,7 @@ extern "C" void Combo_MmPauseSetDrawTab(int tab) {
 }
 
 extern "C" int Combo_MmPauseFaceTab(int face) {
-    return face == COMBO_MM_PAUSE_FACE_HYRULE ? COMBO_MM_PAUSE_TAB_HYRULE
+    return face == COMBO_MM_PAUSE_FACE_HYRULE  ? COMBO_MM_PAUSE_TAB_HYRULE
            : face == COMBO_MM_PAUSE_FACE_EQUIP ? COMBO_MM_PAUSE_TAB_HYRULE_EQUIP
                                                : COMBO_MM_PAUSE_TAB_TERMINA;
 }
@@ -391,7 +391,8 @@ extern "C" float Combo_MmPausePrismHeading(int turning, int opening, float progr
     return (float)sFace;
 }
 
-// ---- the Hyrule equipment face (OOT's equipment page) ----------------------------------------------------------------
+// ---- the Hyrule equipment face (OOT's equipment page)
+// ----------------------------------------------------------------
 extern "C" int Combo_MmPauseEquipItem(int gridSlot) {
     if (gridSlot < 0 || gridSlot >= 16 || !EquipSnapshot())
         return ITEM_NONE;
@@ -553,7 +554,7 @@ void RegisterComboPauseHost() {
             const int twin = Combo_MmPauseUseItem(*itemId);
             // An OOT-only item (OOT items in Termina, ComboOotItems.cpp) is Link's only and follows OOT's age rule.
             *should = (twin != ITEM_NONE) ? !gPlayerFormItemRestrictions[GET_PLAYER_FORM][twin]
-                                           : ((GET_PLAYER_FORM != PLAYER_FORM_HUMAN) || !Combo_MmOotItemAgeOk(*itemId));
+                                          : ((GET_PLAYER_FORM != PLAYER_FORM_HUMAN) || !Combo_MmOotItemAgeOk(*itemId));
         }
     });
     // Using one: OOT's masks run as MM's; the rest play MM's "can't use" once per press.
@@ -607,15 +608,14 @@ void DumpState() {
     const PauseContext* p = &play->pauseCtx;
     Log("dump: pause state %d page %d tab %s cursor slot %d item %d special %d | C %02X/%02X/%02X "
         "D-up/down/left/right %02X/%02X/%02X/%02X | slots %02X/%02X/%02X %02X/%02X/%02X/%02X | form %d mask %d",
-        p->state, p->pageIndex, kFaceNames[sFace], p->cursorPoint[PAUSE_ITEM],
-        p->cursorItem[PAUSE_ITEM], p->cursorSpecialPos, BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_LEFT),
-        BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_DOWN), BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_RIGHT),
-        DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_UP), DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_DOWN),
-        DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_LEFT), DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_RIGHT),
-        C_SLOT_EQUIP(0, EQUIP_SLOT_C_LEFT), C_SLOT_EQUIP(0, EQUIP_SLOT_C_DOWN), C_SLOT_EQUIP(0, EQUIP_SLOT_C_RIGHT),
-        DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_UP), DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_DOWN), DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_LEFT),
-        DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_RIGHT), GET_PLAYER_FORM,
-        GET_PLAYER(play) ? GET_PLAYER(play)->currentMask : -1);
+        p->state, p->pageIndex, kFaceNames[sFace], p->cursorPoint[PAUSE_ITEM], p->cursorItem[PAUSE_ITEM],
+        p->cursorSpecialPos, BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_LEFT), BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_DOWN),
+        BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_RIGHT), DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_UP),
+        DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_DOWN), DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_LEFT),
+        DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_RIGHT), C_SLOT_EQUIP(0, EQUIP_SLOT_C_LEFT),
+        C_SLOT_EQUIP(0, EQUIP_SLOT_C_DOWN), C_SLOT_EQUIP(0, EQUIP_SLOT_C_RIGHT), DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_UP),
+        DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_DOWN), DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_LEFT),
+        DPAD_SLOT_EQUIP(0, EQUIP_SLOT_D_RIGHT), GET_PLAYER_FORM, GET_PLAYER(play) ? GET_PLAYER(play)->currentMask : -1);
     std::string row;
     for (int s = 0; s < 24; s++) {
         char b[8];

@@ -1552,8 +1552,7 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
             pauseCtx->equipAnimShrinkRate = equipAnimShrinkRate;
         }
 
-        if (HudEditor_GetActiveElementMode() ==
-            HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+        if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
             pauseCtx->equipAnimScale = 0;
             pauseCtx->equipAnimShrinkRate = 0;
         }

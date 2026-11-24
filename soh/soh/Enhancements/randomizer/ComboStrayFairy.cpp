@@ -32,7 +32,7 @@ extern "C" {
 #include "variables.h"
 #include "functions.h"
 extern PlayState* gPlayState;
-extern s32 gComboStrayFairyNear; // z_en_item00_combo_strayfairy.c (MM's ACTORCTX_FLAG_3)
+extern s32 gComboStrayFairyNear;                // z_en_item00_combo_strayfairy.c (MM's ACTORCTX_FLAG_3)
 int Randomizer_ComboStrayFairyArea(int32_t rc); // draw.cpp
 }
 
@@ -72,8 +72,8 @@ void ContainerHoldsFairyUpdate(void* actorRef) {
     if (!(actor->flags & ACTOR_FLAG_UPDATE_CULLING_DISABLED)) {
         actor->flags |= ACTOR_FLAG_UPDATE_CULLING_DISABLED;
         if (sDbg) {
-            Combo_DebugLog("[ComboShip] stray fairy: container actor 0x%X holds rc=%d (fairy-nearby flag)\n",
-                           actor->id, (int)identity->randomizerCheck);
+            Combo_DebugLog("[ComboShip] stray fairy: container actor 0x%X holds rc=%d (fairy-nearby flag)\n", actor->id,
+                           (int)identity->randomizerCheck);
         }
     }
 }
@@ -128,8 +128,8 @@ void HarnessParse() {
     }
     sHarness.active = !sHarness.checkName.empty();
     Combo_DebugLog("[ComboShip] harness: COMBO_DEBUG_SPAWN_STRAYFAIRY '%s' %s dist %.0f delay %d (IS_RANDO=%d)\n",
-                   sHarness.checkName.c_str(), sHarness.freestanding ? "freestanding" : "container drop",
-                   sHarness.dist, sHarness.delay, (int)IS_RANDO);
+                   sHarness.checkName.c_str(), sHarness.freestanding ? "freestanding" : "container drop", sHarness.dist,
+                   sHarness.delay, (int)IS_RANDO);
 }
 
 RandomizerCheck HarnessFindCheck() {

@@ -56,7 +56,10 @@ const int kPresetCount = static_cast<int>(kPresets.size());
 // on purpose — that is the thing keeping its keys from colliding with OOT's "gCosmetics".
 bool IsMmKey(const std::string& key) {
     static const char* kMmPrefixes[] = {
-        "gCosmetic.", "gEnhancements.Camera.", "gEnhancements.Dpad.", "gEnhancements.Playback.",
+        "gCosmetic.",
+        "gEnhancements.Camera.",
+        "gEnhancements.Dpad.",
+        "gEnhancements.Playback.",
         "gEnhancements.Graphics.",
     };
     for (const char* p : kMmPrefixes) {

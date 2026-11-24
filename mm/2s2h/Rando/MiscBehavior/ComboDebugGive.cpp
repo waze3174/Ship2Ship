@@ -1,6 +1,6 @@
-// mm/2s2h/Rando/MiscBehavior/ComboDebugGive.cpp — ComboShip debug (test harness only): COMBO_DEBUG_MM_GIVE=<hex item>[,...]
-// puts MM items into MM's inventory at their home slots whenever MM loads a save (a give from OOT's side only reaches
-// MM's dormant memory, which a switch into MM reloads from disk). Env var at launch only.
+// mm/2s2h/Rando/MiscBehavior/ComboDebugGive.cpp — ComboShip debug (test harness only): COMBO_DEBUG_MM_GIVE=<hex
+// item>[,...] puts MM items into MM's inventory at their home slots whenever MM loads a save (a give from OOT's side
+// only reaches MM's dormant memory, which a switch into MM reloads from disk). Env var at launch only.
 #include <cstdlib>
 #include <string>
 
@@ -55,8 +55,8 @@ static void ComboTestMmActorTick() {
     if (sFrames == 60) {
         const f32 s = Math_SinS(player->actor.shape.rot.y), c = Math_CosS(player->actor.shape.rot.y);
         sActor = Actor_Spawn(&gPlayState->actorCtx, gPlayState, sComboTestId, player->actor.world.pos.x + s * 70.0f,
-                             player->actor.world.pos.y, player->actor.world.pos.z + c * 70.0f, 0,
-                             0, 0, sComboTestParams); // rot.y 0: some objects index a type table with it
+                             player->actor.world.pos.y, player->actor.world.pos.z + c * 70.0f, 0, 0, 0,
+                             sComboTestParams); // rot.y 0: some objects index a type table with it
         if (sComboTestCLeft >= 0) {
             gSaveContext.save.saveInfo.equips.buttonItems[0][EQUIP_SLOT_C_LEFT] = (u8)sComboTestCLeft;
         }

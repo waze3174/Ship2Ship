@@ -20,29 +20,29 @@ void* Combo_MmRawResource(const char* otrPath); // ComboForms.cpp (MM's resource
 #define kCraterDebrisDL "__OTR__@mm:objects/gameplay_keep/gameplay_keep_DL_06AB30"
 
 typedef struct {
-    s32 active;   // unk_00
-    s32 timer;    // unk_04
-    Vec3f pos;    // unk_08
-    Vec3f vel;    // unk_14
-    Vec3f accel;  // unk_20
-    f32 scale;    // unk_2C
-    Vec3s rot;    // unk_30
-    Vec3s rotVel; // unk_36
+    s32 active;      // unk_00
+    s32 timer;       // unk_04
+    Vec3f pos;       // unk_08
+    Vec3f vel;       // unk_14
+    Vec3f accel;     // unk_20
+    f32 scale;       // unk_2C
+    Vec3s rot;       // unk_30
+    Vec3s rotVel;    // unk_36
 } ComboCraterDebris; // MM EnTestStruct
 
 typedef struct {
     s32 active;
-    Vec3f pos;      // actor.world.pos
-    Vec3s rot;      // actor.shape.rot
-    f32 scale;      // actor.scale
-    s16 params;     // actor.params
+    Vec3f pos;  // actor.world.pos
+    Vec3s rot;  // actor.shape.rot
+    f32 scale;  // actor.scale
+    s16 params; // actor.params
     ComboKFSkelAnimeFlex kfSkelAnime;
     s32 debrisThrown; // unk_174 & 1
     Vec3s jointTable[12];
     Vec3s morphTable[12];
-    u8 curFrame;    // unk_208
-    u8 fade;        // unk_209
-    u8 snow;        // surfaceMaterial == SURFACE_MATERIAL_SNOW
+    u8 curFrame; // unk_208
+    u8 fade;     // unk_209
+    u8 snow;     // surfaceMaterial == SURFACE_MATERIAL_SNOW
     ComboCraterDebris debris[COMBO_CRATER_DEBRIS];
 } ComboCrater; // MM EnTest
 
@@ -239,8 +239,8 @@ void Combo_Crater_Update(void) {
 }
 
 // MM EnTest_OverrideLimbDraw
-static s32 Combo_Crater_OverrideLimbDraw(PlayState* play, ComboKFSkelAnimeFlex* kfSkelAnime, s32 limbIndex,
-                                         Gfx** dList, u8* flags, void* arg, Vec3f* scale, Vec3s* rot, Vec3f* pos) {
+static s32 Combo_Crater_OverrideLimbDraw(PlayState* play, ComboKFSkelAnimeFlex* kfSkelAnime, s32 limbIndex, Gfx** dList,
+                                         u8* flags, void* arg, Vec3f* scale, Vec3s* rot, Vec3f* pos) {
     ComboCrater* this = (ComboCrater*)arg;
 
     OPEN_DISPS(play->state.gfxCtx);

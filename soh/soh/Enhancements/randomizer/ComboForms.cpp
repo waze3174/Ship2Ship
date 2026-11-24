@@ -154,9 +154,8 @@ s32 FormOverride(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s*
             *dList = (Gfx*)Routed(pre + "LeftHandDL"); // the Deku has one hand model
         } else if ((sForm == COMBO_FORM_ZORA) && (lhType == PLAYER_MODELTYPE_LH_HAMMER)) {
             // The owner's hammer Zora: OOT's hammer model is adult Link's hand holding it, as for the hookshot.
-            *dList = (Gfx*) "__OTR__objects/object_link_boy/gLinkAdultLeftHandHoldingHammerNearDL";
-        } else if ((sForm == COMBO_FORM_ZORA) && (data != nullptr) &&
-                   ZoraGuitarOut((Player*)data)) {
+            *dList = (Gfx*)"__OTR__objects/object_link_boy/gLinkAdultLeftHandHoldingHammerNearDL";
+        } else if ((sForm == COMBO_FORM_ZORA) && (data != nullptr) && ZoraGuitarOut((Player*)data)) {
             // MM Player_OverrideLimbDrawGameplayDefault: the Zora's left hand holds his guitar while he plays it.
             // The limb draws the guitar alone, sized by MM's keys (func_80125CE0: coming out D_801C0538, playing
             // D_801C0560 -- with the two stop keys 2S2H adds for the table's overrun); the hand that holds it is drawn
@@ -165,14 +164,15 @@ s32 FormOverride(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s*
                 s16 frame;
                 s16 x, y, z;
             };
-            static const Key kOut[] = { { 0, 100, 100, 100 }, { 5, 100, 100, 100 }, { 6, 0, 0, 0 },
-                                        { 8, 100, 100, 100 }, { 14, 100, 100, 100 } };
-            static const Key kPlay[] = { { 0, 100, 100, 100 }, { 2, 95, 95, 100 }, { 3, 105, 105, 100 },
+            static const Key kOut[] = {
+                { 0, 100, 100, 100 }, { 5, 100, 100, 100 }, { 6, 0, 0, 0 }, { 8, 100, 100, 100 }, { 14, 100, 100, 100 }
+            };
+            static const Key kPlay[] = { { 0, 100, 100, 100 }, { 2, 95, 95, 100 },   { 3, 105, 105, 100 },
                                          { 5, 102, 102, 102 }, { 0, 100, 100, 100 }, { 9, 100, 100, 100 } };
             Player* p = (Player*)data;
             const char* anim = (const char*)p->skelAnime.animation;
-            const Key* k = (strcmp(anim, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_gakkistart") == 0) ? kOut
-                                                                                                             : kPlay;
+            const Key* k =
+                (strcmp(anim, "__OTR__@mm:objects/gameplay_keep/gPlayerAnim_pz_gakkistart") == 0) ? kOut : kPlay;
             const f32 cur = p->skelAnime.curFrame;
             const s32 curI = (s32)cur;
             s16 next;
@@ -203,7 +203,7 @@ s32 FormOverride(PlayState* play, s32 limbIndex, Gfx** dList, Vec3f* pos, Vec3s*
         if ((sForm == COMBO_FORM_ZORA) && (rhType == PLAYER_MODELTYPE_RH_HOOKSHOT)) {
             // The owner's hookshot Zora: OOT's only always-present hookshot model is adult Link's hand holding it
             // (child Link's RH_HOOKSHOT hand is empty), so that hand carries it.
-            *dList = (Gfx*) "__OTR__objects/object_link_boy/gLinkAdultRightHandHoldingHookshotNearDL";
+            *dList = (Gfx*)"__OTR__objects/object_link_boy/gLinkAdultRightHandHoldingHookshotNearDL";
         } else if ((sForm == COMBO_FORM_DEKU) || (sForm == COMBO_FORM_FIERCE_DEITY)) {
             *dList = (Gfx*)Routed(obj + kForms[sForm].prefix + "RightHandDL");
         } else {
@@ -585,8 +585,8 @@ extern "C" void Combo_MmAnimatedMatStep(PlayState* play, const char* mmOtrPath, 
             case 0: {
                 MmScrollParams* p = (MmScrollParams*)mat->params;
                 MatSegment(play, flags, seg,
-                           Gfx_TexScrollEx(play->state.gfxCtx, p->xStep * step, -(s32)(p->yStep * step), p->width, p->height,
-                                           p->xStep, -(s32)(p->yStep)));
+                           Gfx_TexScrollEx(play->state.gfxCtx, p->xStep * step, -(s32)(p->yStep * step), p->width,
+                                           p->height, p->xStep, -(s32)(p->yStep)));
                 break;
             }
             case 1: {

@@ -1,6 +1,6 @@
 // soh/soh/Enhancements/randomizer/ComboCrossEntrances.cpp — ComboShip cross-game entrances, OOT side
-// (WomboComboShip's docs/plans/full-coop-sync.md §B2; owner: "a full slurry, you never know which game you'll end up in"; age is
-// KEPT across games). Combo-owned file (soh GLOB_RECURSE).
+// (WomboComboShip's docs/plans/full-coop-sync.md §B2; owner: "a full slurry, you never know which game you'll end up
+// in"; age is KEPT across games). Combo-owned file (soh GLOB_RECURSE).
 //
 // A door's DESTINATION is the entrance index it lands on after SoH's own shuffle (replacement->GetIndex(), the
 // value Entrance_OverrideNextIndex returns). The launcher pairs OOT and MM connections and pushes:

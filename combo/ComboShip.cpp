@@ -765,8 +765,8 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
         // is still broken between termina and hyrule"; reproduced on the owner's save). Now the live state wins: the
         // container is refreshed from it, the game being played keeps its own, and only another game (dormant or
         // arriving) takes the shared state, from that fresh copy.
-        FnShelfGet liveGet = (g_comboHealthActiveGame == ComboRando::GAME_OOT) ? SOH_ComboHealthGetState
-                                                                                : MM_ComboHealthGetState;
+        FnShelfGet liveGet =
+            (g_comboHealthActiveGame == ComboRando::GAME_OOT) ? SOH_ComboHealthGetState : MM_ComboHealthGetState;
         nlohmann::json live = nlohmann::json::object();
         if (liveGet != nullptr) {
             live = nlohmann::json::parse(liveGet(), nullptr, false);
@@ -776,7 +776,8 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
             c["combo"]["health"] = live;
         }
         if (liveValid && (game == g_comboHealthActiveGame)) {
-            std::cout << "[ComboShip] save read for " << key << " (the game in play): its live shared state kept" << std::endl;
+            std::cout << "[ComboShip] save read for " << key << " (the game in play): its live shared state kept"
+                      << std::endl;
         } else {
             auto combo = c.value("combo", nlohmann::json::object());
             std::cout << "[ComboShip] save read for " << key << ": shared health set "

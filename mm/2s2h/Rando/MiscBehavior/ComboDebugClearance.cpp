@@ -101,7 +101,8 @@ void ScanScene(PlayState* play) {
             }
         }
     }
-    SPDLOG_INFO("[ComboShip] clearance: scene {:#x} entrance-scene {:#x} floors {} samples {} ceiling hits {} (<=40 {}, >56 {}) tight cells {}",
+    SPDLOG_INFO("[ComboShip] clearance: scene {:#x} entrance-scene {:#x} floors {} samples {} ceiling hits {} (<=40 "
+                "{}, >56 {}) tight cells {}",
                 (int)play->sceneId, (int)(gSaveContext.save.entrance >> 9), floors, samples, hits, under40, over56,
                 cells.size());
     for (auto& [key, c] : cells) {
@@ -120,14 +121,14 @@ struct Body {
 using NodeKey = std::tuple<int, int, int>;
 static constexpr float kGrid = 12.0f;
 
-
 // 0 = the step is taken (out->y is the new floor), 1 = wall, 2 = ceiling, 3 = no floor
 static int Step(PlayState* play, const Vec3f& a, Vec3f next, Body body, Vec3f* out) {
     Player* player = GET_PLAYER(play);
     Vec3f res;
     CollisionPoly* wp;
     s32 wb;
-    if (BgCheck_EntitySphVsWall3(&play->colCtx, &res, &next, (Vec3f*)&a, body.radius, &wp, &wb, &player->actor, 26.8f) &&
+    if (BgCheck_EntitySphVsWall3(&play->colCtx, &res, &next, (Vec3f*)&a, body.radius, &wp, &wb, &player->actor,
+                                 26.8f) &&
         (std::fabs(res.x - next.x) + std::fabs(res.z - next.z) > 1.0f)) {
         return 1;
     }
@@ -225,7 +226,8 @@ static void ReachScene(PlayState* play) {
         for (int ox = -3; ox <= 3 && !nearAdult; ox++) {
             for (int oz = -3; oz <= 3 && !nearAdult; oz++) {
                 for (int oy = -1; oy <= 1 && !nearAdult; oy++) {
-                    nearAdult = adult.count(NodeKey(std::get<0>(k) + ox, std::get<1>(k) + oz, std::get<2>(k) + oy)) != 0;
+                    nearAdult =
+                        adult.count(NodeKey(std::get<0>(k) + ox, std::get<1>(k) + oz, std::get<2>(k) + oy)) != 0;
                 }
             }
         }
@@ -247,8 +249,8 @@ static void ReachScene(PlayState* play) {
     }
     SPDLOG_INFO("[ComboShip] reach: scene {:#x} entrance-scene {:#x} seeds {} child {}{} adult {}{} child-only {} "
                 "(deep {}) adult-only {}",
-                (int)play->sceneId, (int)(gSaveContext.save.entrance >> 9), seeds.size(), child.size(),
-                capC ? "+" : "", adult.size(), capA ? "+" : "", child.size() - (adult.size() - adultOnly), deep, adultOnly);
+                (int)play->sceneId, (int)(gSaveContext.save.entrance >> 9), seeds.size(), child.size(), capC ? "+" : "",
+                adult.size(), capA ? "+" : "", child.size() - (adult.size() - adultOnly), deep, adultOnly);
     for (auto& [key, c] : lost) {
         if (c.first >= 4) {
             // the gate: walk the child's path back from this cluster to the seed; the step after the last node the
@@ -274,10 +276,16 @@ static void ReachScene(PlayState* play) {
                     gateFrom = path[i];
                 }
             }
-            SPDLOG_INFO("[ComboShip] reach:   child-only at {:.0f} {:.0f} {:.0f} nodes {} gate {:.0f} {:.0f} {:.0f} from {:.0f} {:.0f} {:.0f} "
+            SPDLOG_INFO("[ComboShip] reach:   child-only at {:.0f} {:.0f} {:.0f} nodes {} gate {:.0f} {:.0f} {:.0f} "
+                        "from {:.0f} {:.0f} {:.0f} "
                         "({})",
                         c.second.x / c.first, c.second.y / c.first, c.second.z / c.first, c.first, gate.x, gate.y,
-                        gate.z, gateFrom.x, gateFrom.y, gateFrom.z, reason == 1 ? "wall" : reason == 2 ? "ceiling" : reason == 3 ? "floor" : reason == 0 ? "step ok" : "?");
+                        gate.z, gateFrom.x, gateFrom.y, gateFrom.z,
+                        reason == 1   ? "wall"
+                        : reason == 2 ? "ceiling"
+                        : reason == 3 ? "floor"
+                        : reason == 0 ? "step ok"
+                                      : "?");
         }
     }
 }
@@ -330,8 +338,8 @@ static void RegisterComboDebugClearance() {
                     continue;
                 }
             }
-            if (s == 0x08 || s == 0x09 || s == 0x0B || s == 0x0C || s == 0x0D || s == 0x0E || s == 0x0F ||
-                s == 0x2E || s == 0x37) {
+            if (s == 0x08 || s == 0x09 || s == 0x0B || s == 0x0C || s == 0x0D || s == 0x0E || s == 0x0F || s == 0x2E ||
+                s == 0x37) {
                 continue;
             }
             SPDLOG_INFO("[ComboShip] clearance: going to entrance scene {:#x}", s);
@@ -399,9 +407,10 @@ static void RegisterComboDebugWalk() {
             player->actor.velocity.y = 0.0f;
             sPhase = 2;
             sFrames = 0;
-            SPDLOG_INFO("[ComboShip] walk: scene {:#x} start {:.0f} {:.0f} {:.0f} toward {:.0f} {:.0f} form {} adult {}",
-                        (int)gPlayState->sceneId, sX, sY, sZ, sTx, sTz, (int)player->transformation,
-                        (int)(player->ageProperties->wallCheckRadius > 15.0f));
+            SPDLOG_INFO(
+                "[ComboShip] walk: scene {:#x} start {:.0f} {:.0f} {:.0f} toward {:.0f} {:.0f} form {} adult {}",
+                (int)gPlayState->sceneId, sX, sY, sZ, sTx, sTz, (int)player->transformation,
+                (int)(player->ageProperties->wallCheckRadius > 15.0f));
         } else if (sPhase == 2) {
             float d = std::sqrt(SQ(sTx - player->actor.world.pos.x) + SQ(sTz - player->actor.world.pos.z));
             if ((sFrames % 10) == 0 || sFrames >= sFramesWanted || d < 8.0f) {

@@ -81,8 +81,7 @@ static void DrawTycoonRupeeCounter() {
 
         HudEditor_SetActiveElement(HUD_EDITOR_ELEMENT_RUPEE_COUNTER);
         if (HudEditor_ShouldOverrideDraw()) {
-            if (HudEditor_GetActiveElementMode() ==
-                HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
+            if (HudEditor_GetActiveElementMode() == HUD_EDITOR_ELEMENT_MODE_HIDDEN) {
                 hudEditorActiveElement = HUD_EDITOR_ELEMENT_NONE;
             } else {
                 s16 rectLeft = xPos;

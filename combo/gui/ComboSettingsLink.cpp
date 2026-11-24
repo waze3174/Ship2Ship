@@ -45,12 +45,8 @@ struct LinkRow {
 const LinkRow kRows[] = {
     // Third-person / free look
     { "gSettings.FreeLook.Enabled", LINK_INT, { "gEnhancements.Camera.FreeLook.Enable" } },
-    { "gSettings.FreeLook.CameraSensitivity.X",
-      LINK_FLOAT,
-      { "gEnhancements.Camera.RightStick.CameraSensitivity.X" } },
-    { "gSettings.FreeLook.CameraSensitivity.Y",
-      LINK_FLOAT,
-      { "gEnhancements.Camera.RightStick.CameraSensitivity.Y" } },
+    { "gSettings.FreeLook.CameraSensitivity.X", LINK_FLOAT, { "gEnhancements.Camera.RightStick.CameraSensitivity.X" } },
+    { "gSettings.FreeLook.CameraSensitivity.Y", LINK_FLOAT, { "gEnhancements.Camera.RightStick.CameraSensitivity.Y" } },
     { "gSettings.FreeLook.InvertXAxis", LINK_INT, { "gEnhancements.Camera.RightStick.InvertXAxis" } },
     { "gSettings.FreeLook.InvertYAxis", LINK_INT, { "gEnhancements.Camera.RightStick.InvertYAxis" } },
     { "gSettings.FreeLook.MaxCameraDistance", LINK_INT, { "gEnhancements.Camera.FreeLook.MaxCameraDistance" } },

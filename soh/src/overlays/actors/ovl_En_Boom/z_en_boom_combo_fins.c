@@ -23,7 +23,8 @@
 
 s32 gComboZoraFinCaught = false; // z_player.c: a fin came back this frame (MM PLAYER_STATE3_ZORA_BOOMERANG_CAUGHT)
 
-static ColliderQuadInit sComboFinQuadInit = { // MM sQuadInit in OOT's layout
+static ColliderQuadInit sComboFinQuadInit = {
+    // MM sQuadInit in OOT's layout
     {
         COLTYPE_NONE,
         AT_ON | AT_TYPE_PLAYER,
@@ -51,8 +52,7 @@ static void Fin_Water(EnBoom* this, PlayState* play) {
     f32 sp50 = this->actor.world.pos.y;
     u16 sp4E = this->actor.bgCheckFlags & BGCHECKFLAG_WATER;
 
-    if (WaterBox_GetSurface1(play, &play->colCtx, this->actor.world.pos.x, this->actor.world.pos.z, &sp50,
-                             &waterBox) &&
+    if (WaterBox_GetSurface1(play, &play->colCtx, this->actor.world.pos.x, this->actor.world.pos.z, &sp50, &waterBox) &&
         (this->actor.world.pos.y < sp50)) {
         Vec3f sp40;
 
@@ -102,8 +102,7 @@ void EnBoom_ComboFinInit(EnBoom* this, PlayState* play) {
 
     // MM: trail 255,255,100 fading 255 -> 64 -> 0.
     for (i = 0; i < 3; i++) {
-        blure.p1StartColor[i] = blure.p2StartColor[i] = blure.p1EndColor[i] = blure.p2EndColor[i] =
-            (i < 2) ? 255 : 100;
+        blure.p1StartColor[i] = blure.p2StartColor[i] = blure.p1EndColor[i] = blure.p2EndColor[i] = (i < 2) ? 255 : 100;
     }
     blure.p1StartColor[3] = 255;
     blure.p2StartColor[3] = 64;

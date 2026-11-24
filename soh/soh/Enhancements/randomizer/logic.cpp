@@ -84,11 +84,12 @@ bool ComboGoronStrength(RandomizerGet item) {
     return (item == RG_GORONS_BRACELET) || (item == RG_SILVER_GAUNTLETS) || (item == RG_GOLDEN_GAUNTLETS);
 }
 bool ComboGoronUsable(RandomizerGet item) {
-    return ComboFormNeutral(item) || (item == RG_GORON_TUNIC) || (item == RG_MEGATON_HAMMER) || ComboGoronStrength(item);
+    return ComboFormNeutral(item) || (item == RG_GORON_TUNIC) || (item == RG_MEGATON_HAMMER) ||
+           ComboGoronStrength(item);
 }
-// Inside BlastOrSmash (bombable walls, grotto holes and boulders alike): the Goron's punch is no hammer there. MM's bomb
-// walls take explosives only (owner 2026-11-14: "goron link can't break bomb walls in MM just by punching"), and the
-// call sites don't say wall or boulder, so the credit stays off (safe: never counts a wall he can't open).
+// Inside BlastOrSmash (bombable walls, grotto holes and boulders alike): the Goron's punch is no hammer there. MM's
+// bomb walls take explosives only (owner 2026-11-14: "goron link can't break bomb walls in MM just by punching"), and
+// the call sites don't say wall or boulder, so the credit stays off (safe: never counts a wall he can't open).
 bool sComboNoGoronHammer = false;
 } // namespace
 
@@ -105,8 +106,8 @@ static bool ComboFormCredit(RandomizerGet item) {
     }
     const bool zora = (item == RG_IRON_BOOTS) || (item == RG_ZORA_TUNIC) || (item == RG_BRONZE_SCALE) ||
                       (item == RG_SILVER_SCALE) || (item == RG_GOLDEN_SCALE);
-    const bool goron = (item == RG_GORON_TUNIC) || ((item == RG_MEGATON_HAMMER) && !sComboNoGoronHammer) ||
-                       ComboGoronStrength(item);
+    const bool goron =
+        (item == RG_GORON_TUNIC) || ((item == RG_MEGATON_HAMMER) && !sComboNoGoronHammer) || ComboGoronStrength(item);
     if (zora && gComboOracleFormZora && !sComboBlockZora && (sComboFormCtx != COMBO_CTX_GORON)) {
         sComboFormCtx = COMBO_CTX_ZORA;
         return true;

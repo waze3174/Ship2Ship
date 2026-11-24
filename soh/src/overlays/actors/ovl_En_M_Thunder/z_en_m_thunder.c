@@ -11,7 +11,7 @@
 #include "soh/Enhancements/randomizer/ComboForms.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 s32 Combo_GfsInHand(Player* this); // z_player_lib.c
-s32 Combo_FdSword(Player* this);    // z_player_lib.c
+s32 Combo_FdSword(Player* this);   // z_player_lib.c
 #include "rando/CrossDamageTags.h"
 #define COMBO_BEAM_GREAT 2   // MM ENMTHUNDER_SUBTYPE_SWORDBEAM_GREAT
 #define COMBO_BEAM_REGULAR 3 // MM ENMTHUNDER_SUBTYPE_SWORDBEAM_REGULAR
@@ -25,7 +25,7 @@ static void Combo_ThunderSfx(EnMThunder* this, Player* player, u16 sfxId) {
 #define COMBO_THUNDER_SFX(sfxId) Combo_ThunderSfx(this, player, sfxId)
 #define COMBO_GFS_SCALE(oot, mm) (this->comboGfs ? (mm) : (oot))
 #else
-#define COMBO_THUNDER_SFX(sfxId)                                                                           \
+#define COMBO_THUNDER_SFX(sfxId)                                                             \
     Audio_PlaySfxGeneral(sfxId, &player->actor.projectedPos, 4, &gSfxDefaultFreqAndVolScale, \
                          &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb)
 #define COMBO_GFS_SCALE(oot, mm) (oot)

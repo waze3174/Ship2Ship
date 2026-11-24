@@ -25,8 +25,8 @@
 #define CROSS_MM_TAG_SWORD_BEAM (0x19 + 1)     // Fierce Deity beam (EnMThunder DMG_SWORD_BEAM, 3)
 
 // Tag a collider element's toucher (a ColliderInfo*'s .toucher, any collider shape).
-#define CROSS_MM_TAG_TOUCHER(toucherPtr, tag, atDamage)    \
-    do {                                                   \
-        (toucherPtr)->comboMmDmg = (tag);                  \
-        (toucherPtr)->comboMmAtDamage = (atDamage);        \
+#define CROSS_MM_TAG_TOUCHER(toucherPtr, tag, atDamage) \
+    do {                                                \
+        (toucherPtr)->comboMmDmg = (tag);               \
+        (toucherPtr)->comboMmAtDamage = (atDamage);     \
     } while (0)

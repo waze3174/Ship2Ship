@@ -244,8 +244,8 @@ void ComboMagicFire_Draw(Actor* thisx, PlayState* play) {
         gDPSetTextureLUT(POLY_XLU_DISP++, G_TT_NONE);
         // OOT's own fire texture and sphere, resolved against OOT's ResourceManager.
         gSPComboRMPush(POLY_XLU_DISP++, "oot");
-        gDPLoadTextureBlock(POLY_XLU_DISP++, "__OTR__overlays/ovl_Magic_Fire/sTex", G_IM_FMT_I, G_IM_SIZ_8b, 64, 64,
-                            0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, 6, 6, 15, G_TX_NOLOD);
+        gDPLoadTextureBlock(POLY_XLU_DISP++, "__OTR__overlays/ovl_Magic_Fire/sTex", G_IM_FMT_I, G_IM_SIZ_8b, 64, 64, 0,
+                            G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, 6, 6, 15, G_TX_NOLOD);
         gDPSetTile(POLY_XLU_DISP++, G_IM_FMT_I, G_IM_SIZ_8b, 8, 0, 1, 0, G_TX_NOMIRROR | G_TX_WRAP, 6, 14,
                    G_TX_NOMIRROR | G_TX_WRAP, 6, 14);
         gDPSetTileSize(POLY_XLU_DISP++, 1, 0, 0, 252, 252);

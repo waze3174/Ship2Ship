@@ -87,8 +87,8 @@ struct Frame {
     s16 l, r;
 };
 
-constexpr int kSlots = 16;                 // 0 = Link, 1..15 = OOT actors
-constexpr u32 kRenderLow = 528;            // as both ports' audio threads (32 kHz)
+constexpr int kSlots = 16;      // 0 = Link, 1..15 = OOT actors
+constexpr u32 kRenderLow = 528; // as both ports' audio threads (32 kHz)
 constexpr u32 kRenderHigh = 560;
 constexpr size_t kAheadFrames = 1200;      // keep ~37 ms rendered ahead of OOT's audio thread
 constexpr size_t kIdleAfterFrames = 32000; // ~1 s with no MM notes and no requests -> stop rendering

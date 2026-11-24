@@ -542,8 +542,7 @@ static void EnDog_ComboCheckForBremenMaskMarch(EnDog* this, PlayState* play) {
                 this->nextBehavior = DOG_WALK; // MM DOG_ANIM_WALK
                 this->actor.speedXZ = 0.0f;    // MM: EnDg_SetupBremenMaskApproachPlayer doesn't move the dog
                 this->actionFunc = EnDog_ComboBremenSetupApproach;
-            } else if ((this->actionFunc == EnDog_ComboBremenApproach) ||
-                       (this->actionFunc == EnDog_ComboBremenSit)) {
+            } else if ((this->actionFunc == EnDog_ComboBremenApproach) || (this->actionFunc == EnDog_ComboBremenSit)) {
                 if (DECR(this->comboBremenBarkTimer) == 0) {
                     this->comboBremenBarkTimer = 10;
                     Audio_PlayActorSound2(&this->actor, NA_SE_EV_SMALL_DOG_BARK);

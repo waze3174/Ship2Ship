@@ -54,7 +54,7 @@ int Combo_MmPauseSlotAmmo(int ootSlot);           // OOT's ammo digits for that 
 const char* Combo_MmPauseIconTex(int item);       // OOT icon (inside an "oot" bracket)
 const char* Combo_MmPauseNameTex(int item);       // OOT name plate (inside an "oot" bracket)
 int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
-int Combo_MmPauseUseItem(int item); // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
+int Combo_MmPauseUseItem(int item);      // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
 int Combo_MmPauseForeignSlot(int item);  // OOT slot behind a foreign id, -1 = not foreign
 int Combo_MmPauseOotItemAt(int ootSlot); // OOT's item in that OOT slot (live), 0xFF = empty
 

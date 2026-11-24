@@ -17,10 +17,11 @@ void AudioMmSfx_Update(void);
 
 #ifdef COMBO_BUILD
 // ComboShip (owner 2026-11-14: "get the instruments ... playing the correct soundfonts for all transformations"): a
-// Goron / Zora / Deku in Hyrule plays MM's own instrument, as MM's message code picks it (sPlayerFormOcarinaInstruments:
-// Goron drums 7, Zora guitar 8, Deku pipes 9; Fierce Deity and human Link keep the ocarina). OOT's ocarina logic runs
-// unchanged; its channel io and the note sfx go to the native MM sfx player's ocarina channel (MM's Sequence_0 and
-// soundfonts in OOT's engine, audio_mm_sfx.c), with MM's instrument on io 7 as MM's AudioOcarina_Update writes it.
+// Goron / Zora / Deku in Hyrule plays MM's own instrument, as MM's message code picks it
+// (sPlayerFormOcarinaInstruments: Goron drums 7, Zora guitar 8, Deku pipes 9; Fierce Deity and human Link keep the
+// ocarina). OOT's ocarina logic runs unchanged; its channel io and the note sfx go to the native MM sfx player's
+// ocarina channel (MM's Sequence_0 and soundfonts in OOT's engine, audio_mm_sfx.c), with MM's instrument on io 7 as
+// MM's AudioOcarina_Update writes it.
 int Combo_OotForm(void);
 void AudioMmSfx_OcarinaIo(u8 ioPort, s8 value);
 void AudioMmSfx_PlaySfx(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* volume, s8* reverbAdd);
@@ -58,7 +59,6 @@ static void Combo_OcarinaStop(void) {
     Audio_PlaySfxGeneral(NA_SE_OC_OCARINA, &gSfxDefaultPos, 4, freq, vol, &gSfxDefaultReverb)
 #define COMBO_OCARINA_STOP() Audio_StopSfxById(NA_SE_OC_OCARINA)
 #endif
-
 
 // TODO: can these macros be shared between files? code_800F9280 seems to use
 // versions without any casts...

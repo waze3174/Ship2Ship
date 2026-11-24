@@ -466,14 +466,16 @@ static int Run(int argc, char** argv) {
                         if (!real.count(c))
                             beyondReal++;
                     }
-                    std::cout << "[formtest] " << tag << ": without " << a.size() << ", with form " << b.size()
-                              << " (+" << gained << "), with the real items " << real.size()
+                    std::cout << "[formtest] " << tag << ": without " << a.size() << ", with form " << b.size() << " (+"
+                              << gained << "), with the real items " << real.size()
                               << ", form beyond real items: " << beyondReal << "\n";
                 };
-                report("zora", without({ "Iron Boots", "Zora Tunic", "Bronze Scale", "Silver Scale", "Golden Scale",
-                                         "Progressive Scale" }),
+                report("zora",
+                       without({ "Iron Boots", "Zora Tunic", "Bronze Scale", "Silver Scale", "Golden Scale",
+                                 "Progressive Scale" }),
                        "@combo:form:zora");
-                report("goron", without({ "Goron Tunic", "Megaton Hammer", "Strength Upgrade", "Progressive Strength Upgrade" }),
+                report("goron",
+                       without({ "Goron Tunic", "Megaton Hammer", "Strength Upgrade", "Progressive Strength Upgrade" }),
                        "@combo:form:goron");
             }
             return ComboRando::RunPlaythrough(passFlat.dump(), oot, mmO, label, MM_Restore, ptOut, sohDump, mmDump,

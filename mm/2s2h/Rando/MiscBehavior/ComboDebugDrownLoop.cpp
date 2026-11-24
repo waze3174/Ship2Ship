@@ -20,7 +20,8 @@ extern "C" s32 sComboHoverBootsTimer; // z_player.c
 static void RegisterComboDebugDrownLoop() {
     // COMBO_DEBUG_MM_WATER=1: just drop Link into the largest water box (no respawn point, no form change).
     static const bool sWaterOnly = std::getenv("COMBO_DEBUG_MM_WATER") != nullptr;
-    if ((std::getenv("COMBO_DEBUG_MM_DROWNLOOP") == nullptr) && !sWaterOnly && !std::getenv("COMBO_DEBUG_MM_TRACE_ONLY")) {
+    if ((std::getenv("COMBO_DEBUG_MM_DROWNLOOP") == nullptr) && !sWaterOnly &&
+        !std::getenv("COMBO_DEBUG_MM_TRACE_ONLY")) {
         return;
     }
     COND_HOOK(OnGameStateUpdate, true, []() {
@@ -31,16 +32,18 @@ static void RegisterComboDebugDrownLoop() {
             return;
         }
         Player* player = GET_PLAYER(gPlayState);
-        if ((gPlayState->sceneId != sLastScene) || ((sFrames % (std::getenv("COMBO_DEBUG_MM_TRACE_EVERY") ? 1 : 20)) == 0)) {
+        if ((gPlayState->sceneId != sLastScene) ||
+            ((sFrames % (std::getenv("COMBO_DEBUG_MM_TRACE_EVERY") ? 1 : 20)) == 0)) {
             sLastScene = gPlayState->sceneId;
-            SPDLOG_INFO("[ComboShip] drownloop: scene {} form {} pos {:.0f} {:.0f} {:.0f} depth {:.0f} boots {} hover {} "
-                        "hazard {} breath {} ground {} health {} regs27 {} hoverT {} vy {:.1f}",
-                        (int)gPlayState->sceneId, (int)player->transformation, player->actor.world.pos.x,
-                        player->actor.world.pos.y, player->actor.world.pos.z, player->actor.depthInWater,
-                        (int)player->currentBoots, (int)gComboHoverBoots, Player_GetEnvironmentalHazard(gPlayState),
-                        (int)player->underwaterTimer, (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) != 0,
-                        (int)gSaveContext.save.saveInfo.playerData.health, (int)REG(27), (int)sComboHoverBootsTimer,
-                        player->actor.velocity.y);
+            SPDLOG_INFO(
+                "[ComboShip] drownloop: scene {} form {} pos {:.0f} {:.0f} {:.0f} depth {:.0f} boots {} hover {} "
+                "hazard {} breath {} ground {} health {} regs27 {} hoverT {} vy {:.1f}",
+                (int)gPlayState->sceneId, (int)player->transformation, player->actor.world.pos.x,
+                player->actor.world.pos.y, player->actor.world.pos.z, player->actor.depthInWater,
+                (int)player->currentBoots, (int)gComboHoverBoots, Player_GetEnvironmentalHazard(gPlayState),
+                (int)player->underwaterTimer, (player->actor.bgCheckFlags & BGCHECKFLAG_GROUND) != 0,
+                (int)gSaveContext.save.saveInfo.playerData.health, (int)REG(27), (int)sComboHoverBootsTimer,
+                player->actor.velocity.y);
         }
         if (sDone || (++sFrames < 60) || std::getenv("COMBO_DEBUG_MM_TRACE_ONLY")) {
             return;
@@ -61,11 +64,14 @@ static void RegisterComboDebugDrownLoop() {
         player->actor.world.pos.x = best->minPos.x + best->xLength * 0.5f;
         player->actor.world.pos.z = best->minPos.z + best->zLength * 0.5f;
         // COMBO_DEBUG_MM_WATER=2: 20 above the surface instead (Hover Boots over water)
-        player->actor.world.pos.y = best->minPos.y + ((std::atoi(std::getenv("COMBO_DEBUG_MM_WATER") ? std::getenv("COMBO_DEBUG_MM_WATER") : "1") == 2) ? 20.0f : -5.0f);
+        player->actor.world.pos.y =
+            best->minPos.y +
+            ((std::atoi(std::getenv("COMBO_DEBUG_MM_WATER") ? std::getenv("COMBO_DEBUG_MM_WATER") : "1") == 2) ? 20.0f
+                                                                                                               : -5.0f);
         player->actor.prevPos = player->actor.world.pos;
         if (sWaterOnly) {
-            SPDLOG_INFO("[ComboShip] drownloop: dropped into the water at {:.0f} {:.0f} {:.0f}", player->actor.world.pos.x,
-                        player->actor.world.pos.y, player->actor.world.pos.z);
+            SPDLOG_INFO("[ComboShip] drownloop: dropped into the water at {:.0f} {:.0f} {:.0f}",
+                        player->actor.world.pos.x, player->actor.world.pos.y, player->actor.world.pos.z);
             return;
         }
         Play_SetupRespawnPoint(gPlayState, RESPAWN_MODE_DOWN, PLAYER_PARAMS(0xFF, PLAYER_START_MODE_B));

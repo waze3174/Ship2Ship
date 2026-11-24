@@ -218,9 +218,10 @@ void Combo_GuestStopSlot(int slot) {
 // and size, codec) and the loudest output sample, proving MM sfx start notes in OOT's engine with MM's samples.
 //
 // COMBO_DEBUG_SFX_RENDER=68C0*6,1857,0990,105A:30 (hex MM sfx ids; ":N" = replay every frame for N frames, for
-// continuous sfx; "*K" = K renders each, files suffixed _1.._K-1, as MM sfx pick random variants): renders each id through BOTH OOT's native path and MM's own engine (the guest engine, as the
-// MM-native reference) into WAV files <dir>/mmsfx_<id>_{oot,mm}.wav (COMBO_DEBUG_SFX_RENDER_DIR, default "."). Both
-// play at the same fixed projected position (the screen center), with OOT's other players silenced during capture.
+// continuous sfx; "*K" = K renders each, files suffixed _1.._K-1, as MM sfx pick random variants): renders each id
+// through BOTH OOT's native path and MM's own engine (the guest engine, as the MM-native reference) into WAV files
+// <dir>/mmsfx_<id>_{oot,mm}.wav (COMBO_DEBUG_SFX_RENDER_DIR, default "."). Both play at the same fixed projected
+// position (the screen center), with OOT's other players silenced during capture.
 // ============================================================================================================== //
 namespace {
 
@@ -504,11 +505,12 @@ void Combo_MmAudioDebugAfterRender(s16* samples, u32 numSamples) {
                 Combo_DebugLog("[ComboShip] MM native note %d: MM player ch %d font %u sample %p size %u codec %u "
                                "vel %.3f freq %.3f gain 0x%02X reverb %u\n",
                                i, layer->channel->channelIndex, note->playbackState.fontId, (void*)smp->sampleAddr,
-                               smp->size, smp->codec, layer->noteVelocity, layer->noteFreqScale,
-                               layer->channel->unk_0C, layer->channel->reverb);
+                               smp->size, smp->codec, layer->noteVelocity, layer->noteFreqScale, layer->channel->unk_0C,
+                               layer->channel->reverb);
             }
-            Combo_DebugLog("[ComboShip] OOT audio: peak output sample %d, MM-player note-updates %d, live MM notes %d\n",
-                           sPeak, sMmNotesSeen, live);
+            Combo_DebugLog(
+                "[ComboShip] OOT audio: peak output sample %d, MM-player note-updates %d, live MM notes %d\n", sPeak,
+                sMmNotesSeen, live);
             sPeak = 0;
             sFrames = 0;
             sMmNotesSeen = 0;

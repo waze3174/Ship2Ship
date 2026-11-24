@@ -1872,7 +1872,7 @@ static void Combo_FinishInit() {
             return;
         sComboSwitchPending = false;
         sComboLinkStateAtSwitch = Combo_LiveLinkState(); // age kept across games: what Link is at the door
-        sComboMaskAtSwitch = Combo_LiveMaskToken();       // and the mask he wears through it
+        sComboMaskAtSwitch = Combo_LiveMaskToken();      // and the mask he wears through it
         ComboEquipShare_CaptureAtSwitch();               // shared button layout: what's on Link's buttons at the door
         Combo_FlushDormantAccumulators();                // ComboShip (#214): bank a count-up still running at the door
         SaveManager::Instance->SaveFile(sComboSwitchFileNum);
@@ -1981,8 +1981,9 @@ static void Combo_FinishInit() {
         });
     }
     if (std::getenv("COMBO_DEBUG_AIM")) {
-        // Debug (test harness only): COMBO_DEBUG_AIM=<actor id hex>,<dist>,<frame>[,<y offset>[,<yaw hex>]] puts Link <dist> units from the
-        // nearest actor of that id, level with its middle, facing it, at <frame> (crates / pots to ram or hit).
+        // Debug (test harness only): COMBO_DEBUG_AIM=<actor id hex>,<dist>,<frame>[,<y offset>[,<yaw hex>]] puts Link
+        // <dist> units from the nearest actor of that id, level with its middle, facing it, at <frame> (crates / pots
+        // to ram or hit).
         GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
             static int sFrames = 0;
             static bool sDone = false;
@@ -2002,8 +2003,7 @@ static void Combo_FinishInit() {
                 }
                 return;
             }
-            std::sscanf(std::getenv("COMBO_DEBUG_AIM"), "%x,%d,%d,%d,%x", &id, &dist, &frame, &yOff,
-                        &yawSet);
+            std::sscanf(std::getenv("COMBO_DEBUG_AIM"), "%x,%d,%d,%d,%x", &id, &dist, &frame, &yOff, &yawSet);
             if (++sFrames < frame)
                 return;
             sDone = true;
@@ -3506,7 +3506,8 @@ extern "C" COMBO_EXPORT void SOH_GrantCrossItem(const char* itemName) {
     // OOT's own magic jars. OOT's item pool has no refill of that name, so this is the only way they arrive.
     if ((std::string(itemName) == "Small Magic Refill") || (std::string(itemName) == "Large Magic Refill")) {
         if ((gPlayState != nullptr) && gSaveContext.isMagicAcquired) {
-            Item_Give(gPlayState, (std::string(itemName) == "Small Magic Refill") ? ITEM_MAGIC_SMALL : ITEM_MAGIC_LARGE);
+            Item_Give(gPlayState,
+                      (std::string(itemName) == "Small Magic Refill") ? ITEM_MAGIC_SMALL : ITEM_MAGIC_LARGE);
             SPDLOG_INFO("[ComboShip] SOH_GrantCrossItem: '{}' fills the shared meter here", itemName);
         }
         return;
@@ -4269,7 +4270,9 @@ static void Combo_ApplyPendingMask() {
             player->currentMask = PLAYER_MASK_KEATON + (token - ITEM_MASK_KEATON);
         }
     } else if (!Combo_PauseWearMmMaskFromButtons(token & 0xFF)) {
-        static const int sTwins[][2] = { { 0x3A, ITEM_MASK_KEATON }, { 0x39, ITEM_MASK_BUNNY }, { 0x36, ITEM_MASK_TRUTH } };
+        static const int sTwins[][2] = { { 0x3A, ITEM_MASK_KEATON },
+                                         { 0x39, ITEM_MASK_BUNNY },
+                                         { 0x36, ITEM_MASK_TRUTH } };
         for (const auto& t : sTwins) {
             if (t[0] != (token & 0xFF)) {
                 continue;
@@ -4281,8 +4284,8 @@ static void Combo_ApplyPendingMask() {
             }
         }
     }
-    SPDLOG_INFO("[ComboShip] mask on arrival: token 0x{:X} -> OOT mask {} / MM mask {}", token, (int)player->currentMask,
-                Combo_PauseWornMmMaskId());
+    SPDLOG_INFO("[ComboShip] mask on arrival: token 0x{:X} -> OOT mask {} / MM mask {}", token,
+                (int)player->currentMask, Combo_PauseWornMmMaskId());
 }
 
 // Launcher drain: the MM entrance the pending switch should arrive at, consumed on read (-1 = none).

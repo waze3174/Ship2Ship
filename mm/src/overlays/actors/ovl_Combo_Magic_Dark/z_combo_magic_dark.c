@@ -218,9 +218,8 @@ void ComboMagicDark_DiamondDraw(Actor* thisx, PlayState* play) {
     gDPSetPrimColor(POLY_XLU_DISP++, 0, 0, 170, 255, 255, (s32)(this->primAlpha * 0.6f) & 0xFF);
     gDPSetEnvColor(POLY_XLU_DISP++, 0, 100, 255, 128);
     gSPDisplayList(POLY_XLU_DISP++, OOT_DL("overlays/ovl_Magic_Dark/sDiamondMaterialDL"));
-    gSPDisplayList(POLY_XLU_DISP++,
-                   Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, gameplayFrames * 2, gameplayFrames * -4, 32, 32, 1, 0,
-                                      gameplayFrames * -16, 64, 32, 2, -4, 0, -16));
+    gSPDisplayList(POLY_XLU_DISP++, Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, gameplayFrames * 2, gameplayFrames * -4,
+                                                       32, 32, 1, 0, gameplayFrames * -16, 64, 32, 2, -4, 0, -16));
     gSPDisplayList(POLY_XLU_DISP++, OOT_DL("overlays/ovl_Magic_Dark/sDiamondModelDL"));
 
     CLOSE_DISPS(play->state.gfxCtx);

@@ -21,7 +21,9 @@
 #define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
 // ...and a Zora breathes underwater like the Zora Tunic.
 #define COMBO_WATER_PROOF() (Combo_OotForm() == COMBO_FORM_ZORA)
-#define COMBO_TUNIC_COUNTS() ((Combo_OotForm() == COMBO_FORM_HUMAN) || (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY)) // tunics help the human bodies (owner: FD is human)
+#define COMBO_TUNIC_COUNTS()                  \
+    ((Combo_OotForm() == COMBO_FORM_HUMAN) || \
+     (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY)) // tunics help the human bodies (owner: FD is human)
 #else
 #define COMBO_WATER_PROOF() 0
 #define COMBO_HEAT_PROOF() 0
@@ -3363,7 +3365,8 @@ void Interface_UpdateMagicBar(PlayState* play) {
         case MAGIC_STATE_CONSUME:
             if (!Flags_GetRandomizerInf(RAND_INF_HAS_INFINITE_MAGIC_METER)
 #ifdef COMBO_BUILD
-                // ComboShip: MM's Chateau Romani drunk in Hyrule: MM skips the drain (WEEKEVENTREG_DRANK_CHATEAU_ROMANI)
+                // ComboShip: MM's Chateau Romani drunk in Hyrule: MM skips the drain
+                // (WEEKEVENTREG_DRANK_CHATEAU_ROMANI)
                 && !Combo_ChateauActive()
 #endif
             ) {
@@ -6697,8 +6700,8 @@ void Interface_Update(PlayState* play) {
         if ((play->gameOverCtx.state == GAMEOVER_INACTIVE) && Combo_PictoInterfaceUpdate(play)) {
         } else
 #endif
-        if ((gSaveContext.minigameState == 1) || (gSaveContext.sceneLayer < 4) ||
-            ((play->sceneNum == SCENE_LON_LON_RANCH) && (gSaveContext.sceneLayer == 4))) {
+            if ((gSaveContext.minigameState == 1) || (gSaveContext.sceneLayer < 4) ||
+                ((play->sceneNum == SCENE_LON_LON_RANCH) && (gSaveContext.sceneLayer == 4))) {
             if ((msgCtx->msgMode == MSGMODE_NONE) ||
                 ((msgCtx->msgMode != MSGMODE_NONE) && (play->sceneNum == SCENE_BOMBCHU_BOWLING_ALLEY))) {
                 if (play->gameOverCtx.state == GAMEOVER_INACTIVE) {

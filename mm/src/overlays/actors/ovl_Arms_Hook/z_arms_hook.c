@@ -348,9 +348,8 @@ void ArmsHook_Draw(Actor* thisx, PlayState* play) {
         // gLinkAdultHookshotChainDL, the same transforms).
         const s32 comboOot = (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ||
                              (player->heldItemAction == PLAYER_IA_COMBO_OOT_LONGSHOT);
-        gSPDisplayList(POLY_OPA_DISP++,
-                       comboOot ? (Gfx*)"__OTR__@oot:objects/object_link_boy/gLinkAdultHookshotTipDL"
-                                : object_link_child_DL_01D960);
+        gSPDisplayList(POLY_OPA_DISP++, comboOot ? (Gfx*)"__OTR__@oot:objects/object_link_boy/gLinkAdultHookshotTipDL"
+                                                 : object_link_child_DL_01D960);
 #else
         gSPDisplayList(POLY_OPA_DISP++, object_link_child_DL_01D960);
 #endif

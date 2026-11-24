@@ -145,8 +145,7 @@ void BgHidanDalm_Wait(BgHidanDalm* this, PlayState* play) {
     }
 #endif
     if (GameInteractor_Should(VB_HAMMER_TOTEM_BREAK,
-                              (this->collider.base.acFlags & AC_HIT) && !Player_InCsMode(play) && hammerSwing,
-                              this)) {
+                              (this->collider.base.acFlags & AC_HIT) && !Player_InCsMode(play) && hammerSwing, this)) {
         this->collider.base.acFlags &= ~AC_HIT;
         if ((this->collider.elements[0].info.bumperFlags & BUMP_HIT) ||
             (this->collider.elements[1].info.bumperFlags & BUMP_HIT)) {

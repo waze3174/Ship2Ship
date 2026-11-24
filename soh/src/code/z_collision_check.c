@@ -1460,15 +1460,16 @@ typedef struct {
     s16 ootId;
     s16 paramMask; // variant = params & paramMask == paramValue (paramMask 0: every variant)
     s16 paramValue;
-    u32 mmAccept;  // MM collider: bits that register a hit
-    u32 mmBrk;     // MM: bits that break / cut / trigger it
-    u32 ootBrk;    // OOT flag the object reads as that
-    u32 ootClink;  // OOT flag it accepts without breaking (hit spark only)
+    u32 mmAccept; // MM collider: bits that register a hit
+    u32 mmBrk;    // MM: bits that break / cut / trigger it
+    u32 ootBrk;   // OOT flag the object reads as that
+    u32 ootClink; // OOT flag it accepts without breaking (hit spark only)
 } CrossObjRow;
 
 static const CrossObjRow sCrossObjects[] = {
     // Brown boulder. MM z_obj_bombiwa.c:51 accept; :114-123 breaks on Keg / bombs / Goron punch / pound.
-    // (A plain roll doesn't register; spikes and Zora moves only clink -- MM's ball is pushed out by it, not breaking it.)
+    // (A plain roll doesn't register; spikes and Zora moves only clink -- MM's ball is pushed out by it, not breaking
+    // it.)
     { ACTOR_OBJ_BOMBIWA, 0, 0, 0x81C37FBE, 0x80000508, 0x00000040, 0x00000002 },
     // Bronze boulder. MM z_obj_hamishi.c:43 accept; :215-235 a Keg / punch / pound counts a hit (2 hits break it).
     { ACTOR_OBJ_HAMISHI, 0, 0, 0x81C37FB6, 0x80000500, 0x00000040, 0x00000002 },
@@ -1502,9 +1503,12 @@ static const CrossObjRow sCrossObjects[] = {
     { ACTOR_BG_BREAKWALL, 0, 0, 0x80000008, 0x80000008, 0x00000008, 0 }, // Dodongo's Cavern walls / KD floor
     { ACTOR_BG_BOMBWALL, 0, 0, 0x80000008, 0x80000008, 0x00000008, 0 },
     { ACTOR_DOOR_ANA, 0, 0, 0x80000008, 0x80000008, 0x00000008, 0 },
-    // Owner ruling 2026-11-14: the Fire Temple's hammer-only obstacles are Hyrule's counterpart of the giant snowballs a
-    // Goron punches in Snowhead ("close enough"): punch and pound count as the Megaton Hammer on these, delivered as both
-    // hammer bits (swing 0x40 + pound 0x40000000), the mirror of Termina's hammer = punch + pound (mm z_player.c ~5921).
+    // Owner ruling 2026-11-14: the Fire Temple's hammer-only obstacles are Hyrule's counterpart of the giant snowballs
+    // a
+    // Goron punches in Snowhead ("close enough"): punch and pound count as the Megaton Hammer on these, delivered as
+    // both
+    // hammer bits (swing 0x40 + pound 0x40000000), the mirror of Termina's hammer = punch + pound (mm z_player.c
+    // ~5921).
     { ACTOR_BG_HIDAN_HAMSTEP, 0, 0, 0x00000500, 0x00000500, 0x40000040, 0 }, // Fire Temple hammer stairs
     { ACTOR_BG_HIDAN_HROCK, 0, 0, 0x00000500, 0x00000500, 0x40000040, 0 },   // Fire Temple hammer pillars
     { ACTOR_BG_HIDAN_DALM, 0, 0, 0x00000100, 0x00000100, 0x40000040, 0 },    // totem (a swing: the punch only)
@@ -1853,12 +1857,24 @@ static s32 CrossDamage_Variant(Actor* actor) {
 // barrier (MM: 0 on Odolwa/Goht/Majora, immune on Twinmold/Majora's Mask), while OOT reads its DMG_MAGIC_LIGHT bit as
 // a hit (Gohma falls off the ceiling, Phantom Ganon takes 2 and is stunned, Bongo Bongo's hands are knocked back).
 static const CrossDmgRow sCrossBossRow = {
-    0, -1, 0, 0, "OOT boss", "MM bosses (barrier never damages)",
+    0,
+    -1,
+    0,
+    0,
+    "OOT boss",
+    "MM bosses (barrier never damages)",
     {
-        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 },
-        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 },
-        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_PASS, 0 },
-        { 0, 0, CROSS_CLS_OOT, 0 }, { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_PASS, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
+        { 0, 0, CROSS_CLS_OOT, 0 },
     },
 };
 
@@ -1985,8 +2001,8 @@ static void Combo_CrossDamageApply(Collider* collider, ColliderInfo* info, Damag
     if (Combo_DebugEnv("COMBO_DEBUG_CROSSDMG")) {
         Combo_DebugLog("[CrossDmg] %s (MM %s) <- MM %s: OOT alone dmg %d eff 0x%X -> MM DMG_ENTRY(%d, 0x%X) = %s, "
                        "dmg %d eff 0x%X (health %d)\n",
-                       row->oot, row->mm, CrossDamage_AttackName(atInfo->toucher.comboMmDmg), (s32)ootDamage,
-                       ootEffect, e->mult, e->mmEff, CrossDamage_ClassName(e->cls), (s32)*damage,
+                       row->oot, row->mm, CrossDamage_AttackName(atInfo->toucher.comboMmDmg), (s32)ootDamage, ootEffect,
+                       e->mult, e->mmEff, CrossDamage_ClassName(e->cls), (s32)*damage,
                        collider->actor->colChkInfo.damageEffect, collider->actor->colChkInfo.health);
     }
 }

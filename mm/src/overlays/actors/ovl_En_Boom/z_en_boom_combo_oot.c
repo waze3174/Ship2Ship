@@ -121,7 +121,7 @@ static void EnBoom_ComboOotFly(EnBoom* this, PlayState* play) {
     }
 
     Actor_SetSpeeds(&this->actor, 12.0f); // OOT Actor_SetProjectileSpeed
-    Actor_MoveWithGravity(&this->actor);   // OOT Actor_MoveXZGravity
+    Actor_MoveWithGravity(&this->actor);  // OOT Actor_MoveXZGravity
     Actor_PlaySfx_Flagged(&this->actor, NA_SE_IT_BOOMERANG_FLY - SFX_FLAG);
 
     collided = !!(this->collider.base.atFlags & AT_HIT);
