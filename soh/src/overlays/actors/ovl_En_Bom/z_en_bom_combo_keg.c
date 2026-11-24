@@ -1723,7 +1723,8 @@ static void EnBomClearTag_Draw(EnBom* this, PlayState* play) {
 }
 
 // ---------------------------------------------------------------------------------------------------------------
-// MM's Blast Mask: an ordinary OOT bomb that goes off at once, so Hyrule reacts to it as to any OOT bomb.
+// MM's Blast Mask: an ordinary OOT bomb that goes off at once, so Hyrule reacts to it as to any OOT bomb, with MM's
+// blast sphere.
 
 EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos) {
     EnBom* bomb = (EnBom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOM, pos->x, pos->y, pos->z, 0, 0, 0, BOMB_BODY);
@@ -1744,11 +1745,21 @@ EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos) {
     return bomb;
 }
 
-// MM's blast is a radius-100 sphere at Link's head from its first frame (MM EnBom_Explode), so it reaches his raised
-// shield whenever it reaches his body, and his damage check takes the shield's bounce first (MM func_80834600). MM also
-// keeps the shield up through the guard reaction (Player_Action_19). OOT's blast grows from radius 8 to 72 over nine
-// frames: it can reach his body before his shield, and again once OOT's standing guard reaction lowers the shield.
-// So while his shield is up a hit on his body is the shield's, and a blast his shield took no longer touches him.
+#define BLAST_MASK_EXPLOSION_RADIUS 100 // MM D_80872E8C[0]
+#define BLAST_MASK_ENEMY_HITS_END 7     // MM EnBom_Explode: from this timer on the blast no longer hits AT_TYPE_ENEMY
+
+// MM EnBom_Explode (z_en_bom.c:350-357): the blast is a radius-100 sphere from its first frame, and only its first two
+// frames hit Link. Centred on his head, it reaches his raised shield whenever it reaches his body, so his damage check
+// takes the shield's bounce (MM func_80834600). OOT's blast grows from radius 8 and hits him for nine frames.
+void EnBom_ComboBlastMaskSphere(EnBom* this) {
+    if (!this->comboBlastMask) {
+        return;
+    }
+    this->explosionCollider.elements[0].dim.worldSphere.radius = BLAST_MASK_EXPLOSION_RADIUS;
+    if (this->timer == BLAST_MASK_ENEMY_HITS_END) {
+        this->explosionCollider.base.atFlags &= ~AT_TYPE_ENEMY;
+    }
+}
 
 static EnBom* EnBom_ComboBlastMaskHitting(Collider* collider) {
     EnBom* bomb = (EnBom*)collider->ac;
@@ -1759,37 +1770,21 @@ static EnBom* EnBom_ComboBlastMaskHitting(Collider* collider) {
     return bomb;
 }
 
-// The shield quad that Link's last draw registered (Player_UpdateShieldCollider's two callers in z_player_lib.c).
-static s32 EnBom_ComboShieldRaised(Player* player) {
-    if (!(player->stateFlags1 & PLAYER_STATE1_SHIELDING)) {
-        return false;
-    }
-    if (player->rightHandType == PLAYER_MODELTYPE_RH_SHIELD) {
-        return player->actor.scale.y >= 0.0f;
-    }
-    return (player->rightHandType != PLAYER_MODELTYPE_RH_FF) && Player_IsChildWithHylianShield(player);
-}
-
+// MM keeps the shield up through its standing guard reaction (Player_Action_19), so the blast's second frame bounces
+// off it again. OOT's (Player_Action_808435C4) lowers it, so that frame would reach his body: it is ignored instead.
 s32 EnBom_ComboBlastMaskShielded(PlayState* play, Player* player) {
-    EnBom* onShield;
     EnBom* blast;
 
     if (player != GET_PLAYER(play)) {
         return false;
     }
-    onShield = EnBom_ComboBlastMaskHitting(&player->shieldQuad.base);
-    blast = (onShield != NULL) ? onShield : EnBom_ComboBlastMaskHitting(&player->cylinder.base);
-    if (blast == NULL) {
-        return false;
-    }
-    if (blast->comboBlastGuarded) {
-        return true;
-    }
-    if (onShield != NULL) {
+    blast = EnBom_ComboBlastMaskHitting(&player->shieldQuad.base);
+    if (blast != NULL) {
         blast->comboBlastGuarded = true;
-        return false; // OOT's guard reaction to the bounce
+        return false; // OOT's guard reaction to the bounce, as MM's
     }
-    return EnBom_ComboShieldRaised(player);
+    blast = EnBom_ComboBlastMaskHitting(&player->cylinder.base);
+    return (blast != NULL) && blast->comboBlastGuarded;
 }
 
 // ---------------------------------------------------------------------------------------------------------------
