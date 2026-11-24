@@ -1,7 +1,8 @@
 // combo/ComboSettingsImport.h
 // ComboShip: ABI for the first-launch settings-import screen (issue 24; mirrors ComboExtract.h).
-// comboui renders the screen + returns chosen paths; the launcher merges (SoH wins) and applies via
-// soh's SOH_ApplyImportedConfig. Pure C ABI — no STL across the boundary; fixed-size path buffers.
+// comboui renders the screen + returns chosen paths; the launcher merges (SoH wins, then 2Ship, then a
+// ComboShip config as the base) and applies via soh's SOH_ApplyImportedConfig. Pure C ABI — no STL across the
+// boundary; fixed-size path buffers.
 #pragma once
 
 extern "C" {
@@ -13,6 +14,7 @@ typedef int (*ComboFnValidateConfig)(const char* path);
 typedef struct ComboSettingsImportCallbacks {
     ComboFnValidateConfig sohValidate;
     ComboFnValidateConfig mmValidate;
+    ComboFnValidateConfig comboValidate; // a comboship.json from another ComboShip install
 } ComboSettingsImportCallbacks;
 
 // Filled by the screen. Paths are "" when that slot was left empty.
@@ -20,6 +22,8 @@ typedef struct ComboSettingsImportResult {
     int action; // 0 = Skip, 1 = Import
     char sohPath[1024];
     char mmPath[1024];
+    char comboPath[1024];
+    int comboIncludeModsAndControls; // nonzero: also take that file's mod lists and controller input
 } ComboSettingsImportResult;
 
 // Implemented in comboui.dll. Renders the screen and blocks until Import or Skip. Returns 1 if the

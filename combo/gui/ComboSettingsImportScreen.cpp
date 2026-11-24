@@ -1,7 +1,7 @@
 // combo/gui/ComboSettingsImportScreen.cpp
 // ComboShip-owned first-launch settings-import screen (see ComboSettingsImportScreen.h). Structurally
-// a trimmed ComboExtractScreen: one PICK phase, two optional slots (SoH / 2Ship), Browse + auto-detect,
-// Import / Skip. The launcher does the JSON parse + merge + apply; this file only renders and reports
+// a trimmed ComboExtractScreen: one PICK phase, three optional slots (SoH / 2Ship / ComboShip), Browse +
+// auto-detect, Import / Skip. The launcher does the JSON parse + merge + apply; this file only renders and reports
 // the chosen paths.
 #include "ComboSettingsImportScreen.h"
 #include "ComboExport.h"
@@ -19,10 +19,17 @@
 #include <cstdlib>
 
 using ComboRando::ComboMenu_PopButton;
+using ComboRando::ComboMenu_PopCheckbox;
 using ComboRando::ComboMenu_PushButton;
+using ComboRando::ComboMenu_PushCheckbox;
 using ComboRando::ComboMenu_ThemeColor;
 
 namespace {
+
+constexpr int kSlotCount = 3;
+constexpr int kSohSlot = 0;
+constexpr int kMmSlot = 1;
+constexpr int kComboSlot = 2;
 
 struct ConfigSlot {
     const char* label = "";
@@ -84,6 +91,8 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
     out->action = 0;
     out->sohPath[0] = '\0';
     out->mmPath[0] = '\0';
+    out->comboPath[0] = '\0';
+    out->comboIncludeModsAndControls = 0;
 
     auto ctx = Ship::Context::GetRawInstance();
     if (!ctx || !ctx->GetWindow() || !ctx->GetWindow()->GetGui()) {
@@ -96,15 +105,19 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
     auto gui = wnd->GetGui();
     UseSharedImGuiContext();
 
-    ConfigSlot slots[2];
-    slots[0].label = "Ship of Harkinian (OoT)";
-    slots[0].fileName = "shipofharkinian.json";
-    slots[0].macAppSupportDir = "com.shipofharkinian.soh";
-    slots[0].validate = cb ? cb->sohValidate : nullptr;
-    slots[1].label = "2 Ship 2 Harkinian (MM)";
-    slots[1].fileName = "2ship2harkinian.json";
-    slots[1].macAppSupportDir = "com.2ship2harkinian.2s2h";
-    slots[1].validate = cb ? cb->mmValidate : nullptr;
+    ConfigSlot slots[kSlotCount];
+    slots[kSohSlot].label = "Ship of Harkinian (OoT)";
+    slots[kSohSlot].fileName = "shipofharkinian.json";
+    slots[kSohSlot].macAppSupportDir = "com.shipofharkinian.soh";
+    slots[kSohSlot].validate = cb ? cb->sohValidate : nullptr;
+    slots[kMmSlot].label = "2 Ship 2 Harkinian (MM)";
+    slots[kMmSlot].fileName = "2ship2harkinian.json";
+    slots[kMmSlot].macAppSupportDir = "com.2ship2harkinian.2s2h";
+    slots[kMmSlot].validate = cb ? cb->mmValidate : nullptr;
+    slots[kComboSlot].label = "ComboShip";
+    slots[kComboSlot].fileName = "comboship.json";
+    slots[kComboSlot].validate = cb ? cb->comboValidate : nullptr;
+    bool includeModsAndControls = true;
 
     // Auto-detect each game's config (same convenience as the ROM auto-scan). First hit wins; a
     // rejected file keeps searching, so a stale copy in the working dir can't mask a real install.
@@ -171,8 +184,9 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
             ImGui::Separator();
 
             ImGui::TextWrapped("Optional: bring over your settings from an existing Ship of Harkinian and/or "
-                               "2 Ship 2 Harkinian install. Pick one or both files, or Skip to start fresh. "
-                               "Where both set the same option (e.g. graphics or controls), OoT wins.");
+                               "2 Ship 2 Harkinian install, or from another ComboShip install (its comboship.json). "
+                               "Pick any of the files, or Skip to start fresh. Where they set the same option "
+                               "(e.g. graphics or controls), OoT wins, then MM, then ComboShip.");
             if (!ComboFilePicker::Available()) {
                 // Wrapped text in the disabled color (TextDisabled doesn't wrap), ASCII only —
                 // same treatment as the extraction screen's hint.
@@ -183,7 +197,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
             }
             ImGui::Spacing();
 
-            for (int i = 0; i < 2; i++) {
+            for (int i = 0; i < kSlotCount; i++) {
                 ConfigSlot& s = slots[i];
                 ImGui::PushID(i);
                 ImGui::TextColored(theme, "%s", s.label);
@@ -211,6 +225,11 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
                         ImGui::TextColored(kRed, "May not be a %s config", s.label);
                     }
                 }
+                if (i == kComboSlot) {
+                    ComboMenu_PushCheckbox(theme);
+                    ImGui::Checkbox("Also import mods list and controls", &includeModsAndControls);
+                    ComboMenu_PopCheckbox();
+                }
                 ImGui::Spacing();
                 ImGui::Separator();
                 ImGui::Spacing();
@@ -220,8 +239,10 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
             ComboMenu_PushButton(theme);
             if (ImGui::Button("Import", ImVec2(150.0f, 0.0f))) {
                 out->action = 1;
-                CopyPath(out->sohPath, sizeof(out->sohPath), slots[0].path);
-                CopyPath(out->mmPath, sizeof(out->mmPath), slots[1].path);
+                CopyPath(out->sohPath, sizeof(out->sohPath), slots[kSohSlot].path);
+                CopyPath(out->mmPath, sizeof(out->mmPath), slots[kMmSlot].path);
+                CopyPath(out->comboPath, sizeof(out->comboPath), slots[kComboSlot].path);
+                out->comboIncludeModsAndControls = includeModsAndControls ? 1 : 0;
                 finished = true;
             }
             ComboMenu_PopButton();

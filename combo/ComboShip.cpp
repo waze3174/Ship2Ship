@@ -49,6 +49,8 @@
 #include "gui/ComboGenProgress.h"
 #include "ComboExtract.h"
 #include "ComboSettingsImport.h"
+#include "ComboConfigTree.h"
+#include "ComboPresetScope.h"
 
 // Surfaces the real exception behind a silent terminate()/exit(3). With the shared dynamic
 // CRT, exceptions thrown in soh.dll/2ship.dll propagate across the DLL boundary to here.
@@ -3505,6 +3507,26 @@ static int LauncherValidateShipConfig(const char* path) {
     return (path && LoadJsonObject(path, j) && j.contains("CVars")) ? 1 : 0;
 }
 
+// A comboship.json from another ComboShip install: a Ship config that also has the gCombo section.
+static int LauncherValidateComboShipConfig(const char* path) {
+    nlohmann::json j;
+    return (path && LoadJsonObject(path, j) && ComboConfigTree::LooksLikeComboShipConfig(j)) ? 1 : 0;
+}
+
+// The first-launch import takes only the CVars of a ComboShip config, limited to what a preset may carry plus,
+// on request, the mod lists and controls (ComboPresetScope.h). The Window block and file paths stay behind.
+static bool LoadComboShipImport(const ComboSettingsImportResult& res, nlohmann::json& out) {
+    nlohmann::json comboJson;
+    if (!LoadJsonObject(res.comboPath, comboJson) || !ComboConfigTree::LooksLikeComboShipConfig(comboJson)) {
+        return false;
+    }
+    const bool includeModsAndControls = res.comboIncludeModsAndControls != 0;
+    auto keep = [&](const std::string& key) { return ComboPresetScope::IsImportKey(key, includeModsAndControls); };
+    out = nlohmann::json::object();
+    out[ComboConfigTree::kCVarsBlock] = ComboConfigTree::FilterTree(comboJson[ComboConfigTree::kCVarsBlock], keep);
+    return true;
+}
+
 // ---------- Entry point ----------
 
 int main(int argc, char** argv) {
@@ -3862,18 +3884,20 @@ int main(int argc, char** argv) {
             ComboSettingsImportCallbacks cb = {};
             cb.sohValidate = LauncherValidateShipConfig;
             cb.mmValidate = LauncherValidateShipConfig;
+            cb.comboValidate = LauncherValidateComboShipConfig;
             ComboSettingsImportResult res = {};
             if (ComboUI_RunSettingsImport(&cb, &res) && res.action == 1) {
                 nlohmann::json merged = nlohmann::json::object(), sohJson, mmJson;
+                const bool haveCombo = LoadComboShipImport(res, merged); // ComboShip is the base (lowest priority)
                 const bool haveMm = LoadJsonObject(res.mmPath, mmJson);
                 const bool haveSoh = LoadJsonObject(res.sohPath, sohJson);
                 if (haveMm) {
-                    merged = mmJson; // 2Ship is the base (lower priority)
+                    DeepMerge(merged, mmJson); // 2Ship overlays the ComboShip base
                 }
                 if (haveSoh) {
                     DeepMerge(merged, sohJson); // SoH overlays and wins on collisions
                 }
-                if (haveSoh || haveMm) {
+                if (haveSoh || haveMm || haveCombo) {
                     merged.erase("Window"); // machine-specific
                     // ConfigVersion drives OOT's updaters; keep it only when it actually came from the
                     // SoH source (a 2Ship version, or none, would misdirect them).
@@ -3881,8 +3905,8 @@ int main(int argc, char** argv) {
                         merged.erase("ConfigVersion");
                     }
                     SOH_ApplyImportedConfig(merged.dump().c_str());
-                    std::cout << "[ComboShip] Settings imported (SoH=" << haveSoh << " MM=" << haveMm << ")."
-                              << std::endl;
+                    std::cout << "[ComboShip] Settings imported (SoH=" << haveSoh << " MM=" << haveMm
+                              << " ComboShip=" << haveCombo << ")." << std::endl;
                 }
             }
         }
