@@ -29,14 +29,16 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #ifdef COMBO_BUILD
-// ComboShip: the combo build is randomizer-only. Lock the quest-select carousel to the Randomizer
-// option so Normal / Master Quest / Boss Rush are never shown or selectable (init seeds questType
-// from MIN_QUEST; L/R wrap between MIN_QUEST..MAX_QUEST and so stay on Randomizer).
-#define MIN_QUEST QUEST_RANDOMIZER
+// ComboShip: the quest-select carousel offers Normal, Master Quest and Randomizer. Normal and Master Quest make a
+// vanilla OoT save (no seed, no MM save); SohFileSelect_IsQuestHidden hides the others, and the quest whose archive
+// (oot.o2r, oot-mq.o2r) isn't loaded. A new file starts on Randomizer, the combo randomizer.
+#define MIN_QUEST QUEST_NORMAL
 #define MAX_QUEST QUEST_RANDOMIZER
+#define DEFAULT_QUEST QUEST_RANDOMIZER
 #else
 #define MIN_QUEST (ResourceMgr_GameHasOriginal() ? QUEST_NORMAL : QUEST_MASTER)
 #define MAX_QUEST QUEST_SPEEDRUN_MASTER
+#define DEFAULT_QUEST MIN_QUEST
 #endif
 
 // #region SOH [Enhancement] - Hide Quest Modes
@@ -3374,9 +3376,9 @@ void FileChoose_Init(GameState* thisx) {
     size_t size = (u32)_title_staticSegmentRomEnd - (u32)_title_staticSegmentRomStart;
     s32 pad;
     this->logoAlpha = 0;
-    this->questType[0] = MIN_QUEST;
-    this->questType[1] = MIN_QUEST;
-    this->questType[2] = MIN_QUEST;
+    this->questType[0] = DEFAULT_QUEST;
+    this->questType[1] = DEFAULT_QUEST;
+    this->questType[2] = DEFAULT_QUEST;
     fileSelectSpoilerFileLoaded = false;
 #ifdef COMBO_BUILD
     sComboReloadTried = 0; // ComboShip: one combo auto-reload attempt per entry (see the flag's comment)

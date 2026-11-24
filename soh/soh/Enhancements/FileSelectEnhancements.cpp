@@ -82,7 +82,13 @@ std::array<std::string, LANGUAGE_MAX> RandomizerSettingsMenuText[RSM_MAX] = {
 // Quests are hidden when their O2R is missing or their File Select "Hide" option is on
 bool SohFileSelect_IsQuestHidden(u8 quest) {
 #ifdef COMBO_BUILD
-    return quest != QUEST_RANDOMIZER; // ComboShip: Randomizer-only, so the Hide options never apply
+    // ComboShip: Randomizer is always offered, Boss Rush and Speedrun never, Normal and Master Quest as vanilla.
+    if (quest == QUEST_RANDOMIZER) {
+        return false;
+    }
+    if (quest != QUEST_NORMAL && quest != QUEST_MASTER) {
+        return true;
+    }
 #endif
     switch (quest) {
         case QUEST_NORMAL:

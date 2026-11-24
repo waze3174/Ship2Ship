@@ -267,9 +267,8 @@ void Sram_InitSave(FileChooseContext* fileChooseCtx) {
     gSaveContext.n64ddFlag = fileChooseCtx->n64ddFlag;
 
 #ifdef COMBO_BUILD
-    // ComboShip: generation is window-driven now; only force the rando quest type here.
-    // The combined fill runs on a worker thread before save creation (triggered from the UI).
-    fileChooseCtx->questType[fileChooseCtx->buttonIndex] = QUEST_RANDOMIZER;
+    // ComboShip: generation is window-driven now. The combined fill runs on a worker thread before save creation
+    // (triggered from the UI); Normal and Master Quest saves are vanilla OoT and need no seed.
     (void)gComboGenerateCallback; // retained symbol; no longer invoked
 #endif
 
