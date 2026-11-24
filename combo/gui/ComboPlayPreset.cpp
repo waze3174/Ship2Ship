@@ -1,19 +1,17 @@
 // combo/gui/ComboPlayPreset.cpp
 //
-// ComboShip: a shipped preset is one player's whole control setup — pad bindings, HUD button
-// colours and the control preferences — applied to BOTH games in one click.
+// ComboShip: writes a batch of leaf CVars for presets and the ComboShip settings import, to BOTH
+// games in one pass.
 //
-// Why this is combo-owned and not a preset in either game's own system:
+// Why this is combo-owned and not the preset system of either game:
 //   * OOT's preset apply (soh/soh/Enhancements/Presets/Presets.cpp) replaces a whole CVar block with
 //     Config::SetBlock. gSettings and gEnhancements are SHARED by both games here, so an OOT preset
 //     carrying a "settings" block would delete gSettings.Controllers and every gEnhancements key MM
 //     owns. MM's PresetManager has the mirror-image problem: its ClearCVars list CVarClearBlock's the
 //     same shared prefixes.
 //   * ShipInit registries are per-DLL, so one game's apply never re-runs the other's init funcs.
-// So this writes LEAF CVars only, and hands each key to the owning game's live-apply export.
-//
-// The shipped presets are the compiled-in kPresets table below (none yet; the menu hides the preset
-// section while the table is empty).
+// So this writes LEAF CVars only, and hands each changed key to both games' live-apply exports. A key
+// that only one game knows has no init func in the other, which makes the extra call a no-op.
 #include <libultraship/libultraship.h>
 #include <ship/Context.h>
 #include <ship/controller/controldeck/ControlDeck.h>
@@ -21,14 +19,25 @@
 #include <spdlog/spdlog.h>
 
 #include "ComboExport.h"
+#include "ComboForeground.h"
 #include "ComboPlayPreset.h"
+#include "ComboPresetScope.h"
 #include "ComboResolve.h"
 
 #include <cstdint>
-#include <string>
-#include <vector>
+
+namespace ComboPresets {
 
 namespace {
+
+constexpr size_t kRgbChannels = 3;
+constexpr size_t kRgbaChannels = 4;
+constexpr int kMaxChannelValue = 255;
+constexpr uint8_t kControllerPortCount = 4;
+
+constexpr const char* kHeldBackNote = " randomizer options skipped while a save is loaded (use the file select).";
+constexpr const char* kRejectedNote = " entries had an unsupported value and were skipped.";
+constexpr const char* kRestartNote = " Restart ComboShip to load the changed mod list.";
 
 typedef void (*FnApplyCVarChange)(const char*);
 FnApplyCVarChange sSohApply = nullptr;
@@ -43,78 +52,57 @@ void ResolveSyms() {
     }
 }
 
-struct PresetDef {
-    const char* name;
-    const char* description;
-    const char* json; // {"bindings":{...},"colors":{...},"prefs":{...}} of leaf CVar -> value
-};
+void ApplyLive(const std::string& key) {
+    if (sSohApply) {
+        sSohApply(key.c_str());
+    }
+    if (sMmApply) {
+        sMmApply(key.c_str());
+    }
+}
 
-const std::vector<PresetDef> kPresets;
-const int kPresetCount = static_cast<int>(kPresets.size());
-
-// Which game's ShipInit should re-run for a key. MM's cosmetic prefix is SINGULAR ("gCosmetic")
-// on purpose — that is the thing keeping its keys from colliding with OOT's "gCosmetics".
-bool IsMmKey(const std::string& key) {
-    static const char* kMmPrefixes[] = {
-        "gCosmetic.",
-        "gEnhancements.Camera.",
-        "gEnhancements.Dpad.",
-        "gEnhancements.Playback.",
-        "gEnhancements.Graphics.",
-    };
-    for (const char* p : kMmPrefixes) {
-        if (key.rfind(p, 0) == 0) {
-            return true;
+bool IsColorArray(const nlohmann::json& value) {
+    if (!value.is_array() || (value.size() != kRgbChannels && value.size() != kRgbaChannels)) {
+        return false;
+    }
+    for (const auto& channel : value) {
+        if (!channel.is_number_integer() || channel.get<int>() < 0 || channel.get<int>() > kMaxChannelValue) {
+            return false;
         }
     }
-    return false;
+    return true;
 }
 
-// Pad bindings live in libultraship, not in either game.
-bool IsBindingKey(const std::string& key) {
-    return key.rfind("gSettings.Controllers.", 0) == 0;
+void WriteColor(const std::string& key, const nlohmann::json& value) {
+    const uint8_t r = value[0].get<uint8_t>();
+    const uint8_t g = value[1].get<uint8_t>();
+    const uint8_t b = value[2].get<uint8_t>();
+    if (value.size() == kRgbaChannels) {
+        CVarSetColor(key.c_str(), Color_RGBA8{ r, g, b, value[3].get<uint8_t>() });
+    } else {
+        CVarSetColor24(key.c_str(), Color_RGB8{ r, g, b });
+    }
 }
 
-// Write one leaf. The JSON type picks the CVar type: a 4-number array is a colour, true/false and
-// whole numbers are ints, anything else numeric is a float, strings are strings.
-void WriteLeaf(const std::string& key, const nlohmann::json& value) {
-    if (value.is_array() && value.size() == 4) {
-        CVarSetColor(key.c_str(), Color_RGBA8{ value[0].get<uint8_t>(), value[1].get<uint8_t>(),
-                                               value[2].get<uint8_t>(), value[3].get<uint8_t>() });
+// Write one leaf. The JSON type picks the CVar type: a 3 or 4 number array is a colour, true/false
+// and whole numbers are ints, anything else numeric is a float, strings are strings. False when the
+// value is none of those.
+bool WriteLeaf(const std::string& key, const nlohmann::json& value) {
+    if (IsColorArray(value)) {
+        WriteColor(key, value);
     } else if (value.is_boolean()) {
         CVarSetInteger(key.c_str(), value.get<bool>() ? 1 : 0);
-    } else if (value.is_number_integer() || value.is_number_unsigned()) {
+    } else if (value.is_number_integer()) {
         CVarSetInteger(key.c_str(), value.get<int>());
     } else if (value.is_number_float()) {
         CVarSetFloat(key.c_str(), value.get<float>());
     } else if (value.is_string()) {
         CVarSetString(key.c_str(), value.get<std::string>().c_str());
     } else {
-        SPDLOG_WARN("[ComboShip] preset: skipping '{}' (unsupported value type)", key);
-        return;
+        SPDLOG_WARN("[ComboShip] settings write: skipping '{}' (unsupported value type)", key);
+        return false;
     }
-    if (!IsBindingKey(key)) {
-        if (IsMmKey(key)) {
-            if (sMmApply) {
-                sMmApply(key.c_str());
-            }
-        } else if (sSohApply) {
-            sSohApply(key.c_str());
-        }
-    }
-}
-
-int ApplySection(const nlohmann::json& root, const char* section) {
-    auto it = root.find(section);
-    if (it == root.end() || !it->is_object()) {
-        return 0;
-    }
-    int written = 0;
-    for (auto& [key, value] : it->items()) {
-        WriteLeaf(key, value);
-        ++written;
-    }
-    return written;
+    return true;
 }
 
 // Both games read the one ControlDeck, but each caches its mappings until told to re-read.
@@ -127,7 +115,7 @@ void ReloadControllers() {
     if (!controlDeck) {
         return;
     }
-    for (uint8_t port = 0; port < 4; ++port) {
+    for (uint8_t port = 0; port < kControllerPortCount; ++port) {
         if (auto controller = controlDeck->GetControllerByPort(port)) {
             controller->ReloadAllMappingsFromConfig();
         }
@@ -142,48 +130,77 @@ void ReloadControllers() {
 
 } // namespace
 
-extern "C" COMBO_EXPORT int ComboUI_PlayPresetCount(void) {
-    return kPresetCount;
+Leaves ReadAllLeaves() {
+    CVarSave();
+    const nlohmann::json root = Ship::Context::GetRawInstance()->GetConfig()->GetNestedJson();
+    auto cvars = root.find(ComboConfigTree::kCVarsBlock);
+    return cvars == root.end() ? Leaves{} : ComboConfigTree::Flatten(*cvars);
 }
 
-extern "C" COMBO_EXPORT const char* ComboUI_PlayPresetName(int i) {
-    return (i >= 0 && i < kPresetCount) ? kPresets[i].name : nullptr;
-}
-
-extern "C" COMBO_EXPORT const char* ComboUI_PlayPresetDescription(int i) {
-    return (i >= 0 && i < kPresetCount) ? kPresets[i].description : nullptr;
-}
-
-extern "C" COMBO_EXPORT int ComboUI_PlayPresetApply(int i, int parts) {
-    if (i < 0 || i >= kPresetCount) {
-        return -1;
-    }
-    nlohmann::json root = nlohmann::json::parse(kPresets[i].json, nullptr, false);
-    if (root.is_discarded() || !root.is_object()) {
-        SPDLOG_ERROR("[ComboShip] preset '{}' has malformed data", kPresets[i].name);
-        return -1;
-    }
+ApplyResult WriteLeaves(const Leaves& leaves, const ApplyOptions& options) {
     ResolveSyms();
+    const Leaves current = ReadAllLeaves();
 
-    int written = 0;
-    bool touchedBindings = false;
-    if (parts & COMBO_PRESET_PART_BINDINGS) {
-        const int n = ApplySection(root, "bindings");
-        touchedBindings = n > 0;
-        written += n;
+    ApplyResult result;
+    bool touchedControllers = false;
+    for (const auto& [key, value] : leaves) {
+        if (!options.allowSeedBound && ComboPresetScope::IsSeedBoundKey(key)) {
+            ++result.heldBackSeedBound;
+            continue;
+        }
+        auto existing = current.find(key);
+        if (existing != current.end() && existing->second == value) {
+            ++result.unchanged;
+            continue;
+        }
+        if (!WriteLeaf(key, value)) {
+            ++result.rejected;
+            continue;
+        }
+        ++result.written;
+        touchedControllers = touchedControllers || ComboPresetScope::IsControllerBindingKey(key);
+        result.needsRestart = result.needsRestart || ComboPresetScope::IsModListKey(key);
+        // Pad bindings live in libultraship and are re-read by ReloadControllers instead.
+        if (!ComboPresetScope::IsControllerBindingKey(key)) {
+            ApplyLive(key);
+        }
     }
-    if (parts & COMBO_PRESET_PART_COLORS) {
-        written += ApplySection(root, "colors");
-    }
-    if (parts & COMBO_PRESET_PART_PREFS) {
-        written += ApplySection(root, "prefs");
-    }
-    if (touchedBindings) {
+    if (touchedControllers) {
         ReloadControllers();
     }
     if (auto* ctx = Ship::Context::GetRawInstance()) {
         ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
     }
-    SPDLOG_INFO("[ComboShip] preset '{}' applied: {} settings written (parts {})", kPresets[i].name, written, parts);
-    return written;
+    SPDLOG_INFO("[ComboShip] settings write: {} written, {} unchanged, {} held back (save loaded), {} rejected",
+                result.written, result.unchanged, result.heldBackSeedBound, result.rejected);
+    return result;
 }
+
+bool SeedBoundChangesAllowed() {
+    typedef uint8_t (*FnIsOnFileSelect)(void);
+    static FnIsOnFileSelect isOnFileSelect = nullptr;
+    if (!isOnFileSelect) {
+        isOnFileSelect = (FnIsOnFileSelect)Combo_ResolveSym("soh", "SOH_IsOnFileSelect");
+    }
+    return isOnFileSelect != nullptr && isOnFileSelect() != 0 && !ComboUI::IsMmActive();
+}
+
+std::string DescribeApplyResult(const ApplyResult& result) {
+    std::string text = std::to_string(result.written) + " settings applied";
+    if (result.unchanged > 0) {
+        text += ", " + std::to_string(result.unchanged) + " already matched";
+    }
+    text += ".";
+    if (result.heldBackSeedBound > 0) {
+        text += " " + std::to_string(result.heldBackSeedBound) + kHeldBackNote;
+    }
+    if (result.rejected > 0) {
+        text += " " + std::to_string(result.rejected) + kRejectedNote;
+    }
+    if (result.needsRestart) {
+        text += kRestartNote;
+    }
+    return text;
+}
+
+} // namespace ComboPresets

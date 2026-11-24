@@ -1,7 +1,6 @@
 // combo/gui/ComboMenu.cpp
 #include "ComboMenu.h"
 #include "ComboSettingsLink.h" // one control for a preference both games own separately
-#include "ComboPlayPreset.h"   // shipped control presets (bindings + button colours)
 #include "ComboExport.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
@@ -367,44 +366,6 @@ void ComboMenu::DrawElement() {
                                       "and the same colour and HUD Placement options as Hyrule -- set them once\n"
                                       "in the Ocarina of Time cosmetics and both games follow. The three-day clock\n"
                                       "stays exactly as Majora's Mask draws it.");
-                }
-                if (ComboUI_PlayPresetCount() > 0 && ImGui::TreeNode("Control presets")) {
-                    ImGui::TextWrapped("Someone else's whole control setup, in both games at once. "
-                                       "Pick the parts you want, then Apply.");
-                    static int sPresetIdx = 0;
-                    static bool sWantBindings = true, sWantColors = true, sWantPrefs = true;
-                    if (ImGui::BeginCombo("Preset", ComboUI_PlayPresetName(sPresetIdx))) {
-                        for (int p = 0; p < ComboUI_PlayPresetCount(); ++p) {
-                            if (ImGui::Selectable(ComboUI_PlayPresetName(p), p == sPresetIdx)) {
-                                sPresetIdx = p;
-                            }
-                        }
-                        ImGui::EndCombo();
-                    }
-                    if (const char* desc = ComboUI_PlayPresetDescription(sPresetIdx)) {
-                        ImGui::TextDisabled("%s", desc);
-                    }
-                    ImGui::Checkbox("Controller bindings", &sWantBindings);
-                    ImGui::SameLine();
-                    ImGui::Checkbox("Button colours", &sWantColors);
-                    ImGui::SameLine();
-                    ImGui::Checkbox("Camera / ocarina / D-pad / letterbox", &sWantPrefs);
-                    const int parts = (sWantBindings ? COMBO_PRESET_PART_BINDINGS : 0) |
-                                      (sWantColors ? COMBO_PRESET_PART_COLORS : 0) |
-                                      (sWantPrefs ? COMBO_PRESET_PART_PREFS : 0);
-                    static std::string sPresetStatus;
-                    ImGui::BeginDisabled(parts == 0);
-                    if (ImGui::Button("Apply preset")) {
-                        const int n = ComboUI_PlayPresetApply(sPresetIdx, parts);
-                        sPresetStatus = (n < 0) ? "Could not read that preset."
-                                                : (std::to_string(n) + " settings applied to both games.");
-                    }
-                    ImGui::EndDisabled();
-                    if (!sPresetStatus.empty()) {
-                        ImGui::SameLine();
-                        ImGui::TextUnformatted(sPresetStatus.c_str());
-                    }
-                    ImGui::TreePop();
                 }
                 ImGui::Separator();
             }

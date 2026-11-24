@@ -1927,22 +1927,6 @@ static void Combo_FinishInit() {
             SPDLOG_INFO("[ComboShip] COMBO_DEBUG_FORM: form now {}", Combo_OotForm());
         });
     }
-#if !defined(_WIN32)
-    if (std::getenv("COMBO_DEBUG_PRESET")) {
-        // Debug (test harness only): COMBO_DEBUG_PRESET=<index>,<parts> applies a shipped preset (combo/gui
-        // ComboPlayPreset.cpp) at frame 60 of play, as the menu's Apply button does.
-        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
-            static int sFrames = 0;
-            if (gPlayState == nullptr || ++sFrames != 60)
-                return;
-            int idx = 0, parts = 15;
-            sscanf(std::getenv("COMBO_DEBUG_PRESET"), "%d,%d", &idx, &parts);
-            typedef int (*FnApply)(int, int);
-            FnApply apply = (FnApply)dlsym(RTLD_DEFAULT, "ComboUI_PlayPresetApply");
-            SPDLOG_INFO("[ComboShip] COMBO_DEBUG_PRESET {} parts {}: {}", idx, parts, apply ? apply(idx, parts) : -2);
-        });
-    }
-#endif
     if (std::getenv("COMBO_DEBUG_WATER")) {
         // Debug (test harness only): COMBO_DEBUG_WATER=1 drops Link into the middle of the scene's largest water box at
         // frame 60 (swimming tests, headless).
