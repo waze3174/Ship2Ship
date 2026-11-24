@@ -840,6 +840,29 @@ void func_80082850(PlayState* play, s16 maxAlpha) {
     }
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: OOT's scene rule (the restriction loops in func_80083108) for the OOT item an MM item runs as
+// (Combo_PauseForeignHostItem), for the items those loops single out by id: the ocarina (restrictions.ocarina only),
+// the hookshots (restrictions.hookshot or restrictions.all) and the lens (restrictions.all, except in the Treasure
+// Chest Shop). -1 for the rest, which restrictions.all alone rules, as the loops already apply to a foreign id.
+static s32 Combo_HostItemDisabled(PlayState* play, s32 hostItem) {
+    const InterfaceContext* interfaceCtx = &play->interfaceCtx;
+
+    switch (hostItem) {
+        case ITEM_OCARINA_FAIRY:
+        case ITEM_OCARINA_TIME:
+            return interfaceCtx->restrictions.ocarina != 0;
+        case ITEM_HOOKSHOT:
+        case ITEM_LONGSHOT:
+            return (interfaceCtx->restrictions.hookshot != 0) || (interfaceCtx->restrictions.all != 0);
+        case ITEM_LENS:
+            return (interfaceCtx->restrictions.all != 0) && (play->sceneNum != SCENE_TREASURE_BOX_SHOP);
+        default:
+            return -1;
+    }
+}
+#endif
+
 void func_80083108(PlayState* play) {
     MessageContext* msgCtx = &play->msgCtx;
     Player* player = GET_PLAYER(play);
@@ -985,6 +1008,13 @@ void func_80083108(PlayState* play) {
                                (Combo_PauseForeignForm(gSaveContext.equips.buttonItems[i]) == COMBO_FORM_ZORA)) {
                         // MM Player_UseItem: in the water the Zora Mask is the one item that works, on and off
                         // (owner 2026-11-14: "let me equip and dequip zora mask while in water just like MM").
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    } else if ((Player_GetEnvironmentalHazard(play) == 2) &&
+                               (Combo_PauseForeignHostItem(gSaveContext.equips.buttonItems[i]) == ITEM_LONGSHOT)) {
+                        // MM's Hookshot runs as OOT's Longshot: on the bottom it works, as OOT's own does below.
                         if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                             sp28 = 1;
                         }
@@ -1365,8 +1395,10 @@ void func_80083108(PlayState* play) {
                 //    such scene, so it is always greyed out.
                 //  - Pictograph Box: only MM's per-scene pictoBox column restricts it and it is exempt from
                 //    restrictions.all; OOT's scene table has no pictoBox column, so it is always usable.
+                // An MM item OOT's own code runs follows that OOT item's rule (Combo_HostItemDisabled).
                 for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
                     s32 comboMmItem;
+                    s32 comboHostOff;
 
                     if (!Combo_PauseIsForeign(gSaveContext.equips.buttonItems[i])) {
                         continue;
@@ -1382,6 +1414,13 @@ void func_80083108(PlayState* play) {
                             sp28 = 1;
                         }
                         gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    } else if ((comboHostOff = Combo_HostItemDisabled(
+                                    play, Combo_PauseForeignHostItem(gSaveContext.equips.buttonItems[i]))) >= 0) {
+                        const u8 comboStatus = comboHostOff ? BTN_DISABLED : BTN_ENABLED;
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] != comboStatus) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = comboStatus;
                     }
                 }
 #endif
@@ -3460,7 +3499,11 @@ void Interface_UpdateMagicBar(PlayState* play) {
                                                              ? ARRAY_COUNT(gSaveContext.equips.buttonItems)
                                                              : 4);
                      buttonIndex++) {
-                    if (gSaveContext.equips.buttonItems[buttonIndex] == ITEM_LENS) {
+                    if ((gSaveContext.equips.buttonItems[buttonIndex] == ITEM_LENS)
+#ifdef COMBO_BUILD
+                        || (Combo_PauseForeignHostItem(gSaveContext.equips.buttonItems[buttonIndex]) == ITEM_LENS)
+#endif
+                    ) {
                         hasLens = true;
                         break;
                     }

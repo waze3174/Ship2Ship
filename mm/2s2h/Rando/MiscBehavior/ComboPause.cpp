@@ -515,7 +515,9 @@ extern "C" int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsig
 }
 
 // What a foreign item runs as when used in Termina: OOT's masks are MM's own masks (Keaton, Bunny Hood, Mask of
-// Truth; Goron and Zora transform). Everything else has no Termina version yet (ITEM_NONE).
+// Truth; Goron and Zora transform), and OOT's ocarina and lens (only on a button while MM has none of its own) are
+// MM's Ocarina of Time and Lens of Truth: they spend nothing of OOT's, so MM's own code runs them under MM's id, with
+// MM's model, songs and magic. Everything else has no Termina version yet (ITEM_NONE).
 extern "C" int Combo_MmPauseUseItem(int item) {
     const int oot = LiveOotItem(item);
     switch (oot) {
@@ -524,17 +526,20 @@ extern "C" int Combo_MmPauseUseItem(int item) {
         case OOT_ITEM_MASK_TRUTH:
         case OOT_ITEM_MASK_GORON:
         case OOT_ITEM_MASK_ZORA:
+        case OOT_ITEM_OCARINA_FAIRY:
+        case OOT_ITEM_OCARINA_TIME:
+        case OOT_ITEM_LENS:
             return TwinOf((uint8_t)oot);
         default:
             return ITEM_NONE;
     }
 }
 
-// OOT's stick, nut, explosive and bow code is MM's, line for line (OOT z_player.c: the take-out ammo checks in
+// OOT's stick, nut, explosive, bow and bean code is MM's, line for line (OOT z_player.c: the take-out ammo checks in
 // Player_UseItem, the break in func_80842AC4, the burn-out in Player_UpdateBurningDekuStick, the nut throw in
-// Player_Action_8084E604, the bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_80834380 and
-// the shot in func_808350A4), so MM's own runs them, on OOT's bag (z_player.c Combo_PlayerAmmo), with MM's models and
-// actors.
+// Player_Action_8084E604, the bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_80834380, the
+// shot in func_808350A4, the planting in Player_ActionHandler_13), so MM's own runs them, on OOT's bag (z_player.c
+// Combo_PlayerAmmo), with MM's models and actors.
 extern "C" int Combo_MmPauseForeignHostItem(int item) {
     switch (LiveOotItem(item)) {
         case OOT_ITEM_STICK:
@@ -547,6 +552,8 @@ extern "C" int Combo_MmPauseForeignHostItem(int item) {
             return ITEM_BOMBCHU;
         case OOT_ITEM_BOW:
             return ITEM_BOW;
+        case OOT_ITEM_BEAN:
+            return ITEM_MAGIC_BEANS;
         default:
             return ITEM_NONE;
     }

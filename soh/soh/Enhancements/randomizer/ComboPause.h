@@ -102,8 +102,9 @@ const char* Combo_MaskBActionLabel(void);
 int Combo_BlastMaskCoolingDown(void);
 // Frames for a new Blast Mask cooldown: MM's 310, or 2S2H's "Blast Mask Cooldown" when it is set lower.
 int Combo_BlastMaskCooldown(void);
-// The OOT item whose own code runs an MM item on MM's bag (MM's Deku Stick, Deku Nut, Bomb, Bombchu, Hero's Bow when
-// OOT has none: ITEM_STICK, ITEM_NUT, ITEM_BOMB, ITEM_BOMBCHU, ITEM_BOW); ITEM_NONE for anything else.
+// The OOT item whose own code and button rules run an MM item that OOT lacks, on MM's bag for an ammo item: MM's Deku
+// Stick, Deku Nut, Bomb, Bombchu, Hero's Bow, Magic Beans, Ocarina, Lens of Truth, Hookshot (as OOT's Longshot);
+// ITEM_NONE for anything else.
 int Combo_PauseForeignHostItem(int item);
 // 1 when OOT's age rule for that OOT item lets Link use the MM item now (1 for an item OOT's code doesn't run).
 int Combo_PauseForeignAgeOk(int item);

@@ -533,10 +533,12 @@ extern "C" int Combo_PauseLiveMmItem(int item) {
 }
 
 // ---- MM items OOT's own code runs in Hyrule ----------------------------------------------------------------------
-// MM's stick, nut, explosive and bow code is OOT's, line for line (mm z_player.c: the take-out ammo checks in
+// MM's stick, nut, explosive, bow and bean code is OOT's, line for line (mm z_player.c: the take-out ammo checks in
 // Player_UseItem, the break in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64, the
-// bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_808305BC and the shot in func_80831194),
-// so OOT's own runs them, on MM's bag (z_player.c Combo_PlayerAmmo), with OOT's models and actors.
+// bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_808305BC and the shot in func_80831194,
+// the planting in Player_ActionHandler_13), so OOT's own runs them, on MM's bag (z_player.c Combo_PlayerAmmo), with
+// OOT's models and actors. MM's ocarina and lens are OOT's too (no bag). MM's Hookshot flies as far as OOT's Longshot
+// (mm z_arms_hook.c ArmsHook_Wait: 26 frames at 20 units, OOT's Longshot's), so it runs as the Longshot.
 extern "C" int Combo_PauseForeignHostItem(int item) {
     switch (LiveMmItem(item)) {
         case MM_ITEM_DEKU_STICK:
@@ -549,6 +551,17 @@ extern "C" int Combo_PauseForeignHostItem(int item) {
             return ITEM_BOMBCHU;
         case MM_ITEM_BOW:
             return ITEM_BOW;
+        case MM_ITEM_MAGIC_BEANS:
+            return ITEM_BEAN;
+        case MM_ITEM_OCARINA_OF_TIME:
+            return ITEM_OCARINA_TIME;
+        case MM_ITEM_OCARINA_FAIRY:
+            return ITEM_OCARINA_FAIRY;
+        case MM_ITEM_LENS_OF_TRUTH:
+            return ITEM_LENS;
+        case MM_ITEM_HOOKSHOT:
+        case MM_ITEM_LONGSHOT:
+            return ITEM_LONGSHOT;
         default:
             return ITEM_NONE;
     }

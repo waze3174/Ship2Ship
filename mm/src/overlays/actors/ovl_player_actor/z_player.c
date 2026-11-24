@@ -4787,12 +4787,13 @@ void func_80831944(PlayState* play, Player* this) {
 #ifdef COMBO_BUILD
 // An OOT item MM's own code runs (Combo_MmPauseForeignHostItem) checks and spends OOT's bag: the bag is that of the
 // button the item came from, the OOT item for an OOT button, -1 for MM's own. A stick or a bow stays in hand, so its
-// bag is the one it was taken out with; a nut or an explosive is spent as it is taken out.
+// bag is the one it was taken out with; a nut, an explosive or a bean is spent as it is taken out or planted.
 static s32 sComboStickBag = -1;
 static s32 sComboNutBag = -1;
 static s32 sComboBombBag = -1;
 static s32 sComboBombchuBag = -1;
 static s32 sComboArrowBag = -1;
+static s32 sComboBeanBag = -1;
 
 static s32* Combo_AmmoBag(s32 item) {
     switch (item) {
@@ -4806,6 +4807,8 @@ static s32* Combo_AmmoBag(s32 item) {
             return &sComboBombchuBag;
         case ITEM_BOW:
             return &sComboArrowBag;
+        case ITEM_MAGIC_BEANS:
+            return &sComboBeanBag;
         default:
             return NULL;
     }
@@ -4825,6 +4828,8 @@ static ItemId Combo_AmmoItemOf(PlayerItemAction itemAction) {
             return ITEM_BOMB;
         case PLAYER_IA_BOMBCHU:
             return ITEM_BOMBCHU;
+        case PLAYER_IA_MAGIC_BEANS:
+            return ITEM_MAGIC_BEANS;
         default:
             return ITEM_NONE;
     }
@@ -4927,7 +4932,7 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
                     return;
                 }
             }
-            if ((itemAction == PLAYER_IA_MAGIC_BEANS) && (AMMO(ITEM_MAGIC_BEANS) == 0)) {
+            if ((itemAction == PLAYER_IA_MAGIC_BEANS) && (COMBO_PLAYER_AMMO(ITEM_MAGIC_BEANS) == 0)) {
                 Audio_PlaySfx(NA_SE_SY_ERROR);
             } else {
                 this->itemAction = itemAction;
@@ -8305,7 +8310,7 @@ s32 Player_ActionHandler_13(Player* this, PlayState* play) {
                                                  (this->exchangeItemAction > PLAYER_IA_NONE)))) {
                         this->stateFlags1 |= (PLAYER_STATE1_20000000 | PLAYER_STATE1_TALKING);
                         if (this->exchangeItemAction == PLAYER_IA_MAGIC_BEANS) {
-                            Inventory_ChangeAmmo(ITEM_MAGIC_BEANS, -1);
+                            COMBO_PLAYER_CHANGE_AMMO(ITEM_MAGIC_BEANS, -1);
                             Player_SetAction_PreserveItemAction(play, this, Player_Action_17, 0);
                             this->yaw = talkActor->yawTowardsPlayer + 0x8000;
                             this->actor.shape.rot.y = this->yaw;

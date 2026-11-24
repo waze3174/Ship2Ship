@@ -4280,12 +4280,13 @@ static s32 Combo_WaterAllowsUse(Player* this, s32 isZoraMask) {
 
 // MM items OOT's own code runs (Combo_PauseForeignHostItem) check and spend MM's bag: the bag is the one of the button
 // the item came from, its foreign id for an MM button, ITEM_NONE for OOT's own. A stick or a bow stays in hand, so its
-// bag is the one it was taken out with; a nut or an explosive is spent as it is taken out.
+// bag is the one it was taken out with; a nut, an explosive or a bean is spent as it is taken out or planted.
 static s32 sComboStickBag = ITEM_NONE;
 static s32 sComboNutBag = ITEM_NONE;
 static s32 sComboBombBag = ITEM_NONE;
 static s32 sComboBombchuBag = ITEM_NONE;
 static s32 sComboArrowBag = ITEM_NONE;
+static s32 sComboBeanBag = ITEM_NONE;
 
 static s32* Combo_AmmoBag(s32 ootItem) {
     switch (ootItem) {
@@ -4299,6 +4300,8 @@ static s32* Combo_AmmoBag(s32 ootItem) {
             return &sComboBombchuBag;
         case ITEM_BOW:
             return &sComboArrowBag;
+        case ITEM_BEAN:
+            return &sComboBeanBag;
         default:
             return NULL;
     }
@@ -4318,6 +4321,8 @@ static s32 Combo_AmmoItemOf(s32 itemAction) {
             return ITEM_BOMB;
         case PLAYER_IA_BOMBCHU:
             return ITEM_BOMBCHU;
+        case PLAYER_IA_MAGIC_BEAN:
+            return ITEM_BEAN;
         default:
             return ITEM_NONE;
     }
@@ -4396,8 +4401,8 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         // MM's Great Fairy's Sword: a C-button sword as in MM (press to draw, press again to swing), child or adult.
         Combo_PauseLogUse(item, "Great Fairy's Sword -> wielded (MM model, OOT two-handed swing)");
     } else if (Combo_PauseForeignHostItem(item) != ITEM_NONE) {
-        // MM's Deku Stick / Deku Nut / Bomb / Bombchu / Hero's Bow: OOT's code below runs it (MM's is the same code),
-        // on MM's bag, under OOT's age rule for its own (the bow: adult).
+        // An MM item OOT lacks (Deku Stick, Deku Nut, Bomb, Bombchu, Bow, Magic Beans, Ocarina, Lens, Hookshot): OOT's
+        // code below runs it as OOT's own (MM's is the same code), on MM's bag, under OOT's age rule for its own.
         if (!Combo_PauseForeignAgeOk(item)) {
             Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
             Combo_PauseLogUse(item, "-> OOT's age rule for the same item refuses it -> error sfx");
@@ -4478,7 +4483,9 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         return;
     }
     // ComboShip: a form in Hyrule uses what it can in Termina (masks + ocarina) until its moves are ported.
-    if ((sComboKegItem == ITEM_NONE) && Combo_OotFormBlocksItem(item)) {
+    if ((sComboKegItem == ITEM_NONE) &&
+        Combo_OotFormBlocksItem((Combo_PauseForeignHostItem(item) != ITEM_NONE) ? Combo_PauseForeignHostItem(item)
+                                                                                : item)) {
         Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
         return;
     }
@@ -4506,7 +4513,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
 
             if ((play->bombchuBowlingStatus == 0) &&
                 (((itemAction == PLAYER_IA_DEKU_STICK) && (COMBO_PLAYER_AMMO(ITEM_STICK) == 0)) ||
-                 ((itemAction == PLAYER_IA_MAGIC_BEAN) && (AMMO(ITEM_BEAN) == 0)) ||
+                 ((itemAction == PLAYER_IA_MAGIC_BEAN) && (COMBO_PLAYER_AMMO(ITEM_BEAN) == 0)) ||
                  (temp = Player_ActionToExplosive(this, itemAction),
                   ((temp >= 0) &&
                    (
@@ -7417,7 +7424,7 @@ s32 Player_ActionHandler_13(Player* this, PlayState* play) {
                               (this->itemAction == PLAYER_IA_BOTTLE_BUG))) &&
                             ((this->exchangeItemId != EXCH_ITEM_BEAN) || (this->itemAction == PLAYER_IA_MAGIC_BEAN))) {
                             if (this->exchangeItemId == EXCH_ITEM_BEAN) {
-                                Inventory_ChangeAmmo(ITEM_BEAN, -1);
+                                COMBO_PLAYER_CHANGE_AMMO(ITEM_BEAN, -1);
                                 Player_SetupActionPreserveItemAction(play, this, Player_Action_8084279C, 0);
                                 this->stateFlags1 |= PLAYER_STATE1_IN_CUTSCENE;
                                 if (GameInteractor_Should(VB_PLAY_BEAN_PLANTING_CS, true)) {
