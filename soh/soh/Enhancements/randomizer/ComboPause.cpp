@@ -43,6 +43,7 @@ extern void* gItemIcons[];
 void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
 int Combo_GamesSolo(void);                     // OTRGlobals.cpp
 extern s16 gComboBlastMaskTimer;               // z_player_lib.c: MM blastMaskTimer for the Blast Mask in Hyrule
+int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap); // ComboSharedHealth.cpp: MM's bag with shared consumables
 }
 
 namespace {
@@ -214,6 +215,21 @@ int LiveMmItem(int foreignId) {
     return sMmItems[s] == 0xFF ? -1 : sMmItems[s];
 }
 
+// MM's bag for an MM ammo item, as Hyrule sees it (after a Snapshot, so MM's save is resident): the count a use spends,
+// which with shared consumables on is what MM will show on arrival, not only what MM's dormant save holds. -1 = not an
+// ammo item MM holds. `cap` (may be null): MM's bag.
+int MmAmmo(int mmItem, int* cap) {
+    typedef int (*FnAmmoBag)(int, int*, int*);
+    static FnAmmoBag sBag = (FnAmmoBag)Combo_ResolveSym("2ship", "MM_ComboAmmoBag");
+    int bag = 0;
+    int kind = -1;
+    const int own = (sBag != nullptr) ? sBag(mmItem, &bag, &kind) : -1;
+    if (cap != nullptr) {
+        *cap = bag;
+    }
+    return (own < 0) ? -1 : Combo_SharedMmAmmo(kind, own, bag);
+}
+
 void Log(const char* fmt, ...) {
     va_list ap;
     va_start(ap, fmt);
@@ -332,7 +348,7 @@ extern "C" unsigned char Combo_PauseSlotItemAny(int mmSlot) {
 extern "C" int Combo_PauseSlotAmmo(int pageSlot) {
     if (CurTab() != COMBO_PAUSE_TAB_TERMINA || pageSlot < 0 || pageSlot >= 24 || !Snapshot())
         return -1;
-    return sMmAmmo[pageSlot];
+    return (sMmAmmo[pageSlot] < 0) ? -1 : MmAmmo(sMmItems[pageSlot], nullptr);
 }
 
 extern "C" const char* Combo_PauseIconTex(int item) {
@@ -539,13 +555,19 @@ typedef int (*FnSetSlot)(int, int);
 FnSetSlot sMmSetSlot = nullptr;
 } // namespace
 
-// MM ammo of the MM item a foreign id names (MM's resident save), -1 = none.
+// MM ammo of the MM item a foreign id names, as a use spends it, -1 = none.
 extern "C" int Combo_PauseForeignAmmo(int foreignId) {
+    return Combo_PauseForeignAmmoDigits(foreignId, nullptr);
+}
+
+extern "C" int Combo_PauseForeignAmmoDigits(int foreignId, int* full) {
     const int slot = ComboPause_OotDecode(foreignId);
-    if (slot < 0 || !Snapshot()) {
-        return -1;
+    int cap = 0;
+    const int ammo = ((slot >= 0) && Snapshot() && (sMmAmmo[slot] >= 0)) ? MmAmmo(sMmItems[slot], &cap) : -1;
+    if (full != nullptr) {
+        *full = (ammo >= 0) && (ammo >= cap);
     }
-    return sMmAmmo[slot];
+    return ammo;
 }
 
 // MM Inventory_ChangeAmmo on MM's resident save for the MM item a foreign id names.
