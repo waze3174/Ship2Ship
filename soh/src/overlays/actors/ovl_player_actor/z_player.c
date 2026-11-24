@@ -10868,12 +10868,8 @@ static void Combo_GoronCylinderAttack(Player* this, u32 dmgFlags, s32 damage, s3
     CROSS_MM_TAG_TOUCHER(&this->cylinder.info.toucher, mmTag, damage);
 }
 
-static void Combo_GoronBallClear(Player* this) {
-    if (gComboGoronBall || (sRoll.savedCylinder.base.actor != NULL)) {
-        if (sRoll.savedCylinder.base.actor != NULL) {
-            this->cylinder = sRoll.savedCylinder;
-        }
-    }
+// The ball's state (MM keeps it on the Player: unk_B48, unk_B86, PLAYER_STATE3_1000...), the saved cylinder included.
+static void Combo_GoronBallReset(void) {
     memset(&sRoll, 0, sizeof(sRoll));
     gComboGoronBall = 0;
     gComboGoronSpikes = 0;
@@ -10881,6 +10877,13 @@ static void Combo_GoronBallClear(Player* this) {
     gComboGoronBallBlue = 0.0f;
     gComboGoronBallCharge = 0;
     gComboGoronBallSpin = gComboGoronBallTilt = gComboGoronBallWobble = gComboGoronBallWobbleYaw = 0;
+}
+
+static void Combo_GoronBallClear(Player* this) {
+    if (sRoll.savedCylinder.base.actor != NULL) {
+        this->cylinder = sRoll.savedCylinder;
+    }
+    Combo_GoronBallReset();
     this->actor.shape.rot.x = this->actor.shape.rot.z = 0;
 }
 
@@ -11548,6 +11551,21 @@ void Player_Action_ComboDekuSpin(Player* this, PlayState* play) {
     Actor_PlaySfx_Flagged2(&this->actor, NA_SE_PL_SLIP_LEVEL - SFX_FLAG + this->floorSfxOffset);
 }
 
+// Every input latch and combo counter of the forms' moves, and the punch's afterimages.
+static void Combo_FormLatchesClear(void) {
+    gComboGoronPunchLimb = 0;
+    sComboGoronPunchRequest = false;
+    sComboPoundRequest = false;
+    sComboGoronPunchBuffered = false;
+    sComboZoraBHeld = 0;
+    sComboZoraFinIdle = 0;
+    sComboZoraFinsRequest = false;
+    sComboMeleeAdd = 0;
+    sComboMeleeWindow = 0;
+    sComboMeleeCur = -1;
+    Combo_GoronGhostClear();
+}
+
 // ComboShip: a form change (any mask path, a form carried in from Termina, the debug hook) starts the new form clean,
 // as MM's transformation does: whatever the old form was doing ends (ball, spin, attack, fins out, bubble readied),
 // every input latch and combo counter resets, and the body + movement row are the new form's. Leftovers of one form
@@ -11566,17 +11584,7 @@ void Combo_RefreshFormBody(PlayState* play) {
     } else if (gComboGoronBall || (sRoll.savedCylinder.base.actor != NULL)) {
         Combo_GoronBallClear(player);
     }
-    gComboGoronPunchLimb = 0;
-    sComboGoronPunchRequest = false;
-    sComboPoundRequest = false;
-    sComboGoronPunchBuffered = false;
-    sComboZoraBHeld = 0;
-    sComboZoraFinIdle = 0;
-    sComboZoraFinsRequest = false;
-    sComboMeleeAdd = 0;
-    sComboMeleeWindow = 0;
-    sComboMeleeCur = -1;
-    Combo_GoronGhostClear();
+    Combo_FormLatchesClear();
     if (player->boomerangActor != NULL) { // fins in flight belong to the Zora
         Actor_Kill(player->boomerangActor);
         player->boomerangActor = NULL;
@@ -12794,6 +12802,21 @@ static void Combo_ZoraBarrierUpdate(PlayState* play, Player* this) {
         Combo_FormSfx(this, COMBO_MM_SFX_CONTINUOUS(COMBO_MM_SE_PL_ZORA_SPARK_BARRIER), COMBO_SE_NONE);
         play->actorCtx.unk_02 = 0; // (MM Actor_SetPlayerImpact(PLAYER_IMPACT_ZORA_BARRIER): OOT has no such signal)
     }
+}
+
+// ComboShip: a new scene's Link starts with no form move under way. MM keeps all of this on the Player, which each
+// scene spawns afresh; here it is in statics, which outlive him (the overlays are linked in). Nothing of it is put back
+// on the new Link: the saved cylinder, the light node and the guard collider all belonged to the old scene.
+static void Combo_FormStateNewScene(void) {
+    Combo_GoronBallReset(); // not Combo_GoronBallClear: that would give him the old Link's cylinder
+    Combo_FormLatchesClear();
+    sComboZoraJumpKick = false;
+    sComboZoraBarrierOn = false;
+    sComboZoraBarrier = 0;
+    sComboZoraBarrierMagic = 0;
+    sComboBarrierLight = NULL; // it was a node of the light buffer that the new scene's LightContext_Init zeroed
+    sComboBarrierLightPlay = NULL;
+    sComboGuardCylPlay = NULL; // set up again on the new Link; a new PlayState can take the old one's address
 }
 
 // MM func_80846460: a curled Goron (the ball, the guard) draws no skeleton to place the body parts, so they and the
@@ -14932,6 +14955,7 @@ void Player_Init(Actor* thisx, PlayState* play2) {
         sComboSafeGroundValid = false; // a new arrival: no land stood on here yet
         sComboSafeGroundFrames = 0;
         gComboBlastMaskTimer = 0; // MM blastMaskTimer is a Player field: a new scene's Link has no cooldown
+        Combo_FormStateNewScene();
     }
 #endif
     PlayState* play = play2;
