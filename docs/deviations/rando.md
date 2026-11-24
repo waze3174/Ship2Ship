@@ -2861,7 +2861,7 @@ portal region at either age (`OTRGlobals.cpp`). `Rando::ComboPortalRegion()` (`l
 The route:
 - OoT Lost Woods, room 0, the north wrong turn (scene collision polygon 48, floor triangle (-60,0,-400) (60,0,-400)
   (0,0,-800); the surface type is shared with a second polygon, so the index is the key) -> MM `Z2_LOST_WOODS` spawn 0.
-  A stump (MM's `gKeikokuDemoTallTreeCutDL`, scale 0.05, about 21 units of radius) marks the tunnel while the link is
+  A stump (MM's `gKeikokuDemoTallTreeCutDL`, scale 0.05, solid: a 13 by 110 collision cylinder) marks the tunnel while the link is
   on. It stands on the hub floor at (-120,0,-110), in front of the mouth (the opening in the wall at z -200), left of
   the walk from the Kokiri Forest arrival: 80 units from the nearest wall (collision polygon 151, the x -200 side; 90
   from the wall at z -200), floor y 0 (polygon 195). The old spot (-90,0,-380) was inside the tunnel's wall (polygon 64).
