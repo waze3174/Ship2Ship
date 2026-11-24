@@ -38,6 +38,7 @@ extern "C" SaveContext gSaveContext;
 using namespace std::string_literals;
 
 #ifdef COMBO_BUILD
+#include "ComboSaveTiming.h"    // ComboShip: opt-in save timing log
 #include "rando/CrossForeign.h" // ComboShip: merged-save IO callback typedefs (FnComboReadSave/Write)
 // ComboShip: launcher-provided merged .combosav IO. When set, per-slot OOT read/write routes through
 // the container instead of file{N}.sav; null => vendored file path. Set via SOH_SetComboSaveIO.
@@ -1390,7 +1391,14 @@ void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, 
 #ifdef COMBO_BUILD
     if (gComboWriteGameSave) {
         // ComboShip: route this slot's OOT block into the merged .combosav container (launcher RMW).
-        gComboWriteGameSave(ComboRando::GAME_OOT, fileNum, saveBlock.dump().c_str());
+        ComboSaveTiming::Stopwatch timer;
+        const std::string block = saveBlock.dump();
+        const double dumpMs = timer.Lap();
+        gComboWriteGameSave(ComboRando::GAME_OOT, fileNum, block.c_str());
+        if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+            SPDLOG_INFO("[ComboShip] save timing: OOT slot {} section {} (save thread) dump {:.1f} ms, write {:.1f} ms",
+                        fileNum, sectionID, dumpMs, timer.Lap());
+        }
     } else
 #endif
     {

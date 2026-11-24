@@ -2343,6 +2343,14 @@ and 7 in OOT). MM's shelf bottles were also lost at every MM write. Those reads 
 (`LiveBottleShelfGuard`, `mm/2s2h/SaveManager/SaveManager.cpp`). A new save also starts with an empty shelf in both
 games (`Combo_OnOOTSaveInit`); it used to inherit the shelf of the save each game had read last.
 
+**One MM save per pickup (fixed 2026-11-24, the "laggy pickups" report):** the reconcile runs after every item
+received in OOT (rupees and hearts too) and every randomizer give in MM, and `MM_RaiseSharedTier(SF_BOTTLES)` wrote
+MM's save each time, even when no bottle was added. That write runs on the game thread: a read-modify-write of MM's
+section plus a rewrite of the whole `.combosav`. The same write after a cross-game grant took 73-164 ms (median 92,
+37 grants) on the owner's Steam Deck, measured from the `MM_GrantCrossItem` log lines. It now writes only when a
+bottle was added. `gCombo.Debug.BottleSaveEveryReconcile` (off by default) brings back the old write, so one build
+can time both with `gCombo.Debug.SaveTiming` (see boot-shutdown.md, "Save timing").
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.

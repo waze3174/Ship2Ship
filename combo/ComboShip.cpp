@@ -764,6 +764,13 @@ static bool Combo_SharedHealthOn() {
     return SOH_ComboSharedHealthEnabled && SOH_ComboSharedHealthEnabled() != 0;
 }
 
+// A reference, not a copy: the combo object holds the slot's baked seed, too big to copy on every save read.
+static const nlohmann::json& ComboObjectOf(const nlohmann::json& c) {
+    static const nlohmann::json kNone = nlohmann::json::object();
+    auto it = c.find("combo");
+    return (it != c.end() && it->is_object()) ? *it : kNone;
+}
+
 static const char* Combo_ReadGameSave(int game, int fileNum) {
     // No container exists for a sentinel fileNum - see ComboIsValidSlot.
     if (!ComboIsValidSlot(fileNum))
@@ -775,8 +782,11 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
     auto it = c.find(key);
     buf = (it == c.end() || it->is_null()) ? std::string() : it->dump();
     if (FnShelfSet set = game == ComboRando::GAME_OOT ? SOH_BottleShelfSetState : MM_BottleShelfSetState) {
-        auto combo = c.value("combo", nlohmann::json::object());
-        set(combo.value("bottleShelf", nlohmann::json::object()).value(key, nlohmann::json::object()).dump().c_str());
+        set(ComboObjectOf(c)
+                .value("bottleShelf", nlohmann::json::object())
+                .value(key, nlohmann::json::object())
+                .dump()
+                .c_str());
     }
     if (FnShelfSet set = game == ComboRando::GAME_OOT ? SOH_ComboHealthSetState : MM_ComboHealthSetState) {
         // The shared health / magic in the container is only as new as the last save WRITE; the running game's own
@@ -800,10 +810,9 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
             std::cout << "[ComboShip] save read for " << key << " (the game in play): its live shared state kept"
                       << std::endl;
         } else {
-            auto combo = c.value("combo", nlohmann::json::object());
-            std::cout << "[ComboShip] save read for " << key << ": shared health set "
-                      << combo.value("health", nlohmann::json::object()).dump() << std::endl;
-            set(combo.value("health", nlohmann::json::object()).dump().c_str());
+            const std::string health = ComboObjectOf(c).value("health", nlohmann::json::object()).dump();
+            std::cout << "[ComboShip] save read for " << key << ": shared health set " << health << std::endl;
+            set(health.c_str());
         }
     }
     return buf.c_str();

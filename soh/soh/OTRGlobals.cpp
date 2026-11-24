@@ -3,6 +3,7 @@
 #include "soh/Enhancements/randomizer/ComboForms.h"
 #include "ComboAnchorTunic.h"                           // ComboShip: Anchor color on every tunic
 #include "soh/Enhancements/cosmetics/CosmeticsEditor.h" // ComboShip: ApplyOrResetCustomGfxPatches
+#include "ComboSaveTiming.h"                            // ComboShip: opt-in save/reconcile timing log
 #endif
 #include "OTRAudio.h"
 #include "ComboExport.h"
@@ -2178,7 +2179,12 @@ static void Combo_FinishInit() {
     });
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([]() {
         if (gComboSharedTick) {
+            ComboSaveTiming::Stopwatch timer;
             gComboSharedTick();
+            const double ms = timer.TotalMs();
+            if (ms >= ComboSaveTiming::kSlowCallMs && CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+                SPDLOG_INFO("[ComboShip] save timing: shared reconcile in OOT took {:.1f} ms", ms);
+            }
         }
         ComboEquipShare_Tick(); // shared button layout pushed by the launcher (ComboEquipShare.cpp)
     });

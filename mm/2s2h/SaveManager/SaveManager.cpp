@@ -37,6 +37,7 @@ const std::filesystem::path savesFolderPath(Ship::Context::GetPathRelativeToAppD
 
 #ifdef COMBO_BUILD
 #include "ComboExport.h"        // ComboShip: COMBO_EXPORT for MM_InvalidateOwlBlobSlot
+#include "ComboSaveTiming.h"    // ComboShip: opt-in save timing log
 #include "rando/CrossForeign.h" // ComboShip: merged-save IO callback typedefs + GameId
 
 // ComboShip: launcher-provided .combosav IO. When set, a main per-slot file{N}.json read/write routes
@@ -330,11 +331,13 @@ void SaveManager_SaveCurrentForCombo() {
     std::string fileName = SaveManager_GetFileName(mmFileNum);
     nlohmann::json j;
 #ifdef COMBO_BUILD
+    ComboSaveTiming::Stopwatch timer;
     // ComboShip (#182): read-modify-write so an owl blob is either kept in step or dropped — never
     // left behind to shadow newer state. A read/migrate failure just starts from an empty document.
     if (SaveManager_ReadSaveFileForLiveWrite(fileName, j) != 0 || SaveManager_MigrateSave(j) != 0) {
         j = nlohmann::json{};
     }
+    const double readMs = timer.Lap();
 #endif
     j["newCycleSave"]["save"] = gSaveContext.save;
 #ifdef COMBO_BUILD
@@ -354,13 +357,15 @@ void SaveManager_SaveCurrentForCombo() {
             try {
                 // at() so a malformed blob throws into the catch below; operator[] would insert
                 // nulls and leave a blob that only fails later, at load.
-                nlohmann::json keep = j.at("owlSave").at("save");
+                const nlohmann::json& blob = j.at("owlSave").at("save");
+                nlohmann::json isOwlSave = blob.at("isOwlSave");
+                nlohmann::json pauseSaveEntrance = blob.at("shipSaveInfo").at("pauseSaveEntrance");
+                nlohmann::json respawn = blob.at("shipSaveInfo").at("respawn");
                 j["owlSave"] = gSaveContext;
                 // Blob-owned: live RAM clears these right after every owl write.
-                j["owlSave"]["save"]["isOwlSave"] = keep.at("isOwlSave");
-                j["owlSave"]["save"]["shipSaveInfo"]["pauseSaveEntrance"] =
-                    keep.at("shipSaveInfo").at("pauseSaveEntrance");
-                j["owlSave"]["save"]["shipSaveInfo"]["respawn"] = keep.at("shipSaveInfo").at("respawn");
+                j["owlSave"]["save"]["isOwlSave"] = std::move(isOwlSave);
+                j["owlSave"]["save"]["shipSaveInfo"]["pauseSaveEntrance"] = std::move(pauseSaveEntrance);
+                j["owlSave"]["save"]["shipSaveInfo"]["respawn"] = std::move(respawn);
                 if (comboDeadForSave) {
                     j["owlSave"]["save"]["saveInfo"]["playerData"]["health"] = 0x30;
                 }
@@ -376,7 +381,17 @@ void SaveManager_SaveCurrentForCombo() {
 #endif
     j["version"] = CURRENT_SAVE_VERSION;
     j["type"] = "2S2H_SAVE";
-    SaveManager_WriteSaveFile(fileName, j);
+#ifdef COMBO_BUILD
+    const double serializeMs = timer.Lap();
+#endif
+    SaveManager_WriteSaveFile(fileName, std::move(j));
+#ifdef COMBO_BUILD
+    if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+        SPDLOG_INFO("[ComboShip] save timing: MM slot {} read {:.1f} ms, serialize {:.1f} ms, write {:.1f} ms, "
+                    "total {:.1f} ms",
+                    (int)gSaveContext.fileNum, readMs, serializeMs, timer.Lap(), timer.TotalMs());
+    }
+#endif
 }
 
 #ifdef COMBO_BUILD

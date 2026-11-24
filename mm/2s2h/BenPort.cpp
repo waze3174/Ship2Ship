@@ -70,6 +70,7 @@ CrowdControl* CrowdControl::Instance;
 #include "rando/ComboGames.h"                     // ComboShip: Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h"             // ComboShip: the Lost Woods link seed setting
 #include "rando/CrossWarpLogic.h"                 // ComboShip (teleport songs): cross-game warp logic bits
+#include "ComboSaveTiming.h"                      // ComboShip: opt-in save/reconcile timing log
 #include "2s2h/Rando/MiscBehavior/MiscBehavior.h" // ComboShip: MM_LoadComboRando cache invalidation + ComboRando types
 // ComboShip: the Lost Woods link
 #include "2s2h/Rando/MiscBehavior/ComboLostWoodsLink.h"
@@ -1230,7 +1231,12 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     // Shared Items: per-frame drain seam. Always-on (not Anchor-gated) so it also runs solo.
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameStateUpdate>([]() {
         if (gMMComboSharedTick) {
+            ComboSaveTiming::Stopwatch timer;
             gMMComboSharedTick();
+            const double ms = timer.TotalMs();
+            if (ms >= ComboSaveTiming::kSlowCallMs && CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+                SPDLOG_INFO("[ComboShip] save timing: shared reconcile in MM took {:.1f} ms", ms);
+            }
         }
     });
 #endif
@@ -4479,6 +4485,9 @@ extern "C" COMBO_EXPORT int MM_GetSharedTier(int family) try {
 
 bool Combo_MmIsForeground(void);
 
+// Debug A/B switch: restores the old write after every bottle reconcile, so one build can time both.
+static constexpr const char* kComboDebugBottleSaveEveryReconcile = "gCombo.Debug.BottleSaveEveryReconcile";
+
 extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
     if (family < 0 || family >= ComboRando::SF_COUNT)
         return;
@@ -4486,9 +4495,12 @@ extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
     tier = std::min(tier, def.mmTierCap);
     if (family == ComboRando::SF_BOTTLES) {
         // Pooled: `tier` is the shared TOTAL; hold that many (mirrored empties fill slots, then the shelf).
+        const int heldBefore = Combo_MM_BottlesHeld();
         while (Combo_MM_BottlesHeld() < tier)
             Combo_MM_BottlesAddMirrored();
-        if (gSaveContext.fileNum != 0xFF)
+        // The reconcile runs after every pickup in either game, so write the save only when a bottle was added.
+        const bool added = Combo_MM_BottlesHeld() != heldBefore;
+        if ((added || CVarGetInteger(kComboDebugBottleSaveEveryReconcile, 0)) && gSaveContext.fileNum != 0xFF)
             SaveManager_SaveCurrentForCombo(); // persist dormant grants too, like the bombchu-bag poke
         return;
     }
