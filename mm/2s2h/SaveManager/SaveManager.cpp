@@ -195,6 +195,38 @@ void SaveManager_WriteSaveFile(const std::filesystem::path& fileName, nlohmann::
 int SaveManager_ReadSaveFile(const std::filesystem::path& fileName, nlohmann::json& j);
 
 #ifdef COMBO_BUILD
+extern "C" COMBO_EXPORT const char* MM_BottleShelfGetState(void);
+extern "C" COMBO_EXPORT void MM_BottleShelfSetState(const char* json);
+
+// ComboShip (shared bottles): every read of the slot hands MM the slot's saved Bottle Shelf (Combo_ReadGameSave),
+// which is what a load needs. A writer that reads the slot first must not lose the live shelf to that read: it would
+// write the stale shelf back, and MM would count its mirrored bottles as found in MM. Holds the live shelf until the
+// guard ends.
+class LiveBottleShelfGuard {
+  public:
+    LiveBottleShelfGuard() : mLiveShelf(MM_BottleShelfGetState()) {
+    }
+    ~LiveBottleShelfGuard() {
+        MM_BottleShelfSetState(mLiveShelf.c_str());
+    }
+    LiveBottleShelfGuard(const LiveBottleShelfGuard&) = delete;
+    LiveBottleShelfGuard& operator=(const LiveBottleShelfGuard&) = delete;
+
+  private:
+    std::string mLiveShelf;
+};
+#endif
+
+// Reads the slot before the live save is written over it. Combo: the live Bottle Shelf is kept, as it goes with the
+// live save.
+static int SaveManager_ReadSaveFileForLiveWrite(const std::filesystem::path& fileName, nlohmann::json& j) {
+#ifdef COMBO_BUILD
+    LiveBottleShelfGuard liveShelf;
+#endif
+    return SaveManager_ReadSaveFile(fileName, j);
+}
+
+#ifdef COMBO_BUILD
 // ComboShip (#182): the slot whose owlSave blob populated gSaveContext, so the writers below know
 // whether the blob is still current (refresh it) or has been overtaken by live state (drop it).
 extern "C" int gComboOwlBlobSlot = -1;
@@ -300,7 +332,7 @@ void SaveManager_SaveCurrentForCombo() {
 #ifdef COMBO_BUILD
     // ComboShip (#182): read-modify-write so an owl blob is either kept in step or dropped — never
     // left behind to shadow newer state. A read/migrate failure just starts from an empty document.
-    if (SaveManager_ReadSaveFile(fileName, j) != 0 || SaveManager_MigrateSave(j) != 0) {
+    if (SaveManager_ReadSaveFileForLiveWrite(fileName, j) != 0 || SaveManager_MigrateSave(j) != 0) {
         j = nlohmann::json{};
     }
 #endif
@@ -529,6 +561,10 @@ int SaveManager_ReadSaveFile(const std::filesystem::path& fileName, nlohmann::js
 void SaveManager_PersistSariaHintsAvailable() {
     std::string fileName = SaveManager_GetFileName(gSaveContext.fileNum + 1);
     nlohmann::json j;
+#ifdef COMBO_BUILD
+    // ComboShip: the stored save is written back with its stored Bottle Shelf; the live shelf returns afterwards.
+    LiveBottleShelfGuard liveShelf;
+#endif
 
     if (SaveManager_ReadSaveFile(fileName, j) != 0) {
         return;
@@ -809,7 +845,7 @@ extern "C" void SaveManager_SysFlashrom_WriteData(u8* saveBuffer, u32 pageNum, u
                 nlohmann::json j;
 
                 // Read the existing save file to preserve the owl save
-                int result = SaveManager_ReadSaveFile(fileName, j);
+                int result = SaveManager_ReadSaveFileForLiveWrite(fileName, j);
                 if (result == -2) {
                     SaveManager_MoveInvalidSaveFile(
                         fileName,
@@ -856,7 +892,7 @@ extern "C" void SaveManager_SysFlashrom_WriteData(u8* saveBuffer, u32 pageNum, u
 
             nlohmann::json j;
             // Read the existing save file to preserve the new cycle save
-            int result = SaveManager_ReadSaveFile(fileName, j);
+            int result = SaveManager_ReadSaveFileForLiveWrite(fileName, j);
             if (result == -2) {
                 SaveManager_MoveInvalidSaveFile(fileName, "Something went wrong trying to preserve the new cycle save. "
                                                           "Original save file has been backed up.");
