@@ -21,6 +21,40 @@ extern PlayState* gPlayState;
 namespace {
 ComboHealth::Runtime sRt;
 std::string sOut;
+
+// OOT's ammo items: the shared consumable each one is, and its bag (Item_Give caps chus at 50, the bean seller at 10;
+// MM holds 20 beans).
+struct OotBag {
+    u8 item;
+    int kind;
+};
+const OotBag kOotBags[] = {
+    { ITEM_BOW, ComboHealth::kAmmoArrows },       { ITEM_BOMB, ComboHealth::kAmmoBombs },
+    { ITEM_BOMBCHU, ComboHealth::kAmmoBombchus }, { ITEM_STICK, ComboHealth::kAmmoSticks },
+    { ITEM_NUT, ComboHealth::kAmmoNuts },         { ITEM_BEAN, ComboHealth::kAmmoBeans },
+    { ITEM_SLINGSHOT, ComboHealth::kAmmoSeeds },
+};
+
+int OotBagCap(u8 item) {
+    switch (item) {
+        case ITEM_BOW:
+            return CUR_CAPACITY(UPG_QUIVER);
+        case ITEM_BOMB:
+            return CUR_CAPACITY(UPG_BOMB_BAG);
+        case ITEM_BOMBCHU:
+            return 50;
+        case ITEM_STICK:
+            return CUR_CAPACITY(UPG_STICKS);
+        case ITEM_NUT:
+            return CUR_CAPACITY(UPG_NUTS);
+        case ITEM_BEAN:
+            return 20;
+        case ITEM_SLINGSHOT:
+            return CUR_CAPACITY(UPG_BULLET_BAG);
+        default:
+            return 0;
+    }
+}
 } // namespace
 
 // The shared heart-piece meter in eighths (0-7) for this game's pause screen; -1 before the first tick of a save.
@@ -63,22 +97,10 @@ void Combo_SharedHealthRegister() {
         n.magicState = &gSaveContext.magicState;
         n.magicFillTarget = &gSaveContext.magicFillTarget;
         n.magicTarget = &gSaveContext.magicTarget;
-        {
-            // Shared consumables: OOT's own bags (Item_Give caps chus at 50, the bean seller at 10; MM holds 20 beans).
-            auto slot = [](u8 item, int cap) {
-                ComboHealth::AmmoSlot a;
-                a.count = &AMMO(item);
-                a.owned = (INV_CONTENT(item) == item);
-                a.cap = cap;
-                return a;
-            };
-            n.ammo[ComboHealth::kAmmoArrows] = slot(ITEM_BOW, CUR_CAPACITY(UPG_QUIVER));
-            n.ammo[ComboHealth::kAmmoBombs] = slot(ITEM_BOMB, CUR_CAPACITY(UPG_BOMB_BAG));
-            n.ammo[ComboHealth::kAmmoBombchus] = slot(ITEM_BOMBCHU, 50);
-            n.ammo[ComboHealth::kAmmoSticks] = slot(ITEM_STICK, CUR_CAPACITY(UPG_STICKS));
-            n.ammo[ComboHealth::kAmmoNuts] = slot(ITEM_NUT, CUR_CAPACITY(UPG_NUTS));
-            n.ammo[ComboHealth::kAmmoBeans] = slot(ITEM_BEAN, 20);
-            n.ammo[ComboHealth::kAmmoSeeds] = slot(ITEM_SLINGSHOT, CUR_CAPACITY(UPG_BULLET_BAG));
+        for (const OotBag& b : kOotBags) { // shared consumables: OOT's own bags
+            n.ammo[b.kind].count = &AMMO(b.item);
+            n.ammo[b.kind].owned = (INV_CONTENT(b.item) == b.item);
+            n.ammo[b.kind].cap = OotBagCap(b.item);
         }
         {
             // Test hook (launch env only, Combo_HarnessEnv): COMBO_DEBUG_MAGIC=<n> sets OOT's meter to n once it is
@@ -121,4 +143,27 @@ extern "C" COMBO_EXPORT int SOH_ComboAmmoAdd(int kind, int count) {
     int v = AMMO(kItem[kind]) + count;
     AMMO(kItem[kind]) = (s8)((v > caps[kind]) ? caps[kind] : v);
     return 1;
+}
+
+// OOT's bag for an OOT ammo item, for Termina's HUD and pause menu (OOT items on MM's buttons, MM's Hyrule face): its
+// count in OOT's save, -1 = not an ammo item OOT holds or no OOT save loaded. `cap`: the bag (OOT's HUD turns the count
+// green there); `kind`: its shared consumable.
+extern "C" COMBO_EXPORT int SOH_ComboAmmoBag(int ootItem, int* cap, int* kind) {
+    if (gSaveContext.fileNum > 2) {
+        return -1;
+    }
+    for (const OotBag& b : kOotBags) {
+        if ((b.item == ootItem) && (INV_CONTENT(b.item) == b.item)) {
+            *cap = OotBagCap(b.item);
+            *kind = b.kind;
+            return AMMO(b.item);
+        }
+    }
+    return -1;
+}
+
+// MM's bags seen from Hyrule (MM items on OOT's buttons and OOT's Termina face, ComboPause.cpp): with sharing on, the
+// count MM will show on arrival (combo/ComboSharedHealth.h DormantAmmo).
+extern "C" int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap) {
+    return ComboHealth::DormantAmmo(sRt, ComboHealth::kGameMm, kind, mmCount, mmCap);
 }

@@ -4332,6 +4332,8 @@ extern "C" COMBO_EXPORT void SOH_SetTargetEntrance(int entrance) {
     gComboTargetEntrance = entrance;
 }
 
+extern "C" void Combo_TerminaPersistDormantSave(void); // ComboTerminaItems.cpp
+
 extern "C" COMBO_EXPORT void SOH_ResumeGame(void) {
     auto ctx = Ship::Context::GetRawInstance();
     // Flush every log line immediately so the resume diagnostics survive a hard crash (the console
@@ -4343,6 +4345,9 @@ extern "C" COMBO_EXPORT void SOH_ResumeGame(void) {
     //    message-table/audio reset is needed — that whole dangling class is gone with per-game RMs).
     SOH_ReinitForResume();
     SPDLOG_INFO("[ComboShip] SOH_ResumeGame: SOH_ReinitForResume done");
+
+    // 1b. OOT is about to load its save again: first write what Termina changed in it (seeds its Slingshot shot).
+    Combo_TerminaPersistDormantSave();
 
     // 2. Re-arm the shared window so OOT's `while (WindowIsRunning())` loop runs instead of
     //    returning immediately (MM cleared mIsRunning when its loop exited).

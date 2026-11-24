@@ -34,9 +34,14 @@ int Combo_MmOotItemOf(int foreignItem);
 // OOT's own age rule for that item (gItemAgeReqs + SoH's Timeless Equipment), for Link's age in Termina.
 int Combo_MmOotItemAgeOk(int foreignItem);
 
-// OOT's ammo for an ammo item (Deku Seeds etc.) and OOT's Inventory_ChangeAmmo on OOT's save.
+// OOT's ammo for an ammo item (Deku Seeds etc.) as a use in Termina spends it (-1 = not an ammo item OOT holds), and
+// OOT's Inventory_ChangeAmmo on it. With shared consumables on, that is the shared count, not OOT's dormant save.
 int Combo_MmOotAmmo(int ootItem);
 void Combo_MmOotChangeAmmo(int ootItem, int delta);
+
+// The ammo digits for a foreign (OOT) item on an MM button: that count, -1 = none. `full` (may be NULL): OOT's bag is
+// full (the count is drawn green).
+int Combo_MmForeignAmmo(int foreignItem, int* full);
 
 // Link's hand model while holding an OOT item: the OOT model (routed "@oot:") for the left / right hand limb, or NULL
 // to keep MM's choice. `limbIndex` is PLAYER_LIMB_*; called from the gameplay limb override after MM picked a model.

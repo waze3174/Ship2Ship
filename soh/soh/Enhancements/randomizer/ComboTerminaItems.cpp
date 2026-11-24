@@ -12,6 +12,7 @@
 
 #include "ComboExport.h"
 #include "soh/cvar_prefixes.h"
+#include "soh/SaveManager.h"
 #include "soh/Enhancements/AdultMasks.h"
 
 extern "C" {
@@ -26,6 +27,8 @@ namespace {
 bool SaveResident() {
     return gSaveContext.fileNum <= 2; // 0xFF = no OOT save loaded yet
 }
+
+bool sDormantSaveChanged = false; // OOT's dormant save was changed from Termina and not yet written
 } // namespace
 
 // OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), with SoH's Timeless
@@ -42,25 +45,23 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     return (req == 9) || (req == (adult ? LINK_AGE_ADULT : LINK_AGE_CHILD));
 }
 
-// OOT's ammo for an ammo item (AMMO(item)), -1 when OOT has no save resident.
-extern "C" COMBO_EXPORT int SOH_ComboTermina_Ammo(int ootItem) {
-    if (!SaveResident() || ootItem < 0 || ootItem >= ITEM_NONE)
-        return -1;
-    return AMMO(ootItem);
-}
-
-// OOT's Inventory_ChangeAmmo on OOT's save: the bag/quiver caps are OOT's.
+// OOT's Inventory_ChangeAmmo on OOT's save: the bag/quiver caps are OOT's. (OOT's ammo itself: SOH_ComboAmmoBag.)
 extern "C" COMBO_EXPORT void SOH_ComboTermina_ChangeAmmo(int ootItem, int delta) {
     if (!SaveResident())
         return;
     Inventory_ChangeAmmo((s16)ootItem, (s16)delta);
+    sDormantSaveChanged = true;
 }
 
-// OOT's upgrade value (CUR_UPG_VALUE), e.g. UPG_STRENGTH / UPG_SCALE / UPG_BULLET_BAG.
-extern "C" COMBO_EXPORT int SOH_ComboTermina_UpgradeValue(int upg) {
-    if (!SaveResident() || upg < 0 || upg > UPG_NUTS)
-        return 0;
-    return CUR_UPG_VALUE(upg);
+// OOT loads its save again from the slot when Link comes back from Termina, so a change made to the dormant save from
+// Termina is written first (SOH_ResumeGame), or the seeds shot there would be back in the bag.
+extern "C" void Combo_TerminaPersistDormantSave(void) {
+    if (!sDormantSaveChanged || !SaveResident() || (SaveManager::Instance == nullptr)) {
+        return;
+    }
+    sDormantSaveChanged = false;
+    SaveManager::Instance->SaveFile(gSaveContext.fileNum);
+    SaveManager::Instance->ThreadPoolWait();
 }
 
 // OOT's equipped value of an equipment row (CUR_EQUIP_VALUE: 0 sword, 1 shield, 2 tunic, 3 boots), 0 = none.

@@ -20,6 +20,44 @@ extern "C" {
 namespace {
 ComboHealth::Runtime sRt;
 std::string sOut;
+
+// MM's ammo items: the shared consumable each one is (-1 = not shared), and its bag as MM's own HUD fills it (chus
+// share the bomb bag, Item_Give stops beans at 20, the Powder Keg and the picture are one).
+struct MmBag {
+    u8 item;
+    int kind;
+};
+const MmBag kMmBags[] = {
+    { ITEM_BOW, ComboHealth::kAmmoArrows },
+    { ITEM_BOMB, ComboHealth::kAmmoBombs },
+    { ITEM_BOMBCHU, ComboHealth::kAmmoBombchus },
+    { ITEM_DEKU_STICK, ComboHealth::kAmmoSticks },
+    { ITEM_DEKU_NUT, ComboHealth::kAmmoNuts },
+    { ITEM_MAGIC_BEANS, ComboHealth::kAmmoBeans },
+    { ITEM_POWDER_KEG, -1 },
+    { ITEM_PICTOGRAPH_BOX, -1 },
+};
+
+int MmBagCap(u8 item) {
+    switch (item) {
+        case ITEM_BOW:
+            return CUR_CAPACITY(UPG_QUIVER);
+        case ITEM_BOMB:
+        case ITEM_BOMBCHU:
+            return CUR_CAPACITY(UPG_BOMB_BAG);
+        case ITEM_DEKU_STICK:
+            return CUR_CAPACITY(UPG_DEKU_STICKS);
+        case ITEM_DEKU_NUT:
+            return CUR_CAPACITY(UPG_DEKU_NUTS);
+        case ITEM_MAGIC_BEANS:
+            return 20;
+        case ITEM_POWDER_KEG:
+        case ITEM_PICTOGRAPH_BOX:
+            return 1;
+        default:
+            return 0;
+    }
+}
 } // namespace
 
 // The shared heart-piece meter in eighths (0-7) for this game's pause screen; -1 before the first tick of a save.
@@ -52,21 +90,12 @@ static void ComboSharedHealthTick() {
     n.magicFillTarget = &gSaveContext.magicFillTarget;
     n.magicToAdd = &gSaveContext.magicToAdd;
     n.magicToConsume = &gSaveContext.magicToConsume;
-    {
-        // Shared consumables: MM's own bags (chus share the bomb bag; Item_Give stops beans at 20).
-        auto slot = [](u8 item, int cap) {
-            ComboHealth::AmmoSlot a;
-            a.count = &AMMO(item);
-            a.owned = (INV_CONTENT(item) == item);
-            a.cap = cap;
-            return a;
-        };
-        n.ammo[ComboHealth::kAmmoArrows] = slot(ITEM_BOW, CUR_CAPACITY(UPG_QUIVER));
-        n.ammo[ComboHealth::kAmmoBombs] = slot(ITEM_BOMB, CUR_CAPACITY(UPG_BOMB_BAG));
-        n.ammo[ComboHealth::kAmmoBombchus] = slot(ITEM_BOMBCHU, CUR_CAPACITY(UPG_BOMB_BAG));
-        n.ammo[ComboHealth::kAmmoSticks] = slot(ITEM_DEKU_STICK, CUR_CAPACITY(UPG_DEKU_STICKS));
-        n.ammo[ComboHealth::kAmmoNuts] = slot(ITEM_DEKU_NUT, CUR_CAPACITY(UPG_DEKU_NUTS));
-        n.ammo[ComboHealth::kAmmoBeans] = slot(ITEM_MAGIC_BEANS, 20);
+    for (const MmBag& b : kMmBags) {
+        if (b.kind >= 0) { // shared consumables: MM's own bags (MM has no bullet bag)
+            n.ammo[b.kind].count = &AMMO(b.item);
+            n.ammo[b.kind].owned = (INV_CONTENT(b.item) == b.item);
+            n.ammo[b.kind].cap = MmBagCap(b.item);
+        }
     }
     {
         // Test hook (launch env): COMBO_DEBUG_AMMO=<kind>,<n> sets that MM count to n at frame 150, as a shot or a
@@ -142,12 +171,32 @@ extern "C" COMBO_EXPORT int MM_ComboAmmoAdd(int kind, int count) {
     return 1;
 }
 
-// Shared seeds for OOT's Slingshot in Termina (MM has no bullet bag, so no native cell): the count comes in from
-// Hyrule with the shared state and goes back with it. -1 = not known (no seed count shared yet).
-extern "C" int MM_ComboSharedSeeds(void) {
-    return sRt.s.ammo[ComboHealth::kAmmoSeeds];
+// OOT's bags seen from Termina (OOT's items on MM's buttons and MM's Hyrule face, ComboOotItems.cpp): with sharing on,
+// the count OOT will show on arrival, which is the count a use spends (combo/ComboSharedHealth.h DormantAmmo).
+extern "C" int Combo_SharedOotAmmo(int kind, int ootCount, int ootCap) {
+    return ComboHealth::DormantAmmo(sRt, ComboHealth::kGameOot, kind, ootCount, ootCap);
 }
 
-extern "C" void MM_ComboSharedSeedsSet(int count) {
-    sRt.s.ammo[ComboHealth::kAmmoSeeds] = (count < 0) ? 0 : count;
+// OOT's Slingshot fired in Termina spends from the shared count when sharing is on (MM has no bullet bag, so no native
+// cell: the count comes in from Hyrule with the shared state and goes back with it). 0 = sharing is off.
+extern "C" int Combo_SharedOotAmmoSpend(int kind, int change, int ootCount) {
+    return ComboHealth::SpendDormantAmmo(sRt, ComboHealth::kGameOot, kind, change, ootCount) ? 1 : 0;
+}
+
+// MM's bag for an MM ammo item, for Hyrule's HUD and pause menu (MM items on OOT's buttons, OOT's Termina face): its
+// count in MM's save, -1 = not an ammo item MM holds. `cap`: the bag (MM's HUD turns the count green there); `kind`:
+// its shared consumable, -1 = not shared.
+extern "C" COMBO_EXPORT int MM_ComboAmmoBag(int mmItem, int* cap, int* kind) {
+    for (const MmBag& b : kMmBags) {
+        if ((b.item != mmItem) || (INV_CONTENT(b.item) != b.item)) {
+            continue;
+        }
+        *cap = MmBagCap(b.item);
+        *kind = b.kind;
+        if (b.item == ITEM_PICTOGRAPH_BOX) {
+            return CHECK_QUEST_ITEM(QUEST_PICTOGRAPH) ? 1 : 0; // MM's HUD: a picture taken or not
+        }
+        return AMMO(b.item);
+    }
+    return -1;
 }
