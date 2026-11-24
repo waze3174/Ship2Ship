@@ -21,9 +21,14 @@
 #include <cstdint>
 #include <string>
 
+#include <libultraship/bridge/consolevariablebridge.h>
 #include <nlohmann/json.hpp>
 
 namespace ComboHealth {
+
+// Off by default: sharing is a rule change, and the games behave as plain ComboShip unless the player turns it on in
+// the combo menu. It is a play-time setting, not a seed setting: seed generation and logic never read it.
+constexpr const char* kCvarEnabled = "gCombo.Shared.HealthMagicAmmo";
 
 constexpr int kGameOot = 0;
 constexpr int kGameMm = 1;
@@ -249,6 +254,27 @@ inline void Tick(Runtime& rt, int game, const Native& n) {
 
     TickMagic(rt, n);
     TickAmmo(rt, game, n);
+}
+
+inline bool Enabled() {
+    return CVarGetInteger(kCvarEnabled, 0) != 0;
+}
+
+// Sharing is off: forget what was shared, so that switching it on later starts again from each game's native fields
+// (the games' natives already hold the shared whole hearts, so nothing is lost). The watched-transformation record
+// is not a rule and keeps travelling.
+inline void Release(Runtime& rt) {
+    const int seenTransform = rt.s.seenTransform;
+    rt = Runtime{};
+    rt.s.seenTransform = seenTransform;
+}
+
+inline void TickIfEnabled(Runtime& rt, int game, const Native& n) {
+    if (Enabled()) {
+        Tick(rt, game, n);
+    } else {
+        Release(rt);
+    }
 }
 
 inline std::string ToJson(const Runtime& rt) {

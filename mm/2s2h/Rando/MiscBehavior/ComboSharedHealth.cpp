@@ -80,7 +80,7 @@ static void ComboSharedHealthTick() {
             SPDLOG_INFO("[ComboShip] COMBO_DEBUG_AMMO: MM ammo kind {} set to {}", kind, v);
         }
     }
-    ComboHealth::Tick(sRt, ComboHealth::kGameMm, n);
+    ComboHealth::TickIfEnabled(sRt, ComboHealth::kGameMm, n);
     {
         // The watched-transformation record is one for both games: MM's weekEventReg flags (z_player.c D_8085D908)
         // and the shared bits, merged both ways, so a transformation watched in Hyrule is skippable in Termina.

@@ -1840,6 +1840,29 @@ void ComboMenu::DrawComboPanel() {
                                 "Boomerang, Deku bubble = Slingshot: solve Hyrule's puzzles with form moves.");
         }
         {
+            bool formCredit = CVarGetInteger("gCombo.Rando.FormLogicCredit", 0) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Logic counts form abilities", &formCredit))
+                CVarSetInteger("gCombo.Rando.FormLogicCredit", formCredit ? 1 : 0);
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Seed setting. Off: no seed ever needs a Zora or Goron form in Hyrule. On: Zora/Goron\n"
+                                "Mask abilities may stand in for Iron Boots, scales, tunics, hammer and strength.");
+        }
+        {
+            bool sharedVitals = CVarGetInteger("gCombo.Shared.HealthMagicAmmo", 0) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Shared health, magic and ammo", &sharedVitals)) {
+                CVarSetInteger("gCombo.Shared.HealthMagicAmmo", sharedVitals ? 1 : 0);
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SameLine();
+            ImGui::TextDisabled("One health bar, magic meter and ammo count for both games; every heart piece or\n"
+                                "container is worth half. Double Defense carries over. Logic is not told about it.");
+        }
+        {
             bool anchorTunic = CVarGetInteger("gCombo.Cosmetics.AnchorTunicSync", 0) != 0;
             ComboRando::ComboMenu_PushCheckbox(goalTheme);
             if (ImGui::Checkbox("Anchor color on every tunic", &anchorTunic)) {

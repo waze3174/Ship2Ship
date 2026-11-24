@@ -26,6 +26,8 @@
 namespace {
 
 constexpr const char* kLinkCVar = "gCombo.LinkSettings";
+// Off until the player asks: linking rewrites a preference in the other game, so the games stay independent by default.
+constexpr int kLinkDefault = 0;
 // Set once the first push has happened, so switching the link on seeds MM from OOT exactly once.
 constexpr const char* kSeededCVar = "gCombo.LinkSettingsSeeded";
 
@@ -221,7 +223,7 @@ void PushMmToOot(int i, const Applies& fns, bool* wrote) {
 } // namespace
 
 extern "C" COMBO_EXPORT int ComboUI_SettingsLinkEnabled(void) {
-    return CVarGetInteger(kLinkCVar, 1) != 0 ? 1 : 0;
+    return CVarGetInteger(kLinkCVar, kLinkDefault) != 0 ? 1 : 0;
 }
 
 extern "C" COMBO_EXPORT int ComboUI_SettingsLinkCount(void) {

@@ -43,6 +43,9 @@ extern "C" int gComboOracleCrossIn;
 // condition (ComboFormCtxReset in location_access.h / entrance.cpp).
 extern "C" int gComboOracleFormZora = 0;
 extern "C" int gComboOracleFormGoron = 0;
+// The seed's own choice (menu: gCombo.Rando.FormLogicCredit, stored in the seed, off by default): with it off no form
+// is credited with anything, whatever masks the oracle owns, so a seed never requires a form's ability.
+extern "C" int gComboFormLogicCredit = 0;
 namespace {
 enum { COMBO_CTX_NONE, COMBO_CTX_ZORA, COMBO_CTX_GORON };
 int sComboFormCtx = COMBO_CTX_NONE;
@@ -97,6 +100,9 @@ void ComboFormCtxReset() {
 
 // A form's credit for `item`, taken (and the context set) when the condition still allows it.
 static bool ComboFormCredit(RandomizerGet item) {
+    if (!gComboFormLogicCredit) {
+        return false;
+    }
     const bool zora = (item == RG_IRON_BOOTS) || (item == RG_ZORA_TUNIC) || (item == RG_BRONZE_SCALE) ||
                       (item == RG_SILVER_SCALE) || (item == RG_GOLDEN_SCALE);
     const bool goron = (item == RG_GORON_TUNIC) || ((item == RG_MEGATON_HAMMER) && !sComboNoGoronHammer) ||

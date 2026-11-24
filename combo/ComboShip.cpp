@@ -497,6 +497,16 @@ static bool Combo_ReadUnifiedInventorySetting() {
     } catch (...) { return false; }
 }
 
+// Seed-bound logic switch (gCombo.Rando.FormLogicCredit): MM's Zora / Goron Masks count as Hyrule abilities in logic.
+static bool g_genFormLogicCredit = false; // the menu setting a generation runs with (worker thread)
+static bool Combo_ReadFormLogicCreditSetting() {
+    if (!SOH_ReadComboEntranceCVars)
+        return false;
+    try {
+        return nlohmann::json::parse(SOH_ReadComboEntranceCVars()).value("formLogicCredit", false);
+    } catch (...) { return false; }
+}
+
 static ComboRando::CrossSettings Combo_ReadCrossSettings() {
     if (!SOH_ReadComboEntranceCVars)
         return {};
@@ -726,6 +736,12 @@ static FnShelfSet SOH_ComboHealthSetState = nullptr, MM_ComboHealthSetState = nu
 
 // The game whose shared health is live (the one being played); kept by ComboAnchor::SetActiveGame.
 static int g_comboHealthActiveGame = 0;
+// The "Shared health, magic and ammo" menu switch (gCombo.Shared.HealthMagicAmmo, off by default). The CVar store is
+// one instance across the exe and both DLLs, so soh answers for both games.
+static int (*SOH_ComboSharedHealthEnabled)(void) = nullptr;
+static bool Combo_SharedHealthOn() {
+    return SOH_ComboSharedHealthEnabled && SOH_ComboSharedHealthEnabled() != 0;
+}
 
 static const char* Combo_ReadGameSave(int game, int fileNum) {
     // No container exists for a sentinel fileNum - see ComboIsValidSlot.
@@ -1128,6 +1144,11 @@ static uint32_t g_sharedMask = 0;
 static bool g_unifiedInventory = false; // owner ruling 2026-11-11: the loaded slot's seed shares every item
 typedef void (*FnSetInt)(int);
 static FnSetInt SOH_SetComboUnifiedInventory = nullptr;
+static FnSetInt SOH_SetComboFormLogicCredit = nullptr;
+static void Combo_PushFormLogicCredit(bool on) {
+    if (SOH_SetComboFormLogicCredit)
+        SOH_SetComboFormLogicCredit(on ? 1 : 0);
+}
 static void (*SOH_SetComboMirrorStart)(uint32_t) = nullptr;
 // Owner ruling 2026-11-12: under Unified Inventory OOT starts with what MM starts with. The mask comes from the MM
 // settings in force (the live menu at generation, the seed's own `mm.settings` on reload), before OOT finalizes.
@@ -1598,7 +1619,7 @@ static void DeliverCrossItem(int targetGame, const char* itemName, const char* s
             return; // already delivered for this check
         }
     }
-    {
+    if (Combo_SharedHealthOn()) {
         const int activeGame = ComboAnchor::sActiveGame.load();
         if (const char* here = CrossHeartForActiveGame(targetGame, activeGame, itemName)) {
             std::cout << "[ComboShip] cross heart: '" << itemName << "' for " << (targetGame == 1 ? "MM" : "OOT")
@@ -2132,6 +2153,7 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
     g_CrossSettings = Combo_ReadCrossSettings();
     g_Cross = {};
     g_genUnifiedInventory = Combo_ReadUnifiedInventorySetting();
+    g_genFormLogicCredit = Combo_ReadFormLogicCreditSetting();
     const int kFillAttempts = (g_MmEntranceSettings.Any() || g_CrossSettings.Any()) ? ComboRando::kEntranceFillAttempts
                                                                                     : ComboRando::kFillAttempts;
     for (int attempt = 0; attempt < kFillAttempts && !usedCombinedFill; ++attempt) {
@@ -2164,6 +2186,7 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
             SOH_SetComboSharedItems(sharedMask);
         if (SOH_SetComboUnifiedInventory) // before the dump: FinalizeSettings + logic read it
             SOH_SetComboUnifiedInventory(g_genUnifiedInventory ? 1 : 0);
+        Combo_PushFormLogicCredit(g_genFormLogicCredit);
         Combo_PushMirrorStart(g_genUnifiedInventory, MM_DumpRandoSettings ? MM_DumpRandoSettings() : "{}");
 
         sohDump = SOH_DumpRandoStaticData();
@@ -2469,6 +2492,8 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
         consolidated["sharedItems"] = sharedItemsJson;
         if (g_genUnifiedInventory) // owner ruling 2026-11-11 (both Links use every item); seed-bound
             consolidated["unifiedInventory"] = true;
+        if (g_genFormLogicCredit) // seed-bound: logic credited the Zora / Goron forms
+            consolidated["formLogicCredit"] = true;
         if (j.contains("sharedStartingMm"))
             consolidated["sharedStartingMm"] = j["sharedStartingMm"]; // MM copies OOT starts with (mirror base)
         consolidated["playthrough"] = ComboRando::PlaythroughLines(playthroughJson);
@@ -2603,6 +2628,7 @@ static int RunComboGenTest(int numSeeds, uint32_t seedBase) {
             (entMm.Any() || entCross.Any()) ? ComboRando::kEntranceFillAttempts : ComboRando::kFillAttempts;
         if (SOH_SetComboUnifiedInventory)
             SOH_SetComboUnifiedInventory(Combo_ReadUnifiedInventorySetting() ? 1 : 0);
+        Combo_PushFormLogicCredit(Combo_ReadFormLogicCreditSetting());
         Combo_PushMirrorStart(Combo_ReadUnifiedInventorySetting(),
                               MM_DumpRandoSettings ? MM_DumpRandoSettings() : "{}");
         for (int attempt = 0; attempt < attempts && !result.success; ++attempt) {
@@ -2726,6 +2752,7 @@ static void RunComboPlaythrough(const std::string& inputSeed) {
         (entMm.Any() || entCross.Any()) ? ComboRando::kEntranceFillAttempts : ComboRando::kFillAttempts;
     if (SOH_SetComboUnifiedInventory)
         SOH_SetComboUnifiedInventory(Combo_ReadUnifiedInventorySetting() ? 1 : 0);
+    Combo_PushFormLogicCredit(Combo_ReadFormLogicCreditSetting());
     Combo_PushMirrorStart(Combo_ReadUnifiedInventorySetting(), MM_DumpRandoSettings ? MM_DumpRandoSettings() : "{}");
     for (int attempt = 0; attempt < attempts && !fill.success; ++attempt) {
         const uint32_t masterSeed = baseSeed + attempt * 0x9E3779B9u;
@@ -3059,6 +3086,7 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
                     ComboRando::SharedMaskFromKeys(j.value("sharedItems", nlohmann::json::array())));
             if (SOH_SetComboUnifiedInventory) // owner ruling 2026-11-11: shapes OOT logic + masks-as-adult force
                 SOH_SetComboUnifiedInventory(j.value("unifiedInventory", false) ? 1 : 0);
+            Combo_PushFormLogicCredit(j.value("formLogicCredit", false)); // a seed without the key was made without it
             Combo_PushMirrorStart(
                 j.value("unifiedInventory", false),
                 j.value("mm", nlohmann::json::object()).value("settings", nlohmann::json::object()).dump());
@@ -3695,8 +3723,10 @@ int main(int argc, char** argv) {
     MM_SetCrossEntrances = (FnTakeStr)GetSym(mmModule, "MM_SetCrossEntrances");
     Combo_MM_Rando_GetCrossExits = (FnDumpData)GetSym(mmModule, "Combo_MM_Rando_GetCrossExits");
     SOH_SetComboUnifiedInventory = (FnSetInt)GetSym(sohModule, "SOH_SetComboUnifiedInventory");
+    SOH_SetComboFormLogicCredit = (FnSetInt)GetSym(sohModule, "SOH_SetComboFormLogicCredit");
     SOH_SetComboMirrorStart = (void (*)(uint32_t))GetSym(sohModule, "SOH_SetComboMirrorStart");
     SOH_BottleShelfGetState = (FnShelfGet)GetSym(sohModule, "SOH_BottleShelfGetState");
+    SOH_ComboSharedHealthEnabled = (int (*)(void))GetSym(sohModule, "SOH_ComboSharedHealthEnabled");
     SOH_ComboHealthGetState = (FnShelfGet)GetSym(sohModule, "SOH_ComboHealthGetState");
     SOH_ComboHealthSetState = (FnShelfSet)GetSym(sohModule, "SOH_ComboHealthSetState");
     MM_ComboHealthGetState = (FnShelfGet)GetSym(mmModule, "MM_ComboHealthGetState");

@@ -28,6 +28,10 @@ extern "C" int Combo_HeartPieceEighths(void) {
     return (sRt.lastCapacity < 0) ? -1 : ComboHealth::LeftoverEighths(sRt.s);
 }
 
+extern "C" COMBO_EXPORT int SOH_ComboSharedHealthEnabled(void) {
+    return ComboHealth::Enabled() ? 1 : 0;
+}
+
 extern "C" COMBO_EXPORT const char* SOH_ComboHealthGetState(void) {
     sOut = ComboHealth::ToJson(sRt);
     return sOut.c_str();
@@ -88,7 +92,7 @@ void Combo_SharedHealthRegister() {
                 gSaveContext.magic = (s8)std::strtol(mp, nullptr, 0);
             }
         }
-        ComboHealth::Tick(sRt, ComboHealth::kGameOot, n);
+        ComboHealth::TickIfEnabled(sRt, ComboHealth::kGameOot, n);
         static int sDbg = 0;
         if (Combo_DebugEnv("COMBO_DEBUG_HEALTH") && ((++sDbg % 60) == 0)) {
             Combo_DebugLog("[ComboShip] health OOT: %d/%d (q oot %d mm %d, dd %d) magic %d shared %d state %d\n",

@@ -239,6 +239,12 @@ static int Run(int argc, char** argv) {
     // Owner ruling 2026-11-11: Unified Inventory (both Links use every item).
     auto SOH_SetComboUnifiedInventory = Sym<void (*)(int)>(soh, "SOH_SetComboUnifiedInventory");
     auto SOH_SetComboMirrorStart = Sym<void (*)(uint32_t)>(soh, "SOH_SetComboMirrorStart");
+    // Seed-bound logic credit for MM's Zora / Goron forms (gCombo.Rando.FormLogicCredit); off unless the seed says so.
+    auto SOH_SetComboFormLogicCredit = Sym<void (*)(int)>(soh, "SOH_SetComboFormLogicCredit");
+    auto pushFormLogicCredit = [&](bool on) {
+        if (SOH_SetComboFormLogicCredit)
+            SOH_SetComboFormLogicCredit(on ? 1 : 0);
+    };
     // Owner ruling 2026-11-12: under Unified Inventory OOT starts with what MM starts with (SharedItems.h).
     auto pushMirrorStart = [&](bool unified, const nlohmann::json& mmSettings) {
         if (SOH_SetComboMirrorStart)
@@ -368,6 +374,8 @@ static int Run(int argc, char** argv) {
             if (SOH_SetComboUnifiedInventory)
                 SOH_SetComboUnifiedInventory(spoiler.value("unifiedInventory", false) ? 1 : 0);
             pushMirrorStart(spoiler.value("unifiedInventory", false), mmSettings);
+            pushFormLogicCredit(spoiler.value("formLogicCredit", false) ||
+                                (std::getenv("COMBO_FORM_CREDIT_TEST") != nullptr));
             // A real in-game save's placement map lists only SHUFFLED checks; non-shuffled items the
             // oracle still gates on (OOT vanilla shop items, MM boss remains when not shuffled) live in
             // the dump's fixed[]. Merge them in so those gates (e.g. MM RemainsCount for the Moon) resolve.
@@ -656,6 +664,12 @@ static int Run(int argc, char** argv) {
             unified = nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("unifiedInventory", false);
         } catch (...) {}
     }
+    bool formLogicCredit = false;
+    if (SOH_ReadComboEntranceCVarsFn) {
+        try {
+            formLogicCredit = nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("formLogicCredit", false);
+        } catch (...) {}
+    }
     // Shared Items: --shared-items wins ("all"/"none"/comma-separated keys); else the menu CVars.
     uint32_t sharedMask = 0;
     if (sharedItemsArg == "all") {
@@ -756,6 +770,7 @@ static int Run(int argc, char** argv) {
                 SOH_SetComboSharedItems(sharedMask);
             if (SOH_SetComboUnifiedInventory)
                 SOH_SetComboUnifiedInventory(unified ? 1 : 0);
+            pushFormLogicCredit(formLogicCredit);
             {
                 nlohmann::json mmLive = nlohmann::json::object();
                 try {
@@ -877,6 +892,8 @@ static int Run(int argc, char** argv) {
                     consolidated["sharedItems"] = sharedItemsJson;
                     if (unified)
                         consolidated["unifiedInventory"] = true;
+                    if (formLogicCredit)
+                        consolidated["formLogicCredit"] = true;
                     if (fillSpoiler.contains("sharedStartingMm"))
                         consolidated["sharedStartingMm"] = fillSpoiler["sharedStartingMm"];
                     // ComboShip: suffix cross-game item-name collisions in the placements (parity with

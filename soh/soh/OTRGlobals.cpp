@@ -3621,6 +3621,12 @@ extern "C" int gComboUnifiedInventory;
 extern "C" COMBO_EXPORT void SOH_SetComboUnifiedInventory(int on) {
     gComboUnifiedInventory = on ? 1 : 0;
 }
+// Logic credit for MM's Zora / Goron forms (logic.cpp ComboFormCredit). Seed-bound: the launcher pushes what the seed
+// was generated with before every oracle query.
+extern "C" int gComboFormLogicCredit;
+extern "C" COMBO_EXPORT void SOH_SetComboFormLogicCredit(int on) {
+    gComboFormLogicCredit = on ? 1 : 0;
+}
 // Owner ruling 2026-11-12: OOT starts with what MM starts with (ComboRando::MirrorStartBit, SharedItems.h).
 extern "C" int gComboMirrorStartMask = 0;
 extern "C" COMBO_EXPORT void SOH_SetComboMirrorStart(uint32_t mask) {
@@ -3643,7 +3649,8 @@ extern "C" COMBO_EXPORT const char* SOH_ReadComboEntranceCVars(void) {
     cached = nlohmann::json{
         { "mm", mm },
         { "cross", cross },
-        { "unifiedInventory", CVarGetInteger("gCombo.Rando.UnifiedInventory", 0) != 0 }
+        { "unifiedInventory", CVarGetInteger("gCombo.Rando.UnifiedInventory", 0) != 0 },
+        { "formLogicCredit", CVarGetInteger("gCombo.Rando.FormLogicCredit", 0) != 0 }
     }.dump();
     return cached.c_str();
 }
