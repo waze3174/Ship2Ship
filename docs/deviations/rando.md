@@ -2167,7 +2167,7 @@ keeps its stale leaf keys (no clash); those settings fall back to defaults.
 
 ## Majora's Mask entrance randomizer, B-M1 (2026-11-11)
 
-**Why:** docs/plans/full-coop-sync.md §B1, and groundwork for cross-game entrances (§B2). MM had no
+**Why:** WomboComboShip's docs/plans/full-coop-sync.md §B1, and groundwork for cross-game entrances (§B2). MM had no
 entrance shuffle at all. The owner asked for "every entrance random … the most random but still beatable".
 
 **Design:** one combo-owned shuffler in the launcher (`combo/rando/CrossEntrance.h`) instead of a per-game
@@ -2263,7 +2263,7 @@ cap 10) is the first. `PooledNames` lists each game's bottle items (they come pr
 `ApplyPooledMirror` credits every copy owned on one side to the other side's logic as its generic name. It's
 idempotent, and mirrored copies never count as "found" on the side that received them. The fill
 (`CrossWorldRando.h`, no trim for pooled), the playthrough and the pare-down (`ComboPlaythrough.h`) all call it.
-Unit tested in `coop_tests` (`TestPooledMirror`).
+(WomboComboShip unit-tested it in `coop_tests`; those tests are not carried here.)
 
 **Runtime:** each game keeps its native slots (OOT 4, MM 6) as the working set; bottles past them wait on a
 **Bottle Shelf**: `soh/soh/Enhancements/randomizer/ComboBottleShelf.cpp` and
@@ -2284,7 +2284,7 @@ Shelf"; `gCombo.BottleShelf.Open`).
 - `soh/soh/OTRGlobals.cpp` / `mm/2s2h/BenPort.cpp`: the `SF_BOTTLES` case in Get/RaiseSharedTier.
 
 **Verified:** `comborando --unified --count 10` 10/10. `--shared-items bottles` places exactly 10 bottle items
-(4 OOT + 6 MM), generates and replays BEATABLE. `coop_tests` 753/753. In-game shelf/swap: playtest.
+(4 OOT + 6 MM), generates and replays BEATABLE. In-game shelf/swap: playtest.
 
 **Known limits:** bottle CONTENTS stay per game (a fairy caught in OOT stays in OOT's bottle). Sharing contents
 would need a translation table for one-game contents (Big Poe, Deku Princess, Gold Dust...). An MM bottle stolen
@@ -2312,7 +2312,7 @@ Gilded tiers too), shields and hearts need their own family shapes and are not d
 
 ## Cross-game entrances, B-M2 (2026-11-12)
 
-**Why:** docs/plans/full-coop-sync.md §B2. The owner's ruling: "a full slurry … you never know which game
+**Why:** WomboComboShip's docs/plans/full-coop-sync.md §B2. The owner's ruling: "a full slurry … you never know which game
 you'll end up in", and Link **keeps his age** across games (enter Termina as adult, you're adult there).
 
 **Design:** the B-M1 launcher shuffler gains a cross pass (`ShuffleCrossEntrancesForAttempt`, `CrossEntrance.h`).
@@ -2597,3 +2597,19 @@ OOT enemies react as to the OOT weapon it borrowed (Deku spin = Kokiri slash, Go
 Test hook: `COMBO_TEST_ENEMY="<actorId>,<params>,<dist>,<frame>"` (env, `Combo_HarnessEnv`) spawns an enemy in front
 of Link and traces its health / colour filter / damageEffect; `COMBO_DEBUG_CROSSDMG` traces every mapped hit.
 Reference: docs/combo/forms-audit.md §6.
+
+## Rule-changing switches, all off by default (ComboShip Ultimate)
+
+Features that change the rules of play are off until the player turns them on in the combo menu, next to
+`gCombo.Forms.InHyrule` and `gCombo.Forms.ItemAnalogs`:
+
+- `gCombo.Shared.HealthMagicAmmo` (play-time CVar, not in the seed): one health bar, magic meter and ammo count
+  for both games, Double Defense shared, each heart piece or container worth half
+  (`combo/ComboSharedHealth.h`). With it off the shared state is cleared every frame and the launcher skips the
+  heart and ammo conversions of cross-delivered items. Seed generation and logic never read it; logic still counts
+  every heart at full value, so with it on a check that needs many hearts can need more than logic assumed.
+- `gCombo.Rando.FormLogicCredit` (seed-bound, stored as `formLogicCredit`): logic may credit MM's Zora and Goron
+  Masks as Hyrule abilities (`ComboFormCredit` in `logic.cpp`). Off: no seed ever requires a form's ability.
+  The launcher pushes the setting with `SOH_SetComboFormLogicCredit` before each oracle pass; a seed without the
+  key was generated without credit.
+- `gCombo.LinkSettings` (the camera / ocarina-stick link between the two games' settings) defaults to off.

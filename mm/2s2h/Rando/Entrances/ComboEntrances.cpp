@@ -1,5 +1,5 @@
 // mm/2s2h/Rando/Entrances/ComboEntrances.cpp — ComboShip MM entrance randomizer, MM side
-// (docs/plans/full-coop-sync.md §B1). Combo-owned file; picked up by 2ship's GLOB_RECURSE.
+// (WomboComboShip's docs/plans/full-coop-sync.md §B1). Combo-owned file; picked up by 2ship's GLOB_RECURSE.
 //
 // The shuffler itself lives in the launcher (combo/rando/CrossEntrance.h), so OOT and MM entrances can be
 // shuffled together (§B2). This file gives it MM's graph and applies its result:

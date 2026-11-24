@@ -1,5 +1,5 @@
 #pragma once
-// ComboShip entrance randomizer, launcher side (docs/plans/full-coop-sync.md §B1, groundwork for §B2).
+// ComboShip entrance randomizer, launcher side (WomboComboShip's docs/plans/full-coop-sync.md §B1, groundwork for §B2).
 //
 // One shuffler for every game: each game's DLL dumps its logic graph (MM: MM_DumpEntranceGraph), this file
 // turns two-way exits into typed Connections, shuffles them per pool from the seed, checks the result is

@@ -1,4 +1,0 @@
-# Headless run image: build image + Xvfb, Mesa (software GL), screenshot tools. Tag: wombo-run:noble
-FROM wombo-build:noble
-RUN apt-get update && apt-get install -y --no-install-recommends xvfb xauth libgl1-mesa-dri libglx-mesa0 libegl1 \
-    mesa-utils libsdl2-2.0-0 libpulse0 x11-apps imagemagick && rm -rf /var/lib/apt/lists/*
