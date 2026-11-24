@@ -1,7 +1,7 @@
 // combo/gui/ComboMenu.cpp
 #include "ComboMenu.h"
 #include "ComboSettingsLink.h" // one control for a preference both games own separately
-#include "ComboPresetPanels.h" // Settings > Presets and Import from ComboShip panels
+#include "ComboPresetPanels.h" // Settings > Presets and Import from Ship2Ship or ComboShip panels
 #include "ComboExport.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
@@ -18,6 +18,7 @@
 #include "rando/ComboPlaythrough.h" // plando: ParseSpoilerPlacements + Suffix/BuildForeignArray + slot paths
 #include "rando/ComboGames.h"       // Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h"
+#include "rando/ComboSeedFileType.h"
 #include <imgui.h>
 #include <libultraship/libultraship.h>         // CVar bridge (CVarGet/Set* incl. color) + color.h (Color_RGBA8)
 #include <ship/window/gui/IconsFontAwesome4.h> // ICON_FA_* for the header action buttons
@@ -1087,8 +1088,8 @@ void PlandoLoad() {
         sPlando.statusError = true;
         return;
     }
-    if (j.value("fileType", std::string()) != "ComboShipRandomizer") {
-        sPlando.status = "Not a ComboShip seed (regenerate with this build).";
+    if (!ComboRando::IsSeedFileType(j.value("fileType", std::string()))) {
+        sPlando.status = "Not a Ship2Ship seed (regenerate with this build).";
         sPlando.statusError = true;
         return;
     }
@@ -1377,9 +1378,9 @@ void ComboMenu::DrawSharedPanel() {
         pre.group = "Settings";
         pre.kind = HubEntry::COMBO_PRESETS;
         e.push_back(std::move(pre));
-        // Combo-owned import of another ComboShip install's comboship.json.
+        // Combo-owned import of another Ship2Ship or ComboShip install's ship2ship.json / comboship.json.
         HubEntry imp;
-        imp.label = "Import from ComboShip";
+        imp.label = "Import from Ship2Ship or ComboShip";
         imp.group = "Settings";
         imp.kind = HubEntry::COMBO_CONFIG_IMPORT;
         e.push_back(std::move(imp));

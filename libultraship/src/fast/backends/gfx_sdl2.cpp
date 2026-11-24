@@ -372,10 +372,10 @@ void GfxWindowBackendSDL2::Init(const char* gameName, const char* gfxApiName, bo
 
     char title[512];
 #ifdef COMBO_BUILD
-    // ComboShip Ultimate: the window says the build's name. The context name stays "ComboShip" on purpose -- it also
-    // names logs/ComboShip.log and the crash dump, which players and the debug-trace docs point at.
+    // Ship2Ship: the window title names the product, not the active game; the Context name (also Ship2Ship)
+    // keeps naming logs/Ship2Ship.log and the crash dump.
     (void)gameName;
-    int len = snprintf(title, sizeof(title), "ComboShip Ultimate (%s)", gfxApiName);
+    int len = snprintf(title, sizeof(title), "Ship2Ship (%s)", gfxApiName);
 #else
     int len = snprintf(title, sizeof(title), "%s (%s)", gameName, gfxApiName);
 #endif

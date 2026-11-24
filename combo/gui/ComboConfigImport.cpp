@@ -5,7 +5,7 @@
 
 #include "ComboConfigTree.h"
 #include "ComboPresetScope.h"
-#include "rando/CrossForeign.h" // ComboRando::DataDir: the folder comboship.json lives in
+#include "rando/CrossForeign.h" // ComboRando::DataDir: the folder ship2ship.json lives in
 
 #include <nlohmann/json.hpp>
 #include <libultraship/libultraship.h> // CVarSave
@@ -22,9 +22,10 @@ constexpr const char* kBackupSuffix = ".bak-";
 constexpr const char* kTimestampFormat = "%Y%m%d-%H%M%S";
 constexpr size_t kTimestampBufferSize = 32;
 
-constexpr const char* kMsgChooseAnother = "Choose the comboship.json of another ComboShip install.";
+constexpr const char* kMsgChooseAnother =
+    "Choose the ship2ship.json or comboship.json of another Ship2Ship or ComboShip install.";
 constexpr const char* kMsgNothingToImport = "That file has no settings this version can import.";
-constexpr const char* kMsgBackupFailed = "Could not back up the current comboship.json, so nothing was imported.";
+constexpr const char* kMsgBackupFailed = "Could not back up the current ship2ship.json, so nothing was imported.";
 
 std::string TimestampNow() {
     const std::time_t now = std::time(nullptr);
@@ -39,7 +40,7 @@ std::string TimestampNow() {
     return text;
 }
 
-// Copies the live config to comboship.json.bak-<timestamp>. Returns that file's name, or "" on failure.
+// Copies the live config to ship2ship.json.bak-<timestamp>. Returns that file's name, or "" on failure.
 std::string BackUpCurrentConfig() {
     CVarSave(); // flush the live CVars so the copy is what the player sees now
     const std::filesystem::path source = ComboRando::DataDir() / kConfigFileName;
@@ -62,9 +63,9 @@ const char* DescribeConfigCheck(ComboConfigCheck check) {
         case COMBO_CONFIG_NO_CVARS:
             return "This file has no settings in it (no CVars section).";
         case COMBO_CONFIG_NO_COMBO:
-            return "This file has no ComboShip settings (no gCombo section).";
+            return "This file has no Ship2Ship or ComboShip settings (no gCombo section).";
         case COMBO_CONFIG_OWN_FILE:
-            return "This is this install's own comboship.json, not another install's.";
+            return "This is this install's own ship2ship.json, not another install's.";
     }
     return "This file could not be checked.";
 }

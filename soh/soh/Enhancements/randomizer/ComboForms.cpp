@@ -400,7 +400,7 @@ extern "C" int Combo_HarnessEnv(const char* name) {
 }
 
 // A trace is on when its env var is set, or when its name is a line of combo-debug.txt in the data folder
-// (ComboShip-data next to the AppImage): players who launch from a file manager can switch traces on too.
+// (Ship2Ship-data next to the AppImage): players who launch from a file manager can switch traces on too.
 // Combo_DebugEnv is for LOG-ONLY traces; anything that changes gameplay uses Combo_HarnessEnv (2026-11-13: a
 // behaviour switch reachable from this file pressed B on its own in OOT).
 extern "C" int Combo_DebugEnv(const char* name) {

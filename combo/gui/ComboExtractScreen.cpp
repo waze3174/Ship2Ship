@@ -296,7 +296,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f, 20.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.09f, 0.09f, 0.11f, 0.98f));
-        bool open = ImGui::Begin("ComboShip - ROM Setup", nullptr,
+        bool open = ImGui::Begin("Ship2Ship - ROM Setup", nullptr,
                                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                      ImGuiWindowFlags_AlwaysAutoResize);
@@ -304,7 +304,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
         ImGui::PopStyleVar(2);
         if (open) {
             ImGui::SetWindowFontScale(1.4f);
-            ImGui::TextColored(theme, "ComboShip ROM Setup");
+            ImGui::TextColored(theme, "Ship2Ship ROM Setup");
             ImGui::SetWindowFontScale(1.0f);
             ImGui::Separator();
 
@@ -336,7 +336,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                     }
                 }
 
-                ImGui::TextWrapped("ComboShip needs both an Ocarina of Time ROM and a Majora's Mask ROM. "
+                ImGui::TextWrapped("Ship2Ship needs both an Ocarina of Time ROM and a Majora's Mask ROM. "
                                    "Select each ROM below or drag and drop ROM files onto this window, "
                                    "then click Extract. Both are required.");
                 if (ootMq.needed) {

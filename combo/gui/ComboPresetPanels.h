@@ -11,7 +11,7 @@ namespace ComboRando {
 // ComboPresetsPanel.cpp.
 void DrawPresetsSharedPanel();
 
-// Settings > Import from ComboShip: pull another ComboShip install's comboship.json into this one.
+// Settings > Import from Ship2Ship or ComboShip: pull another install's ship2ship.json or comboship.json into this one.
 // ComboConfigImportPanel.cpp.
 void DrawConfigImportSharedPanel();
 

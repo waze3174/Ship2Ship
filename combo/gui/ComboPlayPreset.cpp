@@ -37,7 +37,7 @@ constexpr uint8_t kControllerPortCount = 4;
 
 constexpr const char* kHeldBackNote = " randomizer options skipped while a save is loaded (use the file select).";
 constexpr const char* kRejectedNote = " entries had an unsupported value and were skipped.";
-constexpr const char* kRestartNote = " Restart ComboShip to load the changed mod list.";
+constexpr const char* kRestartNote = " Restart Ship2Ship to load the changed mod list.";
 
 typedef void (*FnApplyCVarChange)(const char*);
 FnApplyCVarChange sSohApply = nullptr;

@@ -13,8 +13,8 @@ typedef enum ComboConfigCheck {
     COMBO_CONFIG_UNREADABLE, // the file could not be opened
     COMBO_CONFIG_NOT_JSON,   // not a JSON object
     COMBO_CONFIG_NO_CVARS,   // no CVars block, so not a Ship config
-    COMBO_CONFIG_NO_COMBO,   // a Ship config without ComboShip's gCombo section (ComboShip slot only)
-    COMBO_CONFIG_OWN_FILE,   // this install's own comboship.json
+    COMBO_CONFIG_NO_COMBO,   // a Ship config without the gCombo section Ship2Ship and ComboShip write (that slot only)
+    COMBO_CONFIG_OWN_FILE,   // this install's own ship2ship.json
 } ComboConfigCheck;
 
 // Checks the file at `path` for one slot. The screen shows the result, and the launcher runs the same
@@ -24,7 +24,7 @@ typedef ComboConfigCheck (*ComboFnCheckConfig)(const char* path);
 typedef struct ComboSettingsImportCallbacks {
     ComboFnCheckConfig sohCheck;
     ComboFnCheckConfig mmCheck;
-    ComboFnCheckConfig comboCheck; // a comboship.json from another ComboShip install
+    ComboFnCheckConfig comboCheck; // a ship2ship.json or comboship.json from another install
 } ComboSettingsImportCallbacks;
 
 // Filled by the screen. Paths are "" when that slot was left empty.

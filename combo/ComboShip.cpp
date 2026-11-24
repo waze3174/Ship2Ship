@@ -47,6 +47,7 @@
 #include "rando/CrossHints.h"
 #include "rando/CrossEntrance.h"
 #include "rando/MasterQuestSeed.h"
+#include "rando/ComboSeedFileType.h"
 #include "gui/ComboGenProgress.h"
 #include "ComboExtract.h"
 #include "ComboSettingsImport.h"
@@ -352,7 +353,7 @@ static FnTakeStr SOH_SetCheckPrices = nullptr;
 static FnTakeStr MM_SetCheckPrices = nullptr;
 static FnSetReloadCb SOH_SetOnComboReloadCallback = nullptr;
 // Remembered spoiler path (CVAR_GENERAL("ComboSpoiler")) — soh owns the config, so the launcher goes
-// through it rather than parsing comboship.json itself.
+// through it rather than parsing ship2ship.json itself.
 static FnTakeStr SOH_SetComboSpoilerPath = nullptr;
 static FnDumpData SOH_GetComboSpoilerPath = nullptr;
 
@@ -2571,7 +2572,7 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
                                          ComboRando::SharedUntaggedNames(effectiveSharedMask));
 
         nlohmann::json consolidated;
-        consolidated["fileType"] = "ComboShipRandomizer";
+        consolidated["fileType"] = ComboRando::kSeedFileType;
         consolidated["version"] = 1;
         consolidated["seed"] = inputSeed;
         consolidated["masterSeed"] = masterSeed;
@@ -3029,8 +3030,8 @@ static bool TryLoadComboSeedFile(const std::filesystem::path& p, nlohmann::json&
     try {
         nlohmann::json j;
         in >> j;
-        if (j.value("fileType", std::string()) != "ComboShipRandomizer") {
-            std::cerr << "[ComboShip] reload: " << p.string() << " is not a ComboShip seed file\n";
+        if (!ComboRando::IsSeedFileType(j.value("fileType", std::string()))) {
+            std::cerr << "[ComboShip] reload: " << p.string() << " is not a Ship2Ship seed file\n";
             return false;
         }
         out = std::move(j);
@@ -3273,16 +3274,16 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
         // subscriber checks its own CVars, and the latch keeps this to once per seed.
         Combo_FireGenRollHooksOnce(masterSeed);
 
-        // Reproduction is done — put the user's OOT settings back so comboship.json (and the menu)
+        // Reproduction is done — put the user's OOT settings back so ship2ship.json (and the menu)
         // stay authoritative. An explicit drop instead keeps the seed's settings as the new baseline.
         // Gated on isSilentAutoLoad alone: an empty dump (warned above) must not skip the restore,
-        // else the seed's OOT CVars would stick and leak to comboship.json — the bug being fixed.
+        // else the seed's OOT CVars would stick and leak to ship2ship.json — the bug being fixed.
         if (isSilentAutoLoad && SOH_RestoreRandoSettings)
             SOH_RestoreRandoSettings(userOotSnapshot.c_str());
 
         // MM: MM_InitRandoSaveFile reads gRando.* CVars, but only at slot-bind time (Combo_OnOOTSaveInit),
         // which may be many frames away — stash the seed's settings there instead of writing them now,
-        // so they never leak into comboship.json before (or without) a slot ever being started.
+        // so they never leak into ship2ship.json before (or without) a slot ever being started.
         if (isSilentAutoLoad && MM_DumpRandoSettings)
             g_UserMMSettingsSnapshot = MM_DumpRandoSettings();
         else
@@ -3291,7 +3292,7 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
         g_ComboReloadRestoreUserMM = isSilentAutoLoad;
         // An explicit drop makes the seed the new baseline immediately for OOT (above); mirror that
         // for MM here instead of waiting for slot-bind, so quit-before-Start doesn't persist a mixed
-        // OOT=seed/MM=old-user comboship.json.
+        // OOT=seed/MM=old-user ship2ship.json.
         if (!isSilentAutoLoad && MM_RestoreRandoSettings)
             MM_RestoreRandoSettings(mmSettings.c_str());
 
@@ -3472,7 +3473,7 @@ static void Combo_OnOOTSaveInit(int fileNum) {
             MM_SetCheckPrices(
                 seed.value("mm", nlohmann::json::object()).value("prices", nlohmann::json::object()).dump().c_str());
         // A reloaded seed's MM settings only get written here (MM_InitRandoSaveFile is where MM reads
-        // them) — never at reload time, so they can't leak into comboship.json before a slot is bound.
+        // them) — never at reload time, so they can't leak into ship2ship.json before a slot is bound.
         if (!g_PendingMMSettingsJson.empty() && MM_RestoreRandoSettings)
             MM_RestoreRandoSettings(g_PendingMMSettingsJson.c_str());
         if (MM_InitRandoSaveFile(fileNum, mmPlacements.c_str(), playerName) != 0) {
@@ -3687,7 +3688,7 @@ static bool MMArchivesExist() {
 
 // ComboShip (issue 24): the combined config. Absent => fresh install => offer settings import.
 static bool ComboConfigExists() {
-    return ComboDataExists("comboship.json");
+    return ComboDataExists(ComboConfigTree::kConfigFileName);
 }
 
 // The first-launch import's one check per slot: the screen shows its result (ComboSettingsImportScreen.cpp) and
@@ -3727,14 +3728,15 @@ static ComboConfigCheck LauncherCheckShipConfig(const char* path) {
     return ReadImportFile(path, ComboConfigTree::ConfigKind::Ship, unused);
 }
 
-// The ComboShip slot: another install's comboship.json, a Ship config that also has the gCombo section.
+// The Ship2Ship/ComboShip slot: another install's ship2ship.json or comboship.json, a Ship config that also has the
+// gCombo section.
 static ComboConfigCheck LauncherCheckComboShipConfig(const char* path) {
     nlohmann::json unused;
     return ReadImportFile(path, ComboConfigTree::ConfigKind::ComboShip, unused);
 }
 
-// The first-launch import takes only the CVars of a ComboShip config, limited to what a preset may carry plus,
-// on request, the mod lists and controls (ComboPresetScope.h). The Window block and file paths stay behind.
+// The first-launch import takes only the CVars of a Ship2Ship or ComboShip config, limited to what a preset may carry
+// plus, on request, the mod lists and controls (ComboPresetScope.h). The Window block and file paths stay behind.
 static bool LoadComboShipImport(const ComboSettingsImportResult& res, nlohmann::json& out) {
     nlohmann::json comboJson;
     if (!LoadImportFile(res.comboPath, ComboConfigTree::ConfigKind::ComboShip, comboJson)) {
@@ -3755,7 +3757,7 @@ static bool LoadComboShipImport(const ComboSettingsImportResult& res, nlohmann::
 // ---------- Entry point ----------
 
 int main(int argc, char** argv) {
-    std::cout << "ComboShip Launcher - Starting..." << std::endl;
+    std::cout << "Ship2Ship Launcher - Starting..." << std::endl;
 
 #ifdef _WIN32
     // Match SoH's DPI awareness (its SHIPOFHARKINIAN.manifest declares permonitorv2). ComboShip.exe
@@ -3804,8 +3806,8 @@ int main(int argc, char** argv) {
     SOH_Extract = (FnExtract)GetSym(sohModule, "SOH_Extract");
 
     if (!SOH_Init || !SOH_RunMain) {
-        std::cerr << "ERROR: soh.dll is missing required ComboShip exports (SOH_Init / SOH_RunMain)." << std::endl;
-        std::cerr << "       Rebuild soh.dll from this ComboShip branch." << std::endl;
+        std::cerr << "ERROR: soh.dll is missing required Ship2Ship exports (SOH_Init / SOH_RunMain)." << std::endl;
+        std::cerr << "       Rebuild soh.dll from this Ship2Ship branch." << std::endl;
         FreeDll(mmModule);
         FreeDll(sohModule);
         return 1;
@@ -4032,8 +4034,8 @@ int main(int argc, char** argv) {
     MM_DeleteSaveFile = (FnDeleteSaveFile)GetSym(mmModule, "MM_DeleteSaveFile");
 
     if (!MM_InitArchives) {
-        std::cerr << "ERROR: 2ship.dll is missing required ComboShip exports (MM_InitArchives)." << std::endl;
-        std::cerr << "       Rebuild 2ship.dll from this ComboShip branch." << std::endl;
+        std::cerr << "ERROR: 2ship.dll is missing required Ship2Ship exports (MM_InitArchives)." << std::endl;
+        std::cerr << "       Rebuild 2ship.dll from this Ship2Ship branch." << std::endl;
         FreeDll(mmModule);
         FreeDll(sohModule);
         return 1;
@@ -4047,7 +4049,7 @@ int main(int argc, char** argv) {
     // It returns false if the player quits or extraction fails -> we exit. When the archives are
     // present we skip this entirely and use the monolithic SOH_Init() fast path below.
     bool windowInitialized = false;
-    // Capture BEFORE any window/config init: a fresh install (no comboship.json) gets the settings
+    // Capture BEFORE any window/config init: a fresh install (no ship2ship.json) gets the settings
     // import offer. (The Config ctor doesn't create the file, but capturing early stays robust.)
     const bool freshInstall = !ComboConfigExists();
     const bool needOot = !OOTVanillaArchiveExists();
@@ -4056,7 +4058,7 @@ int main(int argc, char** argv) {
         if (!SOH_InitWindowOnly || !SOH_FinishInit || !SOH_ValidateRom || !SOH_StartExtraction ||
             !SOH_GetExtractionProgress || !SOH_GetRomQuest || !MM_ValidateRom || !MM_StartExtraction ||
             !MM_GetExtractionProgress) {
-            std::cerr << "ERROR: game DLLs missing the ComboShip extraction primitives (rebuild required)."
+            std::cerr << "ERROR: game DLLs missing the Ship2Ship extraction primitives (rebuild required)."
                       << std::endl;
             FreeDll(mmModule);
             FreeDll(sohModule);

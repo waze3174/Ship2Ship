@@ -1,6 +1,6 @@
 // combo/gui/ComboPresets.h
 //
-// ComboShip: named settings presets. A preset is presets/<name>.json next to comboship.json (same
+// ComboShip: named settings presets. A preset is presets/<name>.json next to ship2ship.json (same
 // data folder on Windows, Linux and the AppImage), holding the allowlisted leaf CVars of
 // ComboPresetScope.h at the moment it was saved. Applying one goes through ComboPlayPreset's leaf
 // writer, so keys the preset does not mention are left alone.

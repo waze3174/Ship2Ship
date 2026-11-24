@@ -336,9 +336,9 @@ static std::shared_ptr<Ship::ResourceManager> sOOTResourceManager;
 
 OTRGlobals::OTRGlobals() {
 #ifdef COMBO_BUILD
-    // ComboShip: OOT + MM share this one Context and config (comboship.json). The name sets the window
-    // title and logs/ComboShip.log. See docs/deviations/boot-shutdown.md.
-    context = Ship::Context::CreateUninitializedInstance("ComboShip", appShortName, "comboship.json");
+    // ComboShip: OOT + MM share this one Context and config (ship2ship.json). The name sets the window
+    // title and logs/Ship2Ship.log. See docs/deviations/boot-shutdown.md.
+    context = Ship::Context::CreateUninitializedInstance("Ship2Ship", appShortName, "ship2ship.json");
 #else
     context = Ship::Context::CreateUninitializedInstance("Ship of Harkinian", appShortName, "shipofharkinian.json");
 #endif
@@ -434,7 +434,7 @@ OTRGlobals::OTRGlobals() {
 #ifdef COMBO_BUILD
 // ComboShip: rando-only headless ctor — Context + config + CVars, no ControlDeck/RM/Console/Window/GUI.
 OTRGlobals::OTRGlobals(HeadlessRandoTag) {
-    context = Ship::Context::CreateUninitializedInstance("ComboShip", appShortName, "comboship.json");
+    context = Ship::Context::CreateUninitializedInstance("Ship2Ship", appShortName, "ship2ship.json");
     context->InitConfiguration();
     context->InitConsoleVariables();
     // Detect quest availability from the o2r files without loading archives (mirrors Initialize's hash
@@ -1714,7 +1714,7 @@ extern "C" COMBO_EXPORT void SOH_InitRandoHeadless() {
         return; // already initialized (full boot or a prior headless call)
     gComboHeadlessRando = true;
     OTRGlobals::Instance = new OTRGlobals(OTRGlobals::HeadlessRandoTag{});
-    CVarLoad(); // populate CVars from comboship.json so the user's rando settings are live
+    CVarLoad(); // populate CVars from ship2ship.json so the user's rando settings are live
     // Rando bootstrap (subset of OTRGlobals::Initialize). CreateInstance first, unlike the full path,
     // to avoid dereferencing the still-null gRandoContext member.
     OTRGlobals::Instance->gRandoContext = Rando::Context::CreateInstance();
@@ -2153,9 +2153,9 @@ static void Combo_FinishInit() {
         if (!gComboOutdatedSaveNotice)
             return;
         for (int slot; (slot = gComboOutdatedSaveNotice()) >= 0;) {
-            SohGui::RegisterPopup("Outdated ComboShip Save",
+            SohGui::RegisterPopup("Outdated Ship2Ship Save",
                                   "The save in slot " + std::to_string(slot + 1) +
-                                      " was made by a different ComboShip version and has been backed up.");
+                                      " was made by a different Ship2Ship version and has been backed up.");
         }
     });
 

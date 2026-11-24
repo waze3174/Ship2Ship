@@ -42,6 +42,7 @@
 #include "rando/CrossWorldRando.h"
 #include "rando/CrossEntrance.h"
 #include "rando/MasterQuestSeed.h"
+#include "rando/ComboSeedFileType.h"
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossForeign.h" // BuildForeignArray (foreign enrichment parity with RunComboFill)
 #include "rando/CrossHints.h"
@@ -917,7 +918,7 @@ static int Run(int argc, char** argv) {
                         return nlohmann::json::parse(dump).value("iceTrapModels", nlohmann::json::array());
                     };
                     nlohmann::json consolidated;
-                    consolidated["fileType"] = "ComboShipRandomizer";
+                    consolidated["fileType"] = ComboRando::kSeedFileType;
                     consolidated["seed"] = seed;
                     consolidated["masterSeed"] = masterSeed;
                     consolidated["goal"] = { { "type", goal.hunt ? "triforceHunt" : "bosses" },

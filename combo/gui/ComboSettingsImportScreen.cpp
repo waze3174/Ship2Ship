@@ -5,6 +5,7 @@
 // the chosen paths.
 #include "ComboSettingsImportScreen.h"
 #include "ComboConfigImport.h" // ComboPresets::DescribeConfigCheck, shared with the menu import
+#include "ComboConfigTree.h"   // kConfigFileName / kLegacyConfigFileName: the auto-detect file names
 #include "ComboExport.h"
 #include "ComboFilePicker.h"  // native Browse dialog (comdlg32 / pfd), shared with the extraction screen
 #include "ComboWidgetStyle.h" // ComboMenu_ThemeColor / PushButton / PopButton
@@ -38,8 +39,8 @@ constexpr const char* kUseGameSlotNote =
 
 struct ConfigSlot {
     const char* label = "";
-    const char* fileName = "";         // expected filename for auto-detect
-    const char* macAppSupportDir = ""; // that game's bundle id, for the macOS auto-detect below
+    std::vector<const char*> fileNames; // expected filenames for auto-detect, in order
+    const char* macAppSupportDir = "";  // that game's bundle id, for the macOS auto-detect below
     ComboFnCheckConfig check = nullptr;
     std::string path;
     ComboConfigCheck result = COMBO_CONFIG_OK;
@@ -126,32 +127,37 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
 
     ConfigSlot slots[kSlotCount];
     slots[kSohSlot].label = "Ship of Harkinian (OoT)";
-    slots[kSohSlot].fileName = "shipofharkinian.json";
+    slots[kSohSlot].fileNames = { "shipofharkinian.json" };
     slots[kSohSlot].macAppSupportDir = "com.shipofharkinian.soh";
     slots[kSohSlot].check = cb ? cb->sohCheck : nullptr;
     slots[kMmSlot].label = "2 Ship 2 Harkinian (MM)";
-    slots[kMmSlot].fileName = "2ship2harkinian.json";
+    slots[kMmSlot].fileNames = { "2ship2harkinian.json" };
     slots[kMmSlot].macAppSupportDir = "com.2ship2harkinian.2s2h";
     slots[kMmSlot].check = cb ? cb->mmCheck : nullptr;
-    slots[kComboSlot].label = "ComboShip";
-    slots[kComboSlot].fileName = "comboship.json";
+    slots[kComboSlot].label = "Ship2Ship or ComboShip";
+    slots[kComboSlot].fileNames = { ComboConfigTree::kConfigFileName, ComboConfigTree::kLegacyConfigFileName };
     slots[kComboSlot].check = cb ? cb->comboCheck : nullptr;
     bool includeModsAndControls = true;
 
     // Auto-detect each game's config (same convenience as the ROM auto-scan). First hit wins; a
     // rejected file keeps searching, so a stale copy in the working dir can't mask a real install.
-    // This install's own comboship.json (the window init has already saved it) is rejected by the check.
+    // This install's own ship2ship.json (the window init has already saved it) is rejected by the check.
     for (auto& s : slots) {
         std::error_code ec;
         for (const auto& dir : ConfigSearchDirs(s.macAppSupportDir)) {
-            const auto candidate = dir / s.fileName;
-            if (!std::filesystem::exists(candidate, ec)) {
-                continue;
+            for (const char* fileName : s.fileNames) {
+                const auto candidate = dir / fileName;
+                if (!std::filesystem::exists(candidate, ec)) {
+                    continue;
+                }
+                const std::string found = candidate.string();
+                if (CheckSlotFile(s, found) == COMBO_CONFIG_OK) {
+                    s.path = found;
+                    s.result = COMBO_CONFIG_OK;
+                    break;
+                }
             }
-            const std::string found = candidate.string();
-            if (CheckSlotFile(s, found) == COMBO_CONFIG_OK) {
-                s.path = found;
-                s.result = COMBO_CONFIG_OK;
+            if (!s.path.empty()) {
                 break;
             }
         }
@@ -191,7 +197,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
         ImGui::PushStyleVar(ImGuiStyleVar_WindowPadding, ImVec2(24.0f, 20.0f));
         ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 6.0f);
         ImGui::PushStyleColor(ImGuiCol_WindowBg, ImVec4(0.09f, 0.09f, 0.11f, 0.98f));
-        bool open = ImGui::Begin("ComboShip - Import Settings", nullptr,
+        bool open = ImGui::Begin("Ship2Ship - Import Settings", nullptr,
                                  ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove |
                                      ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoSavedSettings |
                                      ImGuiWindowFlags_AlwaysAutoResize);
@@ -199,14 +205,15 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
         ImGui::PopStyleVar(2);
         if (open) {
             ImGui::SetWindowFontScale(1.4f);
-            ImGui::TextColored(theme, "ComboShip Settings Import");
+            ImGui::TextColored(theme, "Ship2Ship Settings Import");
             ImGui::SetWindowFontScale(1.0f);
             ImGui::Separator();
 
             ImGui::TextWrapped("Optional: bring over your settings from an existing Ship of Harkinian and/or "
-                               "2 Ship 2 Harkinian install, or from another ComboShip install (its comboship.json). "
+                               "2 Ship 2 Harkinian install, or from a Ship2Ship or ComboShip install (its "
+                               "ship2ship.json or comboship.json). "
                                "Pick any of the files, or Skip to start fresh. Where they set the same option "
-                               "(e.g. graphics or controls), OoT wins, then MM, then ComboShip.");
+                               "(e.g. graphics or controls), OoT wins, then MM, then Ship2Ship or ComboShip.");
             if (!ComboFilePicker::Available()) {
                 // Wrapped text in the disabled color (TextDisabled doesn't wrap), ASCII only —
                 // same treatment as the extraction screen's hint.

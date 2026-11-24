@@ -1,6 +1,6 @@
 // combo/ComboConfigTree.h
 //
-// ComboShip: helpers for the "CVars" block of a Ship config file (comboship.json). The block is a
+// ComboShip: helpers for the "CVars" block of a Ship config file (ship2ship.json). The block is a
 // nested JSON tree whose leaves are numbers, booleans, strings, or colour objects
 // ({"R","G","B","A","Type":"RGBA"|"RGB"}); arrays are never CVars. Presets and the settings import
 // work on a flat {"dotted.key": value} view of that tree, with colours as 3/4-number arrays.
@@ -22,11 +22,13 @@ namespace ComboConfigTree {
 
 using Leaves = std::map<std::string, nlohmann::json>;
 
-constexpr const char* kConfigFileName = "comboship.json";
+constexpr const char* kConfigFileName = "ship2ship.json";
+// The config file name of a ComboShip install, accepted as an import source next to kConfigFileName.
+constexpr const char* kLegacyConfigFileName = "comboship.json";
 // Top-level key: the last OoT config updater (soh/soh/config/ConfigUpdaters.cpp) that ran over the file.
 constexpr const char* kConfigVersionKey = "ConfigVersion";
 constexpr const char* kCVarsBlock = "CVars";
-// Present in every config ComboShip has written; neither game's own config has it.
+// Present in every config Ship2Ship (or ComboShip) has written; neither game's own config has it.
 constexpr const char* kComboCVarRoot = "gCombo";
 constexpr const char* kColorTypeKey = "Type";
 constexpr const char* kColorTypeRgba = "RGBA";
@@ -100,8 +102,8 @@ template <typename Keep> nlohmann::json FilterTree(const nlohmann::json& cvars, 
 }
 
 enum class ConfigKind {
-    Ship,      // any SoH / 2S2H / ComboShip config: a JSON object with a CVars block
-    ComboShip, // a config ComboShip itself has written: its CVars block also has the gCombo section
+    Ship,      // any SoH / 2S2H / Ship2Ship / ComboShip config: a JSON object with a CVars block
+    ComboShip, // a config Ship2Ship or ComboShip itself has written: its CVars block also has the gCombo section
 };
 
 // Same file by resolved path. Used to refuse this install's own config as an import source.
@@ -115,7 +117,7 @@ inline bool IsSameFile(const std::filesystem::path& a, const std::filesystem::pa
     return !ec && resolvedA == resolvedB;
 }
 
-// Reads `path` and checks that it is a `kind` config. `ownConfigPath` is this install's comboship.json, which is
+// Reads `path` and checks that it is a `kind` config. `ownConfigPath` is this install's ship2ship.json, which is
 // never a source. On COMBO_CONFIG_OK the parsed file is in `out`. Never throws: the launcher's check runs
 // as a callback from comboui.
 inline ComboConfigCheck ReadConfigFile(const std::string& path, const std::filesystem::path& ownConfigPath,

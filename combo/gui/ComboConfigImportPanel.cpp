@@ -24,14 +24,14 @@ constexpr float kPathFieldWidth = 520.0f;
 constexpr size_t kPathBufferSize = 1024;
 
 constexpr const char* kIntroNote =
-    "Bring over the settings of another ComboShip install, for example ComboShip v0.3.1. Choose its comboship.json. "
-    "Your current comboship.json is copied to comboship.json.bak-<date and time> first, and the file's window "
-    "settings are never imported.";
+    "Bring over the settings of another Ship2Ship or ComboShip install, for example ComboShip v0.3.1. Choose its "
+    "ship2ship.json or comboship.json. Your current ship2ship.json is copied to ship2ship.json.bak-<date and time> "
+    "first, and the file's window settings are never imported.";
 constexpr const char* kModsAndControlsTip =
     "Imports the other install's mod lists and controller mappings too.\n"
     "Mod list changes take effect after a restart. Turn this off to keep this install's mods and controls.";
 constexpr const char* kNoPickerNote =
-    "No file-picker helper found (install zenity or kdialog). Type or paste the path to comboship.json instead.";
+    "No file-picker helper found (install zenity or kdialog). Type or paste the path to the settings file instead.";
 
 char sPathBuf[kPathBufferSize] = {};
 bool sIncludeModsAndControls = true;
@@ -39,7 +39,7 @@ std::string sStatus;
 bool sStatusIsError = false;
 
 std::string PickComboShipConfig() {
-    return ComboFilePicker::PickFile("Select a ComboShip settings file (comboship.json)",
+    return ComboFilePicker::PickFile("Select a Ship2Ship or ComboShip settings file (ship2ship.json / comboship.json)",
                                      "Settings (*.json)\0*.json\0All Files (*.*)\0*.*\0",
                                      { "Settings (*.json)", "*.json", "All Files", "*" });
 }
@@ -73,7 +73,7 @@ void DrawConfigImportSharedPanel() {
     }
 
     ImGui::SetNextItemWidth(kPathFieldWidth);
-    ImGui::InputTextWithHint("##combocfgpath", "Path to comboship.json", sPathBuf, sizeof(sPathBuf));
+    ImGui::InputTextWithHint("##combocfgpath", "Path to ship2ship.json or comboship.json", sPathBuf, sizeof(sPathBuf));
     ImGui::SameLine();
     ComboMenu_PushButton(theme);
     ImGui::BeginDisabled(!ComboFilePicker::Available());
@@ -86,7 +86,7 @@ void DrawConfigImportSharedPanel() {
     ImGui::EndDisabled();
 
     ImGui::BeginDisabled(sPathBuf[0] == '\0');
-    if (ImGui::Button("Import settings from ComboShip...")) {
+    if (ImGui::Button("Import settings from Ship2Ship or ComboShip...")) {
         RunImport();
     }
     ImGui::EndDisabled();

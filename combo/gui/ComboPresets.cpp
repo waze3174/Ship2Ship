@@ -5,7 +5,7 @@
 
 #include "ComboPlayPreset.h"
 #include "ComboPresetScope.h"
-#include "rando/CrossForeign.h" // ComboRando::DataDir: the folder comboship.json lives in
+#include "rando/CrossForeign.h" // ComboRando::DataDir: the folder ship2ship.json lives in
 
 #include <nlohmann/json.hpp>
 
@@ -21,7 +21,9 @@ namespace {
 constexpr const char* kPresetDirName = "presets";
 constexpr const char* kPresetExtension = ".json";
 constexpr const char* kFormatKey = "format";
-constexpr const char* kFormatName = "ComboShipPreset";
+constexpr const char* kFormatName = "Ship2ShipPreset";
+// The format name of a ComboShip preset, accepted on read.
+constexpr const char* kLegacyFormatName = "ComboShipPreset";
 constexpr const char* kVersionKey = "version";
 constexpr const char* kSettingsKey = "settings";
 constexpr int kFormatVersion = 1;
@@ -30,8 +32,8 @@ constexpr int kJsonIndent = 2;
 constexpr const char* kMsgNameEmpty = "Enter a name for the preset.";
 constexpr const char* kMsgNameInvalid = "Use only letters, numbers, spaces and - _ . ( ) in the name";
 constexpr const char* kMsgNameReserved = "Windows reserves that name; pick another one.";
-constexpr const char* kMsgNotPreset = "That file is not a ComboShip preset.";
-constexpr const char* kMsgPresetNewer = "That preset was saved by a newer ComboShip.";
+constexpr const char* kMsgNotPreset = "That file is not a Ship2Ship preset.";
+constexpr const char* kMsgPresetNewer = "That preset was saved by a newer Ship2Ship.";
 constexpr const char* kMsgCannotOpen = "Could not open that preset.";
 constexpr const char* kMsgCannotWrite = "Could not write the preset file.";
 constexpr const char* kMsgCannotDelete = "Could not delete the preset file.";
@@ -150,7 +152,8 @@ std::string Load(const std::string& name, Leaves& out) {
         return kMsgCannotOpen;
     }
     const nlohmann::json doc = nlohmann::json::parse(in, nullptr, false);
-    const bool isPreset = doc.is_object() && doc.contains(kFormatKey) && doc[kFormatKey] == kFormatName &&
+    const bool isPreset = doc.is_object() && doc.contains(kFormatKey) &&
+                          (doc[kFormatKey] == kFormatName || doc[kFormatKey] == kLegacyFormatName) &&
                           doc.contains(kSettingsKey) && doc[kSettingsKey].is_object();
     if (!isPreset) {
         return kMsgNotPreset;
