@@ -482,3 +482,30 @@ cut grass.
   (`func_80846460` in `Player_Draw`). The port now does the same in the ball's draw (`Combo_GoronCurledBodyParts`,
   shared with the guard): the cylinder runs from the ground to 34 up, as in MM. The grass row in `sCrossObjects`
   already accepts the roll and the spikes (MM `z_en_kusa.c:89`, 0x0580C71C).
+
+## Steam Deck report (2026-11-24): rolling through a loading zone
+
+Owner, on build 2a683d1 (Assignable Tunics and Boots on): a Goron rolling through a loading zone arrives frozen in
+the ball, in whatever phase of the roll he was in, until the mask comes off.
+
+- **Cause.** The ball's state (`sRoll`, `gComboGoronBall` and the other `gComboGoronBall*` globals) is in statics,
+  which outlive the player actor. Nothing on a scene change cleared it: `Player_Init` reset the blast-mask timer
+  and the safe ground but not the forms, and `Player_Destroy` only the fin blurs. Only the end-of-frame
+  "interrupted ball" cleanup or a mask change cleared it. A floor exit replaces the roll action with the walk-out
+  (`func_80838E70`) before the action runs, so that cleanup clears the ball the same frame, but on 2a683d1 the
+  cleanup sat inside the VB `if` that Assignable Tunics and Boots answers false. With the setting on it never ran,
+  in either scene, and the draw kept showing the ball with its last spin, tilt and stretch.
+- **Left after the VB fix.** The bracket fix lets the cleanup run, but an exit that keeps the roll action (an
+  airborne exit, a void-out) still carries the ball into the new scene. There the cleanup's
+  `Combo_GoronBallClear` restored the old scene's saved cylinder onto the new Link, with the old Link as its
+  `base.actor`.
+- **Fix.** `Player_Init` now calls `Combo_FormStateNewScene`. It drops the ball's state without restoring the
+  cylinder, and clears the move latches (the same list a form change clears), the jump kick and the Zora barrier.
+  It forgets the barrier's light node, which lived in the light buffer that the new scene's `LightContext_Init`
+  zeroed, and the guard collider's set-up. Both of those were keyed on the `PlayState` address, which a new
+  scene's `PlayState` can reuse.
+- **Already safe across scenes:**
+  - The Deku spin resets itself when the action isn't the spin.
+  - The Zora fast swim is drawn only in the swim actions, and its setup sets the speed again.
+  - The fins in flight are an actor of the old scene, and Link's `boomerangActor` is new.
+  - The fin blurs are cleared in `Player_Destroy`.
