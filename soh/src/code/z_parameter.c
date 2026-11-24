@@ -1641,11 +1641,16 @@ void Rando_Inventory_SwapAgeEquipment(void) {
 static void Inventory_SwapAgeEquipmentImpl(void);
 // ComboShip: one button layout for both ages (owner 2026-11-13: "the equips match up, but not between ages"; one item
 // pool, both Links use everything). The age swap still trades the B sword and the worn equipment per age as vanilla
-// does; C-left/down/right and the D-pad keep what they had.
+// does; C-left/down/right and the D-pad keep what they had. Randomizer saves only: a vanilla save swaps like SoH.
 void Inventory_SwapAgeEquipment(void) {
     u8 items[ARRAY_COUNT(gSaveContext.equips.buttonItems)];
     u8 slots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
     s32 i;
+
+    if (!IS_RANDO) {
+        Inventory_SwapAgeEquipmentImpl();
+        return;
+    }
 
     for (i = 1; i < ARRAY_COUNT(items); i++) {
         items[i] = gSaveContext.equips.buttonItems[i];
@@ -3049,11 +3054,14 @@ void Rupees_ChangeBy(s16 rupeeChange) {
     if (gPlayState == NULL) {
         gSaveContext.rupees += rupeeChange;
 #ifdef COMBO_BUILD
-        // ComboShip: Clamp rupees value to prevent interface crashing.
-        if (gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
-            gSaveContext.rupees = CUR_CAPACITY(UPG_WALLET);
-        } else if (gSaveContext.rupees < 0) {
-            gSaveContext.rupees = 0;
+        // ComboShip: Clamp rupees value to prevent interface crashing. Randomizer saves only; a vanilla save adds
+        // rupees as SoH does.
+        if (IS_RANDO) {
+            if (gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
+                gSaveContext.rupees = CUR_CAPACITY(UPG_WALLET);
+            } else if (gSaveContext.rupees < 0) {
+                gSaveContext.rupees = 0;
+            }
         }
 #endif
     } else {
@@ -6854,8 +6862,8 @@ void Interface_Update(PlayState* play) {
         !Play_InCsMode(play)) {}
 
 #ifdef COMBO_BUILD
-    // ComboShip: repair any latent unclamped rupee value.
-    if (gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
+    // ComboShip: repair any latent unclamped rupee value. Randomizer saves only.
+    if (IS_RANDO && gSaveContext.rupees > CUR_CAPACITY(UPG_WALLET)) {
         gSaveContext.rupees = CUR_CAPACITY(UPG_WALLET);
     }
 #endif

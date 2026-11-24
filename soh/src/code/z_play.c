@@ -1683,7 +1683,8 @@ time_t Play_GetRealTime() {
 // on exact frames (flags, items, songs, warps), so jumping to the end would lose them -- so instead the game runs up
 // to COMBO_CS_SKIP_SPEED updates per displayed frame until the cutscene is over, with text advanced by A. Every
 // effect still happens, in a few seconds. It stops at once on a scene transition and whenever the ocarina is up
-// (song lessons need the player's notes; the skip resumes with another Start).
+// (song lessons need the player's notes; the skip resumes with another Start). Randomizer saves only: a vanilla save
+// plays its cutscenes like SoH.
 #ifdef COMBO_BUILD
 #define COMBO_CS_SKIP_SPEED 24
 static s32 sComboCsSkip = false;
@@ -1693,6 +1694,10 @@ static void Combo_CutsceneFastForward(PlayState* play) {
     Input saved;
     s32 i;
 
+    if (!IS_RANDO) {
+        sComboCsSkip = false;
+        return;
+    }
     if (play->csCtx.state == CS_STATE_IDLE) {
         if (sComboCsSkip) {
             LUSLOG_INFO("[ComboShip] cutscene skip: cutscene over");
