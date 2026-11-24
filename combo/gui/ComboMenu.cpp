@@ -1537,8 +1537,9 @@ void ComboMenu::DrawSharedPanel() {
 //   Both games' randomizer *settings* are surfaced in the Shared tab ("OOT Randomizer" / "MM
 //   Randomizer"). The per-game tabs keep the rando section ("Randomizer" / "Rando") but trim it to
 //   just the tracker sidebars (Item/Entrance/Check Tracker) — the rest of the rando settings stay
-//   in Shared. OOT additionally trims "Settings" to its game-specific sidebars ("Mod Menu",
-//   "Presets"); the rest of Settings is shared. MM is otherwise rendered unfiltered.
+//   in Shared. OOT additionally trims "Settings" to its "Mod Menu"; the rest of Settings is shared.
+//   Neither game's stock "Presets" sidebar is shown: OOT's apply wipes the whole gSettings subtree,
+//   both mod lists included, and the combo Settings > Presets panel replaces both.
 void ComboMenu::DrawGamePanel(const char* gameKey) {
     auto& model = ComboMenuModel::Get();
     model.EnsureLoaded();
@@ -1552,7 +1553,7 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
 
     auto sidebarShown = [&](const char* section, const char* sidebar) -> bool {
         if (isOot && section && strcmp(section, "Settings") == 0) {
-            return sidebar && (strcmp(sidebar, "Mod Menu") == 0 || strcmp(sidebar, "Presets") == 0);
+            return sidebar && strcmp(sidebar, "Mod Menu") == 0;
         }
         // OOT Network (Sail, Crowd Control) is surfaced in the shared Network group next to the Anchor
         // team-sync control, so hide it from the OOT per-game tab.
@@ -1563,10 +1564,11 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
         // the single shared window, Controls via the shared gSettings.Controllers.* CVars, Audio via the
         // combo audio bridge (gSettings.Volume.* -> gSettings.Audio.*), and General is menu/engine settings
         // on shared gSettings.Menu.*/ImGuiScale CVars. Hide them from MM's per-game Settings section so they
-        // live only in Shared; MM-specific sidebars (Overlay, Presets, ...) stay.
+        // live only in Shared, and hide MM's stock Presets (the combo Presets panel covers both games);
+        // other MM-specific sidebars (Overlay, ...) stay.
         if (!isOot && section && strcmp(section, "Settings") == 0 && sidebar &&
             (strcmp(sidebar, "Graphics") == 0 || strcmp(sidebar, "Audio") == 0 || strcmp(sidebar, "Controls") == 0 ||
-             strcmp(sidebar, "General") == 0)) {
+             strcmp(sidebar, "General") == 0 || strcmp(sidebar, "Presets") == 0)) {
             return false;
         }
         // Rando settings live in Shared, Item/Check/Hint Tracker sidebars in the Shared tracker panels
