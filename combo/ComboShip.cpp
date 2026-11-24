@@ -3519,6 +3519,11 @@ static bool LoadComboShipImport(const ComboSettingsImportResult& res, nlohmann::
     auto keep = [&](const std::string& key) { return ComboPresetScope::IsImportKey(key, includeModsAndControls); };
     out = nlohmann::json::object();
     out[ComboConfigTree::kCVarsBlock] = ComboConfigTree::FilterTree(comboJson[ComboConfigTree::kCVarsBlock], keep);
+    // One config shared by both games, versioned by OoT's updaters, so its CVars are already migrated that far.
+    const auto version = comboJson.find(ComboConfigTree::kConfigVersionKey);
+    if (version != comboJson.end() && version->is_number_unsigned()) {
+        out[ComboConfigTree::kConfigVersionKey] = *version;
+    }
     return true;
 }
 
@@ -3886,6 +3891,17 @@ int main(int argc, char** argv) {
                 const bool haveCombo = LoadComboShipImport(res, merged); // ComboShip is the base (lowest priority)
                 const bool haveMm = LoadImportFile(res.mmPath, ComboConfigTree::ConfigKind::Ship, mmJson);
                 const bool haveSoh = LoadImportFile(res.sohPath, ComboConfigTree::ConfigKind::Ship, sohJson);
+                // ConfigVersion tells OOT's updaters which migrations the imported CVars still need. Take it from
+                // the SoH file, else from the ComboShip file (null if neither has one). A 2Ship version would
+                // misdirect them, and none at all re-runs every updater over already-current settings.
+                const auto versionKey = ComboConfigTree::kConfigVersionKey;
+                nlohmann::json ootConfigVersion;
+                if (const auto comboVersion = merged.find(versionKey); comboVersion != merged.end()) {
+                    ootConfigVersion = *comboVersion;
+                }
+                if (haveSoh && sohJson.contains(versionKey)) {
+                    ootConfigVersion = sohJson[versionKey];
+                }
                 if (haveMm) {
                     DeepMerge(merged, mmJson); // 2Ship overlays the ComboShip base
                 }
@@ -3894,10 +3910,9 @@ int main(int argc, char** argv) {
                 }
                 if (haveSoh || haveMm || haveCombo) {
                     merged.erase("Window"); // machine-specific
-                    // ConfigVersion drives OOT's updaters; keep it only when it actually came from the
-                    // SoH source (a 2Ship version, or none, would misdirect them).
-                    if (!haveSoh || !sohJson.contains("ConfigVersion")) {
-                        merged.erase("ConfigVersion");
+                    merged.erase(versionKey);
+                    if (!ootConfigVersion.is_null()) {
+                        merged[versionKey] = ootConfigVersion;
                     }
                     SOH_ApplyImportedConfig(merged.dump().c_str());
                     std::cout << "[ComboShip] Settings imported (SoH=" << haveSoh << " MM=" << haveMm

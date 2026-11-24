@@ -23,6 +23,8 @@ namespace ComboConfigTree {
 using Leaves = std::map<std::string, nlohmann::json>;
 
 constexpr const char* kConfigFileName = "comboship.json";
+// Top-level key: the last OoT config updater (soh/soh/config/ConfigUpdaters.cpp) that ran over the file.
+constexpr const char* kConfigVersionKey = "ConfigVersion";
 constexpr const char* kCVarsBlock = "CVars";
 // Present in every config ComboShip has written; neither game's own config has it.
 constexpr const char* kComboCVarRoot = "gCombo";
