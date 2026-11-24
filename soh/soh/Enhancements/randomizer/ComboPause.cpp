@@ -373,7 +373,7 @@ extern "C" int Combo_PauseOnButton(int item) {
 }
 
 extern "C" int Combo_PauseForeignForm(int item) {
-    if (!CVarGetInteger("gCombo.Forms.InHyrule", 1))
+    if (!Combo_FormsAllowed())
         return -1;
     switch (LiveMmItem(item)) {
         case MM_ITEM_MASK_DEKU:

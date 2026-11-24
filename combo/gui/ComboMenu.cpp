@@ -1848,6 +1848,20 @@ void ComboMenu::DrawComboPanel() {
             ImGui::TextDisabled("Goron/Zora Masks transform in OOT too; every form carries between the games.");
         }
         {
+            bool vanillaForms = CVarGetInteger("gCombo.Forms.InVanillaOot", 0) != 0;
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Transformations in vanilla OoT", &vanillaForms)) {
+                CVarSetInteger("gCombo.Forms.InVanillaOot", vanillaForms ? 1 : 0);
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SetItemTooltip("In a Normal or Master Quest save, OoT's Goron and Zora Masks transform Link.\n"
+                                  "Off: the masks are plain masks, as in vanilla OoT.");
+            ImGui::SameLine();
+            ImGui::TextDisabled("Applies to vanilla saves only.");
+        }
+        {
             bool analogs = CVarGetInteger("gCombo.Forms.ItemAnalogs", 1) != 0;
             ComboRando::ComboMenu_PushCheckbox(goalTheme);
             if (ImGui::Checkbox("Form moves count as items", &analogs)) {

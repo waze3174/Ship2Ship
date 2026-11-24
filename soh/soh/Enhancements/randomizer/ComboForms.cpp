@@ -28,6 +28,8 @@
 #include <ship/resource/ResourceManagerScope.h>
 
 #include "ComboForms.h"
+#include "ComboPause.h"
+#include "soh/ShipInit.hpp"
 
 extern "C" {
 #include "z64.h"
@@ -349,9 +351,25 @@ extern "C" const void* Combo_MmDL(const char* mmPath) {
     return Routed(std::string("__OTR__") + mmPath);
 }
 
+// Forms in the loaded save: the "Transformations in Hyrule" option for a randomizer save, the separate (off by
+// default) "Transformations in vanilla OoT" option for a vanilla one.
+extern "C" int Combo_FormsAllowed(void) {
+    return IS_RANDO ? CVarGetInteger("gCombo.Forms.InHyrule", 1) : CVarGetInteger("gCombo.Forms.InVanillaOot", 0);
+}
+
+// A form the slot loaded before this one left behind (or a worn MM mask) has no place in a vanilla save that doesn't
+// allow forms. Runs on every save load (ShipInit "IS_RANDO").
+static void ResetFormOfPreviousSlot() {
+    if (!Combo_FormsAllowed()) {
+        sForm = COMBO_FORM_HUMAN;
+        Combo_PauseClearMmMask();
+    }
+}
+static RegisterShipInitFunc resetFormInitFunc(ResetFormOfPreviousSlot, { "IS_RANDO" });
+
 // The transformation masks. OOT's own Goron Mask IS MM's Goron Mask (Shared Items), so wearing it makes the Goron.
 extern "C" int Combo_OotFormForMask(s32 itemAction) {
-    if (!CVarGetInteger("gCombo.Forms.InHyrule", 1))
+    if (!Combo_FormsAllowed())
         return COMBO_FORM_HUMAN;
     if (itemAction == PLAYER_IA_MASK_GORON)
         return COMBO_FORM_GORON;

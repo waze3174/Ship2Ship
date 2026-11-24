@@ -24,6 +24,7 @@ void* Combo_OotFormWrapOverride(void* inner);
 void* Combo_OotFormDrawPrep(void* gfx, int eyeIndex, int mouthIndex);
 int Combo_OotFormBlocksItem(int item);
 int Combo_OotFormForMask(int itemAction);
+int Combo_FormsAllowed(void); // forms are on for the loaded save (randomizer: InHyrule; vanilla: InVanillaOot)
 int Combo_ZoraFinsActive(void);
 int Combo_DekuBubbleActive(void);
 int Combo_FormHeldBItem(void);
