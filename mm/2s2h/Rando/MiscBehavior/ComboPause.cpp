@@ -530,6 +530,20 @@ extern "C" int Combo_MmPauseUseItem(int item) {
     }
 }
 
+// OOT's stick and nut code is MM's, line for line (OOT z_player.c: the take-out ammo check in Player_UseItem, the break
+// in func_80842AC4, the burn-out in Player_UpdateBurningDekuStick, the nut throw in Player_Action_8084E604), so MM's
+// own runs them, on OOT's bag (z_player.c Combo_PlayerAmmo).
+extern "C" int Combo_MmPauseForeignHostItem(int item) {
+    switch (LiveOotItem(item)) {
+        case OOT_ITEM_STICK:
+            return ITEM_DEKU_STICK;
+        case OOT_ITEM_NUT:
+            return ITEM_DEKU_NUT;
+        default:
+            return ITEM_NONE;
+    }
+}
+
 // The OOT slot behind a foreign id (ComboEquipShare.cpp), -1 = not foreign.
 extern "C" int Combo_MmPauseForeignSlot(int item) {
     return ComboPause_MmDecode(item);
@@ -718,7 +732,8 @@ void RegisterComboPauseHost() {
     COND_VB_SHOULD(VB_ITEM_BE_RESTRICTED, true, {
         ItemId* itemId = va_arg(args, ItemId*);
         if (Combo_MmPauseIsForeign(*itemId)) {
-            const int twin = Combo_MmPauseUseItem(*itemId);
+            const int host = Combo_MmPauseForeignHostItem(*itemId);
+            const int twin = (host != ITEM_NONE) ? host : Combo_MmPauseUseItem(*itemId);
             // An OOT-only item (OOT items in Termina, ComboOotItems.cpp) is Link's only and follows OOT's age rule.
             *should = (twin != ITEM_NONE) ? !gPlayerFormItemRestrictions[GET_PLAYER_FORM][twin]
                                           : ((GET_PLAYER_FORM != PLAYER_FORM_HUMAN) || !Combo_MmOotItemAgeOk(*itemId));
@@ -743,9 +758,18 @@ void RegisterComboPauseHost() {
             return;
         }
         const int use = Combo_MmPauseUseItem(foreign);
+        const int host = Combo_MmPauseForeignHostItem(foreign);
         Input* input = CONTROLLER1(&gPlayState->state);
         const bool pressed = CHECK_BTN_ANY(input->press.button, BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT | BTN_DRIGHT |
                                                                     BTN_DLEFT | BTN_DDOWN | BTN_DUP);
+        // An OOT item MM's own code runs on OOT's bag (Combo_MmPauseForeignHostItem) stays itself, under MM's form rule
+        // for that item.
+        if ((host != ITEM_NONE) && gPlayerFormItemRestrictions[GET_PLAYER_FORM][host]) {
+            if (pressed)
+                Log("use foreign id 0x%02X (OOT item 0x%02X) -> MM's code for item 0x%02X on OOT's bag", foreign,
+                    LiveOotItem(foreign), host);
+            return;
+        }
         if (use != ITEM_NONE) {
             if (pressed)
                 Log("use foreign id 0x%02X (OOT item 0x%02X) -> MM item 0x%02X", foreign, LiveOotItem(foreign), use);

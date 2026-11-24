@@ -462,7 +462,9 @@ Use: OOT host — MM transformation
 masks → the form system (any mask while transformed changes back), other MM masks → worn with MM's model
 (`D_801C0B20`, routed `@mm:` DL on the head limb), MM's Deku Sticks and Deku Nuts → OOT's own stick and nut code on
 MM's bag, the items in the "MM items in Hyrule" table below → their ports, anything else → OOT's error sound. MM host — OOT's Keaton / Bunny /
-Truth / Goron / Zora masks → MM's own masks, anything else → MM's error sound.
+Truth / Goron / Zora masks → MM's own masks, OOT's Deku Sticks and Deku Nuts → MM's own stick and nut code on OOT's bag
+(`Combo_MmPauseForeignHostItem`), the items in the "OOT items in Termina" table → their ports, anything else → MM's
+error sound.
 
 **Shared layout.** `ComboEquipShare` now carries each button's origin (`"cx"`, `"dx"`: owning game + slot); the
 receiver puts its own item there when it has one, otherwise the other game's item as a foreign id, and empties a
@@ -593,7 +595,8 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 | Nayru's Love | builds, untested | Magic_Dark port (orb, diamond, invincibility -100, 1200 frames, song kills it, carries across scenes via MM's nayrusLoveTimer remnant) | — | test owed |
 | Hookshot / Longshot | builds, untested | no longer twins: OOT lengths (13 / 26 frames), OOT reticle reach, OOT tip + chain models | — | test owed; MM's own Hookshot stays on the Termina face |
 | Skull / Spooky / Gerudo Mask | builds, untested | worn instantly (OOT), OOT model on head limb, one mask at a time | — | test owed |
-| Bow, arrows, bombs, chus, sticks, nuts, lens, beans, ocarina, bottles | twin rule kept (MM's own copy when MM holds it) | — | — | decision: shared items; OOT-identical behaviour not separately verified |
+| Deku Stick, Deku Nut (when MM has none of its own) | yes (2026-11-24, code only) | MM's own stick and nut actions (OOT's are the same code: take-out ammo check, break, burn-out, nut throw), checking and spending OOT's bag (`Combo_PlayerAmmo` in MM's z_player.c, `Combo_MmOotAmmo` / `Combo_MmOotChangeAmmo`: the shared count with shared consumables on, otherwise OOT's save); before this, the error sound | — | MM's stick model in hand; MM's form rule (sticks: human only; nuts: human and Deku), no OOT age gate (MM has none); a stick keeps the bag it was taken out with; Deku Link's B-button nut drop in flight stays MM's own bag |
+| Bow, arrows, bombs, chus, lens, beans, ocarina, bottles | twin rule kept (MM's own copy when MM holds it) | — | — | decision: shared items; OOT-identical behaviour not separately verified |
 | Ruto's Letter, OOT trade items | no (MM error sound) | — | — | OWED: hold up / show as OOT does |
 | Hyrule Equipment face: tunics and boots | A puts them on (OOT's save); with SoH's "Assignable Tunics and Boots" a C button / D-pad direction takes them, and a press puts the piece on or back to Kokiri (SoH's `UseTunicBoots`) | `ComboPause.cpp` `UseGearOnPress`, `SOH_ComboTermina_ToggleEquipValue`; Goron Tunic heat and Zora Tunic water (`Interface_Update` hazard), Iron / Hover Boots (`Player_SetEquipmentData`) read OOT's save | — | Deck check owed (2026-11-24); human form only; MM's scene restrictions still grey the button (SoH keeps equipment enabled); no heavy-boots sound in MM |
 | Hyrule Equipment face: swords, shields, strength, scale | no (MM's own in Termina) | — | — | OOT shields on a button don't carry to Termina |
