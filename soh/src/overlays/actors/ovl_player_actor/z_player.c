@@ -16239,9 +16239,11 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
         sUseHeldItem = sHeldItemButtonIsHeldDown = 0;
         sSavedCurrentMask = this->currentMask;
 
-        if (GameInteractor_Should(VB_EXECUTE_PLAYER_ACTION_FUNC, !(this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC),
-                                  this, input)) {
 #ifdef COMBO_BUILD
+        // ComboShip: the forms' per-frame work brackets the action whoever calls it. SoH's Assignable Tunics and Boots
+        // takes the call over (VB_EXECUTE_PLAYER_ACTION_FUNC: it runs actionFunc itself and answers false).
+        const s32 comboActionRuns = !(this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC);
+        if (comboActionRuns) {
             if ((Combo_FormHeldBItem() != ITEM_NONE) &&
                 (this->heldItemAction == Player_ItemToItemAction(Combo_FormHeldBItem())) &&
                 (this->boomerangActor == NULL) && (this->heldActor == NULL) && (sComboZoraBHeld == 0)) {
@@ -16288,9 +16290,14 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
                 gComboGoronPunchLimb = 0; // interrupted (damage, cutscene...): no lingering fist
                 this->meleeWeaponState = 0;
             }
+        }
 #endif
+        if (GameInteractor_Should(VB_EXECUTE_PLAYER_ACTION_FUNC, !(this->stateFlags3 & PLAYER_STATE3_PAUSE_ACTION_FUNC),
+                                  this, input)) {
             this->actionFunc(this, play);
+        }
 #ifdef COMBO_BUILD
+        if (comboActionRuns) {
             if (sComboZoraJumpKick) {
                 // MM: the jump kick hits from the right shin (D_801C0A48 over D_801C0A24)
                 gComboGoronPunchLimb = (this->meleeWeaponState != 0) ? PLAYER_LIMB_R_SHIN : 0;
@@ -16311,8 +16318,8 @@ void Player_UpdateCommon(Player* this, PlayState* play, Input* input) {
                 }
                 Combo_GoronBallClear(this); // interrupted (damage, void-out, cutscene): uncurl, cylinder back
             }
-#endif
         }
+#endif
 
         Player_UpdateCamAndSeqModes(play, this);
 
