@@ -3474,9 +3474,8 @@ void Combo_FlushDormantAccumulators(void) {
 
 bool Combo_OotIsForeground(void);
 
-// ComboShip: save-direct grant of a resolved OOT item. Shared by SOH_GrantCrossItem and Anchor's
-// team-state backfill so both apply identical dispatch + side effects + persist.
-void Combo_GrantResolvedOOT(const GetItemEntry& gie) {
+// ComboShip: save-direct give of a resolved OOT item, without writing the save. The caller persists.
+static void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
     // ComboShip (#84): drop bottle CONTENTS when no bottle is free. Milk Bottle and Ruto's Letter are
     // excluded exactly as Item_Give excludes them — they create a new bottle, so gating them here
     // would permanently lose Ruto's Letter and softlock the seed.
@@ -3516,9 +3515,18 @@ void Combo_GrantResolvedOOT(const GetItemEntry& gie) {
     if (!Combo_OotIsForeground()) {
         Combo_FlushDormantAccumulators();
     }
+}
+
+static void Combo_PersistOOT() {
     if (SaveManager::Instance && gSaveContext.fileNum != 0xFF) {
-        SaveManager::Instance->SaveFile(gSaveContext.fileNum); // persist NOW
+        SaveManager::Instance->SaveFile(gSaveContext.fileNum);
     }
+}
+
+// ComboShip: a cross-game grant is persisted at once, so it survives quitting before a switch into OOT.
+static void Combo_GrantResolvedOOT(const GetItemEntry& gie) {
+    Combo_GiveResolvedOOT(gie);
+    Combo_PersistOOT();
 }
 
 extern "C" COMBO_EXPORT void SOH_GrantCrossItem(const char* itemName) {
@@ -3850,10 +3858,11 @@ extern "C" COMBO_EXPORT void SOH_RaiseSharedTier(int family, int tier) try {
             ComboBottles_AddMirrored();
         return;
     }
+    const int startTier = SOH_GetSharedTier(family);
     for (;;) {
         const int cur = SOH_GetSharedTier(family);
         if (cur >= tier)
-            return;
+            break;
         RandomizerGet rg = RG_NONE;
         switch (fam) {
             case ComboRando::SF_BOW:
@@ -3935,9 +3944,9 @@ extern "C" COMBO_EXPORT void SOH_RaiseSharedTier(int family, int tier) try {
                 break;
         }
         if (rg == RG_NONE)
-            return;
+            break;
         {
-            // Scope-guard clears the flag even if Combo_GrantResolvedOOT throws.
+            // Scope-guard clears the flag even if Combo_GiveResolvedOOT throws.
             struct FlagGuard {
                 ~FlagGuard() {
                     gComboSuppressAnchorSend = 0;
@@ -3945,17 +3954,15 @@ extern "C" COMBO_EXPORT void SOH_RaiseSharedTier(int family, int tier) try {
             } flagGuard;
             gComboSuppressAnchorSend = 1;
             GetItemEntry gie = Rando::StaticData::RetrieveItem(rg).GetGIEntry_Copy();
-            Combo_GrantResolvedOOT(gie);
+            Combo_GiveResolvedOOT(gie);
         }
         if (SOH_GetSharedTier(family) <= cur)
-            return; // didn't raise (e.g. no free trade slot) — stop instead of looping forever
-        // Persist the raise, as MM_RaiseSharedTier and SOH_GrantCrossItem do. A raise made while OOT was dormant lived
-        // only in memory, and the next switch into OOT reloads its save from disk: a magic meter got in Termina was
-        // gone on arrival in Hyrule (owner 2026-11-14: "when the game switched to OOT ... i had zero magic and
-        // couldn't use lens of truth").
-        if (SaveManager::Instance && (gSaveContext.fileNum != 0xFF)) {
-            SaveManager::Instance->SaveFile(gSaveContext.fileNum);
-        }
+            break; // didn't raise (e.g. no free trade slot) — stop instead of looping forever
+    }
+    // One write for the whole raise, and none for a give that didn't land. A raise made while OOT is dormant lives only
+    // in memory, and the next switch into OOT reloads its save from disk, so it must be written here.
+    if (SOH_GetSharedTier(family) > startTier) {
+        Combo_PersistOOT();
     }
 } catch (const std::exception& e) { SPDLOG_ERROR("[ComboShip] SOH_RaiseSharedTier threw: {}", e.what()); } catch (...) {
     SPDLOG_ERROR("[ComboShip] SOH_RaiseSharedTier threw a non-std exception");
