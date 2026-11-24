@@ -1273,6 +1273,7 @@ static void Combo_PushMirrorStart(bool unified, const std::string& mmSettingsJso
     SOH_SetComboMirrorStart(mask);
 }
 static bool g_sharedReconcilePending = false;
+static bool g_sharedReconcileRunning = false;
 
 // ComboShip (teleport songs): OOT's Song of Soaring reads MM's owl-statue flags and arrival entrances.
 typedef int (*FnGetOwlFlags)(void);
@@ -2059,6 +2060,8 @@ static void Combo_OnTriforceProgress(int game, int fileNum) try {
 static void Combo_OnSharedChanged(int game, int fileNum) try {
     if ((game != 0 && game != 1) || fileNum == 0xFF)
         return; // Anchor pokes carry fileNum 0xFF at the file-select — no slot, nothing to reconcile
+    if (g_sharedReconcileRunning)
+        return; // a raise's own give; the reconcile re-arms itself when it moved a tier
     g_sharedReconcilePending = true;
 } catch (const std::exception& e) {
     std::cerr << "[ComboShip] Combo_OnSharedChanged threw: " << e.what() << std::endl;
@@ -2066,9 +2069,18 @@ static void Combo_OnSharedChanged(int game, int fileNum) try {
 
 // Raises the lower side of every effective family to match the higher. Idempotent (see the
 // failure-path invariant in deviations/rando.md); never substitutes junk.
+// Only a pass that moved a tier asks for another, to settle what that raise changed elsewhere. A raise that can't land
+// moves nothing, so it waits for the next real pickup or load instead of being retried every frame.
 static void Combo_SharedReconcileNow() try {
     if (g_sharedMask == 0 || !SOH_GetSharedTier || !MM_GetSharedTier || !SOH_RaiseSharedTier || !MM_RaiseSharedTier)
         return;
+    struct RunningGuard {
+        ~RunningGuard() {
+            g_sharedReconcileRunning = false;
+        }
+    } runningGuard;
+    g_sharedReconcileRunning = true;
+    bool moved = false;
     for (int i = 0; i < ComboRando::SF_COUNT; ++i) {
         if (!(g_sharedMask & (1u << i)))
             continue;
@@ -2082,11 +2094,19 @@ static void Combo_SharedReconcileNow() try {
             MM_RaiseSharedTier(i, target);
             continue;
         }
-        if (o < target)
+        if (o < target) {
             SOH_RaiseSharedTier(i, target);
-        if (m < target)
+            if (SOH_GetSharedTier(i) != o)
+                moved = true;
+        }
+        if (m < target) {
             MM_RaiseSharedTier(i, target); // MM_RaiseSharedTier clamps to mmTierCap internally
+            if (MM_GetSharedTier(i) != m)
+                moved = true;
+        }
     }
+    if (moved)
+        g_sharedReconcilePending = true;
 } catch (const std::exception& e) {
     std::cerr << "[ComboShip] Combo_SharedReconcileNow threw: " << e.what() << std::endl;
 } catch (...) { std::cerr << "[ComboShip] Combo_SharedReconcileNow threw a non-std exception" << std::endl; }
@@ -2097,7 +2117,7 @@ static void Combo_SharedTick() try {
         return;
     if (g_comboCompletionSlot < 0 || g_MmSaveInMemorySlot != g_comboCompletionSlot)
         return;
-    g_sharedReconcilePending = false; // clear BEFORE raising — a raise re-fires the poke and re-arms it
+    g_sharedReconcilePending = false; // clear BEFORE raising — a pass that moved a tier re-arms it
     Combo_SharedReconcileNow();
 } catch (const std::exception& e) {
     std::cerr << "[ComboShip] Combo_SharedTick threw: " << e.what() << std::endl;
