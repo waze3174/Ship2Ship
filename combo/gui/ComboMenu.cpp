@@ -16,6 +16,7 @@
 #include "ComboTimersWindow.h"      // combo-owned overlay timers (#173)
 #include "rando/CrossForeign.h"     // ComboRando::ContainerPath — anchored save-container location
 #include "rando/ComboPlaythrough.h" // plando: ParseSpoilerPlacements + Suffix/BuildForeignArray + slot paths
+#include "rando/ComboGames.h"       // Games (OoT only / MM only / Combo)
 #include <imgui.h>
 #include <libultraship/libultraship.h>         // CVar bridge (CVarGet/Set* incl. color) + color.h (Color_RGBA8)
 #include <ship/window/gui/IconsFontAwesome4.h> // ICON_FA_* for the header action buttons
@@ -1708,8 +1709,32 @@ void ComboMenu::DrawComboPanel() {
                        "You must Generate before starting a new file.");
     ImGui::Separator();
 
-    // Goal (#136): one combined win condition; each game's piece slider decides how many it contributes.
     const ImVec4 goalTheme = ComboRando::ComboMenu_ThemeColor();
+
+    // Games (combo/rando/ComboGames.h, OoTMM's "Games"): play both, or just one of them.
+    ImGui::SeparatorText("Games");
+    static const char* kGames[] = { "Ocarina of Time + Majora's Mask", "Ocarina of Time only", "Majora's Mask only" };
+    const int games = ComboRando::ComboGamesFromInt(CVarGetInteger(ComboRando::kComboGamesCVar, 0));
+    const bool solo = ComboRando::ComboGamesSolo(static_cast<ComboRando::ComboGames>(games));
+    ImGui::SetNextItemWidth(260.0f);
+    ComboRando::ComboMenu_PushCombobox(goalTheme);
+    if (ImGui::BeginCombo("##games", kGames[games])) {
+        for (int i = 0; i < 3; ++i) {
+            if (ImGui::Selectable(kGames[i], i == games)) {
+                CVarSetInteger(ComboRando::kComboGamesCVar, i);
+                if (sRefreshStartingGameUI)
+                    sRefreshStartingGameUI(); // MM only greys out the same OOT options as an MM start
+            }
+        }
+        ImGui::EndCombo();
+    }
+    ComboRando::ComboMenu_PopCombobox();
+    ImGui::TextDisabled("One game only: every item stays in that game, the other game is never visited (the Happy\n"
+                        "Mask Shop and the Clock Tower stay in their own game), and its final boss alone finishes.\n"
+                        "Starting Game, Shared Items, Unified Inventory and Cross-Game Entrances don't apply.");
+    ImGui::Separator();
+
+    // Goal (#136): one combined win condition; each game's piece slider decides how many it contributes.
     ImGui::SeparatorText("Goal");
     bool hunt = CVarGetInteger("gCombo.Rando.TriforceHunt", 0) != 0;
     ComboRando::ComboMenu_PushCheckbox(goalTheme);
@@ -1735,8 +1760,13 @@ void ComboMenu::DrawComboPanel() {
             CVarSetInteger("gCombo.Rando.TriforceTotal", std::clamp(total, required, kMaxPieces));
         }
         ComboRando::ComboMenu_PopInput();
-        ImGui::TextDisabled("Collect this many pieces across OOT and MM to finish; bosses are optional.");
-        ImGui::TextDisabled("The pool total is split evenly between the two games (OOT takes the odd one).");
+        if (solo) {
+            ImGui::TextDisabled("Collect this many pieces to finish; the boss is optional.");
+            ImGui::TextDisabled("Every piece is in the played game (up to %d).", ComboRando::kMaxSoloTriforcePieces);
+        } else {
+            ImGui::TextDisabled("Collect this many pieces across OOT and MM to finish; bosses are optional.");
+            ImGui::TextDisabled("The pool total is split evenly between the two games (OOT takes the odd one).");
+        }
         // The combined count is invisible to both games' own trackers, so combo draws its own line.
         bool line = CVarGetInteger("gCombo.Tracker.TriforceLine", 1) != 0;
         ComboRando::ComboMenu_PushCheckbox(goalTheme);
@@ -1745,12 +1775,16 @@ void ComboMenu::DrawComboPanel() {
         }
         ComboRando::ComboMenu_PopCheckbox();
     } else {
-        ImGui::TextDisabled("Beat Ganon and Majora to finish.");
+        ImGui::TextDisabled(games == ComboRando::COMBO_GAMES_OOT  ? "Beat Ganon to finish."
+                            : games == ComboRando::COMBO_GAMES_MM ? "Beat Majora to finish."
+                                                                  : "Beat Ganon and Majora to finish.");
     }
     ImGui::Separator();
 
-    // Starting Game (#135): which game a new file boots into. Random is resolved per seed.
+    // Starting Game (#135): which game a new file boots into. Random is resolved per seed. A solo seed starts in its
+    // game.
     ImGui::SeparatorText("Starting Game");
+    ImGui::BeginDisabled(solo);
     static const char* kStartingGames[] = { "Ocarina of Time", "Majora's Mask", "Random" };
     int startingGame = CVarGetInteger("gCombo.Rando.StartingGame", 0);
     if (startingGame < 0 || startingGame > 2)
@@ -1768,6 +1802,9 @@ void ComboMenu::DrawComboPanel() {
         ImGui::EndCombo();
     }
     ComboRando::ComboMenu_PopCombobox();
+    ImGui::EndDisabled();
+    if (solo)
+        ImGui::TextDisabled("A one-game seed starts in its game.");
     ImGui::TextDisabled("Majora's Mask starts the file in South Clock Town. It forces Child age, an openable forest,\n"
                         "and the Mask Shop key/entrance exclusions, so Ocarina of Time stays enterable from nothing.");
     ImGui::Separator();
@@ -1776,10 +1813,12 @@ void ComboMenu::DrawComboPanel() {
     ImGui::SeparatorText("Unified Inventory");
     {
         bool unified = CVarGetInteger("gCombo.Rando.UnifiedInventory", 0) != 0;
+        ImGui::BeginDisabled(solo); // a one-game seed has no second Link to share with
         ComboRando::ComboMenu_PushCheckbox(goalTheme);
         if (ImGui::Checkbox("Both Links use every item", &unified))
             CVarSetInteger("gCombo.Rando.UnifiedInventory", unified ? 1 : 0);
         ComboRando::ComboMenu_PopCheckbox();
+        ImGui::EndDisabled();
         ImGui::TextDisabled("Child and adult Link can use every Ocarina of Time item (hookshot, bow, hammer, boots,\n"
                             "tunics, swords, slingshot, boomerang...), masks work as adult, and every Shared Items\n"
                             "family below is on, so an item found in one game counts in both. Logic knows all of it.");
@@ -1823,10 +1862,12 @@ void ComboMenu::DrawComboPanel() {
         }
         {
             bool formCredit = CVarGetInteger("gCombo.Rando.FormLogicCredit", 0) != 0;
+            ImGui::BeginDisabled(solo); // the forms' masks live in the other game
             ComboRando::ComboMenu_PushCheckbox(goalTheme);
             if (ImGui::Checkbox("Logic counts form abilities", &formCredit))
                 CVarSetInteger("gCombo.Rando.FormLogicCredit", formCredit ? 1 : 0);
             ComboRando::ComboMenu_PopCheckbox();
+            ImGui::EndDisabled();
             ImGui::SameLine();
             ImGui::TextDisabled("Seed setting. Off: no seed ever needs a Zora or Goron form in Hyrule. On: Zora/Goron\n"
                                 "Mask abilities may stand in for Iron Boots, scales, tunics, hammer and strength.");
@@ -1842,7 +1883,8 @@ void ComboMenu::DrawComboPanel() {
             ComboRando::ComboMenu_PopCheckbox();
             ImGui::SameLine();
             ImGui::TextDisabled("One health bar, magic meter and ammo count for both games; every heart piece or\n"
-                                "container is worth half. Double Defense carries over. Logic is not told about it.");
+                                "container is worth half. Double Defense carries over. Logic is not told about it.\n"
+                                "Has no effect in a one-game seed.");
         }
         {
             bool anchorTunic = CVarGetInteger("gCombo.Cosmetics.AnchorTunicSync", 0) != 0;
@@ -1899,6 +1941,7 @@ void ComboMenu::DrawComboPanel() {
     // full-coop-sync §B2: cross-game entrances. A crossed door in one game leads into the other game; Link keeps his
     // age both ways. The launcher pairs same-kind doors (stored in the seed) and logic proves every seed beatable.
     ImGui::SeparatorText("Cross-Game Entrances");
+    ImGui::BeginDisabled(solo); // a one-game seed never crosses between the games
     {
         struct CrossToggle {
             const char* cvar;
@@ -1946,6 +1989,9 @@ void ComboMenu::DrawComboPanel() {
         ImGui::SameLine();
         ImGui::TextDisabled("Turns on every entrance shuffle in both games and crosses 100%% of doors.");
     }
+    ImGui::EndDisabled();
+    if (solo)
+        ImGui::TextDisabled("Off in a one-game seed.");
     ImGui::Separator();
 
     // Pots and grass/bushes in the pool, in BOTH games (OOT: SoH's ShufflePots/ShuffleGrass "All"; MM: 2ship's
@@ -2006,6 +2052,7 @@ void ComboMenu::DrawComboPanel() {
     // Shared Items (OoTMM-style): one item counts for both games, applied at generation. Deferred
     // families (Ocarina, Song of Time, Shields, Bottles, Health) are not drawn — see the plan doc.
     ImGui::SeparatorText("Shared Items");
+    ImGui::BeginDisabled(solo); // a one-game seed has nothing to share
     {
         const ImGuiTableFlags sharedTableFlags = ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoSavedSettings;
         if (ImGui::BeginTable("##sharedcols", 2, sharedTableFlags)) {
@@ -2034,6 +2081,9 @@ void ComboMenu::DrawComboPanel() {
                         "Time's Shuffle Masks on. Shared Wallets turns off Shuffle Child Wallet.\n"
                         "Song of Soaring needs Ocarina of Time's Song of Soaring setting; Warp Songs need\n"
                         "Majora's Mask's OoT Warp Songs.");
+    ImGui::EndDisabled();
+    if (solo)
+        ImGui::TextDisabled("Off in a one-game seed.");
     ImGui::Separator();
 
     // Cosmetics (#169): each game randomizes on its own by default; sync makes MM take OOT's colors.
