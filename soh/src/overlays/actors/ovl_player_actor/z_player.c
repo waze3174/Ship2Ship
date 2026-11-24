@@ -7,6 +7,8 @@
 #ifdef COMBO_BUILD
 #include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: MM transformations in Hyrule
 #include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus (foreign items on buttons)
+// ComboShip: the Lost Woods link
+#include "soh/Enhancements/randomizer/ComboLostWoodsLink.h"
 #endif
 #include <libultraship/libultra.h>
 #include "global.h"
@@ -14,8 +16,11 @@
 #include "soh/Enhancements/randomizer/ComboForms.h"
 // ComboShip: a Goron in Hyrule shrugs off heat and lava like the Goron Tunic (MM Gorons are heat-proof).
 #define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
+// ComboShip: the Lost Woods link's wrong turn leaves for Termina; its Kokiri Forest destination is never overridden.
+#define COMBO_LOST_WOODS_LINK_EXIT(play, poly, bgId) Combo_OOT_LostWoodsLinkExit(play, poly, bgId)
 #else
 #define COMBO_HEAT_PROOF() 0
+#define COMBO_LOST_WOODS_LINK_EXIT(play, poly, bgId) 0
 #endif
 
 #include "overlays/actors/ovl_Bg_Heavy_Block/z_bg_heavy_block.h"
@@ -6211,7 +6216,7 @@ s32 Player_HandleExitsAndVoids(PlayState* play, Player* this, CollisionPoly* pol
                 play->nextEntranceIndex = play->setupExitList[exitIndex - 1];
 
                 // Main override for entrance rando and entrance skips
-                if (IS_RANDO) {
+                if (!COMBO_LOST_WOODS_LINK_EXIT(play, poly, bgId) && IS_RANDO) {
                     play->nextEntranceIndex = Entrance_OverrideNextIndex(play->nextEntranceIndex);
                 }
 
