@@ -4272,12 +4272,13 @@ void Combo_MM_FlushAccumulators(void) {
     }
 }
 
-void Combo_MM_GiveDormantResolved(RandoItemId rid) {
+// Returns false when the item was dropped. Doesn't write the save.
+static bool Combo_MM_GiveDormant(RandoItemId rid) {
     // ComboShip (#84): drop a bottle refill when no bottle is free. Callers convert first, so this is
     // a backstop — Item_Give's bottle-contents branch overwrites bottle #1. Keep it either way.
     if (Combo_IsBottleRefill(rid) && !Inventory_HasEmptyBottle()) {
         SPDLOG_INFO("[ComboShip] MM cross-grant: no empty bottle, dropping refill");
-        return;
+        return false;
     }
     {
         // Scope-guard clears the flag even if GiveItem throws.
@@ -4290,7 +4291,11 @@ void Combo_MM_GiveDormantResolved(RandoItemId rid) {
         Rando::GiveItem(rid);
     }
     Combo_MM_FlushAccumulators();
-    if (gSaveContext.fileNum != 0xFF) {
+    return true;
+}
+
+void Combo_MM_GiveDormantResolved(RandoItemId rid) {
+    if (Combo_MM_GiveDormant(rid) && gSaveContext.fileNum != 0xFF) {
         SaveManager_SaveCurrentForCombo(); // persist NOW
     }
 }
@@ -4492,21 +4497,20 @@ extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
         // The reconcile runs after every pickup in either game, so write the save only when a bottle was added.
         const bool added = Combo_MM_BottlesHeld() != heldBefore;
         if ((added || CVarGetInteger(kComboDebugBottleSaveEveryReconcile, 0)) && gSaveContext.fileNum != 0xFF)
-            SaveManager_SaveCurrentForCombo(); // persist dormant grants too, like the bombchu-bag poke
+            SaveManager_SaveCurrentForCombo(); // persist dormant grants too, like the other families
         return;
     }
+    const int tierBefore = MM_GetSharedTier(family);
     for (;;) {
         const int cur = MM_GetSharedTier(family);
         if (cur >= tier)
-            return;
+            break;
         // SF_BOMBCHU_BAG has no RandoItemId (MM has no bombchu-bag item) — poke the save directly.
         if (family == ComboRando::SF_BOMBCHU_BAG) {
             INV_CONTENT(ITEM_BOMBCHU) = ITEM_BOMBCHU;
             AMMO(ITEM_BOMBCHU) = CUR_CAPACITY(UPG_BOMB_BAG);
-            if (gSaveContext.fileNum != 0xFF)
-                SaveManager_SaveCurrentForCombo(); // persist dormant grants too (gPlayState is NULL then)
             if (MM_GetSharedTier(family) <= cur)
-                return; // didn't raise — stop instead of looping forever
+                break; // didn't raise — stop instead of looping forever
             continue;
         }
         RandoItemId base = RI_JUNK;
@@ -4583,20 +4587,23 @@ extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
         // Default check id (RC_UNKNOWN) is safe here: none of these families gate on hasObtainedCheck.
         RandoItemId rid = Rando::ConvertItem(base);
         if (rid == RI_JUNK)
-            return; // never substitutes junk — stop instead of granting the wrong thing
+            break; // never substitutes junk — stop instead of granting the wrong thing
         if (gPlayState == NULL) {
-            Combo_MM_GiveDormantResolved(rid);
+            Combo_MM_GiveDormant(rid);
         } else {
             Rando::GiveItem(rid);
             // ComboShip (#214): a parked MM has a live but frozen play state; bank the wallet fill.
             if (!Combo_MmIsForeground()) {
                 Combo_MM_FlushAccumulators();
             }
-            SaveManager_SaveCurrentForCombo();
         }
         if (MM_GetSharedTier(family) <= cur)
-            return; // didn't raise — stop instead of looping forever
+            break; // didn't raise — stop instead of looping forever
     }
+    // One write for all the tiers raised, and none when nothing was. Dormant raises are written too (gPlayState is
+    // NULL then).
+    if (MM_GetSharedTier(family) > tierBefore && gSaveContext.fileNum != 0xFF)
+        SaveManager_SaveCurrentForCombo();
 } catch (const std::exception& e) { SPDLOG_ERROR("[ComboShip] MM_RaiseSharedTier threw: {}", e.what()); } catch (...) {
     SPDLOG_ERROR("[ComboShip] MM_RaiseSharedTier threw a non-std exception");
 }

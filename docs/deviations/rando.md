@@ -2152,8 +2152,11 @@ cannot be reused as the drain path.
 into the *active* game from inside its own give lambda would be re-entrant). `Combo_SharedTick()` (the
 tick-cb target) drains it when pending **and** both saves are resident
 (`g_MmSaveInMemorySlot == g_comboCompletionSlot`): clears pending first, then `Combo_SharedReconcileNow()`
-raises the lower side of every effective family to `max(oot, mm)`. Raises re-fire the poke and re-arm
-pending; the next tick finds equality and no-ops — convergence takes two frames, expected. Full
+raises the lower side of every effective family to `max(oot, mm)`. The pokes the raises' own gives fire
+are ignored while it runs (`g_sharedReconcileRunning`); a pass that moved a tier re-arms pending itself, and
+the next tick finds equality and no-ops — convergence takes two frames, expected. A pass that moved nothing
+(a capped side, or a give that can't land) doesn't re-arm, so it is retried on the next real pickup or load,
+not every frame. Full
 reconcile also runs at OOT slot bind (`Combo_OnOOTSaveLoad`, both branches) and right after
 `MM_InitRandoSaveFile` in `Combo_OnOOTSaveInit` (closes the accepted under-approximation: OOT's
 *starting* copies aren't mirrored into the MM oracle's base state at gen time, so the runtime reconcile
@@ -2344,7 +2347,9 @@ received in OOT (rupees and hearts too) and every randomizer give in MM, and `MM
 MM's save each time, even when no bottle was added. That write runs on the game thread: a read-modify-write of MM's
 section plus a rewrite of the whole `.combosav`. The same write after a cross-game grant took 73-164 ms (median 92,
 37 grants) on the owner's Steam Deck, measured from the `MM_GrantCrossItem` log lines. It now writes only when a
-bottle was added. `gCombo.Debug.BottleSaveEveryReconcile` (off by default) brings back the old write, so one build
+bottle was added. `MM_RaiseSharedTier` for the other families wrote after every give, before checking that the tier
+moved, so a raise of N tiers wrote N times; it now writes once at the end, and only when the tier moved.
+`gCombo.Debug.BottleSaveEveryReconcile` (off by default) brings back the old write, so one build
 can time both with `gCombo.Debug.SaveTiming` (see boot-shutdown.md, "Save timing").
 
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
