@@ -6,12 +6,6 @@
 #include "z64malloc.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
 
-#ifdef COMBO_BUILD
-// ComboShip co-op combat: every SkelAnime an actor initializes is registered, so the enemy-sync glue can find
-// the skeletons inside an actor instance (combo/coop/CoopMirror.h). Defined in Network/Anchor/CoopEnemySync.cpp.
-void MmCoop_SkelInit(SkelAnime* skelAnime);
-#endif
-
 #define ANIM_INTERP 1
 
 s32 PlayerAnimation_Loop(PlayState* play, SkelAnime* skelAnime);
@@ -1635,9 +1629,6 @@ s32 PlayerAnimation_OnFrame(SkelAnime* skelAnime, f32 frame) {
  */
 void SkelAnime_Init(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skeletonHeaderSeg,
                     AnimationHeader* animation, Vec3s* jointTable, Vec3s* morphTable, s32 limbCount) {
-#ifdef COMBO_BUILD
-    MmCoop_SkelInit(skelAnime); // co-op enemy mirrors: SkelAnime registry
-#endif
     SkeletonHeader* skeletonHeader;
 
     if (ResourceMgr_OTRSigCheck(skeletonHeaderSeg))
@@ -1664,9 +1655,6 @@ void SkelAnime_Init(PlayState* play, SkelAnime* skelAnime, SkeletonHeader* skele
  */
 void SkelAnime_InitFlex(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeader* skeletonHeaderSeg,
                         AnimationHeader* animation, Vec3s* jointTable, Vec3s* morphTable, s32 limbCount) {
-#ifdef COMBO_BUILD
-    MmCoop_SkelInit(skelAnime); // co-op enemy mirrors: SkelAnime registry
-#endif
     if (ResourceMgr_OTRSigCheck(skeletonHeaderSeg)) {
         skeletonHeaderSeg = ResourceMgr_LoadSkeletonByName(skeletonHeaderSeg, NULL);
     }
@@ -1696,9 +1684,6 @@ void SkelAnime_InitFlex(PlayState* play, SkelAnime* skelAnime, FlexSkeletonHeade
  */
 void SkelAnime_InitSkin(GameState* gameState, SkelAnime* skelAnime, SkeletonHeader* skeletonHeaderSeg,
                         AnimationHeader* animation) {
-#ifdef COMBO_BUILD
-    MmCoop_SkelInit(skelAnime); // co-op enemy mirrors: SkelAnime registry
-#endif
     if (ResourceMgr_OTRSigCheck(skeletonHeaderSeg)) {
         skeletonHeaderSeg = ResourceMgr_LoadSkeletonByName(skeletonHeaderSeg, NULL);
     }

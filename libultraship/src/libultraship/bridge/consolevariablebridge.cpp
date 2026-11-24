@@ -85,19 +85,4 @@ void CVarLoad() {
 void CVarSave() {
     Ship::Context::GetRawInstance()->GetConsoleVariables()->Save();
 }
-
-#ifdef COMBO_BUILD
-// ComboShip: C bridge for the CVar persist shadow (ConsoleVariable::ShadowPersist).
-void CVarShadowPersist(const char* name) {
-    Ship::Context::GetRawInstance()->GetConsoleVariables()->ShadowPersist(name);
-}
-
-void CVarUnshadowPersist(const char* name) {
-    Ship::Context::GetRawInstance()->GetConsoleVariables()->UnshadowPersist(name);
-}
-
-int32_t CVarIsShadowed(const char* name) {
-    return Ship::Context::GetRawInstance()->GetConsoleVariables()->IsShadowed(name) ? 1 : 0;
-}
-#endif
 }

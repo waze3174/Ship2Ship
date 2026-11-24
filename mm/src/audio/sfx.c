@@ -120,12 +120,6 @@ void AudioSfx_RestoreBgmVolume(u8 channelIndex) {
     }
 }
 
-#ifdef COMBO_BUILD
-// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): observes sounds played at a position inside an enemy we own,
-// so teammates' mirrors of it play them too. Never changes or blocks the request.
-void MmCoop_ActorSfx(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* vol, s8* reverbAdd);
-#endif
-
 /**
  * The main function to request a sfx. All sfx requests begin here.
  */
@@ -133,10 +127,6 @@ void AudioSfx_PlaySfx(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* volu
     u8 i;
     SfxRequest* reqWrite;
     SfxRequest* reqRead;
-
-#ifdef COMBO_BUILD
-    MmCoop_ActorSfx(sfxId, pos, token, freqScale, volume, reverbAdd);
-#endif
 
     if (!gSfxBankMuted[SFX_BANK_SHIFT(sfxId)]) {
         reqWrite = &sSfxRequests[sSfxRequestWriteIndex];

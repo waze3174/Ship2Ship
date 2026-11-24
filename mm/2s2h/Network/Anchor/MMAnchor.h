@@ -110,8 +110,6 @@ class MMAnchor {
     void SendPacket_UpdateTeamState(const std::string& targetTeamId);
     void SendTeamStateFromSave(const std::string& targetTeamId); // no isActive gate: dormant answers too
     void SendPacket_RequestTeamState();
-    // Co-op combat (2026-11-13): COMBO_ACTOR_* from CoopEnemySync.cpp (stamps clientId/originGame).
-    void SendCoopJson(const nlohmann::json& payload);
 
     // ComboShip: same-game teleport (mirrors soh's two-step REQUEST_TELEPORT -> TELEPORT_TO).
     // The launcher only routes this for an MM-active/MM-peer pair (teleport is same-game only).

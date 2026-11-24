@@ -3373,12 +3373,6 @@ void Actor_FreeOverlay(ActorDBEntry* dbEntry) {
 //      array to spawn An example of what this fixes, is that it allows hookshot to be used as child
 int gMapLoading = 0;
 
-#ifdef COMBO_BUILD
-// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): an actor spawned while an enemy we sync is updating is its
-// child (rock, nut, egg, boss spawn) and is mirrored on teammates' screens.
-void SohCoop_ActorSpawned(Actor* actor);
-#endif
-
 Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 posX, f32 posY, f32 posZ, s16 rotX,
                    s16 rotY, s16 rotZ, s16 params) {
     Actor* actor;
@@ -3467,9 +3461,6 @@ Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 pos
     gSegments[6] = temp;
 
     GameInteractor_ExecuteOnActorSpawn(actor);
-#ifdef COMBO_BUILD
-    SohCoop_ActorSpawned(actor);
-#endif
 
     return actor;
 }

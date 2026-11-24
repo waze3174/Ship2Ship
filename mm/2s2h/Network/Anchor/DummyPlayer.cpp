@@ -1,5 +1,4 @@
 #include "MMAnchor.h"
-#include "CoopEnemySync.h"
 #ifdef COMBO_BUILD
 
 #include "2s2h/NameTag/NameTag.h"
@@ -155,16 +154,10 @@ void DummyPlayer_Update(Actor* actor, PlayState* play) {
         (MMAnchor::Instance->roomState.pvpMode == 1 &&
          client.teamId == CVarGetString("gRemote.Anchor.TeamId", "default"))) {
         actor->flags |= ACTOR_FLAG_LOCK_ON_DISABLED;
-#ifdef COMBO_BUILD
-        CoopEnemySync_PuppetCoop(player, client.clientId); // enemy attacks on this teammate relay to them
-#endif
         return;
     }
 
     actor->flags &= ~ACTOR_FLAG_LOCK_ON_DISABLED;
-#ifdef COMBO_BUILD
-    player->cylinder.base.acFlags = (player->cylinder.base.acFlags & ~AC_TYPE_ALL) | AC_TYPE_PLAYER; // PvP: swords
-#endif
 
     if (player->cylinder.base.acFlags & AC_HIT && player->invincibilityTimer == 0) {
         MMAnchor::Instance->SendPacket_DamagePlayer(client.clientId, player->actor.colChkInfo.damageEffect,

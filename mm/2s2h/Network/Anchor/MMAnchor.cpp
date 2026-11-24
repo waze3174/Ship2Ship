@@ -1,6 +1,5 @@
 #include "MMAnchor.h"
 #ifdef COMBO_BUILD
-#include "CoopEnemySync.h" // co-op combat: COMBO_ACTOR_* (enemy/boss sync, HP scaling)
 #include "ComboExport.h"
 
 #include <spdlog/spdlog.h>
@@ -111,7 +110,6 @@ void MMAnchor::RegisterHooks() {
         return;
     }
     hooksRegistered = true;
-    CoopEnemySync_Init(); // co-op combat (2026-11-13): registers once, gates itself on isActive + peers
 
     // Hooks are registered once and gated by isActive (rather than COND_HOOK's connect/disconnect
     // re-registration), since MM's connection lifecycle is the launcher's, not ours.
@@ -201,11 +199,6 @@ void MMAnchor::SendJson(nlohmann::json payload) {
     gMMComboAnchorSend(payload.dump().c_str());
 }
 
-// Co-op combat (2026-11-13): public send for the enemy-sync glue (same stamping as SendJson).
-void MMAnchor::SendCoopJson(const nlohmann::json& payload) {
-    SendJson(payload);
-}
-
 void MMAnchor::OnIncomingJson(const std::string& payload) {
     nlohmann::json j;
     try {
@@ -261,8 +254,6 @@ void MMAnchor::ProcessIncomingPacketQueue() {
                 HandlePacket_RequestTeleport(payload);
             } else if (type == PKT_TELEPORT_TO) {
                 HandlePacket_TeleportTo(payload);
-            } else if (type.rfind("COMBO_ACTOR_", 0) == 0) {
-                CoopEnemySync_OnPacket(payload); // co-op combat (2026-11-13)
             }
             // Flag sync intentionally deferred (mirrors canonical, which stubs it).
         } catch (const std::exception& e) {

@@ -33,7 +33,6 @@
 #include <thread>
 #include <mutex>
 #include <queue>
-#include <deque>
 #include <nlohmann/json.hpp>
 
 // SDL_net.h pulls in SDL.h -> SDL_main.h, which #defines main -> SDL_main unless we opt out.
@@ -49,12 +48,6 @@
 #include "gui/ComboGenProgress.h"
 #include "ComboExtract.h"
 #include "ComboSettingsImport.h"
-#include "coop/CoopEnemySync.h"
-#include "coop/CoopProtocol.h"
-#include "coop/SeedIdentity.h"
-#include "coop/SessionGuard.h"
-#include "coop/SeedShare.h"
-#include "coop/CoopUiAbi.h"
 
 // Surfaces the real exception behind a silent terminate()/exit(3). With the shared dynamic
 // CRT, exceptions thrown in soh.dll/2ship.dll propagate across the DLL boundary to here.
@@ -1161,76 +1154,6 @@ static FnGetOwlWarpEntrance MM_GetOwlWarpEntrance = nullptr;
 static FnSetOwlFlagsProvider SOH_SetOwlFlagsProvider = nullptr;
 static FnSetOwlWarpEntranceProvider SOH_SetOwlWarpEntranceProvider = nullptr;
 
-// ── ComboShip co-op world sync (docs/full-coop-sync plan, milestone A-M1) ──
-// Seed identity of what this client is playing, kept current by the slot-bind/load paths and the seed
-// stage paths, and read by the client-state stamp, SessionGuard and SeedShare. Atomics: the stamp runs
-// on whichever thread calls ComboAnchor::Send, the rest on the game thread.
-namespace ComboCoop {
-static std::atomic<uint64_t> gStagedSeedId{ 0 }; // identity of g_ConsolidatedJson (file-select stage)
-static std::atomic<uint64_t> gStagedSettingsHash{ 0 };
-static std::atomic<uint64_t> gBoundSeedId{ 0 }; // identity of the loaded slot's baked combo.rando
-static std::atomic<uint64_t> gBoundSettingsHash{ 0 };
-static std::atomic<uint32_t> gBoundMasterSeed{ 0 };
-static std::atomic<uint32_t> gStagedMasterSeed{ 0 };
-static std::atomic<bool> gSaveLoaded{ false };     // the latest outgoing client state's isSaveLoaded
-static std::atomic<uint64_t> gWorldCvarsHash{ 0 }; // hash of the LIVE world-CVar values (WorldCvars.h)
-
-// Per-packet-type traffic counters (plan task 0.4). Read by the Co-op Sync debug window.
-struct Counter {
-    uint64_t bytes = 0, packets = 0;
-};
-static std::mutex gStatsMutex;
-static std::map<std::string, Counter> gIn, gOut;
-static std::map<std::string, uint64_t> gDropped; // "TYPE: reason" -> count (SessionGuard)
-static const auto gStatsEpoch = std::chrono::steady_clock::now();
-
-// Cheap `"type"` extraction without a full parse. Tolerates whitespace around the colon: clients dump
-// compact JSON, but the relay's own packets are hand-written (`{"type": "UPDATE_TEAM_STATE"}`), and a miss
-// here would classify a team-state replay as ungated and skip SessionGuard.
-static std::string PeekType(const std::string& p) {
-    size_t a = p.find("\"type\"");
-    if (a == std::string::npos)
-        return "?";
-    a += 6;
-    while (a < p.size() && (p[a] == ' ' || p[a] == '\t' || p[a] == '\n' || p[a] == '\r'))
-        ++a;
-    if (a >= p.size() || p[a] != ':')
-        return "?";
-    ++a;
-    while (a < p.size() && (p[a] == ' ' || p[a] == '\t' || p[a] == '\n' || p[a] == '\r'))
-        ++a;
-    if (a >= p.size() || p[a] != '"')
-        return "?";
-    size_t b = p.find('"', ++a);
-    return b == std::string::npos ? "?" : p.substr(a, b - a);
-}
-
-static void Count(std::map<std::string, Counter>& m, const std::string& packet) {
-    std::lock_guard<std::mutex> lk(gStatsMutex);
-    auto& c = m[PeekType(packet)];
-    c.bytes += packet.size() + 1; // + NUL framing
-    c.packets += 1;
-}
-
-static void CountDrop(const std::string& type, const char* reason) {
-    std::lock_guard<std::mutex> lk(gStatsMutex);
-    uint64_t& n = gDropped[type + ": " + reason];
-    if (n++ % 50 == 0)
-        std::cout << "[ComboShip][Coop] SessionGuard dropped " << type << " (" << reason << "), x" << n << std::endl;
-}
-
-// Identity of a consolidated seed document (string or parsed). 0 on garbage.
-static Coop::SeedIdentity IdentityOf(const std::string& json) {
-    if (json.empty())
-        return {};
-    try {
-        return Coop::ComputeSeedIdentity(nlohmann::json::parse(json));
-    } catch (...) { return {}; }
-}
-} // namespace ComboCoop
-
-static void OnLauncherCoopPacket(const nlohmann::json& pj); // A-M1, defined after ComboAnchor
-
 namespace ComboAnchor {
 static std::thread sThread;
 static std::atomic<bool> sEnabled{ false };
@@ -1261,8 +1184,7 @@ struct ClientInfo {
     bool isSaveLoaded = false;
     bool isGameComplete = false;
     int16_t rawScene = 0;
-    int game = 0;        // 0 = OOT, 1 = MM
-    Coop::PeerMeta meta; // state.combo (A-M1); meta.present == false for peers on an older build
+    int game = 0; // 0 = OOT, 1 = MM
 };
 struct RoomState {
     uint32_t ownerClientId = 0;
@@ -1275,7 +1197,6 @@ static std::mutex sRosterMutex;
 static std::map<uint32_t, ClientInfo> sRoster;
 static RoomState sRoomState;
 static uint32_t sOwnClientId = 0;
-static Coop::PeerMeta sSelfMeta; // last state.combo we stamped on an outgoing client state (sRosterMutex)
 
 // Fill a ClientInfo from a client JSON object (schema mirrors soh PrepClientState / JsonConversions).
 // MM namespaces its sceneNum (>= 1000) and tags packets originGame=="mm"; either flags the MM side.
@@ -1297,7 +1218,6 @@ static void ParseClient(const nlohmann::json& c, const std::string& originGame, 
     bool mm = originGame == "mm" || sceneNum >= 1000;
     info.game = mm ? 1 : 0;
     info.rawScene = (int16_t)(mm ? sceneNum - 1000 : sceneNum);
-    info.meta = Coop::MetaFromJson(c.value("combo", nlohmann::json()));
 }
 
 // Parse the presence/room packets into the roster (called on the receive thread, before forwarding).
@@ -1370,31 +1290,6 @@ static const char* Combo_Anchor_GetRoster() {
             e["areaVisible"] = areaVisible;
             e["clientVersion"] = c.clientVersion;
             e["seed"] = c.seed;
-            // A-M1: co-op identity + the SessionGuard verdict for this peer, so comboui can show WHY a
-            // peer isn't syncing instead of failing silently (plan task 1.8/1.9).
-            const Coop::PeerMeta& self = sSelfMeta;
-            const Coop::PeerMeta& m = cid == sOwnClientId ? sSelfMeta : c.meta;
-            nlohmann::json co;
-            co["present"] = m.present;
-            if (m.present) {
-                co["protocol"] = m.protocol;
-                co["seedId"] = Coop::HexU64(m.seedId);
-                co["pendingSeedId"] = Coop::HexU64(m.pendingSeedId);
-                co["settingsHash"] = Coop::HexU64(m.settingsHash);
-                co["worldCvarsHash"] = Coop::HexU64(m.worldCvarsHash);
-                co["layoutOot"] = Coop::HexU64(m.layoutHashOot);
-                co["layoutMm"] = Coop::HexU64(m.layoutHashMm);
-                co["sceneId"] = m.sceneId;
-                co["roomNum"] = m.roomNum;
-            }
-            if (cid != sOwnClientId) {
-                co["seedMismatch"] = m.present && m.seedId != 0 && self.seedId != 0 && m.seedId != self.seedId;
-                co["protocolMismatch"] = m.present && m.protocol != self.protocol;
-                co["worldCvarsMismatch"] =
-                    m.present && m.seedId != 0 && m.seedId == self.seedId && m.worldCvarsHash != self.worldCvarsHash;
-                co["legacy"] = !m.present;
-            }
-            e["combo"] = co;
             clients.push_back(e);
         }
         nlohmann::json out;
@@ -1408,54 +1303,6 @@ static const char* Combo_Anchor_GetRoster() {
         cached = out.dump();
     } catch (...) { cached = "{}"; }
     return cached.c_str();
-}
-
-// A-M1: launcher-side inbound filter. Launcher-owned COMBO_* packets (seed share, world CVars, sync
-// config) are consumed here and never reach the DLLs; everything else goes through SessionGuard (plan
-// task 1.8), judged against the sender's state.combo in the always-live roster. Returns true to forward.
-static bool RouteCoopInbound(const std::string& packet) {
-    std::string type = ComboCoop::PeekType(packet);
-    if (type != "?" && type.rfind("COMBO_", 0) != 0 && Coop::ClassifyPacket(type) == Coop::GuardClass::Ungated)
-        return true; // fast path: presence/puppet traffic, no parse
-    nlohmann::json pj;
-    try {
-        pj = nlohmann::json::parse(packet);
-    } catch (...) { return true; }
-    type = pj.value("type", std::string()); // authoritative (the peek can't see every JSON spelling)
-    if (Coop::IsLauncherOwnedPacket(type)) {
-        ::OnLauncherCoopPacket(pj);
-        return false;
-    }
-    if (type == "UPDATE_TEAM_STATE" && pj.contains("state")) {
-        uint64_t theirs = Coop::JsonU64(pj["state"], "comboSeedId");
-        uint64_t ours = ComboCoop::gBoundSeedId.load();
-        if (theirs != 0 && ours != 0 && theirs != ours) {
-            ComboCoop::CountDrop(type, "team state from another seed");
-            return false;
-        }
-    }
-    uint32_t from = pj.value("clientId", (uint32_t)0);
-    bool known = false;
-    Coop::PeerMeta peer, self;
-    {
-        std::lock_guard<std::mutex> lk(sRosterMutex);
-        auto it = sRoster.find(from);
-        if (it != sRoster.end()) {
-            known = true;
-            peer = it->second.meta;
-        }
-        self = sSelfMeta;
-    }
-    self.seedId = ComboCoop::gSaveLoaded.load() ? ComboCoop::gBoundSeedId.load() : 0;
-    if (from == 0 || from == sOwnClientId)
-        return true; // server-originated (team-state replies carry no sender) or our own echo
-    int game = pj.value("game", std::string("oot")) == "mm" ? 1 : 0;
-    Coop::GuardVerdict v = Coop::Judge(type, known, peer, self, game);
-    if (v != Coop::GuardVerdict::Accept) {
-        ComboCoop::CountDrop(type, Coop::VerdictName(v));
-        return false;
-    }
-    return true;
 }
 
 // Background loop: connect, then relay outbound packets and feed inbound packets to the active
@@ -1525,7 +1372,7 @@ static void ReceiveLoop() {
             if (ready == 0)
                 continue;
 
-            // A-M1: 64 KiB reads (was 512 B) — seed chunks and actor snapshot batches are large.
+            // A-M1: 64 KiB reads (was 512 B).
             static thread_local std::vector<char> buf(64 * 1024);
             int len = SDLNet_TCP_Recv(socket, buf.data(), (int)buf.size());
             if (len <= 0)
@@ -1542,9 +1389,6 @@ static void ReceiveLoop() {
                 }
                 // Keep the always-live combo roster in sync before forwarding (fixes dormant staleness).
                 UpdateRosterFromPacket(packet);
-                ComboCoop::Count(ComboCoop::gIn, packet);
-                if (!RouteCoopInbound(packet))
-                    continue;
                 // A6: feed every packet to BOTH games. Each RecvJson only enqueues (thread-safe). The
                 // active game drains+handles it on its tick; the dormant game applies its save-affecting
                 // subset via PumpDormant (driven by the active game's per-frame pump call), so a
@@ -1563,79 +1407,6 @@ static void ReceiveLoop() {
         if (SOH_Anchor_OnDisconnected)
             SOH_Anchor_OnDisconnected();
     }
-}
-
-// A-M1 (plan task 1.5): every outgoing client state — UPDATE_CLIENT_STATE.state and HANDSHAKE.clientState,
-// from either game — gets `combo` identity metadata, and `seed` becomes the shared combo masterSeed so
-// OOT and MM peers on one seed report the same number (MM used to send 0). Stamped here, in the one place
-// that sees both games' outbound state and knows the bound seed, instead of in each PrepClientState.
-static int ComboInstanceNumber() {
-    static const int n = [] {
-        const char* v = std::getenv("COMBO_INSTANCE");
-        return v ? std::atoi(v) : 1;
-    }();
-    return n;
-}
-
-static std::string StampCoopMeta(const char* json) {
-    if (!std::strstr(json, "\"UPDATE_CLIENT_STATE\"") && !std::strstr(json, "\"HANDSHAKE\"") &&
-        !std::strstr(json, "\"UPDATE_TEAM_STATE\""))
-        return json;
-    try {
-        auto pj = nlohmann::json::parse(json);
-        std::string type = pj.value("type", std::string());
-        // The relay stores a team's last UPDATE_TEAM_STATE and replays it (with no sender id) to anyone
-        // who asks while no teammate is online, so the seed must ride INSIDE `state` to survive that.
-        // Both games' from_json read fields by name and ignore unknown keys.
-        // Second+ instance on this machine (AppRun's COMBO_INSTANCE, a copy of the primary's config): drop
-        // the remembered client id from the HANDSHAKE so the relay assigns a fresh one instead of treating
-        // us as the primary reconnecting (which kicks it). The games adopt the id from ALL_CLIENT_STATE.
-        if (type == "HANDSHAKE" && ComboInstanceNumber() > 1) {
-            pj["clientId"] = 0;
-        }
-        if (type == "UPDATE_TEAM_STATE") {
-            uint64_t bound = ComboCoop::gBoundSeedId.load();
-            if (bound == 0 || !pj.contains("state") || !pj["state"].is_object())
-                return json;
-            pj["state"]["comboSeedId"] = Coop::HexU64(bound);
-            return pj.dump();
-        }
-        const char* key = type == "HANDSHAKE" ? "clientState" : type == "UPDATE_CLIENT_STATE" ? "state" : nullptr;
-        if (!key || !pj.contains(key) || !pj[key].is_object())
-            return json;
-        auto& st = pj[key];
-        const bool mm = pj.value("originGame", std::string()) == "mm";
-        const bool loaded = st.value("isSaveLoaded", false);
-        ComboCoop::gSaveLoaded.store(loaded);
-
-        Coop::PeerMeta m;
-        m.present = true;
-        m.protocol = Coop::kCoopProtocol;
-        m.buildHash = st.value("clientVersion", std::string());
-        m.seedId = loaded ? ComboCoop::gBoundSeedId.load() : 0;
-        m.pendingSeedId = ComboCoop::gStagedSeedId.load();
-        m.settingsHash = loaded ? ComboCoop::gBoundSettingsHash.load() : ComboCoop::gStagedSettingsHash.load();
-        m.worldCvarsHash = ComboCoop::gWorldCvarsHash.load();
-        // Co-op combat (2026-11-13): this build speaks the enemy-sync wire for both games, so SessionGuard
-        // lets COMBO_ACTOR_* through between peers that stamp the same hashes.
-        m.layoutHashOot = Coop::Enemy::LayoutHash(0);
-        m.layoutHashMm = Coop::Enemy::LayoutHash(1);
-        m.game = mm ? 1 : 0;
-        if (loaded) {
-            m.sceneId = mm ? st.value("sceneId", -1) : st.value("sceneNum", -1);
-            m.roomNum = st.value("curRoomNum", -1);
-        }
-        st["combo"] = Coop::MetaToJson(m);
-        if (ComboInstanceNumber() > 1 && st.contains("name") && st["name"].is_string())
-            st["name"] = st["name"].get<std::string>() + " (" + std::to_string(ComboInstanceNumber()) + ")";
-        if (loaded)
-            st["seed"] = ComboCoop::gBoundMasterSeed.load();
-        {
-            std::lock_guard<std::mutex> lk(sRosterMutex);
-            sSelfMeta = m;
-        }
-        return pj.dump();
-    } catch (...) { return json; }
 }
 
 // Registered into the game as the connect request (Network::Enable redirects here).
@@ -1672,13 +1443,11 @@ static void Disconnect() {
 static void Send(const char* json) {
     if (!json)
         return;
-    std::string packet = StampCoopMeta(json);
     // Our own scene/room-state is broadcast OUTBOUND (never echoed inbound), so parse it here too or the
     // self roster row would freeze at its join value.
-    UpdateRosterFromPacket(packet);
-    ComboCoop::Count(ComboCoop::gOut, packet);
+    UpdateRosterFromPacket(json);
     std::lock_guard<std::mutex> lk(sOutMutex);
-    sOutQueue.push(std::move(packet));
+    sOutQueue.push(json);
 }
 
 // Called during launcher shutdown, BEFORE any game DLL is unloaded: the receive thread calls
@@ -1863,209 +1632,10 @@ static void DeliverCrossItem(int targetGame, const char* itemName, const char* s
     }
 }
 
-// ── A-M1: launcher co-op pump (seed share, world-CVar relay, seed identity) ──
-typedef const char* (*FnCoopDumpStr)(void);
-typedef int (*FnCoopApplyWorldCvars)(const char*, int);
-typedef void (*FnCoopTakeStr)(const char*);
-typedef void (*FnComboUISetCoopHooks)(const ComboCoopHooks*);
-static FnCoopDumpStr ComboUI_DumpWorldCvars = nullptr;
-static FnCoopApplyWorldCvars ComboUI_ApplyWorldCvars = nullptr;
-static FnVoidArgless ComboUI_ClearWorldCvarOverlay = nullptr;
-static FnCoopTakeStr ComboUI_ShadowSessionKeys = nullptr;
-static FnComboUISetCoopHooks ComboUI_SetCoopHooks = nullptr;
-typedef int (*FnCoopGetInt)(void);
-static FnCoopGetInt ComboUI_CoopAutoAccept = nullptr;
-
-static std::filesystem::path WriteComboSpoiler(const nlohmann::json& fileHash, const std::string& json);
-
-namespace ComboCoop {
-static std::mutex sWorldInboxMutex;
-static std::deque<nlohmann::json> sWorldInbox; // COMBO_WORLD_CVARS from the receive thread
-static std::set<uint32_t> sWorldOfferedPeers;
-static uint64_t sWorldSentHash = 0;
-static bool sOverlayActive = false; // a room's world CVars / seed settings are overlaid this session
-static int sPumpFrame = 0;
-static std::string sBoundSeedJson; // compact JSON of the loaded slot's seed (host share source)
-
-static void SetBound(const nlohmann::json& seed) {
-    if (!seed.is_object()) {
-        gBoundSeedId.store(0);
-        gBoundSettingsHash.store(0);
-        gBoundMasterSeed.store(0);
-        sBoundSeedJson.clear();
-        return;
-    }
-    auto id = Coop::ComputeSeedIdentity(seed);
-    gBoundSeedId.store(id.seedId);
-    gBoundSettingsHash.store(id.settingsHash);
-    gBoundMasterSeed.store(seed.value("masterSeed", 0u));
-    sBoundSeedJson = seed.dump();
-}
-
-static void SetStaged(const std::string& consolidatedJson) {
-    auto id = IdentityOf(consolidatedJson);
-    gStagedSeedId.store(id.seedId);
-    gStagedSettingsHash.store(id.settingsHash);
-}
-
-static SeedShare::RosterView BuildRosterView() {
-    SeedShare::RosterView v;
-    std::lock_guard<std::mutex> lk(ComboAnchor::sRosterMutex);
-    v.ownClientId = ComboAnchor::sOwnClientId;
-    v.ownerClientId = ComboAnchor::sRoomState.ownerClientId;
-    auto self = ComboAnchor::sRoster.find(v.ownClientId);
-    if (self != ComboAnchor::sRoster.end())
-        v.ownTeam = self->second.teamId;
-    for (auto& [cid, c] : ComboAnchor::sRoster) {
-        if (cid == v.ownClientId)
-            continue;
-        SeedShare::Peer p;
-        p.clientId = cid;
-        p.name = c.name;
-        p.teamId = c.teamId;
-        p.online = c.online;
-        p.meta = c.meta;
-        v.peers.push_back(std::move(p));
-    }
-    return v;
-}
-
-static void EndRoomSession() {
-    if (sOverlayActive && ComboUI_ClearWorldCvarOverlay) {
-        ComboUI_ClearWorldCvarOverlay();
-        std::cout << "[ComboShip][Coop] left the room: world settings restored to the user's own" << std::endl;
-    }
-    sOverlayActive = false;
-    sWorldOfferedPeers.clear();
-    sWorldSentHash = 0;
-    SeedShare::OnDisconnected();
-}
-
-// World-CVar relay: the room owner broadcasts its LIVE world values (to newcomers, and whenever they
-// change); everyone else overlays them for the session. Registry keys only (enforced in comboui).
-static void WorldCvarPump(const SeedShare::RosterView& r) {
-    std::deque<nlohmann::json> inbox;
-    {
-        std::lock_guard<std::mutex> lk(sWorldInboxMutex);
-        inbox.swap(sWorldInbox);
-    }
-    const bool isHost = r.ownClientId != 0 && r.EffectiveHost() == r.ownClientId;
-    if (!isHost) {
-        for (auto& p : inbox) {
-            if (p.value("clientId", 0u) != r.EffectiveHost() || !p.contains("values") || !ComboUI_ApplyWorldCvars)
-                continue;
-            int changed = ComboUI_ApplyWorldCvars(p["values"].dump().c_str(), 1);
-            sOverlayActive = true;
-            if (changed > 0)
-                std::cout << "[ComboShip][Coop] applied " << changed << " room world setting(s) from the host"
-                          << std::endl;
-        }
-        return;
-    }
-    if (!ComboUI_DumpWorldCvars)
-        return;
-    std::set<uint32_t> team;
-    for (auto& p : r.peers)
-        if (p.online && p.teamId == r.ownTeam)
-            team.insert(p.clientId);
-    // Forget peers that went offline, so a reconnect (same clientId) gets the values again.
-    for (auto it = sWorldOfferedPeers.begin(); it != sWorldOfferedPeers.end();)
-        it = team.count(*it) ? std::next(it) : sWorldOfferedPeers.erase(it);
-    bool newcomer = false;
-    for (uint32_t id : team)
-        newcomer |= !sWorldOfferedPeers.count(id);
-    uint64_t h = gWorldCvarsHash.load();
-    if (team.empty() || (!newcomer && h == sWorldSentHash))
-        return;
-    nlohmann::json pkt;
-    pkt["type"] = Coop::kPktWorldCvars;
-    pkt["clientId"] = r.ownClientId;
-    pkt["originGame"] = "combo";
-    pkt["targetTeamId"] = r.ownTeam;
-    try {
-        pkt["values"] = nlohmann::json::parse(ComboUI_DumpWorldCvars());
-    } catch (...) { return; }
-    pkt["hash"] = Coop::HexU64(h);
-    ComboAnchor::Send(pkt.dump().c_str());
-    sWorldOfferedPeers = team;
-    sWorldSentHash = h;
-}
-
-// Game thread, every frame while connected (driven through PumpDormant by the foreground game).
-static void Pump() try {
-    if ((sPumpFrame++ % 30) == 0 && ComboUI_DumpWorldCvars)
-        gWorldCvarsHash.store(Coop::Fnv1a64(ComboUI_DumpWorldCvars()));
-    if (!ComboAnchor::sConnected.load())
-        return;
-    SeedShare::Pump();
-    WorldCvarPump(BuildRosterView());
-} catch (const std::exception& e) {
-    std::cerr << "[ComboShip][Coop] Pump threw: " << e.what() << std::endl;
-} catch (...) { std::cerr << "[ComboShip][Coop] Pump threw a non-std exception" << std::endl; }
-
-// comboui calls this every frame (main thread), connected or not: the per-frame game pump stops with the
-// connection, so leaving a room is cleaned up here.
-static void IdleTick() try {
-    static bool sWasConnected = false;
-    bool now = ComboAnchor::sConnected.load();
-    if (sWasConnected && !now)
-        EndRoomSession();
-    sWasConnected = now;
-} catch (...) {}
-
-static const char* SeedStatusJson() {
-    static std::string cached;
-    try {
-        cached = SeedShare::StatusJson().dump();
-    } catch (...) { cached = "{}"; }
-    return cached.c_str();
-}
-
-static const char* StatsJson() {
-    static std::string cached;
-    try {
-        nlohmann::json j;
-        double secs = std::chrono::duration<double>(std::chrono::steady_clock::now() - gStatsEpoch).count();
-        j["seconds"] = secs;
-        std::lock_guard<std::mutex> lk(gStatsMutex);
-        for (auto* m : { &gIn, &gOut }) {
-            nlohmann::json side = nlohmann::json::object();
-            for (auto& [type, c] : *m)
-                side[type] = { { "bytes", c.bytes }, { "packets", c.packets } };
-            j[m == &gIn ? "in" : "out"] = side;
-        }
-        j["dropped"] = gDropped;
-        j["self"] = { { "boundSeedId", Coop::HexU64(gBoundSeedId.load()) },
-                      { "stagedSeedId", Coop::HexU64(gStagedSeedId.load()) },
-                      { "worldCvarsHash", Coop::HexU64(gWorldCvarsHash.load()) },
-                      { "saveLoaded", gSaveLoaded.load() },
-                      { "overlay", sOverlayActive } };
-        cached = j.dump();
-    } catch (...) { cached = "{}"; }
-    return cached.c_str();
-}
-
-static const ComboCoopHooks kHooks = { &SeedStatusJson, &StatsJson, &SeedShare::RequestShare, &SeedShare::UseRoomSeed,
-                                       &IdleTick };
-} // namespace ComboCoop
-
-static void OnLauncherCoopPacket(const nlohmann::json& pj) {
-    const std::string type = pj.value("type", std::string());
-    if (type == Coop::kPktSeedOffer || type == Coop::kPktSeedRequest || type == Coop::kPktSeedChunk) {
-        SeedShare::OnNetworkPacket(pj);
-    } else if (type == Coop::kPktWorldCvars) {
-        std::lock_guard<std::mutex> lk(ComboCoop::sWorldInboxMutex);
-        if (ComboCoop::sWorldInbox.size() < 64)
-            ComboCoop::sWorldInbox.push_back(pj);
-    }
-    // COMBO_SYNC_CONFIG: room-level sync config (plan Phase 8) — accepted and ignored until then.
-}
-
 // A6: invoked each frame BY the active game (via the registered pump seam). Applies queued
 // save-affecting co-op packets to the DORMANT game on the caller's (game) thread, so a teammate's
 // collection registers in the dormant game's save live instead of only on next entry.
 static void PumpDormant() {
-    ComboCoop::Pump(); // A-M1: seed share + world-CVar relay (game thread)
     // Finding 4: drain the on-connect resync here (game thread), once per connect.
     if (ComboAnchor::sResyncPending.exchange(false)) {
         if (SOH_Anchor_RequestResync)
@@ -2936,21 +2506,12 @@ static void RunComboFillBody(std::string inputSeed, ComboRando::ComboGenProgress
         consolidated["hints"] = usedCombinedFill ? ComboRando::Generate(masterSeed, sohDump, sohHintDump, mmDump,
                                                                         foreignEnriched, spoiler, pareDownResult)
                                                  : nlohmann::json{ { "version", 1 } };
-        // A-M1 (task 1.3): the world-shaping enhancement CVars travel with the seed, and the seed carries
-        // its own identity (seedId / settingsHash / worldCvarsHash) for room-seed sync.
-        if (ComboUI_DumpWorldCvars) {
-            try {
-                consolidated["worldCvars"] = nlohmann::json::parse(ComboUI_DumpWorldCvars());
-            } catch (...) {}
-        }
-        Coop::StampSeedIdentity(consolidated);
         if (cancelled())
             return;
         g_FinalizeOotApply = ootApply.dump();
         g_FinalizeDisplaySeed = displaySeed;
         g_FinalizeMasterSeed = masterSeed;
         g_ConsolidatedJson = consolidated.dump(2);
-        ComboCoop::SetStaged(g_ConsolidatedJson);
 
         // This seed's own spoiler, so earlier seeds survive instead of being overwritten. The CVar that
         // makes it the remembered one is set by Combo_FinalizeGenerate (main thread).
@@ -3381,9 +2942,8 @@ static std::filesystem::path FindNewestComboSeed(nlohmann::json& out) {
     return {};
 }
 
-enum class SeedApplyMode { SilentAutoLoad, ExplicitDrop, RoomShare };
+enum class SeedApplyMode { SilentAutoLoad, ExplicitDrop };
 static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, const std::string& file);
-static void Combo_ApplySeedWorldCvars(const nlohmann::json& seed, SeedApplyMode mode);
 
 // ComboShip: reload a consolidated seed file (the remembered pending file when path is null/empty, or
 // a dropped file) and make it playable WITHOUT regenerating. Runs synchronously on the MAIN thread
@@ -3447,32 +3007,14 @@ static int Combo_OnReloadRequest(const char* path) {
     return Combo_ApplySeedJson(j, isSilentAutoLoad ? SeedApplyMode::SilentAutoLoad : SeedApplyMode::ExplicitDrop, file);
 }
 
-// ComboShip (full-coop-sync task 1.1): the apply half of a seed reload, split out of
-// Combo_OnReloadRequest so a seed received over Anchor (SeedShare) goes through the exact same ordering
-// rules (goal before pool prep, prices, user-settings snapshot/restore). MAIN THREAD ONLY.
+// ComboShip: the apply half of a seed reload, split out of Combo_OnReloadRequest. MAIN THREAD ONLY.
 //   SilentAutoLoad — the remembered seed at boot: user's rando settings restored afterwards.
-//   ExplicitDrop   — a dropped file: its settings AND world CVars become the persisted baseline.
-//   RoomShare      — the room host's seed: settings handled like SilentAutoLoad, world CVars applied as a
-//                    session overlay (never persisted, restored on leave), and NOT remembered, so the
-//                    joiner's comboship.json is unchanged after they leave (plan §5 acceptance).
+//   ExplicitDrop   — a dropped file: its settings become the persisted baseline.
 static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, const std::string& file) {
     const bool isSilentAutoLoad = mode != SeedApplyMode::ExplicitDrop; // "restore the user's settings"
     if (g_GenerateBusy.load() || g_ComboPendingFinalize.load()) {
         std::cerr << "[ComboShip] seed apply: skipped — a generation is in flight\n";
-        return 2; // busy, not failed: SeedShare retries (Combo_OnReloadRequest checks this itself first)
-    }
-    if (mode == SeedApplyMode::RoomShare && ComboUI_ShadowSessionKeys) {
-        // Every rando-setting CVar this apply (and the later slot-bind) writes stays off disk for the session.
-        nlohmann::json keys = nlohmann::json::array();
-        for (const char* g : { "oot", "mm" }) {
-            // Named copy: range-for over .items() of a temporary dangles.
-            const nlohmann::json settings =
-                j.value(g, nlohmann::json::object()).value("settings", nlohmann::json::object());
-            for (auto& [k, v] : settings.items())
-                keys.push_back(k);
-        }
-        ComboUI_ShadowSessionKeys(keys.dump().c_str());
-        ComboCoop::sOverlayActive = true;
+        return 2; // busy, not failed (Combo_OnReloadRequest checks this itself first)
     }
     try {
         uint32_t masterSeed = j.value("masterSeed", 0u);
@@ -3615,20 +3157,8 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
         g_FinalizeDisplaySeed = displaySeed;
         // Remember it so it survives a restart before Start. Re-filed under its hash name so the
         // remembered path always holds the content just loaded, never a same-named older spoiler.
-        {
-            auto written = j.contains("file_hash") ? WriteComboSpoiler(j["file_hash"], g_ConsolidatedJson)
-                                                   : std::filesystem::path(file);
-            if (mode != SeedApplyMode::RoomShare)
-                RememberComboSpoiler(written);
-        }
-        // A-M1 (task 1.3): world CVars travel with the seed. Old seeds have no block: log once, apply nothing.
-        Combo_ApplySeedWorldCvars(j, mode);
-        {
-            auto id = Coop::ComputeSeedIdentity(j);
-            ComboCoop::gStagedSeedId.store(id.seedId);
-            ComboCoop::gStagedSettingsHash.store(id.settingsHash);
-            ComboCoop::gStagedMasterSeed.store(masterSeed);
-        }
+        RememberComboSpoiler(j.contains("file_hash") ? WriteComboSpoiler(j["file_hash"], g_ConsolidatedJson)
+                                                     : std::filesystem::path(file));
         // Populate the shared progress so the comboui Generate panel shows the remembered seed
         // (seed string, per-game check counts, cross-game count) just like a fresh generation.
         g_ComboProgress.Reset();
@@ -3652,28 +3182,6 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
         std::cerr << "[ComboShip] reload failed: non-std exception\n";
         return 0;
     }
-}
-
-// A-M1 (task 1.3): apply a seed's baked world CVars according to how the seed arrived.
-static void Combo_ApplySeedWorldCvars(const nlohmann::json& seed, SeedApplyMode mode) {
-    if (mode == SeedApplyMode::SilentAutoLoad)
-        return; // the remembered seed at boot: the user's own world settings stay as they are
-    auto it = seed.find("worldCvars");
-    if (it == seed.end() || !it->is_object()) {
-        static bool sLogged = false;
-        if (!sLogged)
-            std::cout << "[ComboShip][Coop] seed predates worldCvars: world settings not applied" << std::endl;
-        sLogged = true;
-        return;
-    }
-    if (!ComboUI_ApplyWorldCvars)
-        return;
-    const bool overlay = mode == SeedApplyMode::RoomShare;
-    int changed = ComboUI_ApplyWorldCvars(it->dump().c_str(), overlay ? 1 : 0);
-    if (overlay)
-        ComboCoop::sOverlayActive = true;
-    std::cout << "[ComboShip][Coop] seed world settings applied (" << (overlay ? "room overlay" : "baseline")
-              << "): " << changed << " changed" << std::endl;
 }
 
 static void Combo_OnOOTSaveInit(int fileNum) {
@@ -3709,7 +3217,6 @@ static void Combo_OnOOTSaveInit(int fileNum) {
             FlushContainer(fileNum);
         }
         LoadComboCompletion(fileNum); // refresh the in-memory latch + push this seed's goal into both DLLs
-        ComboCoop::SetBound(seed);    // A-M1: this slot now plays this seed
         if (SOH_LoadComboRando)
             SOH_LoadComboRando(g_ConsolidatedJson.c_str());
         if (MM_LoadComboRando)
@@ -3794,7 +3301,6 @@ static void Combo_OnOOTSaveLoad(int fileNum) {
             auto r = c.value("combo", nlohmann::json::object()).value("rando", nlohmann::json());
             if (!r.is_null())
                 rando = r.dump();
-            ComboCoop::SetBound(r); // A-M1: identity of the loaded slot's seed (null = none bound)
         }
         if (!rando.empty()) {
             if (SOH_LoadComboRando)
@@ -4343,53 +3849,6 @@ int main(int argc, char** argv) {
         MM_SetAnchorSend(ComboAnchor::Send);
         std::cout << "[ComboShip] MM Anchor transport seam registered." << std::endl;
     }
-    // A-M1: room-seed sharing (SeedShare) runs on the game thread through the per-frame pump.
-    {
-        SeedShare::HostApi api;
-        api.send = [](const std::string& json) { ComboAnchor::Send(json.c_str()); };
-        api.connected = [] { return ComboAnchor::sConnected.load(); };
-        api.roster = [] { return ComboCoop::BuildRosterView(); };
-        api.hostSeedId = [] {
-            uint64_t bound = ComboCoop::gSaveLoaded.load() ? ComboCoop::gBoundSeedId.load() : 0;
-            return bound != 0 ? bound : ComboCoop::gStagedSeedId.load();
-        };
-        api.hostSeedJson = []() -> std::string {
-            if (ComboCoop::gSaveLoaded.load() && ComboCoop::gBoundSeedId.load() != 0)
-                return ComboCoop::sBoundSeedJson;
-            return g_ConsolidatedJson;
-        };
-        api.activeSeedId = [] { return ComboCoop::gSaveLoaded.load() ? ComboCoop::gBoundSeedId.load() : 0; };
-        api.stagedSeedId = [] { return ComboCoop::gStagedSeedId.load(); };
-        api.writeSeedFile = [](const nlohmann::json& seed) {
-            return WriteComboSpoiler(seed.value("file_hash", nlohmann::json::array()), seed.dump(2));
-        };
-        api.findLocalSeed = [](uint64_t seedId) -> std::filesystem::path {
-            // Seed index (task 1.6): mtime-keyed cache of seedId per consolidated file.
-            static std::map<std::string, std::pair<std::filesystem::file_time_type, uint64_t>> sIndex;
-            std::error_code ec;
-            for (auto& e : std::filesystem::directory_iterator(ComboRando::ConsolidatedDir(), ec)) {
-                if (!e.is_regular_file(ec) || e.path().extension() != ".json")
-                    continue;
-                auto mt = e.last_write_time(ec);
-                auto& slot = sIndex[e.path().string()];
-                if (slot.first != mt || slot.second == 0) {
-                    nlohmann::json j;
-                    slot = { mt, TryLoadComboSeedFile(e.path(), j) ? Coop::ComputeSeedIdentity(j).seedId : 1 };
-                }
-                if (slot.second == seedId)
-                    return e.path();
-            }
-            return {};
-        };
-        api.applyRoomSeed = [](const nlohmann::json& seed) {
-            return Combo_ApplySeedJson(seed, SeedApplyMode::RoomShare, std::string());
-        };
-        api.autoAccept = [] {
-            // Local setting gRemote.Anchor.Coop.AutoAcceptRoomSeed (comboui owns the CVar; default on, §1.7).
-            return ComboUI_CoopAutoAccept ? ComboUI_CoopAutoAccept() != 0 : true;
-        };
-        SeedShare::SetHostApi(std::move(api));
-    }
 
     // Register the cross-game delivery dispatcher into both DLLs (issue #3). Done before SOH_Init so
     // a resumed save that immediately drains a queued foreign item has the route available.
@@ -4480,15 +3939,6 @@ int main(int argc, char** argv) {
         ComboUI_SetComboComplete = (FnComboUISetInt)GetSym(comboUIModule, "ComboUI_SetComboComplete");
         if (ComboUI_SetAnchorRosterProvider)
             ComboUI_SetAnchorRosterProvider(&ComboAnchor::Combo_Anchor_GetRoster);
-        // A-M1: co-op world-CVar overlay + co-op UI hooks (comboui links the CVar store).
-        ComboUI_DumpWorldCvars = (FnCoopDumpStr)GetSym(comboUIModule, "ComboUI_DumpWorldCvars");
-        ComboUI_ApplyWorldCvars = (FnCoopApplyWorldCvars)GetSym(comboUIModule, "ComboUI_ApplyWorldCvars");
-        ComboUI_ClearWorldCvarOverlay = (FnVoidArgless)GetSym(comboUIModule, "ComboUI_ClearWorldCvarOverlay");
-        ComboUI_ShadowSessionKeys = (FnCoopTakeStr)GetSym(comboUIModule, "ComboUI_ShadowSessionKeys");
-        ComboUI_SetCoopHooks = (FnComboUISetCoopHooks)GetSym(comboUIModule, "ComboUI_SetCoopHooks");
-        ComboUI_CoopAutoAccept = (FnCoopGetInt)GetSym(comboUIModule, "ComboUI_CoopAutoAccept");
-        if (ComboUI_SetCoopHooks)
-            ComboUI_SetCoopHooks(&ComboCoop::kHooks);
         ComboUI_SetNotesStore = (FnComboUISetNotesStore)GetSym(comboUIModule, "ComboUI_SetNotesStore");
         if (ComboUI_SetNotesStore)
             ComboUI_SetNotesStore(&Combo_GetNotes, &Combo_SetNotes);

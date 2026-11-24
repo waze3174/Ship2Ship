@@ -10,11 +10,8 @@
 #include <string>
 #include <set>
 #include "ComboResolve.h"
-#include "coop/CoopUiAbi.h"
 
 namespace ComboRando {
-
-const ComboCoopHooks* CoopHooks(); // ComboCoopWindow.cpp
 
 namespace {
 // Shared Anchor CVar keys (process-global store; the combo panel writes them). comboui has no access to
@@ -115,40 +112,6 @@ void ComboAnchorRoomWindow::DrawElement() {
         }
         ImGui::Text("Players Online: %d", online);
         return;
-    }
-
-    // full-coop-sync task 1.9: the room seed, with the host's share and the joiner's use action.
-    if (const ComboCoopHooks* hooks = CoopHooks(); hooks && hooks->seedStatusJson) {
-        nlohmann::json st;
-        try {
-            st = nlohmann::json::parse(hooks->seedStatusJson());
-        } catch (...) {}
-        std::string state = st.value("state", std::string("none"));
-        std::string icons;
-        for (auto& v : st.value("fileHash", nlohmann::json::array()))
-            icons += (icons.empty() ? "" : "-") + std::to_string(v.is_number() ? v.get<int>() : 0);
-        if (state == "none") {
-            ImGui::TextDisabled("No room seed");
-        } else {
-            ImGui::Text("Room seed %s", icons.c_str());
-            if (state == "host" && hooks->shareSeed) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Share my seed"))
-                    hooks->shareSeed();
-            } else if (state == "ready" && hooks->useRoomSeed) {
-                ImGui::SameLine();
-                if (ImGui::SmallButton("Use room seed"))
-                    hooks->useRoomSeed();
-            } else if (state == "downloading") {
-                ImGui::SameLine();
-                ImGui::TextDisabled("(%d/%d)", st.value("received", 0), st.value("total", 0));
-            } else if (state == "mismatch") {
-                ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1, 0.4f, 0.4f, 1), "%s", ICON_FA_EXCLAMATION_TRIANGLE);
-                ImGui::SetItemTooltip("Your save is on a different seed than the room: sync is blocked.");
-            }
-        }
-        ImGui::Separator();
     }
 
     const int activeGame = ComboUI::GetForegroundGame();    // 0 = OOT, 1 = MM
@@ -262,29 +225,10 @@ void ComboAnchorRoomWindow::DrawElement() {
                 ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", ICON_FA_EXCLAMATION_TRIANGLE);
                 ImGui::SetItemTooltip("Incompatible version! Will not work together!");
             }
-            // full-coop-sync task 1.8: the launcher judges peers by state.combo (seed identity across BOTH
-            // games, protocol, world settings) and SessionGuard enforces it; show the verdict here.
-            const nlohmann::json co = c.value("combo", nlohmann::json::object());
-            if (!self && co.value("present", false)) {
-                seedMismatch = co.value("seedMismatch", false);
-            }
             if (seedMismatch) {
                 ImGui::SameLine();
                 ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", ICON_FA_EXCLAMATION_TRIANGLE);
-                ImGui::SetItemTooltip("Different seed: item, flag and world sync with this player is blocked.");
-            }
-            if (!self && online && co.value("protocolMismatch", false)) {
-                ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1, 0, 0, 1), "%s", ICON_FA_EXCLAMATION_TRIANGLE);
-                ImGui::SetItemTooltip("Different co-op protocol: update both players to the same build.");
-            } else if (!self && online && co.value("worldCvarsMismatch", false)) {
-                ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1, 0.7f, 0, 1), "%s", ICON_FA_EXCLAMATION_TRIANGLE);
-                ImGui::SetItemTooltip("Different world settings (enemy randomizer, drops...): worlds may differ.");
-            } else if (!self && online && co.value("legacy", false)) {
-                ImGui::SameLine();
-                ImGui::TextColored(ImVec4(1, 0.7f, 0, 1), "%s", ICON_FA_EXCLAMATION_TRIANGLE);
-                ImGui::SetItemTooltip("Older build without world sync: items still sync, enemies and props do not.");
+                ImGui::SetItemTooltip("Seed mismatch! Continuing will break things!");
             }
 
             ImGui::PopID();

@@ -134,18 +134,11 @@ void Audio_ClearBGMMute(u8 channelIdx) {
 
 #ifdef COMBO_BUILD
 int Combo_GuestVoice(unsigned short ootSfxId); // ComboGuestAudio.cpp
-// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): observes sounds played at a position inside an enemy we own,
-// so teammates' mirrors of it play them too. Never changes or blocks the request.
-void SohCoop_ActorSfx(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* vol, s8* reverbAdd);
 #endif
 
 void Audio_PlaySfxGeneral(u16 sfxId, Vec3f* pos, u8 token, f32* freqScale, f32* vol, s8* reverbAdd) {
     size_t i;
     SoundRequest* req;
-
-#ifdef COMBO_BUILD
-    SohCoop_ActorSfx(sfxId, pos, token, freqScale, vol, reverbAdd);
-#endif
 
 #ifdef COMBO_BUILD
     // ComboShip: every Link voice line (NA_SE_VO_LI_*, both ages: 0x6800-0x683F) is the form's MM voice while a

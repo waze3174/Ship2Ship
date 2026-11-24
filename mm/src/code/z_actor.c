@@ -3682,12 +3682,6 @@ void Actor_FreeOverlay(ActorOverlay* entry) {
     }
 }
 
-#ifdef COMBO_BUILD
-// Co-op enemy sync (Network/Anchor/CoopEnemySync.cpp): an actor spawned while an enemy we sync is updating is its
-// child (rock, nut, egg, boss spawn) and is mirrored on teammates' screens.
-void MmCoop_ActorSpawned(Actor* actor);
-#endif
-
 Actor* Actor_Spawn(ActorContext* actorCtx, PlayState* play, s16 actorId, f32 posX, f32 posY, f32 posZ, s16 rotX,
                    s16 rotY, s16 rotZ, s32 params) {
     return Actor_SpawnAsChildAndCutscene(actorCtx, play, actorId, posX, posY, posZ, rotX, rotY, rotZ, params,
@@ -3834,9 +3828,6 @@ Actor* Actor_SpawnAsChildAndCutscene(ActorContext* actorCtx, PlayState* play, s1
         Actor_Init(actor, play);
         gSegments[6] = sp20;
     }
-#ifdef COMBO_BUILD
-    MmCoop_ActorSpawned(actor);
-#endif
 
     return actor;
 }

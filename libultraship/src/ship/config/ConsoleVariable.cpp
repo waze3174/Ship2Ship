@@ -273,42 +273,8 @@ void ConsoleVariable::Save() {
         }
     }
 
-#ifdef COMBO_BUILD
-    // ComboShip: shadowed CVars keep their on-disk entry (or stay absent), whatever the live value is.
-    for (const auto& [name, shadow] : mPersistShadow) {
-        const std::string key = StringHelper::Sprintf("CVars.%s", name.c_str());
-        if (shadow.present) {
-            conf->SetRaw(key, shadow.value);
-        } else {
-            conf->Erase(key);
-        }
-    }
-#endif
-
     conf->Save();
 }
-
-#ifdef COMBO_BUILD
-void ConsoleVariable::ShadowPersist(const char* name) {
-    if (name == nullptr || mPersistShadow.count(name) != 0) {
-        return;
-    }
-    std::shared_ptr<Config> conf = Context::GetRawInstance()->GetConfig();
-    PersistShadow shadow;
-    shadow.present = conf->GetRaw(StringHelper::Sprintf("CVars.%s", name), shadow.value);
-    mPersistShadow.emplace(name, std::move(shadow));
-}
-
-void ConsoleVariable::UnshadowPersist(const char* name) {
-    if (name != nullptr) {
-        mPersistShadow.erase(name);
-    }
-}
-
-bool ConsoleVariable::IsShadowed(const char* name) {
-    return name != nullptr && mPersistShadow.count(name) != 0;
-}
-#endif
 
 void ConsoleVariable::Load() {
     std::shared_ptr<Config> conf = Context::GetRawInstance()->GetConfig();

@@ -29,7 +29,6 @@
 #include "ComboResolve.h"
 
 namespace ComboRando {
-void RegisterCoopWindow();        // ComboCoopWindow.cpp
 void RegisterBottleShelfWindow(); // ComboBottleShelfWindow.cpp
 void ApplyDpadEquips();           // below: one combo setting drives both games' D-pad equips
 } // namespace ComboRando
@@ -110,11 +109,6 @@ constexpr const char* PvpMode = "gRemote.Anchor.RoomSettings.PvpMode";
 constexpr const char* ShowLocationsMode = "gRemote.Anchor.RoomSettings.ShowLocationsMode";
 constexpr const char* TeleportMode = "gRemote.Anchor.RoomSettings.TeleportMode";
 constexpr const char* SyncItemsAndFlags = "gRemote.Anchor.RoomSettings.SyncItemsAndFlags";
-// Co-op combat (2026-11-13). WORLD CVars (combo/coop/WorldCvarsOot.inl): the room host's values are overlaid
-// on every joiner for the session, so these are room settings. Read by CoopEnemySync in both games.
-constexpr const char* CoopEnemySync = "gCombo.Coop.EnemySync";
-constexpr const char* CoopEnemyHpScale = "gCombo.Coop.EnemyHpScale";
-constexpr const char* CoopEnemyHpPercent = "gCombo.Coop.EnemyHpPercent";
 } // namespace AnchorCVar
 
 // Combo plandomizer exports: each game's static-data dump (friendly item names) + the reload trigger
@@ -996,39 +990,6 @@ void DrawNetworkSharedPanel() {
     int ownerInfo = sSohAnchorGetOwnerInfo ? sSohAnchorGetOwnerInfo() : 0;
     bool isOwner = (ownerInfo & 1) != 0;
     bool isGlobalRoom = (ownerInfo & 2) != 0;
-
-    // --- Co-op combat: a room setting. Before joining it is what you'll host with; in a room only the owner
-    // edits it and everyone else sees the room's values (overlaid from the host, restored on leave).
-    {
-        ImGui::SeparatorText("Co-op Combat");
-        bool locked = connected && !isOwner;
-        ImGui::BeginDisabled(locked);
-        ComboRando::ComboMenu_PushCheckbox(theme);
-        bool enemySync = CVarGetInteger(AnchorCVar::CoopEnemySync, 1) != 0;
-        if (ImGui::Checkbox("Share enemies and bosses", &enemySync)) {
-            CVarSetInteger(AnchorCVar::CoopEnemySync, enemySync ? 1 : 0);
-            AnchorSaveCVars();
-        }
-        ImGui::SetItemTooltip("Players in the same area fight one copy of every enemy and boss: same positions, "
-                              "health and deaths. Whoever is nearest or attacking drives it.");
-        bool hpScale = CVarGetInteger(AnchorCVar::CoopEnemyHpScale, 1) != 0;
-        if (ImGui::Checkbox("Enemy health scales with players", &hpScale)) {
-            CVarSetInteger(AnchorCVar::CoopEnemyHpScale, hpScale ? 1 : 0);
-            AnchorSaveCVars();
-        }
-        ComboRando::ComboMenu_PopCheckbox();
-        ImGui::BeginDisabled(!hpScale);
-        int pct = CVarGetInteger(AnchorCVar::CoopEnemyHpPercent, 100);
-        if (ImGui::SliderInt("Extra HP per player (%)", &pct, 10, 1500, "%d%%", ImGuiSliderFlags_AlwaysClamp)) {
-            CVarSetInteger(AnchorCVar::CoopEnemyHpPercent, pct);
-            AnchorSaveCVars();
-        }
-        ImGui::EndDisabled();
-        ImGui::TextDisabled("100%% = enemy and boss HP x number of players in the area (bosses included).");
-        ImGui::EndDisabled();
-        if (locked)
-            ImGui::TextDisabled("Set by the room owner.");
-    }
     if (connected && isOwner && !isGlobalRoom) {
         ImGui::SeparatorText("Room Settings (Admin Only)");
 
@@ -2180,7 +2141,6 @@ extern "C" COMBO_EXPORT void ComboUI_Register(void) {
 
     // Combo-native floating Anchor room window (toggled from the Anchor panel).
     ComboRando::RegisterAnchorRoomWindow();
-    ComboRando::RegisterCoopWindow();        // full-coop-sync A-M1: Co-op Sync window, room-seed modal/toast
     ComboRando::RegisterBottleShelfWindow(); // shared bottles: the Bottle Shelf
 
     // (The "done once" flag is a sibling key, never "gCombo.DpadEquips.Init": a leaf and a subtree under one name can't

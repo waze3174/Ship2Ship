@@ -97,10 +97,6 @@ x64/
 # Superpowers brainstorming companion (local mockups)
 .superpowers/
 
-# full-coop-sync: two-instance harness state
-/.coop-instances/
-/.coop-instances-relay.log
-
 # ComboShip: never commit ROMs or anything extracted from them
 *.z64
 *.n64

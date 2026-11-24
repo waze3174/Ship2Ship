@@ -8,7 +8,6 @@
 #include "soh/Enhancements/randomizer/static_data.h"
 #include "soh/Notification/Notification.h"
 #include "soh/SaveManager.h"
-#include "CoopEnemySync.h" // co-op combat: COMBO_ACTOR_* (enemy/boss sync, HP scaling)
 #endif
 
 extern "C" {
@@ -302,8 +301,6 @@ void Anchor::ProcessIncomingPacketQueue() {
                 Anchor_HandleCrossItemPacket(payload);
             else if (packetType == COMBO_PARTNER_FIND)
                 Anchor_HandlePartnerFindPacket(payload);
-            else if (packetType.rfind("COMBO_ACTOR_", 0) == 0)
-                CoopEnemySync_OnPacket(payload); // co-op combat (2026-11-13)
 #endif
             else if (packetType == OCARINA_SFX)
                 HandlePacket_OcarinaSfx(payload);

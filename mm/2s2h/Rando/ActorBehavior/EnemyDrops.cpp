@@ -1,7 +1,4 @@
 #include "ActorBehavior.h"
-#ifdef COMBO_BUILD
-#include "2s2h/Network/Anchor/CoopEnemySync.h"
-#endif
 #include <libultraship/bridge/consolevariablebridge.h>
 #include "2s2h/CustomItem/CustomItem.h"
 
@@ -12,15 +9,6 @@ extern "C" {
 #include "overlays/actors/ovl_En_Mkk/z_en_mkk.h"
 #include "overlays/actors/ovl_En_Slime/z_en_slime.h"
 #include "overlays/actors/ovl_En_Sw/z_en_sw.h"
-}
-
-// ComboShip co-op: a helper, because MSVC rejects preprocessor directives inside the COND_HOOK macro's arguments.
-static bool ComboRemoteKill() {
-#ifdef COMBO_BUILD
-    return CoopEnemySync_IsRemoteKill();
-#else
-    return false;
-#endif
 }
 
 typedef enum {
@@ -181,11 +169,6 @@ void Rando::ActorBehavior::InitEnemyDropBehavior() {
     COND_HOOK(OnActorKill, shouldRegister, [](Actor* actor) {
         // Ignore Gold Skulltulas
         if (actor->id == ACTOR_EN_SW && ENSW_GET_3(actor)) {
-            return;
-        }
-        // Co-op combat (2026-11-13): a teammate's copy of this enemy died and ours is only being removed to
-        // match. The drop (and its check) belongs to the killer's world, never a second time here.
-        if (ComboRemoteKill()) {
             return;
         }
 
