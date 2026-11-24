@@ -453,7 +453,11 @@ pieces per row, equipped outline; no Link preview).
 game's inventory slot: OOT host 0x9E + MM slot, skipping 0xBF–0xC1 (→ 0x9E–0xD0); MM host 0xD0 + OOT slot
 (→ 0xD0–0xE7). The host's slot byte for a foreign button is the foreign id itself (unique, never a real slot), so
 both games' "same slot on another button → swap" rules work unchanged. A shared item the host holds equips as the
-host's own copy. HUD / equip-animation icons come from the owning game's RM. Use: OOT host — MM transformation
+host's own copy. HUD / equip-animation icons come from the owning game's RM. A foreign ammo item's button digits are
+the owning game's count as a use spends it (MM host: `VB_DRAW_HUD_AMMO_COUNT` in `ComboPause.cpp`; OOT host: a fenced
+`Interface_ComboDrawForeignAmmoCount` in `z_parameter.c`), green at the owning game's full bag, grey at 0; with shared
+consumables on, that is the shared count (`ComboHealth::DormantAmmo`), and the foreign face shows the same number.
+Use: OOT host — MM transformation
 masks → the form system (any mask while transformed changes back), other MM masks → worn with MM's model
 (`D_801C0B20`, routed `@mm:` DL on the head limb), anything else → OOT's error sound. MM host — OOT's Keaton / Bunny /
 Truth / Goron / Zora masks → MM's own masks, anything else → MM's error sound.
@@ -492,7 +496,7 @@ Shared pieces added:
 | item | works | what was ported | techniques verified | known gaps (reason) |
 |---|---|---|---|---|
 | Great Fairy's Sword | yes (child + adult) | MM EnMThunder GFS look (spin scale 4 / great 6, MM dust, MM charge aura), MM swing / spin sounds (MM sfx player), MM reach 5500 = OOT Biggoron row; 2S2H "Great Fairy Sword B-Button Attack" and "Two-Handed Sword Spin Attack" CVars honoured (shared CVars) | draw + swing from C (child, adult), charged spin by holding C with TwoHandedSwordSpinAttack on (screenshots gfsA / gfsC) | damage credit = OOT Biggoron flags; MM's instant great spin (Swordsman's flag) is not read in Hyrule |
-| Powder Keg | yes (Goron form) | MM EnBom keg branch (z_en_bom_combo_keg.c) + MM EnClearTag large explosion; MM keg ammo; Goron-only use and lift (MM rules); fuse 200; MM sounds; MM barrel / skull / fuse models | Goron takes the keg out overhead, sets it down, fuse burns, MM explosion with rays and smoke (keg-48..68, log "MM keg exploded") | breaks OOT bombable walls / boulders through OOT's explosive flag (radius 200, damage 4); fuse sound doesn't speed up (MM channel IO not in the native sfx player); a held keg isn't respawned across a scene change; non-Gorons get the error sound (button not greyed) |
+| Powder Keg | yes (Goron form) | MM EnBom keg branch (z_en_bom_combo_keg.c) + MM EnClearTag large explosion; MM keg ammo (its 0/1 on OOT's button since 2026-11-24, as MM's HUD shows it); Goron-only use and lift (MM rules); fuse 200; MM sounds; MM barrel / skull / fuse models | Goron takes the keg out overhead, sets it down, fuse burns, MM explosion with rays and smoke (keg-48..68, log "MM keg exploded") | breaks OOT bombable walls / boulders through OOT's explosive flag (radius 200, damage 4); fuse sound doesn't speed up (MM channel IO not in the native sfx player); a held keg isn't respawned across a scene change; non-Gorons get the error sound (button not greyed) |
 | Pictograph Box | yes | MM picto lens, MM HUD focus frame, shutter, capture -> I8 -> I5 in MM's save, MM 0xF8 "Keep this picture? Yes/No" (MM's text), photo shown again on reuse, ColorPictograph CVar | lens, shutter, prompt, Yes, exit, reuse shows the photo (picto-48..88) | no Hyrule photo subjects (snap flags cleared); the prompt box is OOT's; MM's save isn't written to disk while in Hyrule (the colour PNG is) |
 | MM bottles (potions, milk, fairy, fish, bug, Poe, blue fire) | yes | OOT's bottle actions (MM's are the same code) writing the MM bottle's own slot (MM_ComboItems_SetSlot); MM content colours | Chateau drunk: MM slot 18 0x25 -> 0x12 (log) | MM bottles can't catch blue fire (MM's catch table has none); forms can't use MM bottles yet |
 | Chateau Romani | yes | MM drink (heal + magic) + infinite magic (MAGIC_STATE_CONSUME and lens drain skipped) | log "infinite magic until dawn" | adapted: lasts until the next OOT dawn (06:00) instead of MM's cycle reset; not saved |
@@ -560,7 +564,11 @@ names its OOT original). OOT actors are combo files in MM's overlay dirs: OOT's 
 `ACTOR_COMBO_MAGIC_DARK/FIRE/WIND` (`ovl_Combo_Magic_*`). Models are OOT's (`__OTR__@oot:` routed DLs; hand models
 swapped in `Combo_MmOotHeldDL`), animations come from OOT's archive (new `__OTR__@oot:` routing in MM's
 `ResourceMgr_LoadAnimByName`), raw OOT resources via `Combo_MmOotRawResource`. OOT's save stays the owner of ammo
-and age rules (`SOH_ComboTermina_*`, soh `ComboTerminaItems.cpp`, additive). OOT's age rule (`gItemAgeReqs`, SoH
+(`SOH_ComboAmmoBag`, soh `ComboSharedHealth.cpp`) and age rules (`SOH_ComboTermina_*`, soh `ComboTerminaItems.cpp`,
+additive). An OOT ammo item's count in Termina (button digits, MM's Hyrule face, what a shot spends) is one number,
+`Combo_MmOotAmmo`: with shared consumables on, the shared count as OOT will show it on arrival (the shot spends from
+it); off, OOT's own save, which a shot changes in memory and `SOH_ResumeGame` writes before OOT loads it again.
+OOT's age rule (`gItemAgeReqs`, SoH
 Timeless Equipment / Adult Masks honoured) greys and blocks items like OOT's pause does. Logic:
 `mm/2s2h/Rando/MiscBehavior/ComboOotItems.cpp`. Harness trace: `COMBO_DEBUG_OOTITEMS=1`.
 
@@ -576,7 +584,7 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 |---|---|---|---|---|
 | Boomerang (child) | yes | OOT func_80835800 chain + OOT EnBoom (speed 12, homing, 20-frame return, wall bounce, EnItem00/Gold Skulltula fetch, catch r=40), OOT anims, OOT child hand + boomerang model, OOT aim camera (CAM_MODE_BOOMERANG); dmg 0x10 = MM Zora-boomerang bit | throw + catch x3 (log `boomerang thrown/caught`) | flight not yet captured on screenshot (camera angle); item fetch / stun not exercised |
 | Megaton Hammer (adult) | yes | OOT melee path: forward/side choice, OOT hammer anims + hit windows, no combo/lunge, OOT wall hit (hit-stop, quake, rebound), frame-7 / jump-attack frame-2 shockwave; credit DMG_GORON_PUNCH+POUND, impact = Goron ground pound | 4 swings, OOT anims, shockwave each forward swing; OOT hammer model in adult hand (screenshots) | side swing / jump attack / switch+rock credit not exercised in harness |
-| Slingshot (child) | builds, untested | OOT bow/slingshot chain (unk_B28 2), OOT seed (MM kept ARROW_SEED), OOT bullet bag ammo, OOT sling draw/flick sfx, OOT child hand + rubber band + first-person arm | — | test owed; draw sfx re-encoded in MM |
+| Slingshot (child) | yes (owner, Deck, 2026-11-24: seeds run out) | OOT bow/slingshot chain (unk_B28 2), OOT seed (MM kept ARROW_SEED), OOT bullet bag ammo, OOT sling draw/flick sfx, OOT child hand + rubber band + first-person arm; seed count on the C button / D-pad (`VB_DRAW_HUD_AMMO_COUNT`, MM's places and colours) and on MM's Hyrule face | — | the count on button and pause face is owed a Deck check (2026-11-24 fix: none was drawn, the face showed OOT's stale save); OOT's rando infinite bullet bag isn't honoured in Termina; draw sfx re-encoded in MM |
 | Din's Fire | builds, untested | OOT cast action (Player_Action_808507F4) + Magic_Fire port (OOT sphere/texture/tint/vertex alpha), credit DMG_FIRE_ARROW | — | test owed; 0x879 sample degraded in MM |
 | Farore's Wind | builds, untested | Magic_Wind port (OOT curve skeleton), warp point set/return/dispel, point saved in MM save (`shipSaveInfo.comboFaroresWind`), OOT arrival | — | test owed; choice box is Termina's message box with OOT's 0x3B wording; 0x87A/0x87B differ |
 | Nayru's Love | builds, untested | Magic_Dark port (orb, diamond, invincibility -100, 1200 frames, song kills it, carries across scenes via MM's nayrusLoveTimer remnant) | — | test owed |
