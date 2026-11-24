@@ -102,8 +102,9 @@ const char* Combo_MaskBActionLabel(void);
 int Combo_BlastMaskCoolingDown(void);
 // Frames for a new Blast Mask cooldown: MM's 310, or 2S2H's "Blast Mask Cooldown" when it is set lower.
 int Combo_BlastMaskCooldown(void);
-// MM's Deku Stick / Deku Nut: ITEM_STICK / ITEM_NUT, whose OOT code runs it on MM's bag; ITEM_NONE for anything else.
-int Combo_PauseForeignOotAmmoItem(int item);
+// The OOT item whose own code runs an MM item on MM's bag (MM's Deku Stick, Deku Nut, Bomb, Bombchu when OOT has none:
+// ITEM_STICK, ITEM_NUT, ITEM_BOMB, ITEM_BOMBCHU); ITEM_NONE for anything else.
+int Combo_PauseForeignHostItem(int item);
 int Combo_PauseLiveMmItem(int item);                         // the MM item id a foreign id names right now, -1 = none
 int Combo_PauseForeignBottleAction(int item);                // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
 int Combo_PauseSetForeignBottle(int foreignId, int ootItem); // write the new content into MM's slot; 1 = done

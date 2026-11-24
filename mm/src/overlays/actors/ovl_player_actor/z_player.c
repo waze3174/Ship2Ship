@@ -81,8 +81,8 @@ void ComboOot_HammerHitSurface(struct PlayState* play, struct Player* this);
 void ComboOot_HammerShockwave(struct Player* this, struct PlayState* play);
 #define COMBO_MELEE_INFO(this, mwa) (*ComboOot_MeleeInfo(this, mwa))
 // ComboShip: MM's ammo checks and spends for the item in use, on OOT's bag for an OOT item MM's code runs (below).
-static s32 Combo_PlayerAmmo(ItemId item);
-static void Combo_PlayerChangeAmmo(ItemId item, s16 n);
+static s32 Combo_PlayerAmmo(s32 item);
+static void Combo_PlayerChangeAmmo(s32 item, s16 n);
 #define COMBO_PLAYER_AMMO(item) Combo_PlayerAmmo(item)
 #define COMBO_PLAYER_CHANGE_AMMO(item, n) Combo_PlayerChangeAmmo(item, n)
 #else
@@ -3576,7 +3576,7 @@ void Player_InitExplosiveIA(PlayState* play, Player* this) {
                 play->unk_1887D = -1;
             }
         } else {
-            Inventory_ChangeAmmo(explosiveInfo->itemId, -1);
+            COMBO_PLAYER_CHANGE_AMMO(explosiveInfo->itemId, -1);
         }
         func_8082F5FC(this, explosiveActor);
     } else if (explosiveType == PLAYER_EXPLOSIVE_POWDER_KEG) {
@@ -4787,32 +4787,53 @@ void func_80831944(PlayState* play, Player* this) {
 #ifdef COMBO_BUILD
 // An OOT item MM's own code runs (Combo_MmPauseForeignHostItem) checks and spends OOT's bag: the bag is that of the
 // button the item came from, the OOT item for an OOT button, -1 for MM's own. A stick stays in hand, so its bag is the
-// one it was taken out with.
+// one it was taken out with; a nut or an explosive is spent as it is taken out.
 static s32 sComboStickBag = -1;
 static s32 sComboNutBag = -1;
+static s32 sComboBombBag = -1;
+static s32 sComboBombchuBag = -1;
 
-static s32* Combo_AmmoBag(ItemId item) {
+static s32* Combo_AmmoBag(s32 item) {
     switch (item) {
         case ITEM_DEKU_STICK:
             return &sComboStickBag;
         case ITEM_DEKU_NUT:
             return &sComboNutBag;
+        case ITEM_BOMB:
+            return &sComboBombBag;
+        case ITEM_BOMBCHU:
+            return &sComboBombchuBag;
         default:
             return NULL;
     }
 }
 
-static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction itemAction) {
-    const s32 bag = Combo_MmPauseIsForeign(item) ? Combo_MmOotItemOf(item) : -1;
-
-    if ((itemAction == PLAYER_IA_DEKU_STICK) && (this->heldItemAction != PLAYER_IA_DEKU_STICK)) {
-        sComboStickBag = bag;
-    } else if (itemAction == PLAYER_IA_DEKU_NUT) {
-        sComboNutBag = bag;
+// The MM item whose ammo an item action's code checks and spends, ITEM_NONE for none.
+static ItemId Combo_AmmoItemOf(PlayerItemAction itemAction) {
+    switch (itemAction) {
+        case PLAYER_IA_DEKU_STICK:
+            return ITEM_DEKU_STICK;
+        case PLAYER_IA_DEKU_NUT:
+            return ITEM_DEKU_NUT;
+        case PLAYER_IA_BOMB:
+            return ITEM_BOMB;
+        case PLAYER_IA_BOMBCHU:
+            return ITEM_BOMBCHU;
+        default:
+            return ITEM_NONE;
     }
 }
 
-static s32 Combo_PlayerAmmo(ItemId item) {
+static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction itemAction) {
+    s32* bag = Combo_AmmoBag(Combo_AmmoItemOf(itemAction));
+
+    if ((bag == NULL) || ((itemAction == PLAYER_IA_DEKU_STICK) && (this->heldItemAction == itemAction))) {
+        return;
+    }
+    *bag = (Combo_MmPauseForeignHostItem(item) != ITEM_NONE) ? Combo_MmOotItemOf(item) : -1;
+}
+
+static s32 Combo_PlayerAmmo(s32 item) {
     const s32* bag = Combo_AmmoBag(item);
     s32 ammo;
 
@@ -4823,11 +4844,11 @@ static s32 Combo_PlayerAmmo(ItemId item) {
     return (ammo > 0) ? ammo : 0;
 }
 
-static void Combo_PlayerChangeAmmo(ItemId item, s16 n) {
+static void Combo_PlayerChangeAmmo(s32 item, s16 n) {
     const s32* bag = Combo_AmmoBag(item);
 
     if ((bag == NULL) || (*bag < 0)) {
-        Inventory_ChangeAmmo(item, n);
+        Inventory_ChangeAmmo((s16)item, n);
     } else {
         Combo_MmOotChangeAmmo(*bag, n);
     }
@@ -4910,7 +4931,7 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
                                           play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 5)) ||
                    ((play->unk_1887D == 0) && (play->unk_1887E == 0) &&
                     ((explosiveType = Player_ExplosiveFromIA(this, itemAction)) > PLAYER_EXPLOSIVE_NONE) &&
-                    ((AMMO(sPlayerExplosiveInfo[explosiveType].itemId) == 0) ||
+                    ((COMBO_PLAYER_AMMO(sPlayerExplosiveInfo[explosiveType].itemId) == 0) ||
                      GameInteractor_Should(VB_LIMIT_EXPLOSIVES,
                                            play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 3)))) {
             // Prevent some items from being used if player is out of ammo.

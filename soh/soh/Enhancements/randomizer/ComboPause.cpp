@@ -531,16 +531,21 @@ extern "C" int Combo_PauseLiveMmItem(int item) {
     return LiveMmItem(item);
 }
 
-// ---- MM's Deku Sticks and Deku Nuts in Hyrule --------------------------------------------------------------------
-// MM's stick and nut code is OOT's, line for line (mm z_player.c: the take-out ammo check in Player_UseItem, the break
-// in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64), so OOT's own runs them, on MM's
-// bag (z_player.c Combo_PlayerAmmo).
-extern "C" int Combo_PauseForeignOotAmmoItem(int item) {
+// ---- MM items OOT's own code runs in Hyrule ----------------------------------------------------------------------
+// MM's stick, nut and explosive code is OOT's, line for line (mm z_player.c: the take-out ammo checks in
+// Player_UseItem, the break in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64, the
+// bomb / bombchu take-out in Player_InitExplosiveIA), so OOT's own runs them, on MM's bag (z_player.c
+// Combo_PlayerAmmo), with OOT's models and actors.
+extern "C" int Combo_PauseForeignHostItem(int item) {
     switch (LiveMmItem(item)) {
         case MM_ITEM_DEKU_STICK:
             return ITEM_STICK;
         case MM_ITEM_DEKU_NUT:
             return ITEM_NUT;
+        case MM_ITEM_BOMB:
+            return ITEM_BOMB;
+        case MM_ITEM_BOMBCHU:
+            return ITEM_BOMBCHU;
         default:
             return ITEM_NONE;
     }
