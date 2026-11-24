@@ -515,7 +515,9 @@ extern "C" int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsig
 }
 
 // What a foreign item runs as when used in Termina: OOT's masks are MM's own masks (Keaton, Bunny Hood, Mask of
-// Truth; Goron and Zora transform). Everything else has no Termina version yet (ITEM_NONE).
+// Truth; Goron and Zora transform), and OOT's ocarina and lens (only on a button while MM has none of its own) are
+// MM's Ocarina of Time and Lens of Truth: they spend nothing of OOT's, so MM's own code runs them under MM's id, with
+// MM's model, songs and magic. Everything else has no Termina version yet (ITEM_NONE).
 extern "C" int Combo_MmPauseUseItem(int item) {
     const int oot = LiveOotItem(item);
     switch (oot) {
@@ -524,7 +526,34 @@ extern "C" int Combo_MmPauseUseItem(int item) {
         case OOT_ITEM_MASK_TRUTH:
         case OOT_ITEM_MASK_GORON:
         case OOT_ITEM_MASK_ZORA:
+        case OOT_ITEM_OCARINA_FAIRY:
+        case OOT_ITEM_OCARINA_TIME:
+        case OOT_ITEM_LENS:
             return TwinOf((uint8_t)oot);
+        default:
+            return ITEM_NONE;
+    }
+}
+
+// OOT's stick, nut, explosive, bow and bean code is MM's, line for line (OOT z_player.c: the take-out ammo checks in
+// Player_UseItem, the break in func_80842AC4, the burn-out in Player_UpdateBurningDekuStick, the nut throw in
+// Player_Action_8084E604, the bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_80834380, the
+// shot in func_808350A4, the planting in Player_ActionHandler_13), so MM's own runs them, on OOT's bag (z_player.c
+// Combo_PlayerAmmo), with MM's models and actors.
+extern "C" int Combo_MmPauseForeignHostItem(int item) {
+    switch (LiveOotItem(item)) {
+        case OOT_ITEM_STICK:
+            return ITEM_DEKU_STICK;
+        case OOT_ITEM_NUT:
+            return ITEM_DEKU_NUT;
+        case OOT_ITEM_BOMB:
+            return ITEM_BOMB;
+        case OOT_ITEM_BOMBCHU:
+            return ITEM_BOMBCHU;
+        case OOT_ITEM_BOW:
+            return ITEM_BOW;
+        case OOT_ITEM_BEAN:
+            return ITEM_MAGIC_BEANS;
         default:
             return ITEM_NONE;
     }
@@ -718,7 +747,8 @@ void RegisterComboPauseHost() {
     COND_VB_SHOULD(VB_ITEM_BE_RESTRICTED, true, {
         ItemId* itemId = va_arg(args, ItemId*);
         if (Combo_MmPauseIsForeign(*itemId)) {
-            const int twin = Combo_MmPauseUseItem(*itemId);
+            const int host = Combo_MmPauseForeignHostItem(*itemId);
+            const int twin = (host != ITEM_NONE) ? host : Combo_MmPauseUseItem(*itemId);
             // An OOT-only item (OOT items in Termina, ComboOotItems.cpp) is Link's only and follows OOT's age rule.
             *should = (twin != ITEM_NONE) ? !gPlayerFormItemRestrictions[GET_PLAYER_FORM][twin]
                                           : ((GET_PLAYER_FORM != PLAYER_FORM_HUMAN) || !Combo_MmOotItemAgeOk(*itemId));
@@ -743,9 +773,18 @@ void RegisterComboPauseHost() {
             return;
         }
         const int use = Combo_MmPauseUseItem(foreign);
+        const int host = Combo_MmPauseForeignHostItem(foreign);
         Input* input = CONTROLLER1(&gPlayState->state);
         const bool pressed = CHECK_BTN_ANY(input->press.button, BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT | BTN_DRIGHT |
                                                                     BTN_DLEFT | BTN_DDOWN | BTN_DUP);
+        // An OOT item MM's own code runs on OOT's bag (Combo_MmPauseForeignHostItem) stays itself, under MM's form rule
+        // for that item.
+        if ((host != ITEM_NONE) && gPlayerFormItemRestrictions[GET_PLAYER_FORM][host]) {
+            if (pressed)
+                Log("use foreign id 0x%02X (OOT item 0x%02X) -> MM's code for item 0x%02X on OOT's bag", foreign,
+                    LiveOotItem(foreign), host);
+            return;
+        }
         if (use != ITEM_NONE) {
             if (pressed)
                 Log("use foreign id 0x%02X (OOT item 0x%02X) -> MM item 0x%02X", foreign, LiveOotItem(foreign), use);

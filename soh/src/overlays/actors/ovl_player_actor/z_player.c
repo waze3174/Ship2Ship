@@ -2810,9 +2810,9 @@ s8 Player_ItemToItemAction(s32 item) {
     if ((Combo_PauseLiveMmItem(item) == COMBO_MM_ITEM_POWDER_KEG) && (Combo_OotForm() == COMBO_FORM_GORON)) {
         return PLAYER_IA_BOMB; // ComboShip: MM PLAYER_IA_POWDER_KEG is an explosive held overhead (OOT's bomb flow)
     }
-    if (Combo_PauseForeignOotAmmoItem(item) != ITEM_NONE) {
-        // ComboShip: MM's Deku Stick / Deku Nut runs OOT's stick / nut action (MM's is the same code)
-        return sItemActions[Combo_PauseForeignOotAmmoItem(item)];
+    if (Combo_PauseForeignHostItem(item) != ITEM_NONE) {
+        // ComboShip: an MM item runs OOT's action for the same item (MM's is the same code), on MM's bag
+        return sItemActions[Combo_PauseForeignHostItem(item)];
     }
     if (Combo_PauseIsForeign(item)) {
         return PLAYER_IA_NONE; // ComboShip: a foreign (MM) item is no OOT action; Player_UseItem dispatches it
@@ -2906,7 +2906,7 @@ void Player_InitExplosiveIA(PlayState* play, Player* this) {
                 play->bombchuBowlingStatus = -1;
             }
         } else {
-            Inventory_ChangeAmmo(explosiveInfo->itemId, -1);
+            COMBO_PLAYER_CHANGE_AMMO(explosiveInfo->itemId, -1);
         }
 
         this->interactRangeActor = spawnedActor;
@@ -3346,7 +3346,7 @@ s32 func_80834380(PlayState* play, Player* this, s32* itemPtr, s32* typePtr) {
     } else if (play->shootingGalleryStatus != 0) {
         return play->shootingGalleryStatus;
     } else {
-        return AMMO(*itemPtr);
+        return COMBO_PLAYER_AMMO(*itemPtr);
     }
 }
 
@@ -3718,7 +3718,7 @@ s32 func_808350A4(PlayState* play, Player* this) {
                 if (!(Combo_DekuBubbleActive() && (item == ITEM_SLINGSHOT))) // the Deku's bubbles cost no seeds
 #endif
             {
-                Inventory_ChangeAmmo(item, -1);
+                COMBO_PLAYER_CHANGE_AMMO(item, -1);
             }
 
             if (play->shootingGalleryStatus == 1) {
@@ -4278,47 +4278,85 @@ static s32 Combo_WaterAllowsUse(Player* this, s32 isZoraMask) {
     return isZoraMask;
 }
 
-// MM's Deku Sticks and Nuts run OOT's stick and nut code (Combo_PauseForeignOotAmmoItem). The bag that code checks and
-// spends is the one of the button the stick or nut came from: its foreign id for an MM button, ITEM_NONE for OOT's own.
-// A stick stays in hand, so its bag is the one it was taken out with.
+// MM items OOT's own code runs (Combo_PauseForeignHostItem) check and spend MM's bag: the bag is the one of the button
+// the item came from, its foreign id for an MM button, ITEM_NONE for OOT's own. A stick or a bow stays in hand, so its
+// bag is the one it was taken out with; a nut, an explosive or a bean is spent as it is taken out or planted.
 static s32 sComboStickBag = ITEM_NONE;
 static s32 sComboNutBag = ITEM_NONE;
+static s32 sComboBombBag = ITEM_NONE;
+static s32 sComboBombchuBag = ITEM_NONE;
+static s32 sComboArrowBag = ITEM_NONE;
+static s32 sComboBeanBag = ITEM_NONE;
 
-static void Combo_ChooseAmmoBag(Player* this, s32 item, s32 itemAction) {
-    const s32 bag = Combo_PauseIsForeign(item) ? item : ITEM_NONE;
-
-    if ((itemAction == PLAYER_IA_DEKU_STICK) && (this->heldItemAction != PLAYER_IA_DEKU_STICK)) {
-        sComboStickBag = bag;
-    } else if (itemAction == PLAYER_IA_DEKU_NUT) {
-        sComboNutBag = bag;
+static s32* Combo_AmmoBag(s32 ootItem) {
+    switch (ootItem) {
+        case ITEM_STICK:
+            return &sComboStickBag;
+        case ITEM_NUT:
+            return &sComboNutBag;
+        case ITEM_BOMB:
+            return &sComboBombBag;
+        case ITEM_BOMBCHU:
+            return &sComboBombchuBag;
+        case ITEM_BOW:
+            return &sComboArrowBag;
+        case ITEM_BEAN:
+            return &sComboBeanBag;
+        default:
+            return NULL;
     }
 }
 
-static s32 Combo_AmmoBag(s32 ootItem) {
-    if (ootItem == ITEM_STICK) {
-        return sComboStickBag;
+// The OOT item whose ammo an item action's code checks and spends, ITEM_NONE for none.
+static s32 Combo_AmmoItemOf(s32 itemAction) {
+    if ((itemAction >= PLAYER_IA_BOW) && (itemAction <= PLAYER_IA_BOW_0E)) {
+        return ITEM_BOW;
     }
-    return (ootItem == ITEM_NUT) ? sComboNutBag : ITEM_NONE;
+    switch (itemAction) {
+        case PLAYER_IA_DEKU_STICK:
+            return ITEM_STICK;
+        case PLAYER_IA_DEKU_NUT:
+            return ITEM_NUT;
+        case PLAYER_IA_BOMB:
+            return ITEM_BOMB;
+        case PLAYER_IA_BOMBCHU:
+            return ITEM_BOMBCHU;
+        case PLAYER_IA_MAGIC_BEAN:
+            return ITEM_BEAN;
+        default:
+            return ITEM_NONE;
+    }
+}
+
+static void Combo_ChooseAmmoBag(Player* this, s32 item, s32 itemAction) {
+    const s32 ammoItem = Combo_AmmoItemOf(itemAction);
+    s32* bag = Combo_AmmoBag(ammoItem);
+
+    if ((bag == NULL) ||
+        (((ammoItem == ITEM_STICK) || (ammoItem == ITEM_BOW)) && (this->heldItemAction == itemAction))) {
+        return;
+    }
+    *bag = (Combo_PauseForeignHostItem(item) != ITEM_NONE) ? item : ITEM_NONE;
 }
 
 static s32 Combo_PlayerAmmo(s32 ootItem) {
-    const s32 bag = Combo_AmmoBag(ootItem);
+    const s32* bag = Combo_AmmoBag(ootItem);
     s32 ammo;
 
-    if (bag == ITEM_NONE) {
+    if ((bag == NULL) || (*bag == ITEM_NONE)) {
         return AMMO(ootItem);
     }
-    ammo = Combo_PauseForeignAmmo(bag);
+    ammo = Combo_PauseForeignAmmo(*bag);
     return (ammo > 0) ? ammo : 0;
 }
 
 static void Combo_PlayerChangeAmmo(s32 ootItem, s32 n) {
-    const s32 bag = Combo_AmmoBag(ootItem);
+    const s32* bag = Combo_AmmoBag(ootItem);
 
-    if (bag == ITEM_NONE) {
+    if ((bag == NULL) || (*bag == ITEM_NONE)) {
         Inventory_ChangeAmmo((s16)ootItem, (s16)n);
     } else {
-        Combo_PauseForeignAmmoChange(bag, n);
+        Combo_PauseForeignAmmoChange(*bag, n);
     }
 }
 #endif
@@ -4362,9 +4400,15 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         gComboGfsItem = item;
         // MM's Great Fairy's Sword: a C-button sword as in MM (press to draw, press again to swing), child or adult.
         Combo_PauseLogUse(item, "Great Fairy's Sword -> wielded (MM model, OOT two-handed swing)");
-    } else if (Combo_PauseForeignOotAmmoItem(item) != ITEM_NONE) {
-        // MM's Deku Stick / Deku Nut: OOT's stick and nut code below runs it (MM's is the same code), on MM's bag.
-        Combo_PauseLogUse(item, "Deku Stick / Deku Nut -> OOT's stick / nut action on MM's bag");
+    } else if (Combo_PauseForeignHostItem(item) != ITEM_NONE) {
+        // An MM item OOT lacks (Deku Stick, Deku Nut, Bomb, Bombchu, Bow, Magic Beans, Ocarina, Lens, Hookshot): OOT's
+        // code below runs it as OOT's own (MM's is the same code), on MM's bag, under OOT's age rule for its own.
+        if (!Combo_PauseForeignAgeOk(item)) {
+            Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
+            Combo_PauseLogUse(item, "-> OOT's age rule for the same item refuses it -> error sfx");
+            return;
+        }
+        Combo_PauseLogUse(item, "-> OOT's action for the same item, on MM's bag");
     } else if (Combo_PauseIsForeign(item)) {
         const s32 comboForm = Combo_PauseForeignForm(item);
         if (((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) &&
@@ -4439,7 +4483,9 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         return;
     }
     // ComboShip: a form in Hyrule uses what it can in Termina (masks + ocarina) until its moves are ported.
-    if ((sComboKegItem == ITEM_NONE) && Combo_OotFormBlocksItem(item)) {
+    if ((sComboKegItem == ITEM_NONE) &&
+        Combo_OotFormBlocksItem((Combo_PauseForeignHostItem(item) != ITEM_NONE) ? Combo_PauseForeignHostItem(item)
+                                                                                : item)) {
         Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
         return;
     }
@@ -4467,15 +4513,16 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
 
             if ((play->bombchuBowlingStatus == 0) &&
                 (((itemAction == PLAYER_IA_DEKU_STICK) && (COMBO_PLAYER_AMMO(ITEM_STICK) == 0)) ||
-                 ((itemAction == PLAYER_IA_MAGIC_BEAN) && (AMMO(ITEM_BEAN) == 0)) ||
+                 ((itemAction == PLAYER_IA_MAGIC_BEAN) && (COMBO_PLAYER_AMMO(ITEM_BEAN) == 0)) ||
                  (temp = Player_ActionToExplosive(this, itemAction),
-                  ((temp >= 0) && (
+                  ((temp >= 0) &&
+                   (
 #ifdef COMBO_BUILD
-                                      ((sComboKegItem != ITEM_NONE) ? (Combo_PauseForeignAmmo(sComboKegItem) <= 0) :
+                       ((sComboKegItem != ITEM_NONE) ? (Combo_PauseForeignAmmo(sComboKegItem) <= 0) :
 #endif
-                                                                    (AMMO(sExplosiveInfos[temp].itemId) == 0)) ||
-                                      (play->actorCtx.actorLists[ACTORCAT_EXPLOSIVE].length >= 3 &&
-                                       !CVarGetInteger(CVAR_ENHANCEMENT("RemoveExplosiveLimit"), 0))))))) {
+                                                     (COMBO_PLAYER_AMMO(sExplosiveInfos[temp].itemId) == 0)) ||
+                       (play->actorCtx.actorLists[ACTORCAT_EXPLOSIVE].length >= 3 &&
+                        !CVarGetInteger(CVAR_ENHANCEMENT("RemoveExplosiveLimit"), 0))))))) {
                 // Prevent some items from being used if player is out of ammo.
                 // Also prevent explosives from being used if there are 3 or more active (outside of bombchu bowling)
                 Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
@@ -7381,7 +7428,7 @@ s32 Player_ActionHandler_13(Player* this, PlayState* play) {
                               (this->itemAction == PLAYER_IA_BOTTLE_BUG))) &&
                             ((this->exchangeItemId != EXCH_ITEM_BEAN) || (this->itemAction == PLAYER_IA_MAGIC_BEAN))) {
                             if (this->exchangeItemId == EXCH_ITEM_BEAN) {
-                                Inventory_ChangeAmmo(ITEM_BEAN, -1);
+                                COMBO_PLAYER_CHANGE_AMMO(ITEM_BEAN, -1);
                                 Player_SetupActionPreserveItemAction(play, this, Player_Action_8084279C, 0);
                                 this->stateFlags1 |= PLAYER_STATE1_IN_CUTSCENE;
                                 if (GameInteractor_Should(VB_PLAY_BEAN_PLANTING_CS, true)) {

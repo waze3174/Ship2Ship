@@ -80,8 +80,15 @@ struct AttackAnimInfo* ComboOot_MeleeInfo(struct Player* this, s32 mwa);
 void ComboOot_HammerHitSurface(struct PlayState* play, struct Player* this);
 void ComboOot_HammerShockwave(struct Player* this, struct PlayState* play);
 #define COMBO_MELEE_INFO(this, mwa) (*ComboOot_MeleeInfo(this, mwa))
+// ComboShip: MM's ammo checks and spends for the item in use, on OOT's bag for an OOT item MM's code runs (below).
+static s32 Combo_PlayerAmmo(s32 item);
+static void Combo_PlayerChangeAmmo(s32 item, s16 n);
+#define COMBO_PLAYER_AMMO(item) Combo_PlayerAmmo(item)
+#define COMBO_PLAYER_CHANGE_AMMO(item, n) Combo_PlayerChangeAmmo(item, n)
 #else
 #define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
+#define COMBO_PLAYER_AMMO(item) AMMO(item)
+#define COMBO_PLAYER_CHANGE_AMMO(item, n) Inventory_ChangeAmmo(item, n)
 #endif
 
 void Player_Init(Actor* thisx, PlayState* play);
@@ -3190,14 +3197,16 @@ s8 sItemItemActions[] = {
 
 PlayerItemAction Player_ItemToItemAction(Player* this, ItemId item) {
 #ifdef COMBO_BUILD
-    // ComboShip (merged pause menus): a foreign (OOT) item acts as its Termina twin (OOT's masks), or runs OOT's own
-    // item action ported into Termina (OOT items in Termina, z_player_combo_oot.inc), else as nothing.
+    // ComboShip (merged pause menus): a foreign (OOT) item acts as its Termina twin (OOT's masks), runs OOT's own
+    // item action ported into Termina (OOT items in Termina, z_player_combo_oot.inc), runs MM's own action for the same
+    // item on OOT's bag (OOT's Deku Sticks and Nuts, Combo_PlayerAmmo), else as nothing.
     if (Combo_MmPauseIsForeign(item)) {
         const s32 comboAction = Combo_MmOotItemAction(item);
+        const s32 hostItem = Combo_MmPauseForeignHostItem(item);
         if (comboAction != PLAYER_IA_NONE) {
             return comboAction;
         }
-        item = Combo_MmPauseUseItem(item);
+        item = (hostItem != ITEM_NONE) ? hostItem : Combo_MmPauseUseItem(item);
     }
 #endif
     if (item >= ITEM_FD) {
@@ -3567,7 +3576,7 @@ void Player_InitExplosiveIA(PlayState* play, Player* this) {
                 play->unk_1887D = -1;
             }
         } else {
-            Inventory_ChangeAmmo(explosiveInfo->itemId, -1);
+            COMBO_PLAYER_CHANGE_AMMO(explosiveInfo->itemId, -1);
         }
         func_8082F5FC(this, explosiveActor);
     } else if (explosiveType == PLAYER_EXPLOSIVE_POWDER_KEG) {
@@ -4227,7 +4236,7 @@ s32 func_808305BC(PlayState* play, Player* this, ItemId* item, ArrowType* typePa
         return play->bButtonAmmoPlusOne;
     }
 
-    return AMMO(*item);
+    return COMBO_PLAYER_AMMO(*item);
 }
 
 u16 D_8085CFB0[] = {
@@ -4556,7 +4565,7 @@ bool func_80831194(PlayState* play, Player* this) {
                                        Combo_MmOotAmmo(COMBO_OOT_ITEM_SLINGSHOT));
                     } else
 #endif
-                        Inventory_ChangeAmmo(item, -1);
+                        COMBO_PLAYER_CHANGE_AMMO(item, -1);
                 }
             }
 
@@ -4775,10 +4784,95 @@ void func_80831944(PlayState* play, Player* this) {
     // #endregion
 }
 
+#ifdef COMBO_BUILD
+// An OOT item MM's own code runs (Combo_MmPauseForeignHostItem) checks and spends OOT's bag: the bag is that of the
+// button the item came from, the OOT item for an OOT button, -1 for MM's own. A stick or a bow stays in hand, so its
+// bag is the one it was taken out with; a nut, an explosive or a bean is spent as it is taken out or planted.
+static s32 sComboStickBag = -1;
+static s32 sComboNutBag = -1;
+static s32 sComboBombBag = -1;
+static s32 sComboBombchuBag = -1;
+static s32 sComboArrowBag = -1;
+static s32 sComboBeanBag = -1;
+
+static s32* Combo_AmmoBag(s32 item) {
+    switch (item) {
+        case ITEM_DEKU_STICK:
+            return &sComboStickBag;
+        case ITEM_DEKU_NUT:
+            return &sComboNutBag;
+        case ITEM_BOMB:
+            return &sComboBombBag;
+        case ITEM_BOMBCHU:
+            return &sComboBombchuBag;
+        case ITEM_BOW:
+            return &sComboArrowBag;
+        case ITEM_MAGIC_BEANS:
+            return &sComboBeanBag;
+        default:
+            return NULL;
+    }
+}
+
+// The MM item whose ammo an item action's code checks and spends, ITEM_NONE for none.
+static ItemId Combo_AmmoItemOf(PlayerItemAction itemAction) {
+    if ((itemAction >= PLAYER_IA_BOW) && (itemAction <= PLAYER_IA_BOW_LIGHT)) {
+        return ITEM_BOW;
+    }
+    switch (itemAction) {
+        case PLAYER_IA_DEKU_STICK:
+            return ITEM_DEKU_STICK;
+        case PLAYER_IA_DEKU_NUT:
+            return ITEM_DEKU_NUT;
+        case PLAYER_IA_BOMB:
+            return ITEM_BOMB;
+        case PLAYER_IA_BOMBCHU:
+            return ITEM_BOMBCHU;
+        case PLAYER_IA_MAGIC_BEANS:
+            return ITEM_MAGIC_BEANS;
+        default:
+            return ITEM_NONE;
+    }
+}
+
+static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction itemAction) {
+    const ItemId ammoItem = Combo_AmmoItemOf(itemAction);
+    s32* bag = Combo_AmmoBag(ammoItem);
+
+    if ((bag == NULL) ||
+        (((ammoItem == ITEM_DEKU_STICK) || (ammoItem == ITEM_BOW)) && (this->heldItemAction == itemAction))) {
+        return;
+    }
+    *bag = (Combo_MmPauseForeignHostItem(item) != ITEM_NONE) ? Combo_MmOotItemOf(item) : -1;
+}
+
+static s32 Combo_PlayerAmmo(s32 item) {
+    const s32* bag = Combo_AmmoBag(item);
+    s32 ammo;
+
+    if ((bag == NULL) || (*bag < 0)) {
+        return AMMO(item);
+    }
+    ammo = Combo_MmOotAmmo(*bag);
+    return (ammo > 0) ? ammo : 0;
+}
+
+static void Combo_PlayerChangeAmmo(s32 item, s16 n) {
+    const s32* bag = Combo_AmmoBag(item);
+
+    if ((bag == NULL) || (*bag < 0)) {
+        Inventory_ChangeAmmo((s16)item, n);
+    } else {
+        Combo_MmOotChangeAmmo(*bag, n);
+    }
+}
+#endif
+
 void Player_UseItem(PlayState* play, Player* this, ItemId item) {
     PlayerItemAction itemAction = Player_ItemToItemAction(this, item);
 
 #ifdef COMBO_BUILD
+    Combo_ChooseAmmoBag(this, item, itemAction);
     // ComboShip: OOT's Skull / Spooky / Gerudo Mask: on or off at once (OOT Player_UseItem's mask branch), one mask at
     // a time (an MM mask comes off).
     if ((itemAction == PLAYER_IA_COMBO_OOT_MASK) && (this->transformation == PLAYER_FORM_HUMAN) &&
@@ -4838,19 +4932,19 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
                     return;
                 }
             }
-            if ((itemAction == PLAYER_IA_MAGIC_BEANS) && (AMMO(ITEM_MAGIC_BEANS) == 0)) {
+            if ((itemAction == PLAYER_IA_MAGIC_BEANS) && (COMBO_PLAYER_AMMO(ITEM_MAGIC_BEANS) == 0)) {
                 Audio_PlaySfx(NA_SE_SY_ERROR);
             } else {
                 this->itemAction = itemAction;
                 this->unk_AA5 = PLAYER_UNKAA5_5;
             }
-        } else if (((itemAction == PLAYER_IA_DEKU_STICK) && (AMMO(ITEM_DEKU_STICK) == 0)) ||
+        } else if (((itemAction == PLAYER_IA_DEKU_STICK) && (COMBO_PLAYER_AMMO(ITEM_DEKU_STICK) == 0)) ||
                    (((play->unk_1887D != 0) || (play->unk_1887E != 0)) &&
                     GameInteractor_Should(VB_LIMIT_EXPLOSIVES,
                                           play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 5)) ||
                    ((play->unk_1887D == 0) && (play->unk_1887E == 0) &&
                     ((explosiveType = Player_ExplosiveFromIA(this, itemAction)) > PLAYER_EXPLOSIVE_NONE) &&
-                    ((AMMO(sPlayerExplosiveInfo[explosiveType].itemId) == 0) ||
+                    ((COMBO_PLAYER_AMMO(sPlayerExplosiveInfo[explosiveType].itemId) == 0) ||
                      GameInteractor_Should(VB_LIMIT_EXPLOSIVES,
                                            play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 3)))) {
             // Prevent some items from being used if player is out of ammo.
@@ -4867,7 +4961,7 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
         } else if ((itemAction == PLAYER_IA_DEKU_NUT) &&
                    ((this->transformation != PLAYER_FORM_DEKU) || (this->heldItemButton != 0))) {
             // Handle Deku Nuts
-            if (AMMO(ITEM_DEKU_NUT) != 0) {
+            if (COMBO_PLAYER_AMMO(ITEM_DEKU_NUT) != 0) {
                 func_8083A658(play, this);
             } else {
                 Audio_PlaySfx(NA_SE_SY_ERROR);
@@ -8216,7 +8310,7 @@ s32 Player_ActionHandler_13(Player* this, PlayState* play) {
                                                  (this->exchangeItemAction > PLAYER_IA_NONE)))) {
                         this->stateFlags1 |= (PLAYER_STATE1_20000000 | PLAYER_STATE1_TALKING);
                         if (this->exchangeItemAction == PLAYER_IA_MAGIC_BEANS) {
-                            Inventory_ChangeAmmo(ITEM_MAGIC_BEANS, -1);
+                            COMBO_PLAYER_CHANGE_AMMO(ITEM_MAGIC_BEANS, -1);
                             Player_SetAction_PreserveItemAction(play, this, Player_Action_17, 0);
                             this->yaw = talkActor->yawTowardsPlayer + 0x8000;
                             this->actor.shape.rot.y = this->yaw;
@@ -10821,13 +10915,13 @@ void Player_RequestQuakeAndRumble(PlayState* play, Player* this, u16 sfxId) {
 }
 
 void func_8083FEF4(PlayState* play, Player* this) {
-    Inventory_ChangeAmmo(ITEM_DEKU_STICK, -1);
+    COMBO_PLAYER_CHANGE_AMMO(ITEM_DEKU_STICK, -1);
     Player_UseItem(play, this, ITEM_NONE);
 }
 
 bool func_8083FF30(PlayState* play, Player* this) {
     if ((this->heldItemAction == PLAYER_IA_DEKU_STICK) && (this->unk_B0C > 0.5f)) {
-        if (AMMO(ITEM_DEKU_STICK) != 0) {
+        if (COMBO_PLAYER_AMMO(ITEM_DEKU_STICK) != 0) {
             EffectSsStick_Spawn(play, &this->bodyPartsPos[PLAYER_BODYPART_RIGHT_HAND],
                                 BINANG_ADD(this->actor.shape.rot.y, 0x8000));
             this->unk_B0C = 0.5f;
@@ -12574,7 +12668,7 @@ void func_808442D8(PlayState* play, Player* this) {
 
     var_fa0 = 1.0f;
     if (DECR(this->unk_B28) == 0) {
-        Inventory_ChangeAmmo(ITEM_DEKU_STICK, -1);
+        COMBO_PLAYER_CHANGE_AMMO(ITEM_DEKU_STICK, -1);
         this->unk_B28 = 1;
         this->unk_B0C = 0.0f;
         var_fa0 = 0.0f;
@@ -18369,7 +18463,7 @@ void Player_Action_64(Player* this, PlayState* play) {
                         this->bodyPartsPos[PLAYER_BODYPART_RIGHT_HAND].y,
                         this->bodyPartsPos[PLAYER_BODYPART_RIGHT_HAND].z, 0xFA0, this->actor.shape.rot.y, 0,
                         ARROW_TYPE_DEKU_NUT) != NULL) {
-            Inventory_ChangeAmmo(ITEM_DEKU_NUT, -1);
+            COMBO_PLAYER_CHANGE_AMMO(ITEM_DEKU_NUT, -1);
             this->unk_D57 = 4;
         }
 

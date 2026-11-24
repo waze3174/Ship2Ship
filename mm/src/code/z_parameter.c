@@ -12,6 +12,12 @@
 #ifdef COMBO_BUILD
 #include "2s2h/Rando/MiscBehavior/ComboPause.h"  // ComboShip: merged pause menus (foreign items on buttons)
 #include "2s2h/Rando/MiscBehavior/ComboOotHud.h" // ComboShip: Termina HUD drawn as OOT's
+// ComboShip: an OOT item that runs as MM's own (OOT's ocarina and lens, Combo_MmPauseUseItem) follows that item's
+// button rules: the ocarina is a trade item, exempt from restrictions.all; the lens stays usable in first person and
+// keeps the Lens of Truth's magic drain going.
+#define COMBO_BTN_RULE_ITEM(item) (Combo_MmPauseIsForeign(item) ? Combo_MmPauseUseItem(item) : (item))
+#else
+#define COMBO_BTN_RULE_ITEM(item) (item)
 #endif
 #include "misc/story_static/story_static.h"
 
@@ -3251,7 +3257,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
     } else if (player->stateFlags1 & PLAYER_STATE1_200000) {
         // First person view
         for (i = EQUIP_SLOT_C_LEFT; i <= EQUIP_SLOT_C_RIGHT; i++) {
-            if (GET_CUR_FORM_BTN_ITEM(i) != ITEM_LENS_OF_TRUTH) {
+            if (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) != ITEM_LENS_OF_TRUTH) {
                 if (gSaveContext.buttonStatus[i] == BTN_ENABLED) {
                     restoreHudVisibility = true;
                 }
@@ -3265,7 +3271,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
         }
         // #region 2S2H [Dpad]
         for (s16 j = EQUIP_SLOT_D_RIGHT; j <= EQUIP_SLOT_D_UP; j++) {
-            if (DPAD_GET_CUR_FORM_BTN_ITEM(j) != ITEM_LENS_OF_TRUTH) {
+            if (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) != ITEM_LENS_OF_TRUTH) {
                 if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_ENABLED) {
                     restoreHudVisibility = true;
                 }
@@ -3448,7 +3454,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) ||
                             ((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) ||
-                            (GET_CUR_FORM_BTN_ITEM(i) == ITEM_OCARINA_OF_TIME)) {
+                            (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.buttonStatus[i] == BTN_ENABLED) {
                                 restoreHudVisibility = true;
                             }
@@ -3459,7 +3465,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) ||
                             ((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) ||
-                            (GET_CUR_FORM_BTN_ITEM(i) == ITEM_OCARINA_OF_TIME)) {
+                            (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.buttonStatus[i] == BTN_DISABLED) {
                                 restoreHudVisibility = true;
                             }
@@ -3506,7 +3512,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) &&
                             !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) &&
-                            (GET_CUR_FORM_BTN_ITEM(i) != ITEM_OCARINA_OF_TIME) &&
+                            (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) != ITEM_OCARINA_OF_TIME) &&
                             !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MASK_DEKU) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_MASK_GIANT)) &&
                             (GET_CUR_FORM_BTN_ITEM(i) != ITEM_PICTOGRAPH_BOX)) {
@@ -3521,7 +3527,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) &&
                             !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) &&
-                            (GET_CUR_FORM_BTN_ITEM(i) != ITEM_OCARINA_OF_TIME) &&
+                            (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) != ITEM_OCARINA_OF_TIME) &&
                             !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MASK_DEKU) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_MASK_GIANT)) &&
                             (GET_CUR_FORM_BTN_ITEM(i) != ITEM_PICTOGRAPH_BOX)) {
@@ -3595,7 +3601,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) ||
                             ((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) ||
-                            (DPAD_GET_CUR_FORM_BTN_ITEM(j) == ITEM_OCARINA_OF_TIME)) {
+                            (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_ENABLED) {
                                 restoreHudVisibility = true;
                             }
@@ -3606,7 +3612,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) ||
                             ((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) ||
-                            (DPAD_GET_CUR_FORM_BTN_ITEM(j) == ITEM_OCARINA_OF_TIME)) {
+                            (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_DISABLED) {
                                 restoreHudVisibility = true;
                             }
@@ -3653,7 +3659,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) &&
                             !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) &&
-                            (DPAD_GET_CUR_FORM_BTN_ITEM(j) != ITEM_OCARINA_OF_TIME) &&
+                            (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) != ITEM_OCARINA_OF_TIME) &&
                             !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MASK_DEKU) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_MASK_GIANT)) &&
                             (DPAD_GET_CUR_FORM_BTN_ITEM(j) != ITEM_PICTOGRAPH_BOX)) {
@@ -3668,7 +3674,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) &&
                             !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) &&
-                            (DPAD_GET_CUR_FORM_BTN_ITEM(j) != ITEM_OCARINA_OF_TIME) &&
+                            (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) != ITEM_OCARINA_OF_TIME) &&
                             !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MASK_DEKU) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_MASK_GIANT)) &&
                             (DPAD_GET_CUR_FORM_BTN_ITEM(j) != ITEM_PICTOGRAPH_BOX)) {
@@ -5589,15 +5595,15 @@ void Magic_Update(PlayState* play) {
                 if ((gSaveContext.save.saveInfo.playerData.magic == 0) ||
                     ((Player_GetEnvironmentalHazard(play) >= PLAYER_ENV_HAZARD_UNDERWATER_FLOOR) &&
                      (Player_GetEnvironmentalHazard(play) <= PLAYER_ENV_HAZARD_UNDERWATER_FREE)) ||
-                    ((BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_LEFT) != ITEM_LENS_OF_TRUTH) &&
-                     (BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_DOWN) != ITEM_LENS_OF_TRUTH) &&
-                     (BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_RIGHT) != ITEM_LENS_OF_TRUTH) &&
+                    ((COMBO_BTN_RULE_ITEM(BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_LEFT)) != ITEM_LENS_OF_TRUTH) &&
+                     (COMBO_BTN_RULE_ITEM(BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_DOWN)) != ITEM_LENS_OF_TRUTH) &&
+                     (COMBO_BTN_RULE_ITEM(BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_C_RIGHT)) != ITEM_LENS_OF_TRUTH) &&
                      //  #region 2S2H [Dpad]
                      (!CVarGetInteger("gEnhancements.Dpad.DpadEquips", 0) ||
-                      (DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_RIGHT) != ITEM_LENS_OF_TRUTH) &&
-                          (DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_LEFT) != ITEM_LENS_OF_TRUTH) &&
-                          (DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_DOWN) != ITEM_LENS_OF_TRUTH) &&
-                          (DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_UP) != ITEM_LENS_OF_TRUTH))) ||
+                      (COMBO_BTN_RULE_ITEM(DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_RIGHT)) != ITEM_LENS_OF_TRUTH) &&
+                          (COMBO_BTN_RULE_ITEM(DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_LEFT)) != ITEM_LENS_OF_TRUTH) &&
+                          (COMBO_BTN_RULE_ITEM(DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_DOWN)) != ITEM_LENS_OF_TRUTH) &&
+                          (COMBO_BTN_RULE_ITEM(DPAD_BUTTON_ITEM_EQUIP(0, EQUIP_SLOT_D_UP)) != ITEM_LENS_OF_TRUTH))) ||
                     //   #endregion
                     !play->actorCtx.lensActive) {
                     // Deactivate Lens of Truth and set magic state to idle

@@ -26,6 +26,7 @@
 #include "ComboForms.h"
 #include "ComboPause.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"
 
 extern "C" {
@@ -531,19 +532,53 @@ extern "C" int Combo_PauseLiveMmItem(int item) {
     return LiveMmItem(item);
 }
 
-// ---- MM's Deku Sticks and Deku Nuts in Hyrule --------------------------------------------------------------------
-// MM's stick and nut code is OOT's, line for line (mm z_player.c: the take-out ammo check in Player_UseItem, the break
-// in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64), so OOT's own runs them, on MM's
-// bag (z_player.c Combo_PlayerAmmo).
-extern "C" int Combo_PauseForeignOotAmmoItem(int item) {
+// ---- MM items OOT's own code runs in Hyrule ----------------------------------------------------------------------
+// MM's stick, nut, explosive, bow and bean code is OOT's, line for line (mm z_player.c: the take-out ammo checks in
+// Player_UseItem, the break in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64, the
+// bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_808305BC and the shot in func_80831194,
+// the planting in Player_ActionHandler_13), so OOT's own runs them, on MM's bag (z_player.c Combo_PlayerAmmo), with
+// OOT's models and actors. MM's ocarina and lens are OOT's too (no bag). MM's Hookshot flies as far as OOT's Longshot
+// (mm z_arms_hook.c ArmsHook_Wait: 26 frames at 20 units, OOT's Longshot's), so it runs as the Longshot.
+extern "C" int Combo_PauseForeignHostItem(int item) {
     switch (LiveMmItem(item)) {
         case MM_ITEM_DEKU_STICK:
             return ITEM_STICK;
         case MM_ITEM_DEKU_NUT:
             return ITEM_NUT;
+        case MM_ITEM_BOMB:
+            return ITEM_BOMB;
+        case MM_ITEM_BOMBCHU:
+            return ITEM_BOMBCHU;
+        case MM_ITEM_BOW:
+            return ITEM_BOW;
+        case MM_ITEM_MAGIC_BEANS:
+            return ITEM_BEAN;
+        case MM_ITEM_OCARINA_OF_TIME:
+            return ITEM_OCARINA_TIME;
+        case MM_ITEM_OCARINA_FAIRY:
+            return ITEM_OCARINA_FAIRY;
+        case MM_ITEM_LENS_OF_TRUTH:
+            return ITEM_LENS;
+        case MM_ITEM_HOOKSHOT:
+        case MM_ITEM_LONGSHOT:
+            return ITEM_LONGSHOT;
         default:
             return ITEM_NONE;
     }
+}
+
+// OOT's age rule for the OOT item that runs an MM item (z_kaleido_scope.h CHECK_AGE_REQ_ITEM, so Timeless Equipment and
+// Unified Inventory lift it as they do for OOT's own). OOT's pause greys its own items out by it; an MM item comes from
+// the Termina face, which knows no ages, so Player_UseItem refuses it there instead.
+extern "C" int Combo_PauseForeignAgeOk(int item) {
+    constexpr u8 kAgeReqNone = 9; // z_kaleido_scope.h AGE_REQ_NONE
+    const int oot = Combo_PauseForeignHostItem(item);
+    if (oot == ITEM_NONE) {
+        return 1;
+    }
+    const u8 req = gItemAgeReqs[oot];
+    return GameInteractor_Should(VB_ITEM_MEETS_AGE_REQ, (req == kAgeReqNone) || (req == gSaveContext.linkAge), oot) ? 1
+                                                                                                                    : 0;
 }
 
 // ---- MM bottles in Hyrule ---------------------------------------------------------------------------------------
