@@ -47,6 +47,9 @@ int Combo_MmPauseEquipEquipped(int row);  // the column (1-3) that row has equip
 const char* Combo_MmPauseOotIconTex(int ootItem);
 void Combo_MmPauseEquipUse(int gridSlot);
 int Combo_MmPauseIsForeignName(int item);
+// SoH's "Assignable Tunics and Boots": OOT's tunics and boots on Termina's C buttons and D-pad.
+int Combo_MmPauseGearOnButtons(void);       // the setting is on
+int Combo_MmPauseEquipGearId(int gridSlot); // that tunic / boots as a button's foreign id, 0xFF = can't go on one
 
 int Combo_MmPauseIsForeign(int item);
 unsigned char Combo_MmPauseSlotItem(int ootSlot); // foreign id of a Hyrule-tab slot, ITEM_NONE when empty
@@ -56,7 +59,7 @@ const char* Combo_MmPauseNameTex(int item);       // OOT name plate (inside an "
 int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
 int Combo_MmPauseUseItem(int item);      // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
 int Combo_MmPauseForeignSlot(int item);  // OOT slot behind a foreign id, -1 = not foreign
-int Combo_MmPauseOotItemAt(int ootSlot); // OOT's item in that OOT slot (live), 0xFF = empty
+int Combo_MmPauseOotItemAt(int ootSlot); // OOT's item in that OOT slot (live, 24-29 = gear), 0xFF = empty
 
 #ifdef __cplusplus
 }

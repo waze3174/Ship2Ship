@@ -18,6 +18,7 @@
 #include "ComboExport.h"
 #include "ComboPauseABI.h"
 #include "ComboPause.h"
+#include "soh/cvar_prefixes.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 extern "C" {
@@ -118,6 +119,17 @@ bool DpadOn() {
     return CVarGetInteger("gEnhancements.DpadEquips", 0) != 0;
 }
 
+// A tunic or boots button from Termina (OOT slots SLOT_TUNIC_KOKIRI..SLOT_BOOTS_HOVER, as OOT stores them): kept with
+// SoH's "Assignable Tunics and Boots" on, while OOT owns the piece.
+bool GearButtonOk(int slot) {
+    if ((slot < SLOT_TUNIC_KOKIRI) || (slot > SLOT_BOOTS_HOVER) ||
+        !CVarGetInteger(CVAR_ENHANCEMENT("AssignableTunicsAndBoots"), 0)) {
+        return false;
+    }
+    const int k = slot - SLOT_TUNIC_KOKIRI;
+    return CHECK_OWNED_EQUIP(EQUIP_TYPE_TUNIC + k / 3, k % 3) != 0;
+}
+
 // Where a button's item lives: {"g":"oot"|"mm","s":slot}, or null for an empty button / no inventory slot.
 nlohmann::json Origin(int b) {
     const u8 item = gSaveContext.equips.buttonItems[b];
@@ -125,7 +137,7 @@ nlohmann::json Origin(int b) {
     if (mmSlot >= 0)
         return nlohmann::json{ { "g", "mm" }, { "s", mmSlot } };
     const u8 slot = gSaveContext.equips.cButtonSlots[b - 1];
-    if (item == ITEM_NONE || slot >= COMBO_PAUSE_OOT_SLOTS)
+    if (item == ITEM_NONE || slot >= COMBO_PAUSE_OOT_SLOTS + COMBO_PAUSE_OOT_GEAR_SLOTS)
         return nullptr;
     return nlohmann::json{ { "g", "oot" }, { "s", slot } };
 }
@@ -159,6 +171,11 @@ bool ResolveButton(const nlohmann::json& key, const nlohmann::json* origin, u8* 
         const int s = origin->value("s", -1);
         if (g == "oot" && s >= 0 && s < COMBO_PAUSE_OOT_SLOTS && gSaveContext.inventory.items[s] != ITEM_NONE) {
             *itemOut = gSaveContext.inventory.items[s];
+            *slotOut = (u8)s;
+            return true;
+        }
+        if (g == "oot" && GearButtonOk(s)) {
+            *itemOut = (u8)(ITEM_TUNIC_KOKIRI + (s - SLOT_TUNIC_KOKIRI));
             *slotOut = (u8)s;
             return true;
         }

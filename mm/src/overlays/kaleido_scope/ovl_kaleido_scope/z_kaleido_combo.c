@@ -89,10 +89,35 @@ static u8 Combo_ItemOnEquipTarget(u16 target) {
     return DPAD_BUTTON_ITEM_EQUIP(0, sDpad[target - PAUSE_EQUIP_D_RIGHT]);
 }
 
+// MM: the mask in use (a transformation, or the mask Link wears) can't be swapped off its button.
+static s32 Combo_EquipTargetLocked(PlayState* play, u16 target) {
+    u8 onTarget = Combo_ItemOnEquipTarget(target);
+    return ((GET_PLAYER_FORM != PLAYER_FORM_HUMAN) && (sPlayerFormItems[GET_PLAYER_FORM] == onTarget)) ||
+           ((Player_GetCurMaskItemId(play) != ITEM_NONE) && (Player_GetCurMaskItemId(play) == onTarget));
+}
+
+// MM's equip start (KaleidoScope_UpdateItemCursor): the icon at (fromX, fromY) on the page flies to `target`, and
+// KaleidoScope_UpdateItemEquip puts `item` / `slot` on it.
+static void Combo_StartEquipAnim(PlayState* play, u16 target, u8 item, u8 slot, s16 fromX, s16 fromY) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+
+    pauseCtx->equipTargetCBtn = target;
+    pauseCtx->equipTargetItem = item;
+    pauseCtx->equipTargetSlot = slot;
+    pauseCtx->mainState = PAUSE_MAIN_STATE_EQUIP_ITEM;
+    pauseCtx->equipAnimX = fromX * 10;
+    pauseCtx->equipAnimY = fromY * 10;
+    pauseCtx->equipAnimAlpha = 255;
+    sEquipMagicArrowSlotHoldTimer = 0;
+    sEquipState = EQUIP_STATE_MOVE_TO_C_BTN;
+    sEquipAnimTimer = 10;
+}
+
 // ---- the Hyrule equipment face: OOT's equipment page (KaleidoScope_DrawEquipment's grid), drawn and driven as OOT
 // does it: row = sword / shield / tunic / boots, column 0 = that row's upgrade, columns 1-3 = the pieces; the cursor
-// rests only on what Link owns; the equipped piece of each row is outlined. Equipping an OOT piece has no Termina
-// version yet (MM's error sound).
+// rests only on what Link owns; the equipped piece of each row is outlined. A puts a tunic or boots on (OOT's save);
+// with SoH's "Assignable Tunics and Boots" a C button or D-pad direction takes it instead. Swords and shields are MM's
+// own in Termina (MM's error sound).
 static const s16 sComboEquipColX[] = { -114, 12, 44, 76 }; // OOT's D_8082B12C
 
 static s32 Combo_EquipOwned(s32 slot) {
@@ -180,9 +205,22 @@ static void KaleidoScope_ComboUpdateEquipCursor(PlayState* play) {
         pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_YELLOW;
         pauseCtx->cursorItem[PAUSE_ITEM] =
             Combo_EquipOwned(y * 4 + x) ? (COMBO_MM_PAUSE_EQUIP_CURSOR_BASE + y * 4 + x) : PAUSE_ITEM_NONE;
-        if ((pauseCtx->cursorItem[PAUSE_ITEM] != PAUSE_ITEM_NONE) &&
-            CHECK_BTN_ANY(input->press.button, BTN_A | BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT)) {
-            Combo_MmPauseEquipUse(y * 4 + x);
+        if (pauseCtx->cursorItem[PAUSE_ITEM] != PAUSE_ITEM_NONE) {
+            u16 target = Combo_EquipTargetForPress(play);
+            if ((target != 0xFFFF) && Combo_MmPauseGearOnButtons() && (y >= 2) && (x >= 1)) {
+                // SoH's "Assignable Tunics and Boots" (z_kaleido_equipment.c): a C button or D-pad direction takes
+                // the tunic or boots, when Link owns it and his age may wear it.
+                s32 gear = Combo_MmPauseEquipGearId(y * 4 + x);
+                if ((gear == ITEM_NONE) || Combo_EquipTargetLocked(play, target)) {
+                    Audio_PlaySfx(NA_SE_SY_ERROR);
+                } else {
+                    Combo_StartEquipAnim(play, target, gear, gear, sComboEquipColX[x] + 2,
+                                         58 - y * 32 + pauseCtx->offsetY - 2);
+                    Audio_PlaySfx(NA_SE_SY_DECIDE);
+                }
+            } else if (CHECK_BTN_ANY(input->press.button, BTN_A | BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT)) {
+                Combo_MmPauseEquipUse(y * 4 + x);
+            }
         }
     } else {
         pauseCtx->cursorItem[PAUSE_ITEM] = PAUSE_ITEM_NONE;
@@ -456,26 +494,15 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                 u8 equipItem;
                 u8 equipSlot;
                 u16 vtxIndex = pauseCtx->cursorSlot[PAUSE_ITEM] * 4;
-                u8 onTarget = Combo_ItemOnEquipTarget(target);
 
-                // MM: the mask in use (a transformation, or the mask Link wears) can't be swapped off its button.
-                if (((GET_PLAYER_FORM != PLAYER_FORM_HUMAN) && (sPlayerFormItems[GET_PLAYER_FORM] == onTarget)) ||
-                    ((Player_GetCurMaskItemId(play) != ITEM_NONE) && (Player_GetCurMaskItemId(play) == onTarget))) {
+                if (Combo_EquipTargetLocked(play, target)) {
                     Audio_PlaySfx(NA_SE_SY_ERROR);
                     return;
                 }
                 // A shared item MM holds goes on as MM's own copy; an item MM lacks goes on as the foreign id.
                 Combo_MmPauseResolveEquip(cursorItem, &equipItem, &equipSlot);
-                pauseCtx->equipTargetCBtn = target;
-                pauseCtx->equipTargetItem = equipItem;
-                pauseCtx->equipTargetSlot = equipSlot;
-                pauseCtx->mainState = PAUSE_MAIN_STATE_EQUIP_ITEM;
-                pauseCtx->equipAnimX = pauseCtx->itemVtx[vtxIndex].v.ob[0] * 10;
-                pauseCtx->equipAnimY = pauseCtx->itemVtx[vtxIndex].v.ob[1] * 10;
-                pauseCtx->equipAnimAlpha = 255;
-                sEquipMagicArrowSlotHoldTimer = 0;
-                sEquipState = EQUIP_STATE_MOVE_TO_C_BTN;
-                sEquipAnimTimer = 10;
+                Combo_StartEquipAnim(play, target, equipItem, equipSlot, pauseCtx->itemVtx[vtxIndex].v.ob[0],
+                                     pauseCtx->itemVtx[vtxIndex].v.ob[1]);
                 if ((equipItem == ITEM_ARROW_FIRE) || (equipItem == ITEM_ARROW_ICE) ||
                     (equipItem == ITEM_ARROW_LIGHT)) {
                     u8 magicArrowIndex = (equipItem == ITEM_ARROW_FIRE) ? 0 : ((equipItem == ITEM_ARROW_ICE) ? 1 : 2);

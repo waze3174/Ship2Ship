@@ -451,8 +451,9 @@ pieces per row, equipped outline; no Link preview).
 
 **Foreign items on buttons.** Encoded in the host's own button-item byte (no save-format change), naming the owning
 game's inventory slot: OOT host 0x9E + MM slot, skipping 0xBF–0xC1 (→ 0x9E–0xD0); MM host 0xD0 + OOT slot
-(→ 0xD0–0xE7). The host's slot byte for a foreign button is the foreign id itself (unique, never a real slot), so
-both games' "same slot on another button → swap" rules work unchanged. A shared item the host holds equips as the
+(→ 0xD0–0xE7), and with SoH's "Assignable Tunics and Boots" on, OOT's tunics and boots as the button slots OOT
+stores for them (`SLOT_TUNIC_KOKIRI` 24 – `SLOT_BOOTS_HOVER` 29 → 0xE8–0xED). The host's slot byte for a foreign
+button is the foreign id itself (unique, never a real slot), so both games' "same slot on another button → swap" rules work unchanged. A shared item the host holds equips as the
 host's own copy. HUD / equip-animation icons come from the owning game's RM. A foreign ammo item's button digits are
 the owning game's count as a use spends it (MM host: `VB_DRAW_HUD_AMMO_COUNT` in `ComboPause.cpp`; OOT host: a fenced
 `Interface_ComboDrawForeignAmmoCount` in `z_parameter.c`), green at the owning game's full bag, grey at 0; with shared
@@ -592,7 +593,8 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 | Skull / Spooky / Gerudo Mask | builds, untested | worn instantly (OOT), OOT model on head limb, one mask at a time | — | test owed |
 | Bow, arrows, bombs, chus, sticks, nuts, lens, beans, ocarina, bottles | twin rule kept (MM's own copy when MM holds it) | — | — | decision: shared items; OOT-identical behaviour not separately verified |
 | Ruto's Letter, OOT trade items | no (MM error sound) | — | — | OWED: hold up / show as OOT does |
-| Hyrule Equipment face (swords, shields, tunics, boots, strength, scale) | no | — | — | OWED |
+| Hyrule Equipment face: tunics and boots | A puts them on (OOT's save); with SoH's "Assignable Tunics and Boots" a C button / D-pad direction takes them, and a press puts the piece on or back to Kokiri (SoH's `UseTunicBoots`) | `ComboPause.cpp` `UseGearOnPress`, `SOH_ComboTermina_ToggleEquipValue`; Goron Tunic heat and Zora Tunic water (`Interface_Update` hazard), Iron / Hover Boots (`Player_SetEquipmentData`) read OOT's save | — | Deck check owed (2026-11-24); human form only; MM's scene restrictions still grey the button (SoH keeps equipment enabled); no heavy-boots sound in MM |
+| Hyrule Equipment face: swords, shields, strength, scale | no (MM's own in Termina) | — | — | OOT shields on a button don't carry to Termina |
 
 ## Named presets and the ComboShip settings import (combo-owned)
 

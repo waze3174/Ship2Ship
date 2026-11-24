@@ -275,10 +275,8 @@ uint8_t NativeSlotFor(uint8_t ootItem, uint8_t* mmItemOut) {
 }
 
 int LiveOotItem(int foreignId) {
-    const int s = ComboPause_MmDecode(foreignId);
-    if (s < 0 || !Snapshot())
-        return -1;
-    return sOotItems[s] == 0xFF ? -1 : sOotItems[s];
+    const int item = Combo_MmPauseOotItemAt(ComboPause_MmDecode(foreignId));
+    return (item == ITEM_NONE) ? -1 : item;
 }
 
 // The hexagonal prism (MM's pause cube with six faces): 0 Termina items, 1 Hyrule items, 2 Map, 3 Quest, 4 Masks,
@@ -309,6 +307,19 @@ bool EquipSnapshot() {
     }
     return true;
 }
+
+// OOT's tunics and boots on Termina's buttons (ComboPauseABI.h: OOT slots 24-29). Gear slot k (0-5) is the equipment
+// face's row 2 + k / 3 (= OOT's EQUIP_TYPE_TUNIC / EQUIP_TYPE_BOOTS), column 1 + k % 3 (= the piece's equip value).
+constexpr const char* kAssignableGearCVar = "gEnhancements.AssignableTunicsAndBoots"; // SoH's own setting
+constexpr int kEquipRowTunic = 2;
+constexpr int kEquipRowBoots = 3;
+constexpr int kPiecesPerRow = 3;
+
+int GearGridSlot(int ootSlot) {
+    const int k = ootSlot - COMBO_PAUSE_OOT_SLOTS;
+    return (kEquipRowTunic + k / kPiecesPerRow) * 4 + 1 + (k % kPiecesPerRow);
+}
+
 bool sErrorPlayed = false;
 
 void Log(const char* fmt, ...) {
@@ -434,6 +445,24 @@ extern "C" void Combo_MmPauseEquipUse(int gridSlot) {
         Combo_MmPauseEquipItem(gridSlot));
 }
 
+// SoH's "Assignable Tunics and Boots" (soh/soh/Enhancements/Items/AssignableTunicsAndBoots.cpp), read from the shared
+// CVar store: OOT's tunics and boots go on Termina's C buttons and D-pad too.
+extern "C" int Combo_MmPauseGearOnButtons(void) {
+    return (CVarGetInteger(kAssignableGearCVar, 0) != 0) && !Combo_GamesSolo();
+}
+
+// The equipment face's tunic or boots as a button's foreign id when it may go on a button: OOT owns it and Link's age
+// may wear it (SoH's z_kaleido_equipment.c: CHECK_AGE_REQ_EQUIP, CHECK_OWNED_EQUIP). ITEM_NONE otherwise.
+extern "C" int Combo_MmPauseEquipGearId(int gridSlot) {
+    const int row = gridSlot / 4;
+    const int col = gridSlot % 4;
+    if (!Combo_MmPauseGearOnButtons() || (row < kEquipRowTunic) || (row > kEquipRowBoots) || (col < 1)) {
+        return ITEM_NONE;
+    }
+    const int id = ComboPause_MmEncode(COMBO_PAUSE_OOT_SLOTS + (row - kEquipRowTunic) * kPiecesPerRow + (col - 1));
+    return ((LiveOotItem(id) >= 0) && Combo_MmOotItemAgeOk(id)) ? id : ITEM_NONE;
+}
+
 extern "C" const char* const* Combo_MmPausePageTexs(void) {
     if (CurTab() == COMBO_MM_PAUSE_TAB_TERMINA || !OotResolved())
         return nullptr;
@@ -505,8 +534,12 @@ extern "C" int Combo_MmPauseUseItem(int item) {
 extern "C" int Combo_MmPauseForeignSlot(int item) {
     return ComboPause_MmDecode(item);
 }
-// OOT's item in an OOT slot (live), ITEM_NONE when empty / no OOT save resident.
+// OOT's item in an OOT slot (live), ITEM_NONE when empty / no OOT save resident. Slots 24-29 are OOT's tunics and
+// boots: the piece while OOT owns it.
 extern "C" int Combo_MmPauseOotItemAt(int ootSlot) {
+    if ((ootSlot >= COMBO_PAUSE_OOT_SLOTS) && (ootSlot < COMBO_PAUSE_OOT_SLOTS + COMBO_PAUSE_OOT_GEAR_SLOTS)) {
+        return Combo_MmPauseEquipItem(GearGridSlot(ootSlot));
+    }
     if (ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot())
         return ITEM_NONE;
     return sOotItems[ootSlot];
@@ -557,6 +590,84 @@ static void ComboPause_DrawForeignAmmo(s16 button, s16 alpha, bool isDpad, int a
 }
 
 namespace {
+
+// ---- OOT's tunics and boots on Termina's buttons (SoH's "Assignable Tunics and Boots") ------------------------------
+
+// The item on the C button / D-pad direction pressed this frame, as MM's Player reads it (a disabled button holds
+// nothing); ITEM_NONE when none was pressed.
+u8 PressedButtonItem(const Input* input) {
+    static const u16 kCButtons[] = { BTN_CLEFT, BTN_CDOWN, BTN_CRIGHT };             // EQUIP_SLOT_C_LEFT..C_RIGHT
+    static const u16 kDpadButtons[] = { BTN_DRIGHT, BTN_DLEFT, BTN_DDOWN, BTN_DUP }; // EQUIP_SLOT_D_RIGHT..D_UP
+    for (s32 i = 0; i < ARRAY_COUNT(kCButtons); i++) {
+        if (CHECK_BTN_ALL(input->press.button, kCButtons[i])) {
+            return C_BTN_ITEM(EQUIP_SLOT_C_LEFT + i);
+        }
+    }
+    if (CVarGetInteger("gEnhancements.Dpad.DpadEquips", 0)) {
+        for (s32 i = 0; i < ARRAY_COUNT(kDpadButtons); i++) {
+            if (CHECK_BTN_ALL(input->press.button, kDpadButtons[i])) {
+                return DPAD_BTN_ITEM(EQUIP_SLOT_D_RIGHT + i);
+            }
+        }
+    }
+    return ITEM_NONE;
+}
+
+// SoH's UseTunicBoots on Termina's buttons: the tunic or boots on a pressed button goes on, or back to Kokiri when it
+// is already on. OOT's save owns the gear; MM's Player takes the change on its next update (the boots in
+// Player_UpdateCommon, the tunic in Interface_Update's hazard check, which read OOT's save).
+void UseGearOnPress(Player* player) {
+    PlayState* play = gPlayState;
+    // SoH's rule: no gear change in a cutscene, a text box, an item get, while dying or playing the ocarina.
+    if (Player_InCsMode(play) ||
+        (player->stateFlags1 &
+         (PLAYER_STATE1_20 | PLAYER_STATE1_TALKING | PLAYER_STATE1_DEAD | PLAYER_STATE1_10000000)) ||
+        (player->stateFlags2 & PLAYER_STATE2_USING_OCARINA)) {
+        return;
+    }
+    const int gear = PressedButtonItem(CONTROLLER1(&play->state));
+    if (!ComboPause_MmIsGear(gear)) {
+        return;
+    }
+    typedef int (*FnToggleEquip)(int, int, int);
+    static FnToggleEquip sToggle = (FnToggleEquip)Combo_ResolveSym("soh", "SOH_ComboTermina_ToggleEquipValue");
+    const int k = ComboPause_MmDecode(gear) - COMBO_PAUSE_OOT_SLOTS;
+    const int equipType = kEquipRowTunic + k / kPiecesPerRow; // the equipment face's row is OOT's equip type
+    const int value = 1 + k % kPiecesPerRow;
+    const int worn = ((GET_PLAYER_FORM == PLAYER_FORM_HUMAN) && (sToggle != nullptr))
+                         ? sToggle(equipType, value, Combo_MmOotLinkAdult())
+                         : 0;
+    if (worn == 0) {
+        Audio_PlaySfx(NA_SE_SY_ERROR);
+        return;
+    }
+    // SoH plays the Iron Boots' heavy step for them; MM has no such sound, so every piece gets SoH's other one.
+    Player_PlaySfx(player, NA_SE_PL_CHANGE_ARMS);
+    Log("%s: OOT value %d now worn (button press in Termina)", (equipType == kEquipRowTunic) ? "tunic" : "boots", worn);
+}
+
+// SoH's ClearAssignedTunicsBoots: with the setting off, no button keeps a tunic or boots.
+void ClearGearButtons() {
+    for (s32 b = EQUIP_SLOT_C_LEFT; b <= EQUIP_SLOT_C_RIGHT; b++) {
+        if (ComboPause_MmIsGear(BUTTON_ITEM_EQUIP(0, b))) {
+            BUTTON_ITEM_EQUIP(0, b) = ITEM_NONE;
+            C_SLOT_EQUIP(0, b) = SLOT_NONE;
+            Interface_LoadItemIconImpl(gPlayState, b);
+        }
+    }
+    for (s32 d = EQUIP_SLOT_D_RIGHT; d <= EQUIP_SLOT_D_UP; d++) {
+        if (ComboPause_MmIsGear(DPAD_BUTTON_ITEM_EQUIP(0, d))) {
+            DPAD_BUTTON_ITEM_EQUIP(0, d) = ITEM_NONE;
+            DPAD_SLOT_EQUIP(0, d) = SLOT_NONE;
+            Interface_Dpad_LoadItemIconImpl(gPlayState, d);
+        }
+    }
+}
+
+bool GearUsableNow(int item) {
+    return ComboPause_MmIsGear(item) && Combo_MmPauseGearOnButtons() && (GET_PLAYER_FORM == PLAYER_FORM_HUMAN) &&
+           Combo_MmOotItemAgeOk(item);
+}
 
 void RegisterComboPauseHost() {
     // HUD: a foreign item's ammo count (OOT's Slingshot shows the seeds a shot spends).
@@ -620,6 +731,11 @@ void RegisterComboPauseHost() {
         if (!Combo_MmPauseIsForeign(*item))
             return;
         const int foreign = *item;
+        // OOT's tunics and boots are never held or used as an item: a press puts them on (UseGearOnPress).
+        if (ComboPause_MmIsGear(foreign)) {
+            *item = ITEM_NONE;
+            return;
+        }
         // OOT items in Termina: an OOT item with a Termina port stays itself (Player_ItemToItemAction runs OOT's
         // item action for it), when Link is human and OOT's age rule allows it.
         if ((Combo_MmOotItemAction(foreign) != PLAYER_IA_NONE) && (GET_PLAYER_FORM == PLAYER_FORM_HUMAN) &&
@@ -651,6 +767,23 @@ void RegisterComboPauseHost() {
         if (!CHECK_BTN_ANY(input->cur.button,
                            BTN_CLEFT | BTN_CDOWN | BTN_CRIGHT | BTN_DRIGHT | BTN_DLEFT | BTN_DDOWN | BTN_DUP)) {
             sErrorPlayed = false;
+        }
+    });
+    // SoH keeps a tunic or boots button usable in the water ("Equipment on c-buttons is always enabled",
+    // z_parameter.c), so the Iron Boots and the Zora Tunic go on while swimming.
+    COND_VB_SHOULD(VB_DISABLE_ITEM_UNDERWATER, true, {
+        if (GearUsableNow(va_arg(args, s32))) {
+            *should = false;
+        }
+    });
+    COND_ID_HOOK(OnActorUpdate, ACTOR_PLAYER, true, [](Actor* actor) {
+        if ((gPlayState == nullptr) || (actor != &GET_PLAYER(gPlayState)->actor)) {
+            return;
+        }
+        if (Combo_MmPauseGearOnButtons()) {
+            UseGearOnPress((Player*)actor);
+        } else {
+            ClearGearButtons();
         }
     });
 }

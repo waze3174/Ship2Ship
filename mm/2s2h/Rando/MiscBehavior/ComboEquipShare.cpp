@@ -140,7 +140,11 @@ bool ResolveButton(const nlohmann::json& key, const nlohmann::json* origin, u8* 
         }
         if (key.is_string() && Resolve(key.get<std::string>(), itemOut, slotOut))
             return true; // shared item: MM's own copy
-        if (g == "oot" && s >= 0 && s < COMBO_PAUSE_OOT_SLOTS && Combo_MmPauseOotItemAt(s) != ITEM_NONE) {
+        // OOT slots 24-29 are its tunics and boots, on a button only with SoH's "Assignable Tunics and Boots".
+        const bool ootSlotOk =
+            (s >= 0) && ((s < COMBO_PAUSE_OOT_SLOTS) ||
+                         ((s < COMBO_PAUSE_OOT_SLOTS + COMBO_PAUSE_OOT_GEAR_SLOTS) && Combo_MmPauseGearOnButtons()));
+        if (g == "oot" && ootSlotOk && Combo_MmPauseOotItemAt(s) != ITEM_NONE) {
             const u8 foreign = (u8)ComboPause_MmEncode(s);
             *itemOut = foreign;
             *slotOut = foreign; // a foreign button's slot byte is its foreign id (ComboPause.cpp)

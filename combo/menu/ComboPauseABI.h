@@ -19,6 +19,8 @@
  *   MM host  (2Ship ItemId: 0x00-0xB4 real items, 0xB5-0xB7 kaleido magic-arrow anim ids, 0xB8-0xCC GI-only
  *             specials, 0xF0-0xF2 mask actions, 0xFC-0xFF last-used/none):
  *             OOT slot s (0..23) -> 0xD0 + s                     => 0xD0..0xE7.
+ *             OOT's tunics and boots (SoH's "Assignable Tunics and Boots") have no item slot, so they go on as the
+ *             button slots OOT itself stores for them, SLOT_TUNIC_KOKIRI 24 .. SLOT_BOOTS_HOVER 29 => 0xE8..0xED.
  * The host's cButtonSlots / slot byte for a foreign button is SLOT_NONE: the foreign id alone names the slot. */
 #ifndef COMBO_PAUSE_ABI_H
 #define COMBO_PAUSE_ABI_H
@@ -34,10 +36,11 @@ extern "C" {
 #define COMBO_PAUSE_OOT_ARROW_ANIM_LAST 0xC1
 #define COMBO_PAUSE_OOT_FOREIGN_LAST 0xD0
 #define COMBO_PAUSE_MM_FOREIGN_FIRST 0xD0
-#define COMBO_PAUSE_MM_FOREIGN_LAST 0xE7
+#define COMBO_PAUSE_MM_FOREIGN_LAST 0xED
 
-#define COMBO_PAUSE_MM_SLOTS 48  /* MM items[]: 0-23 item page, 24-47 mask page */
-#define COMBO_PAUSE_OOT_SLOTS 24 /* OOT items[]: the item page */
+#define COMBO_PAUSE_MM_SLOTS 48      /* MM items[]: 0-23 item page, 24-47 mask page */
+#define COMBO_PAUSE_OOT_SLOTS 24     /* OOT items[]: the item page */
+#define COMBO_PAUSE_OOT_GEAR_SLOTS 6 /* OOT button slots 24-29: three tunics, three boots (MM host only) */
 
 /* OOT host: MM slot (0..47) <-> foreign id. */
 static inline int ComboPause_OotEncode(int mmSlot) {
@@ -55,13 +58,16 @@ static inline int ComboPause_OotDecode(int id) { /* -1 = native / none */
     return -1;
 }
 
-/* MM host: OOT slot (0..23) <-> foreign id. */
+/* MM host: OOT slot (0..23 items, 24..29 tunics and boots) <-> foreign id. */
 static inline int ComboPause_MmEncode(int ootSlot) {
     return COMBO_PAUSE_MM_FOREIGN_FIRST + ootSlot;
 }
 static inline int ComboPause_MmDecode(int id) { /* -1 = native / none */
     return (id >= COMBO_PAUSE_MM_FOREIGN_FIRST && id <= COMBO_PAUSE_MM_FOREIGN_LAST) ? id - COMBO_PAUSE_MM_FOREIGN_FIRST
                                                                                      : -1;
+}
+static inline int ComboPause_MmIsGear(int id) { /* one of OOT's tunics or boots */
+    return ComboPause_MmDecode(id) >= COMBO_PAUSE_OOT_SLOTS;
 }
 
 /* ---- exports (owning game -> host) ------------------------------------------------------------------------------
