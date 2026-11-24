@@ -19,6 +19,8 @@
  * What is OOT's: the hit. The blast carries OOT's explosive damage (DMG_EXPLOSIVE, what OOT's bombable walls,
  * boulders, Dodongos... react to) with MM's keg damage (4) and radius (200), so everything a bomb breaks in Hyrule
  * a keg breaks, as MM's keg breaks its boulders. The body is detonated by what detonates an OOT bomb.
+ *
+ * Also here: MM's Blast Mask bomb (EnBom_ComboSpawnBlastMask), a plain OOT bomb with its fuse at 0.
  */
 
 #include "z_en_bom.h"
@@ -1718,6 +1720,27 @@ static void EnBomClearTag_Draw(EnBom* this, PlayState* play) {
     gSPComboRMPop(POLY_OPA_DISP++);
 
     CLOSE_DISPS(gfxCtx);
+}
+
+// ---------------------------------------------------------------------------------------------------------------
+// MM's Blast Mask: an ordinary OOT bomb that goes off at once, so Hyrule reacts to it as to any OOT bomb.
+
+EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos) {
+    EnBom* bomb = (EnBom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOM, pos->x, pos->y, pos->z, 0, 0, 0, BOMB_BODY);
+
+    if (bomb == NULL) {
+        return NULL;
+    }
+    bomb->timer = 0;
+    // MM EnBom_Init (z_en_bom.c:171-173) puts the blast sphere on the bomb. OOT's EnBom sets it only in its body draw
+    // (Collider_UpdateSpheres), which a bomb with its fuse at 0 never reaches: it explodes on its first update, before
+    // its first draw. Without this the blast sits at the world origin and hits nothing near Link.
+    bomb->explosionCollider.elements[0].dim.worldSphere.center.x = bomb->actor.world.pos.x;
+    bomb->explosionCollider.elements[0].dim.worldSphere.center.y = bomb->actor.world.pos.y;
+    bomb->explosionCollider.elements[0].dim.worldSphere.center.z = bomb->actor.world.pos.z;
+    // MM: the Blast Mask's bomb is an MM bomb (BOMB_EXPLOSIVE_TYPE_BOMB: DMG_EXPLOSIVES, 2).
+    CROSS_MM_TAG_TOUCHER(&bomb->explosionColliderItems[0].info.toucher, CROSS_MM_TAG_EXPLOSIVES, 2);
+    return bomb;
 }
 
 // ---------------------------------------------------------------------------------------------------------------

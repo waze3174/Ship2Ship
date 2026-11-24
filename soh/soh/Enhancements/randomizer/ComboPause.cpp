@@ -42,6 +42,7 @@ const char* KaleidoScope_ComboItemNameTex(int item);       // z_kaleido_scope_PA
 extern void* gItemIcons[];
 void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
 int Combo_GamesSolo(void);                     // OTRGlobals.cpp
+extern s16 gComboBlastMaskTimer;               // z_player_lib.c: MM blastMaskTimer for the Blast Mask in Hyrule
 }
 
 namespace {
@@ -443,6 +444,54 @@ extern "C" int Combo_ChateauActive(void) {
 
 extern "C" int Combo_MmMaskIs(int mmItem) {
     return (sWornMmMask == mmItem) && (Combo_OotForm() == COMBO_FORM_HUMAN);
+}
+
+// ---- MM's B-button masks in Hyrule ------------------------------------------------------------------------------
+// MM Player_UpdateInterface (z_player.c ~11911) gives human Link's B the worn mask's action. MM
+// Interface_SetBButtonPlayerDoAction (z_parameter.c ~5115) shows it, and Player_GetItemOnButton (z_player_lib.c ~851)
+// runs it, only while B holds a sword or nothing (MM also: Deku Nuts). Otherwise B keeps its item (the bow on Epona).
+namespace {
+// MM Player_ProcessItemButtons: blastMaskTimer = 310 frames (15.5 s). 2S2H's slider is in seconds (x 20 frames), with
+// 15.5 as its default and maximum.
+constexpr int kMmBlastMaskCooldownFrames = 310;
+constexpr float kMmBlastMaskCooldownMax = 15.5f;
+constexpr int kMmFramesPerSecond = 20;
+constexpr const char* kMmBlastMaskCooldownCVar = "gEnhancements.Masks.BlastMaskCooldown";
+
+bool BHoldsSword() {
+    const u8 b = gSaveContext.equips.buttonItems[0];
+    return (b == ITEM_SWORD_KOKIRI) || (b == ITEM_SWORD_MASTER) || (b == ITEM_SWORD_BGS) || (b == ITEM_SWORD_KNIFE);
+}
+} // namespace
+
+extern "C" const char* Combo_MaskBActionLabel(void) {
+    if (!BHoldsSword() && (gSaveContext.equips.buttonItems[0] != ITEM_NONE)) {
+        return nullptr;
+    }
+    if (Combo_MmMaskIs(COMBO_MM_ITEM_MASK_BLAST)) {
+        return "__OTR__do_action_static/gDoActionExplodeENGTex"; // MM DO_ACTION_EXPLODE
+    }
+    if (Combo_MmMaskIs(COMBO_MM_ITEM_MASK_BREMEN)) {
+        return "__OTR__do_action_static/gDoActionMarchENGTex"; // MM DO_ACTION_MARCH
+    }
+    if (Combo_MmMaskIs(COMBO_MM_ITEM_MASK_KAMARO)) {
+        return "__OTR__do_action_static/gDoActionDanceENGTex"; // MM DO_ACTION_DANCE
+    }
+    return nullptr;
+}
+
+// MM Interface_UpdateButtonsPart2 (z_parameter.c ~3306): B ("Explode") is greyed out until blastMaskTimer runs out.
+// OOT's buttonStatus[0] is a plain enabled / disabled flag only while B holds a sword (otherwise it stashes the B
+// item), so the grey-out is limited to that.
+extern "C" int Combo_BlastMaskCoolingDown(void) {
+    return (gComboBlastMaskTimer != 0) && BHoldsSword() && Combo_MmMaskIs(COMBO_MM_ITEM_MASK_BLAST);
+}
+
+// 2S2H's "Blast Mask Cooldown" slider (mm/2s2h/Enhancements/Masks/BlastMaskCooldown.cpp, seconds) replaces MM's 310
+// frames when it is set below its 15.5 s default; the CVar store is shared by both games.
+extern "C" int Combo_BlastMaskCooldown(void) {
+    const float seconds = CVarGetFloat(kMmBlastMaskCooldownCVar, kMmBlastMaskCooldownMax);
+    return (seconds < kMmBlastMaskCooldownMax) ? (int)(seconds * kMmFramesPerSecond) : kMmBlastMaskCooldownFrames;
 }
 
 extern "C" int Combo_PauseLiveMmItem(int item) {

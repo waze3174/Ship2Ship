@@ -3136,15 +3136,8 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
     if (sComboMaskBPress) {
         sComboMaskBPress = false;
         if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BLAST)) {
-            if (gComboBlastMaskTimer == 0) {
-                EnBom* bomb = (EnBom*)Actor_Spawn(&play->actorCtx, play, ACTOR_EN_BOM, this->actor.focus.pos.x,
-                                                  this->actor.focus.pos.y, this->actor.focus.pos.z, 0, 0, 0, BOMB_BODY);
-                if (bomb != NULL) {
-                    bomb->timer = 0;
-                    gComboBlastMaskTimer = 310;
-                    // MM: the Blast Mask's bomb is an MM bomb (BOMB_EXPLOSIVE_TYPE_BOMB: DMG_EXPLOSIVES, 2).
-                    CROSS_MM_TAG_TOUCHER(&bomb->explosionColliderItems[0].info.toucher, CROSS_MM_TAG_EXPLOSIVES, 2);
-                }
+            if ((gComboBlastMaskTimer == 0) && (EnBom_ComboSpawnBlastMask(play, &this->actor.focus.pos) != NULL)) {
+                gComboBlastMaskTimer = Combo_BlastMaskCooldown(); // MM 310, or 2S2H's "Blast Mask Cooldown"
             }
             return;
         }
@@ -14927,6 +14920,7 @@ void Player_Init(Actor* thisx, PlayState* play2) {
     if (thisx->id == ACTOR_PLAYER) {
         sComboSafeGroundValid = false; // a new arrival: no land stood on here yet
         sComboSafeGroundFrames = 0;
+        gComboBlastMaskTimer = 0; // MM blastMaskTimer is a Player field: a new scene's Link has no cooldown
     }
 #endif
     PlayState* play = play2;
@@ -16693,6 +16687,12 @@ void Player_Update(Actor* thisx, PlayState* play) {
             Player_DetachHeldActor(play, this);
         }
 
+#ifdef COMBO_BUILD
+        // MM blastMaskTimer runs down every frame, textboxes and cutscenes included (MM Player_UpdateCommon ~12970).
+        if (gComboBlastMaskTimer != 0) {
+            gComboBlastMaskTimer--;
+        }
+#endif
         if (this->stateFlags1 & (PLAYER_STATE1_INPUT_DISABLED | PLAYER_STATE1_IN_CUTSCENE)) {
             memset(&input, 0, sizeof(input));
         } else {
@@ -16873,13 +16873,10 @@ void Player_Update(Actor* thisx, PlayState* play) {
             }
             {
                 // ComboShip: MM's B-action masks worn in Hyrule (MM: B is ITEM_F0 Blast / F1 Bremen / F2 Kamaro, not
-                // the sword). The press is handled where MM handles it (Player_ProcessItemButtons, above); the hold
-                // ends the march / dance (MM Player_Action_11 / _12 read B). Blast Mask: a body bomb at Link's head
-                // with its fuse at 0, then 310 frames before it can blow again (MM blastMaskTimer, ticked per frame
-                // at MM zp:12673); OOT's bomb hurts Link like MM's (AT_TYPE_ALL) unless he guards, as in Termina.
-                if (gComboBlastMaskTimer != 0) {
-                    gComboBlastMaskTimer--;
-                }
+                // the sword, while B holds a sword or nothing: Combo_MaskBActionLabel). The press is handled where MM
+                // handles it (Player_ProcessItemButtons, above); the hold ends the march / dance (MM Player_Action_11
+                // / _12 read B). Blast Mask: a body bomb at Link's head with its fuse at 0, then MM's cooldown
+                // (gComboBlastMaskTimer); OOT's bomb hurts Link like MM's (AT_TYPE_ALL) unless he guards.
                 if (Combo_PictoOwnsInput()) {
                     // MM's pictograph HUD reads A (shutter) / B (put away) and the prompt; Link's actions don't.
                     const u16 pictoBtns = BTN_A | BTN_B | BTN_R | BTN_CUP | BTN_CDOWN | BTN_CLEFT | BTN_CRIGHT |

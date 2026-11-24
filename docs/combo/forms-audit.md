@@ -164,8 +164,8 @@ Armos is damaged. Every other attack works the same way, enemy by enemy (table b
 
 Each MM attack in Hyrule carries its MM damage type next to its OOT damage bit: `ColliderTouch.comboMmDmg` (MM
 `DMG_*` bit + 1) and `comboMmAtDamage` (MM's attack damage), in the struct's old padding (size unchanged). Tagged in
-`z_player.c` (Deku spin, Goron punch / pound / spike roll / plain roll, Zora jab / jump kick, Zora barrier, Blast
-Mask bomb), `z_en_boom_combo_fins.c` (fins), `z_en_arrow_combo_bubble.c` (bubble), `z_en_bom_combo_keg.c` (Powder
+`z_player.c` (Deku spin, Goron punch / pound / spike roll / plain roll, Zora jab / jump kick, Zora barrier),
+`z_en_boom_combo_fins.c` (fins), `z_en_arrow_combo_bubble.c` (bubble), `z_en_bom_combo_keg.c` (Blast Mask bomb, Powder
 Keg). Constants: `combo/rando/CrossDamageTags.h`.
 
 When a tagged attack touches an OOT enemy that exists in MM, OOT's collision code (`z_collision_check.c`, fenced
