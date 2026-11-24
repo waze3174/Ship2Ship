@@ -407,6 +407,16 @@ typedef enum {
     /* 05 */ QUEST_SPEEDRUN_MASTER,
 } Quest;
 
+#ifdef COMBO_BUILD
+// ComboShip: the file select's fourth quest choice, a vanilla Majora's Mask slot. It lives only in the file select's
+// questType[] (never in gSaveContext.ship.quest.id), so no SoH code sees a quest it doesn't know; QUEST_SAVE_ID is
+// the quest the OoT half of that slot is stored as.
+#define QUEST_COMBO_MM 6
+#define QUEST_SAVE_ID(carouselQuest) ((carouselQuest) == QUEST_COMBO_MM ? QUEST_NORMAL : (carouselQuest))
+#else
+#define QUEST_SAVE_ID(carouselQuest) (carouselQuest)
+#endif
+
 #define IS_VANILLA (gSaveContext.ship.quest.id == QUEST_NORMAL || gSaveContext.ship.quest.id == QUEST_SPEEDRUN)
 #define IS_MASTER_QUEST \
     (gSaveContext.ship.quest.id == QUEST_MASTER || gSaveContext.ship.quest.id == QUEST_SPEEDRUN_MASTER)

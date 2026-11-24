@@ -927,7 +927,6 @@ static int Combo_GetLastGame(int fileNum) {
 }
 
 // The slot's mode (combo/rando/ComboMode.h), combo.mode in its container. Absent = a combo randomizer slot.
-[[maybe_unused]] // read by the mode picker and the MM front end (later stages)
 static ComboRando::ComboMode Combo_GetSlotMode(int fileNum) {
     if (!ComboIsValidSlot(fileNum))
         return ComboRando::ComboMode{};
@@ -1018,11 +1017,16 @@ typedef void (*FnSetGenerateCb)(void (*)(int));
 typedef void (*FnApplyPlacements)(const char*);
 // Returns 0 on success; nonzero means the placement apply failed and the slot has no MM placements.
 typedef int (*FnMMInitRandoSave)(int, const char*, const unsigned char*);
+typedef void (*FnMMInitVanillaSave)(int, const unsigned char*);
+typedef void (*FnSetSlotModeLabelCb)(const char* (*)(int));
 typedef void (*FnSetComboRandoSeed)(uint64_t);
 typedef void (*FnSetComboSeedHash)(uint32_t);
 static FnSetGenerateCb SOH_SetOnComboGenerateCallback = nullptr;
 static FnApplyPlacements SOH_ApplyRandoPlacements = nullptr;
 static FnMMInitRandoSave MM_InitRandoSaveFile = nullptr;
+static FnMMInitVanillaSave MM_InitVanillaSaveFile = nullptr;
+static FnSetSlotModeLabelCb SOH_SetSlotModeLabelCallback = nullptr;
+static void (*MM_SetComboVanillaSlot)(int vanilla) = nullptr;
 static FnSetComboRandoSeed SOH_SetComboRandoSeed = nullptr;
 static FnSetComboRandoSeed MM_SetComboRandoSeed = nullptr;
 static FnSetComboSeedHash SOH_SetComboSeedHash = nullptr;
@@ -1162,9 +1166,6 @@ static ComboRando::ComboGames g_comboGames = ComboRando::COMBO_GAMES_BOTH;
 // Mode of the LOADED slot (combo/rando/ComboMode.h). A vanilla slot has no seed: g_comboGames is its game, so every
 // one-game refusal above applies to it as to a one-game seed.
 static ComboRando::ComboMode g_activeMode;
-static bool Combo_ActiveSlotIsVanillaOot() {
-    return g_activeMode.IsVanillaOot();
-}
 static void PushComboGames(ComboRando::ComboGames games) {
     if (SOH_SetComboGames)
         SOH_SetComboGames(static_cast<int>(games));
@@ -1807,6 +1808,8 @@ static void LoadComboCompletion(int slot) {
     }
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
+    if (MM_SetComboVanillaSlot)
+        MM_SetComboVanillaSlot(g_activeMode.IsVanillaMm() ? 1 : 0);
     if (SOH_SetComboGoal)
         SOH_SetComboGoal(g_goalHunt ? 1 : 0, g_goalRequired, ComboRando::CwOotPieces(g_goalTotal, g_comboGames));
     if (MM_SetComboGoal)
@@ -3332,25 +3335,62 @@ static void Combo_ClearComboRando() {
         MM_LoadComboRando(nullptr);
 }
 
-// A new vanilla OoT slot: no seed is bound and no MM save is made. Anything a combo save that sat in this slot left in
-// the container is dropped, so the slot starts as a plain OoT file.
-static void Combo_InitVanillaOotSlot(int fileNum, ComboRando::OotQuest quest) {
+// What a seed, or the shared state of a combo save, leaves in a slot's container. A vanilla slot has none of it.
+static void Combo_EraseSeedAndSharedState(int fileNum) {
+    std::lock_guard<std::mutex> lk(g_containerMutex);
+    auto& c = LoadOrCreateContainer(fileNum);
+    for (const char* key : { "rando", "completion", "health", "bottleShelf", "link" })
+        c["combo"].erase(key);
+    FlushContainer(fileNum);
+}
+
+// A new vanilla slot, whichever game: no seed is bound. Anything a combo save that sat in this slot left in the
+// container is dropped (the MM save too, which a vanilla Majora's Mask slot then makes anew), so the slot starts as a
+// plain file of its game.
+static void Combo_InitVanillaSlot(int fileNum, const ComboRando::ComboMode& mode) {
     {
         std::lock_guard<std::mutex> lk(g_containerMutex);
-        auto& c = LoadOrCreateContainer(fileNum);
-        c["mm"] = nullptr;
-        for (const char* key : { "rando", "completion", "health", "bottleShelf", "link" })
-            c["combo"].erase(key);
-        FlushContainer(fileNum);
+        LoadOrCreateContainer(fileNum)["mm"] = nullptr;
     }
+    Combo_EraseSeedAndSharedState(fileNum);
     if (g_MmSaveInMemorySlot == fileNum)
         g_MmSaveInMemorySlot = -1; // the MM save that sat in this slot is gone
-    Combo_SetSlotMode(fileNum, ComboRando::ComboMode::VanillaOot(quest));
-    LoadComboCompletion(fileNum); // the loaded slot is now this vanilla one: game = OoT, nothing seed-bound
+    Combo_SetSlotMode(fileNum, mode);
+    LoadComboCompletion(fileNum); // the loaded slot is now this vanilla one: game = its own, nothing seed-bound
     Combo_ClearComboRando();
     Combo_PushHintTrackerData(fileNum);
+}
+
+// A new vanilla OoT slot: no MM save is made.
+static void Combo_InitVanillaOotSlot(int fileNum, ComboRando::OotQuest quest) {
+    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::VanillaOot(quest));
     std::cout << "[ComboShip] Created VANILLA OoT slot " << fileNum
               << (quest == ComboRando::OOT_QUEST_MQ ? " (Master Quest)" : " (Normal quest)") << std::endl;
+}
+
+// A new vanilla Majora's Mask slot: MM makes its own new-file save, with the name entered on OoT's file select. The OoT
+// half holds only that name and the slot's place, and is never played: the slot's last game is MM, so loading it goes
+// straight into MM (Combo_ResumeMMIfLastSavedThere).
+static void Combo_InitVanillaMmSlot(int fileNum) {
+    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::VanillaMm());
+    if (!MM_InitVanillaSaveFile) {
+        std::cerr << "[ComboShip] ERROR: MM has no vanilla save creation, slot " << fileNum << " has no MM save."
+                  << std::endl;
+        return;
+    }
+    unsigned char playerName[8] = { 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E }; // 0x3E = N64 blank glyph
+    if (SOH_GetCurrentPlayerName)
+        SOH_GetCurrentPlayerName(playerName);
+    MM_InitVanillaSaveFile(fileNum, playerName);
+    // MM's write brought the live shared state (health, bottle shelf) of whatever slot was last played along.
+    Combo_EraseSeedAndSharedState(fileNum);
+    Combo_SetLastGame(fileNum, ComboRando::GAME_MM);
+    std::cout << "[ComboShip] Created VANILLA Majora's Mask slot " << fileNum << std::endl;
+}
+
+// The label the OoT file select draws on a slot (ComboRando::ComboModeLabel: static strings, or nullptr for none).
+static const char* Combo_SlotModeLabel(int fileNum) {
+    return ComboRando::ComboModeLabel(Combo_GetSlotMode(fileNum));
 }
 
 static void Combo_OnOOTSaveInit(int fileNum) {
@@ -3370,6 +3410,10 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         FlushContainer(fileNum);
     }
     const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
+    if (quest == ComboRando::kSohQuestComboMm) {
+        Combo_InitVanillaMmSlot(fileNum);
+        return;
+    }
     if (quest != ComboRando::kSohQuestRandomizer) {
         Combo_InitVanillaOotSlot(fileNum, quest == ComboRando::kSohQuestMaster ? ComboRando::OOT_QUEST_MQ
                                                                                : ComboRando::OOT_QUEST_NORMAL);
@@ -3473,12 +3517,15 @@ static void Combo_ResumeMMIfLastSavedThere(int fileNum);
 // slot's MM save is already live in memory — reloading from disk would clobber newer progress.
 static void Combo_OnOOTSaveLoad(int fileNum) {
     LoadComboCompletion(fileNum); // refresh both-bosses-beaten flags for this slot
-    if (Combo_ActiveSlotIsVanillaOot()) {
-        // No seed and no MM save: drop what the slot loaded before this one left in both DLLs, and leave MM's
-        // dormant memory unclaimed (the MM tracker may have replaced it with nothing).
+    if (g_activeMode.IsVanilla()) {
+        // No seed and, for OoT, no MM save: drop what the slot loaded before this one left in both DLLs, and leave MM's
+        // dormant memory unclaimed (the MM tracker may have replaced it with nothing). A vanilla Majora's Mask slot
+        // goes into MM, which loads its save itself.
         Combo_ClearComboRando();
         Combo_PushHintTrackerData(fileNum);
         g_MmSaveInMemorySlot = -1;
+        if (g_activeMode.IsVanillaMm())
+            Combo_ResumeMMIfLastSavedThere(fileNum);
         return;
     }
     // Push the slot's baked combo rando (foreign map + cross-hints) into both DLLs, once per load.
@@ -3548,6 +3595,41 @@ static void Combo_OnOOTSceneSwitch(int fileNum) {
         MM_SetComboEntryIsResume(0); // portal entry: always arrives in South Clock Town
     g_PendingMMFileNum = fileNum;
     // OOT game loop is already exiting (gGameState->running = false set by the hook).
+}
+
+// What Link takes from Hyrule into Termina, and back. A vanilla Majora's Mask slot has no Hyrule: nothing is carried
+// into it (the pending form, mask, layout and adult Link are cleared, not just left unset, since MM keeps what an
+// earlier session pushed and never used), and nothing it holds is carried out.
+static void Combo_HandOffToMM(int fileNum) {
+    if (g_activeMode.IsVanillaMm()) {
+        if (MM_SetComboLinkState)
+            MM_SetComboLinkState(0, 0);
+        if (MM_SetComboForm)
+            MM_SetComboForm(-1); // -1: nothing pending
+        if (MM_SetComboMask)
+            MM_SetComboMask(-2); // -2: nothing pending
+        if (MM_SetComboButtons)
+            MM_SetComboButtons("");
+        return;
+    }
+    Combo_PushLinkStateToMM(fileNum);
+    Combo_HandoffSharedHealth(ComboRando::GAME_OOT, ComboRando::GAME_MM, fileNum);
+    if (SOH_GetComboMask && MM_SetComboMask)
+        MM_SetComboMask(SOH_GetComboMask()); // the mask Link wore through the door stays on
+    if (SOH_GetComboButtons && MM_SetComboButtons)
+        MM_SetComboButtons(SOH_GetComboButtons());
+}
+
+static void Combo_HandOffToOot() {
+    if (g_activeMode.IsVanillaMm())
+        return;
+    if (MM_GetComboButtons && SOH_SetComboButtons)
+        SOH_SetComboButtons(MM_GetComboButtons()); // shared button layout back into Hyrule
+    if (MM_GetComboForm && SOH_SetComboForm)
+        SOH_SetComboForm(MM_GetComboForm()); // the form Link had in Termina comes back with him
+    Combo_HandoffSharedHealth(ComboRando::GAME_MM, ComboRando::GAME_OOT, g_comboCompletionSlot);
+    if (MM_GetComboMask && SOH_SetComboMask)
+        SOH_SetComboMask(MM_GetComboMask()); // the mask Link wore in Termina stays on
 }
 
 // Why MM handed control back: 0 = portal, 1 = Ctrl+R reset, 2 = owl-save quit (see BenPort.cpp).
@@ -3792,6 +3874,9 @@ int main(int argc, char** argv) {
     SOH_SetComboSpoilerPath = (FnTakeStr)GetSym(sohModule, "SOH_SetComboSpoilerPath");
     SOH_GetComboSpoilerPath = (FnDumpData)GetSym(sohModule, "SOH_GetComboSpoilerPath");
     MM_InitRandoSaveFile = (FnMMInitRandoSave)GetSym(mmModule, "MM_InitRandoSaveFile");
+    MM_InitVanillaSaveFile = (FnMMInitVanillaSave)GetSym(mmModule, "MM_InitVanillaSaveFile");
+    MM_SetComboVanillaSlot = (void (*)(int))GetSym(mmModule, "MM_SetComboVanillaSlot");
+    SOH_SetSlotModeLabelCallback = (FnSetSlotModeLabelCb)GetSym(sohModule, "SOH_SetSlotModeLabelCallback");
     SOH_SetOnComboGenerateCallback = (FnSetGenerateCb)GetSym(sohModule, "SOH_SetOnComboGenerateCallback");
     SOH_ApplyRandoPlacements = (FnApplyPlacements)GetSym(sohModule, "SOH_ApplyRandoPlacements");
     SOH_GetForcedPlacements = (FnGetForced)GetSym(sohModule, "SOH_GetForcedPlacements");
@@ -4275,6 +4360,9 @@ int main(int argc, char** argv) {
         std::cout << "[ComboShip] OOT new-save callback registered." << std::endl;
     }
 
+    if (SOH_SetSlotModeLabelCallback)
+        SOH_SetSlotModeLabelCallback(Combo_SlotModeLabel);
+
     if (SOH_SetOnLoadSaveCallback && MM_LoadSaveForCombo) {
         SOH_SetOnLoadSaveCallback(Combo_OnOOTSaveLoad);
         std::cout << "[ComboShip] OOT save-load callback registered." << std::endl;
@@ -4337,13 +4425,7 @@ int main(int argc, char** argv) {
                 ootBooted = true;
             } else {
                 std::cout << "[ComboShip] OOT resume\n";
-                if (MM_GetComboButtons && SOH_SetComboButtons)
-                    SOH_SetComboButtons(MM_GetComboButtons()); // shared button layout back into Hyrule
-                if (MM_GetComboForm && SOH_SetComboForm)
-                    SOH_SetComboForm(MM_GetComboForm()); // the form Link had in Termina comes back with him
-                Combo_HandoffSharedHealth(ComboRando::GAME_MM, ComboRando::GAME_OOT, g_comboCompletionSlot);
-                if (MM_GetComboMask && SOH_SetComboMask)
-                    SOH_SetComboMask(MM_GetComboMask()); // the mask Link wore in Termina stays on
+                Combo_HandOffToOot();
                 if (SOH_ResumeGame)
                     SOH_ResumeGame();
             }
@@ -4374,12 +4456,7 @@ int main(int argc, char** argv) {
                     MM_SetTargetEntrance(t);
                 }
             }
-            Combo_PushLinkStateToMM(g_PendingMMFileNum);
-            Combo_HandoffSharedHealth(ComboRando::GAME_OOT, ComboRando::GAME_MM, g_PendingMMFileNum);
-            if (SOH_GetComboMask && MM_SetComboMask)
-                MM_SetComboMask(SOH_GetComboMask()); // the mask Link wore through the door stays on
-            if (SOH_GetComboButtons && MM_SetComboButtons)
-                MM_SetComboButtons(SOH_GetComboButtons());
+            Combo_HandOffToMM(g_PendingMMFileNum);
             if (!mmBooted) {
                 std::cout << "[ComboShip] MM boot\n";
                 MM_RunGame(g_PendingMMFileNum);

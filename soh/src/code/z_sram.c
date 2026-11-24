@@ -17,6 +17,8 @@
 
 #ifdef COMBO_BUILD
 extern void (*gComboSaveInitCallback)(int fileNum);
+// The file select's quest choice for the file being created (QUEST_COMBO_MM included), read by SOH_GetNewSaveQuest.
+extern int gComboNewSaveQuest;
 // ComboShip: fired before questType is read so the combo generator can run and call
 // SOH_ApplyRandoPlacements before Randomizer_InitSaveFile consumes the placements.
 extern void (*gComboGenerateCallback)(int fileNum);
@@ -273,13 +275,16 @@ void Sram_InitSave(FileChooseContext* fileChooseCtx) {
 #endif
 
     u8 currentQuest = fileChooseCtx->questType[fileChooseCtx->buttonIndex];
+#ifdef COMBO_BUILD
+    gComboNewSaveQuest = currentQuest;
+#endif
 
     if (currentQuest == QUEST_RANDOMIZER && (Randomizer_IsSeedGenerated() || Randomizer_IsSpoilerLoaded())) {
         gSaveContext.ship.quest.id = QUEST_RANDOMIZER;
 
         Randomizer_InitSaveFile();
     } else {
-        gSaveContext.ship.quest.id = currentQuest;
+        gSaveContext.ship.quest.id = QUEST_SAVE_ID(currentQuest);
     }
 
     if (IS_SPEEDRUN) {

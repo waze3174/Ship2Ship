@@ -143,6 +143,10 @@ uint8_t SOH_IsOnFileSelect(void);
 void SOH_OpenComboRandoSettings(void);
 // Reload a consolidated seed file (null/empty path = the remembered pending file). Returns 1 if loaded.
 int SOH_RequestComboReload(const char* path);
+// The label the file select draws on a file's mode (combo/rando/ComboMode.h), at most SOH_SLOT_LABEL_MAX_LEN letters;
+// NULL for a plain Normal Quest file.
+#define SOH_SLOT_LABEL_MAX_LEN 8
+const char* Combo_SlotModeLabel(s16 fileIndex);
 GetItemEntry ItemTable_Retrieve(int16_t getItemID);
 GetItemEntry ItemTable_RetrieveEntry(s16 modIndex, s16 getItemID);
 void EntranceTracker_SetCurrentGrottoID(s16 entranceIndex);

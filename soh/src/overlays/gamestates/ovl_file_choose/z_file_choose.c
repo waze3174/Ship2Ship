@@ -29,11 +29,12 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #ifdef COMBO_BUILD
-// ComboShip: the quest-select carousel offers Normal, Master Quest and Randomizer. Normal and Master Quest make a
-// vanilla OoT save (no seed, no MM save); SohFileSelect_IsQuestHidden hides the others, and the quest whose archive
-// (oot.o2r, oot-mq.o2r) isn't loaded. A new file starts on Randomizer, the combo randomizer.
+// ComboShip: the quest-select carousel offers Normal, Master Quest, Randomizer and Majora's Mask. Normal and Master
+// Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save; SohFileSelect_IsQuestHidden
+// hides Boss Rush and Speedrun (the values between), and the quest whose archive (oot.o2r, oot-mq.o2r) isn't loaded.
+// A new file starts on Randomizer, the combo randomizer.
 #define MIN_QUEST QUEST_NORMAL
-#define MAX_QUEST QUEST_RANDOMIZER
+#define MAX_QUEST QUEST_COMBO_MM
 #define DEFAULT_QUEST QUEST_RANDOMIZER
 #else
 #define MIN_QUEST (ResourceMgr_GameHasOriginal() ? QUEST_NORMAL : QUEST_MASTER)
@@ -851,7 +852,7 @@ void FileChoose_UpdateQuestMenu(GameState* thisx) {
     }
 
     if (CHECK_BTN_ALL(input->press.button, BTN_A)) {
-        gSaveContext.ship.quest.id = this->questType[this->buttonIndex];
+        gSaveContext.ship.quest.id = QUEST_SAVE_ID(this->questType[this->buttonIndex]);
 
         if (this->questType[this->buttonIndex] == QUEST_BOSSRUSH) {
             Audio_PlaySfxGeneral(NA_SE_SY_FSEL_DECIDE_L, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
@@ -1051,7 +1052,7 @@ void FileChoose_RotateToQuest(GameState* thisx) {
 
                 // Only one quest is visible, so select it as if it was picked on the quest menu
                 this->questType[this->buttonIndex] = NextVisibleQuest(MAX_QUEST, 1);
-                gSaveContext.ship.quest.id = this->questType[this->buttonIndex];
+                gSaveContext.ship.quest.id = QUEST_SAVE_ID(this->questType[this->buttonIndex]);
 
                 switch (this->questType[this->buttonIndex]) {
                     case QUEST_RANDOMIZER:
@@ -1805,6 +1806,28 @@ const char* FileChoose_GetSohOptionsTitleTexName(Language lang) {
 }
 
 // #region SOH - quest label, drawn as the 64DD disk label with its lettering covered and our own text on top
+// The label of a file: its quest, or under COMBO_BUILD its mode (Combo, OoT or MM randomizer, vanilla Majora's Mask).
+// NULL for a plain Normal Quest file.
+static const char* FileChoose_GetQuestLabelText(s16 fileIndex) {
+#ifdef COMBO_BUILD
+    const char* modeLabel = Combo_SlotModeLabel(fileIndex);
+    if (modeLabel != NULL) {
+        return modeLabel;
+    }
+#endif
+    switch (Save_GetSaveMetaInfo(fileIndex)->quest) {
+        case QUEST_RANDOMIZER:
+            return "RAND";
+        case QUEST_SPEEDRUN:
+        case QUEST_SPEEDRUN_MASTER:
+            return "RUN";
+        case QUEST_MASTER:
+            return "MQ";
+        default:
+            return NULL;
+    }
+}
+
 static void FileChoose_DrawQuestLabelBox(FileChooseContext* this, Vtx* labelVtx) {
     // pieces of the 44x16 disk label as left, right, top, bottom in texels.
     // "DISK" covers columns 11 to 37 and rows 3 to 12, so that area is filled by stretching row 2 down over it.
@@ -1843,22 +1866,35 @@ static void FileChoose_DrawQuestLabelBox(FileChooseContext* this, Vtx* labelVtx)
     CLOSE_DISPS(this->state.gfxCtx);
 }
 
-static void FileChoose_DrawQuestLabelText(FileChooseContext* this, Vtx* labelVtx, const char* text, u8 alpha) {
-    // the blank part of the label spans columns 8 to 40 and rows 3 to 12
-    // glyphs are 16x16 with capitals on rows 1 to 12, so 12 makes capitals 9 tall
-    const int glyphSize = 12;
-    const float scale = glyphSize / 16.0f;
-    // the font puts A-Z at 0x0A when loaded in PAL order, 0xAB when loaded in NTSC order
-    int letterA =
-        (ResourceMgr_GetGameRegion(0) == GAME_REGION_PAL && gSaveContext.language != LANGUAGE_JPN) ? 0x0A : 0xAB;
+// space letters by their font width, pulled half a unit closer so they stay inside the label; returns the ink width
+static float FileChoose_LayoutQuestLabelText(const char* text, float scale, float* offsets) {
     int len = strlen(text);
-    // space letters by their font width, pulled half a unit closer so they stay inside the label
-    float offsets[8];
     float inkWidth = 0.0f;
     for (int i = 0; i < len; i++) {
         offsets[i] = inkWidth;
         inkWidth += (i + 1 < len) ? Ship_GetCharFontWidth(text[i]) * scale - 0.5f
                                   : (Ship_GetCharFontWidth(text[i]) - 1) * scale;
+    }
+    return inkWidth;
+}
+
+static void FileChoose_DrawQuestLabelText(FileChooseContext* this, Vtx* labelVtx, const char* text, u8 alpha) {
+    // the blank part of the label spans columns 8 to 40 and rows 3 to 12
+    // glyphs are 16x16 with capitals on rows 1 to 12, so 12 makes capitals 9 tall
+    const float labelInkWidth = 32.0f;
+    int glyphSize = 12;
+    float scale = glyphSize / 16.0f;
+    // the font puts A-Z at 0x0A when loaded in PAL order, 0xAB when loaded in NTSC order
+    int letterA =
+        (ResourceMgr_GetGameRegion(0) == GAME_REGION_PAL && gSaveContext.language != LANGUAGE_JPN) ? 0x0A : 0xAB;
+    int len = strlen(text);
+    float offsets[SOH_SLOT_LABEL_MAX_LEN];
+    float inkWidth = FileChoose_LayoutQuestLabelText(text, scale, offsets);
+    if (inkWidth > labelInkWidth) {
+        // a long label shrinks to fit the box
+        glyphSize = (int)(glyphSize * labelInkWidth / inkWidth);
+        scale = glyphSize / 16.0f;
+        inkWidth = FileChoose_LayoutQuestLabelText(text, scale, offsets);
     }
     // glyph ink starts one texel in from the left of the cell
     float left = labelVtx[0].v.ob[0] + 24 - inkWidth / 2 - scale;
@@ -2068,6 +2104,16 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
                                                                                                    : "Speedrun",
                                        130, 176, 255, 255, 255, this->logoAlpha, 1.0f, true);
                 break;
+
+#ifdef COMBO_BUILD
+            case QUEST_COMBO_MM:
+                gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, this->logoAlpha);
+                FileChoose_DrawImageRGBA32(this->state.gfxCtx, 160, 135, gTitleZeldaShieldLogoTex, 160, 160);
+                // No subtitle texture exists for Majora's Mask, so the name is drawn as text instead.
+                Interface_DrawTextLine(this->state.gfxCtx, "Majora's Mask", 110, 176, 255, 255, 255, this->logoAlpha,
+                                       1.0f, true);
+                break;
+#endif
         }
     } else if (this->configMode == CM_BOSS_RUSH_MENU) {
         FileChoose_DrawBossRushMenuWindowContents(this);
@@ -2210,23 +2256,8 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
             }
 
             // draw quest label (rando, speedrun or MQ)
-            const char* questLabelText = NULL;
+            const char* questLabelText = Save_GetSaveMetaInfo(i)->valid ? FileChoose_GetQuestLabelText(i) : NULL;
             u8 questLabelAlpha = 0;
-            switch (Save_GetSaveMetaInfo(i)->quest) {
-                case QUEST_RANDOMIZER:
-                    questLabelText = "RAND";
-                    break;
-                case QUEST_SPEEDRUN:
-                case QUEST_SPEEDRUN_MASTER:
-                    questLabelText = "RUN";
-                    break;
-                case QUEST_MASTER:
-                    questLabelText = "MQ";
-                    break;
-            }
-            if (!Save_GetSaveMetaInfo(i)->valid) {
-                questLabelText = NULL;
-            }
             if (questLabelText != NULL) {
                 if (!FileChoose_IsSaveCompatible(Save_GetSaveMetaInfo(i))) {
                     questLabelAlpha = this->nameBoxAlpha[i];
@@ -2257,7 +2288,7 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
                                 G_TX_NOLOD, G_TX_NOLOD);
             gSP1Quadrangle(POLY_OPA_DISP++, 12, 14, 15, 13, 0);
 
-            if (this->n64ddFlags[i] || Save_GetSaveMetaInfo(i)->quest != QUEST_NORMAL) {
+            if (this->n64ddFlags[i] || Save_GetSaveMetaInfo(i)->quest != QUEST_NORMAL || questLabelText != NULL) {
                 gSP1Quadrangle(POLY_OPA_DISP++, 16, 18, 19, 17, 0);
             }
 

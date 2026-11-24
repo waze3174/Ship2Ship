@@ -3169,13 +3169,27 @@ extern "C" COMBO_EXPORT void SOH_GetCurrentPlayerName(unsigned char out8[8]) {
     }
 }
 
-// ComboShip: the quest of the save being created (QUEST_NORMAL, QUEST_MASTER or QUEST_RANDOMIZER). Valid inside the
-// new-save callback; the launcher turns it into the slot's mode.
+// ComboShip: the quest the file select offered for the save being created (QUEST_NORMAL, QUEST_MASTER,
+// QUEST_RANDOMIZER or QUEST_COMBO_MM). Valid inside the new-save callback; the launcher turns it into the slot's mode.
 static_assert(QUEST_NORMAL == ComboRando::kSohQuestNormal && QUEST_MASTER == ComboRando::kSohQuestMaster &&
-                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer,
+                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer && QUEST_COMBO_MM == ComboRando::kSohQuestComboMm,
               "combo/rando/ComboMode.h quest ids must match z64save.h");
+static_assert(SOH_SLOT_LABEL_MAX_LEN == ComboRando::kSlotLabelMaxLen,
+              "OTRGlobals.h and combo/rando/ComboMode.h must agree on the slot label length");
+// The quest the file select offered for the file being created (QUEST_COMBO_MM included), set by Sram_InitSave.
+extern "C" int gComboNewSaveQuest = QUEST_NORMAL;
 extern "C" COMBO_EXPORT int SOH_GetNewSaveQuest(void) {
-    return gSaveContext.ship.quest.id;
+    return gComboNewSaveQuest;
+}
+
+// ComboShip: the launcher's label for a file's mode, drawn on the file select (static strings, so the pointer stays
+// valid). Nothing registered, or a file with no label: NULL.
+static const char* (*gComboSlotModeLabelCb)(int fileNum) = nullptr;
+extern "C" COMBO_EXPORT void SOH_SetSlotModeLabelCallback(const char* (*cb)(int fileNum)) {
+    gComboSlotModeLabelCb = cb;
+}
+extern "C" const char* Combo_SlotModeLabel(s16 fileIndex) {
+    return gComboSlotModeLabelCb != nullptr ? gComboSlotModeLabelCb(fileIndex) : nullptr;
 }
 
 // ComboShip (#83): OOT persists these per-save; MM keeps its equivalents in global.json, which combo
