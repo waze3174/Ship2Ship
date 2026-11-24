@@ -236,6 +236,10 @@ since CI now pulls each upstream in its own PR — listing every file we had to 
 mechanical 3-way merge and why. This keeps the per-merge required changes easy to track (and to diff
 against the recurring-deviation list below). Newest first:
 
+- [2026-11-24 upstream](merges/2026-11-24-upstream.md) — soh `ecd889c20` → `64df9cb8e` (9.3.1 `f0599f96f` first, via
+  Varuuna's [2026-10-19 soh](merges/2026-10-19-soh.md) merge), mm `e8757c14a` → `7e3d051be`, libultraship
+  `7f9b86a59` → `57e6d409a` (via Varuuna's [2026-10-19 libultraship](merges/2026-10-19-libultraship.md) merge). Mid-enum
+  additions in the check, inf, setting-key and 2Ship option enums retire existing rando saves.
 - [2026-09-28 soh](merges/2026-09-28-soh-develop.md) — soh `5a57a0cbc` → `576b30c64`, extended on
   2026-10-06 to `ecd889c20` (lands exactly on 9.3.0). soh extracts with
   Torch (vendored at `torch/`, forced onto the dynamic CRT); ZAPD/OTRExporter are MM-only. Retires every
