@@ -1611,6 +1611,60 @@ keeping the seed escapable is generation's job, not the hint layer's.
 **Residual:** NO_LOGIC + MM start has no re-entry guarantee — that mode's point. No MM-side setter
 exists (nothing in MM reads the value); add one when a consumer appears.
 
+## Games: OoT only / MM only / Combo (OoTMM `games`)
+
+Ported from Varuuna/ComboShip PR #246 (closed unmerged), commit `3ee5b0f4` "Games setting: OoT only, MM only, or Combo
+(#22)". Combo menu "Games" (`gCombo.Rando.Games`: 0 = both, 1 = Ocarina of Time only, 2 =
+Majora's Mask only; `combo/rando/ComboGames.h`). Seed-bound: the spoiler (and so the slot's `combo.rando`) records
+top-level `games` = `"ootmm"` / `"oot"` / `"mm"`; absent = `"ootmm"`, so every older seed and save is a combo seed.
+
+**Generation.** A solo seed still goes through the combined fill over both games, so both saves exist and every
+existing path (save creation, foreign data, trackers) is unchanged, but nothing crosses between the games:
+- `CrossWorldCombinedFill(..., games)`: every item only takes a check of its own game (Phase A draws among the item's
+  own game's reachable checks and treats a game with too few as a dead end; Phase B fast-fills each game's checks with
+  that game's items, in order; the pools are already balanced per game). Both games are rooted at their own starts
+  (`portalOpen` from the start), no cross-game teleport songs are applied in logic, and the portal prerequisites
+  (Phase A0) and the MM-start re-entry assertion are skipped. Combo seeds take the old code paths unchanged.
+- The launcher and `comborando` (`--games ootmm|oot|mm`): the starting game is the played game
+  (`ComboGamesStartingGameCfg`), Shared Items are off (mask 0), the Triforce Hunt puts every piece in the played game
+  up to 50 (`ComboGamesOotPieces` / `ComboGamesMmPieces`, mirrored by `settings.cpp`'s menu-side split), the pare-down
+  goal is that game's boss (`OotOnlyGanonGoal`, `MmOnlyMajoraGoal`; skipped for No Logic + OoT only) and the hints
+  only target the played game's checks (`CrossHints::Generate(..., games)`).
+
+**Runtime.** `SOH_SetComboGames` / `MM_SetComboGames` (pushed at slot bind, after generation, on reload) set each DLL's
+copy; `Combo_GamesSolo()`:
+- OOT: entering the Happy Mask Shop no longer switches to MM (`OTRGlobals.cpp` OnSceneInit); the Song of Soaring's
+  owl chooser refuses like a no-warp room (`ComboOwlWarp.cpp`).
+- MM: the Clock Tower's South Clock Town door no longer switches to OOT (`BenPort.cpp` OnSceneInit); OOT warp songs
+  refuse like a room that forbids soaring (`WarpSongs.cpp`).
+- Both: `Combo_RequestCrossSwitch` refuses (covers Cross-Games Farore's Wind and the console commands).
+- `Combo_OnFinalBossDefeated` completes the run on the played game's final boss alone (`ComboBossesComplete`), so its
+  own ending plays.
+
+**What the WomboComboShip additions do in a solo seed.** Everything that carries items or state between the games
+follows the same check:
+- Generation (`RunComboFillBody`): Unified Inventory, the form logic credit and the cross-game entrance shuffle are
+  forced off, so a solo spoiler has no `unifiedInventory`, `formLogicCredit` or cross layout; `CrossWorldCombinedFill`
+  applies no cross-game entrances in logic. `comborando` does the same for Unified Inventory.
+- `DeliverCrossItem` (the launcher's cross-grant, also fed by Anchor) refuses.
+- The merged pause menus read the other game's save through `Snapshot()` (`ComboPause.cpp`, both games); in a solo seed
+  it reports nothing, so no foreign item is shown, equipped or used, and the OoT equipment face in MM is empty.
+- Shared health, magic and ammo (`ComboHealth::Enabled`) is off, whatever the menu CVar says. It is a play-time switch
+  that also halves heart values, so a solo file must not apply it.
+- Not gated: the forms (`gCombo.Forms.InHyrule`): OoT's own Goron and Zora Masks still transform. The layout share
+  (`ComboEquipShare`), the link state and the bottle shelf only act on a game switch or on a Shared Items mask, and a
+  solo seed has neither.
+
+**Menu.** Starting Game, Shared Items, Unified Inventory, the form logic credit and Cross-Game Entrances are greyed out
+for a solo seed; Majora's Mask only greys out the same OOT options an MM start does
+(`SOH_RefreshComboStartingGameUI`, `HandleStartingAgeUI`).
+
+**Not changed:** the headless `--playthrough` and the sphere playthrough still apply cross-game teleports (a solo seed
+is beatable without them, and both games are filled from their own starts); the other game's settings still shape its
+own (unplayed) pool.
+
+**Tested:** not yet in this tree. The PR's author reported headless runs and in-game checks on their own tree.
+
 ## Combo-owned unified Hint Tracker (#164) (2026-08-20)
 
 **Why:** the Hint Tracker arrived in the 2026-07-13 soh merge as vendored OOT-only code, reachable
