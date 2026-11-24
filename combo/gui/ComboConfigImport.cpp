@@ -12,19 +12,17 @@
 
 #include <ctime>
 #include <filesystem>
-#include <fstream>
 
 namespace ComboPresets {
 
 namespace {
 
-constexpr const char* kConfigFileName = "comboship.json";
+using ComboConfigTree::kConfigFileName;
 constexpr const char* kBackupSuffix = ".bak-";
 constexpr const char* kTimestampFormat = "%Y%m%d-%H%M%S";
 constexpr size_t kTimestampBufferSize = 32;
 
-constexpr const char* kMsgNotJson = "That file could not be read as JSON.";
-constexpr const char* kMsgNotComboShip = "That is not a ComboShip config; choose a ComboShip install's comboship.json.";
+constexpr const char* kMsgChooseAnother = "Choose the comboship.json of another ComboShip install.";
 constexpr const char* kMsgNothingToImport = "That file has no settings this version can import.";
 constexpr const char* kMsgBackupFailed = "Could not back up the current comboship.json, so nothing was imported.";
 
@@ -53,16 +51,31 @@ std::string BackUpCurrentConfig() {
 
 } // namespace
 
+const char* DescribeConfigCheck(ComboConfigCheck check) {
+    switch (check) {
+        case COMBO_CONFIG_OK:
+            return "";
+        case COMBO_CONFIG_UNREADABLE:
+            return "This file could not be opened.";
+        case COMBO_CONFIG_NOT_JSON:
+            return "This is not a settings file: it could not be read as JSON.";
+        case COMBO_CONFIG_NO_CVARS:
+            return "This file has no settings in it (no CVars section).";
+        case COMBO_CONFIG_NO_COMBO:
+            return "This file has no ComboShip settings (no gCombo section).";
+        case COMBO_CONFIG_OWN_FILE:
+            return "This is this install's own comboship.json, not another install's.";
+    }
+    return "This file could not be checked.";
+}
+
 ImportOutcome ImportComboShipConfig(const std::string& path, const ImportOptions& options) {
     ImportOutcome outcome;
-    std::ifstream in(path);
-    const nlohmann::json root = nlohmann::json::parse(in, nullptr, false);
-    if (!root.is_object()) {
-        outcome.error = kMsgNotJson;
-        return outcome;
-    }
-    if (!ComboConfigTree::LooksLikeComboShipConfig(root)) {
-        outcome.error = kMsgNotComboShip;
+    nlohmann::json root;
+    const ComboConfigCheck check = ComboConfigTree::ReadConfigFile(path, ComboRando::DataDir() / kConfigFileName,
+                                                                   ComboConfigTree::ConfigKind::ComboShip, root);
+    if (check != COMBO_CONFIG_OK) {
+        outcome.error = std::string(DescribeConfigCheck(check)) + " " + kMsgChooseAnother;
         return outcome;
     }
 

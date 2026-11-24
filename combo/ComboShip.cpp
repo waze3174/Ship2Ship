@@ -3465,23 +3465,18 @@ static bool ComboConfigExists() {
     return ComboDataExists("comboship.json");
 }
 
-// Parse a JSON object from disk. False on missing/parse-failure/non-object (slot then skipped).
-static bool LoadJsonObject(const std::string& path, nlohmann::json& out) {
-    if (path.empty()) {
-        return false;
+// The first-launch import's one check per slot: the screen shows its result (ComboSettingsImportScreen.cpp) and
+// the import below takes a file only when it passes, so the screen and the import can't disagree.
+static ComboConfigCheck ReadImportFile(const char* path, ComboConfigTree::ConfigKind kind, nlohmann::json& out) {
+    if (path == nullptr || *path == '\0') {
+        return COMBO_CONFIG_UNREADABLE;
     }
-    try {
-        std::ifstream f(path);
-        if (!f) {
-            return false;
-        }
-        nlohmann::json j = nlohmann::json::parse(f);
-        if (!j.is_object()) {
-            return false;
-        }
-        out = std::move(j);
-        return true;
-    } catch (...) { return false; }
+    return ComboConfigTree::ReadConfigFile(path, ComboRando::DataDir() / ComboConfigTree::kConfigFileName, kind, out);
+}
+
+// A slot the player left empty, or whose file fails the check, is skipped.
+static bool LoadImportFile(const char* path, ComboConfigTree::ConfigKind kind, nlohmann::json& out) {
+    return ReadImportFile(path, kind, out) == COMBO_CONFIG_OK;
 }
 
 // Per-leaf merge: objects recurse; on a leaf collision (scalar/array) the overlay wins. Keys unique
@@ -3501,23 +3496,23 @@ static void DeepMerge(nlohmann::json& base, const nlohmann::json& overlay) {
     }
 }
 
-// Soft validator (non-blocking hint): a Ship config is a JSON object with a CVars block.
-static int LauncherValidateShipConfig(const char* path) {
-    nlohmann::json j;
-    return (path && LoadJsonObject(path, j) && j.contains("CVars")) ? 1 : 0;
+// The SoH and 2Ship slots: a Ship config is a JSON object with a CVars block.
+static ComboConfigCheck LauncherCheckShipConfig(const char* path) {
+    nlohmann::json unused;
+    return ReadImportFile(path, ComboConfigTree::ConfigKind::Ship, unused);
 }
 
-// A comboship.json from another ComboShip install: a Ship config that also has the gCombo section.
-static int LauncherValidateComboShipConfig(const char* path) {
-    nlohmann::json j;
-    return (path && LoadJsonObject(path, j) && ComboConfigTree::LooksLikeComboShipConfig(j)) ? 1 : 0;
+// The ComboShip slot: another install's comboship.json, a Ship config that also has the gCombo section.
+static ComboConfigCheck LauncherCheckComboShipConfig(const char* path) {
+    nlohmann::json unused;
+    return ReadImportFile(path, ComboConfigTree::ConfigKind::ComboShip, unused);
 }
 
 // The first-launch import takes only the CVars of a ComboShip config, limited to what a preset may carry plus,
 // on request, the mod lists and controls (ComboPresetScope.h). The Window block and file paths stay behind.
 static bool LoadComboShipImport(const ComboSettingsImportResult& res, nlohmann::json& out) {
     nlohmann::json comboJson;
-    if (!LoadJsonObject(res.comboPath, comboJson) || !ComboConfigTree::LooksLikeComboShipConfig(comboJson)) {
+    if (!LoadImportFile(res.comboPath, ComboConfigTree::ConfigKind::ComboShip, comboJson)) {
         return false;
     }
     const bool includeModsAndControls = res.comboIncludeModsAndControls != 0;
@@ -3882,15 +3877,15 @@ int main(int argc, char** argv) {
         }
         if (windowInitialized && ComboUI_RunSettingsImport && SOH_ApplyImportedConfig) {
             ComboSettingsImportCallbacks cb = {};
-            cb.sohValidate = LauncherValidateShipConfig;
-            cb.mmValidate = LauncherValidateShipConfig;
-            cb.comboValidate = LauncherValidateComboShipConfig;
+            cb.sohCheck = LauncherCheckShipConfig;
+            cb.mmCheck = LauncherCheckShipConfig;
+            cb.comboCheck = LauncherCheckComboShipConfig;
             ComboSettingsImportResult res = {};
             if (ComboUI_RunSettingsImport(&cb, &res) && res.action == 1) {
                 nlohmann::json merged = nlohmann::json::object(), sohJson, mmJson;
                 const bool haveCombo = LoadComboShipImport(res, merged); // ComboShip is the base (lowest priority)
-                const bool haveMm = LoadJsonObject(res.mmPath, mmJson);
-                const bool haveSoh = LoadJsonObject(res.sohPath, sohJson);
+                const bool haveMm = LoadImportFile(res.mmPath, ComboConfigTree::ConfigKind::Ship, mmJson);
+                const bool haveSoh = LoadImportFile(res.sohPath, ComboConfigTree::ConfigKind::Ship, sohJson);
                 if (haveMm) {
                     DeepMerge(merged, mmJson); // 2Ship overlays the ComboShip base
                 }
