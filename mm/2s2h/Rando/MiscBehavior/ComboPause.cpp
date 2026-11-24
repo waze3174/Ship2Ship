@@ -21,6 +21,7 @@
 #include "ComboExport.h"
 #include "ComboResolve.h"
 #include "ComboPauseABI.h"
+#include "2s2h/BenGui/HudEditor.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include "2s2h/ShipInit.hpp"
 #include "2s2h_assets.h"
@@ -34,6 +35,9 @@ extern "C" {
 #include "overlays/kaleido_scope/ovl_kaleido_scope/z_kaleido_scope.h"
 extern PlayState* gPlayState;
 extern u8 gAmmoItems[];
+extern const char* gAmmoDigitTextures[10]; // z_parameter.c: the HUD's ammo digits
+extern s16 sDpadItemAmmoX[];               // z_parameter.c: where the D-pad ammo digits go
+extern s16 sDpadItemAmmoY[];
 extern TexturePtr sItemPageBgTextures[];
 extern TexturePtr sMaskPageBgTextures[];
 extern const char* D_801C0B20[];
@@ -445,7 +449,8 @@ extern "C" unsigned char Combo_MmPauseSlotItem(int ootSlot) {
 extern "C" int Combo_MmPauseSlotAmmo(int ootSlot) {
     if (CurTab() != COMBO_MM_PAUSE_TAB_HYRULE || ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot())
         return -1;
-    return sOotAmmo[ootSlot];
+    // The count a use spends (with shared consumables, what Hyrule will show), not only what OOT's dormant save holds.
+    return (sOotAmmo[ootSlot] < 0) ? -1 : Combo_MmOotAmmo(sOotItems[ootSlot]);
 }
 
 extern "C" const char* Combo_MmPauseIconTex(int item) {
@@ -520,9 +525,55 @@ static void ComboPause_DrawEquipAnimIcon(const char* tex) {
     CLOSE_DISPS(gPlayState->state.gfxCtx);
 }
 
+// A foreign item's ammo digits on a C button / D-pad direction, drawn as MM's Interface_DrawAmmoCount /
+// Interface_Dpad_DrawAmmoCount draw MM's own (same places, colours and HUD editor element); those know MM's items only.
+static void ComboPause_DrawForeignAmmo(s16 button, s16 alpha, bool isDpad, int ammo, bool full) {
+    static const s16 kCButtonX[] = { 162, 228, 250, 272 }; // Interface_DrawAmmoCount sAmmoDigitsXPositions
+    static const s16 kCButtonY[] = { 35, 35, 51, 35 };
+    const s16 x = isDpad ? sDpadItemAmmoX[button] : kCButtonX[button];
+    const s16 y = isDpad ? sDpadItemAmmoY[button] : kCButtonY[button];
+    const HudEditorElementID element = isDpad ? HUD_EDITOR_ELEMENT_D_PAD : (HudEditorElementID)button;
+    OPEN_DISPS(gPlayState->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    if (!isDpad) {
+        GameInteractor_Should(VB_SET_BUTTON_ENV_COLOR, false);
+    }
+    if (full) {
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 120, 255, 0, alpha);
+    }
+    if (ammo == 0) {
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 100, 100, 100, alpha);
+    }
+    const int tens = ammo / 10;
+    if (tens != 0) {
+        HudEditor_SetActiveElement(element);
+        OVERLAY_DISP =
+            Gfx_DrawTexRectIA8(OVERLAY_DISP, (TexturePtr)gAmmoDigitTextures[tens], 8, 8, x, y, 8, 8, 1 << 10, 1 << 10);
+    }
+    HudEditor_SetActiveElement(element);
+    OVERLAY_DISP = Gfx_DrawTexRectIA8(OVERLAY_DISP, (TexturePtr)gAmmoDigitTextures[ammo % 10], 8, 8, x + 6, y, 8, 8,
+                                      1 << 10, 1 << 10);
+    CLOSE_DISPS(gPlayState->state.gfxCtx);
+}
+
 namespace {
 
 void RegisterComboPauseHost() {
+    // HUD: a foreign item's ammo count (OOT's Slingshot shows the seeds a shot spends).
+    COND_VB_SHOULD(VB_DRAW_HUD_AMMO_COUNT, true, {
+        const s16 button = (s16)va_arg(args, int);
+        const s16 alpha = (s16)va_arg(args, int);
+        const bool isDpad = va_arg(args, int) != 0;
+        int full = 0;
+        const int ammo = (gPlayState == nullptr)
+                             ? -1
+                             : Combo_MmForeignAmmo(
+                                   isDpad ? DPAD_GET_CUR_FORM_BTN_ITEM(button) : GET_CUR_FORM_BTN_ITEM(button), &full);
+        if (ammo >= 0) {
+            ComboPause_DrawForeignAmmo(button, alpha, isDpad, ammo, full != 0);
+            *should = false;
+        }
+    });
     // HUD: a foreign item's icon slot holds OOT's icon path (Interface_DrawItemIconTexture brackets it to OOT's RM).
     COND_VB_SHOULD(VB_INTERFACE_LOAD_ITEM_ICON, true, {
         u8 btn = (u8)va_arg(args, int);
