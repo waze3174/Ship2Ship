@@ -91,8 +91,8 @@ jobs:
         run: cmake --build build-cmake --target comborando -j 3
       - name: Build comboui
         run: cmake --build build-cmake --target comboui -j 3
-      - name: Build ComboShip
-        run: cmake --build build-cmake --target ComboShip -j 3
+      - name: Build Ship2Ship
+        run: cmake --build build-cmake --target Ship2Ship -j 3
 
       # Port asset archives (--norom). The .app's install rules copy them from the source tree
       # (where these targets write), and fail the package if they are missing.
@@ -114,9 +114,9 @@ jobs:
           sudo mdutil -a -i off || true
           cd build-cmake && cpack
 
-      - name: Upload ComboShip-macos artifact
+      - name: Upload Ship2Ship-macos artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ComboShip-macos
+          name: Ship2Ship-macos
           path: _packages/*.dmg
           if-no-files-found: error

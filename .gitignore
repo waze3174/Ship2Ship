@@ -8,6 +8,7 @@ logs
 *.nix
 2ship2harkinian.json
 shipofharkinian.json
+ship2ship.json
 comboship.json
 *.sav
 .envrc

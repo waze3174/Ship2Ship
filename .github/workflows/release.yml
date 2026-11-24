@@ -34,20 +34,20 @@ jobs:
       - name: Download packaged ZIP
         uses: actions/download-artifact@v4
         with:
-          name: ComboShip-package-zip
+          name: Ship2Ship-package-zip
           path: dist
 
       - name: Download Linux AppImage
         uses: actions/download-artifact@v4
         with:
-          name: ComboShip-linux-appimage
+          name: Ship2Ship-linux-appimage
           path: dist
 
       - name: Download macOS DMG
         if: needs.macos.result == 'success'
         uses: actions/download-artifact@v4
         with:
-          name: ComboShip-macos
+          name: Ship2Ship-macos
           path: dist
 
       - name: Name the assets after the tag
@@ -55,13 +55,13 @@ jobs:
         run: |
           set -euo pipefail
           zip=$(ls dist/*.zip | head -1)
-          mv "$zip" "dist/ComboShip-${GITHUB_REF_NAME}-windows.zip"
-          appimage=$(ls dist/ComboShip-*-linux-x86_64.AppImage | head -1)
-          mv "$appimage" "dist/ComboShip-${GITHUB_REF_NAME}-linux-x86_64.AppImage"
+          mv "$zip" "dist/Ship2Ship-${GITHUB_REF_NAME}-windows.zip"
+          appimage=$(ls dist/Ship2Ship-*-linux-x86_64.AppImage | head -1)
+          mv "$appimage" "dist/Ship2Ship-${GITHUB_REF_NAME}-linux-x86_64.AppImage"
           shopt -s nullglob
           dmgs=(dist/*.dmg)
           if ((${#dmgs[@]})); then
-            mv "${dmgs[0]}" "dist/ComboShip-${GITHUB_REF_NAME}-macos.dmg"
+            mv "${dmgs[0]}" "dist/Ship2Ship-${GITHUB_REF_NAME}-macos.dmg"
           fi
 
       - name: Publish draft release
@@ -71,6 +71,6 @@ jobs:
           fail_on_unmatched_files: false # the DMG is absent when the macOS build failed
           generate_release_notes: true
           files: |
-            dist/ComboShip-${{ github.ref_name }}-windows.zip
-            dist/ComboShip-${{ github.ref_name }}-linux-x86_64.AppImage
-            dist/ComboShip-${{ github.ref_name }}-macos.dmg
+            dist/Ship2Ship-${{ github.ref_name }}-windows.zip
+            dist/Ship2Ship-${{ github.ref_name }}-linux-x86_64.AppImage
+            dist/Ship2Ship-${{ github.ref_name }}-macos.dmg

@@ -1,5 +1,5 @@
 #!/bin/sh
-# ComboShip AppImage entry point.
+# Ship2Ship AppImage entry point.
 #
 # The launcher's runtime layout is portable: it dlopens ./libsoh.so, ./lib2ship.so and
 # ./comboui.so relative to the CURRENT DIRECTORY, and looks for the game archives
@@ -10,7 +10,7 @@
 #
 # Data directory, in order of preference:
 #   $SHIP_HOME                        — explicit override (also honored by libultraship)
-#   <dir with the AppImage>/ComboShip-data — portable default
+#   <dir with the AppImage>/Ship2Ship-data — portable default
 #   $PWD                              — fallback when run from an extracted AppDir
 set -u
 
@@ -20,7 +20,7 @@ BIN="$HERE/usr/bin"
 if [ -n "${SHIP_HOME:-}" ]; then
     DATA="$SHIP_HOME"
 elif [ -n "${APPIMAGE:-}" ]; then
-    DATA="$(dirname "$APPIMAGE")/ComboShip-data"
+    DATA="$(dirname "$APPIMAGE")/Ship2Ship-data"
 else
     DATA="$PWD"
 fi
@@ -50,4 +50,4 @@ export COMBO_HOST_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH="$BIN:$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 cd "$DATA" || exit 1
-exec "$BIN/ComboShip" "$@"
+exec "$BIN/Ship2Ship" "$@"

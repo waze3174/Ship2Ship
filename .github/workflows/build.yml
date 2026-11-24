@@ -54,7 +54,7 @@ jobs:
         run: cmake -B build/x64 -S . -G "Visual Studio 17 2022" -A x64
 
       # Order matters: libultraship -> soh -> 2ship (2ship builds ZAPD/OTRExporter; soh builds Torch).
-      # comboui + ComboShip pull the rest of the runtime in as dependencies.
+      # comboui + Ship2Ship pull the rest of the runtime in as dependencies.
       - name: Build libultraship
         run: cmake --build build/x64 --target libultraship --config Release
       - name: Build soh
@@ -69,8 +69,8 @@ jobs:
         run: cmake --build build/x64 --target comborando --config Release
       - name: Build comboui
         run: cmake --build build/x64 --target comboui --config Release
-      - name: Build ComboShip
-        run: cmake --build build/x64 --target ComboShip --config Release
+      - name: Build Ship2Ship
+        run: cmake --build build/x64 --target Ship2Ship --config Release
 
       # Port asset archives (--norom). GenerateSohOtr builds Torch's soh-o2r-packer and
       # Generate2ShipOtr builds ZAPD on demand. They must run before cpack — the ship/2s2h ZIP components install
@@ -89,17 +89,17 @@ jobs:
 
       # Extract the cpack archive before upload. GitHub always zips artifact contents on download, so
       # uploading the .zip directly yields a zip-inside-a-zip; uploading the extracted tree makes the
-      # downloaded ComboShip-windows.zip hold the runtime files directly.
+      # downloaded Ship2Ship-windows.zip hold the runtime files directly.
       - name: Stage package contents
         shell: pwsh
         run: |
           $zip = Get-ChildItem _packages/*.zip | Select-Object -First 1
           Expand-Archive -Path $zip.FullName -DestinationPath _packages/stage -Force
 
-      - name: Upload ComboShip artifact
+      - name: Upload Ship2Ship artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ComboShip-windows
+          name: Ship2Ship-windows
           path: _packages/stage
           if-no-files-found: error
 
@@ -108,7 +108,7 @@ jobs:
         if: inputs.release_zip
         uses: actions/upload-artifact@v4
         with:
-          name: ComboShip-package-zip
+          name: Ship2Ship-package-zip
           path: _packages/*.zip
           if-no-files-found: error
 

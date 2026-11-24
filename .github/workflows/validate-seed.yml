@@ -1,6 +1,6 @@
 name: Validate Seed
 
-# Label an issue `validate-seed` (with a ComboShip seed file attached) and this headlessly checks whether
+# Label an issue `validate-seed` (with a Ship2Ship seed file attached) and this headlessly checks whether
 # the seed is completable, replying with an item-by-item verdict as a comment. It does NOT build: it
 # downloads the comborando validator from the latest successful develop "Build Artifacts" run and runs it
 # (no window, no ROM, no o2r assets — the reachability oracle is pure logic). If no such build is available

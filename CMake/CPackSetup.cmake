@@ -4,10 +4,10 @@ set(CPACK_PACKAGE_NAME "${PROJECT_NAME}"
     CACHE STRING "The resulting package name"
 )
 
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "ComboShip - Ocarina of Time + Majora's Mask combined port"
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Ship2Ship - Ocarina of Time + Majora's Mask combined port"
     CACHE STRING "Package description for the package metadata"
 )
-set(CPACK_PACKAGE_VENDOR "ComboShip")
+set(CPACK_PACKAGE_VENDOR "Ship2Ship")
 
 set(CPACK_VERBATIM_VARIABLES YES)
 
@@ -21,8 +21,8 @@ set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSIO
 
 # ComboShip: the numeric version is a derived (epoch.soh-pin.mm-pin) triple — opaque
 # on its own — so name the release artifact by the human-readable upstream identity
-# instead of the default ComboShip-<name>-<version>. COMBO_* come from the root
-# CMakeLists (included scope). e.g. ComboShip-e1-soh74e1d4c-mm3545e62
+# instead of the default Ship2Ship-<name>-<version>. COMBO_* come from the root
+# CMakeLists (included scope). e.g. Ship2Ship-e1-soh74e1d4c-mm3545e62
 set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-e${COMBO_EPOCH}-soh${COMBO_SOH_SHORT}-mm${COMBO_MM_SHORT}")
 
 set(CPACK_PACKAGE_CONTACT "YOUR@E-MAIL.net")
@@ -48,7 +48,7 @@ set(CPACK_DEB_COMPONENT_INSTALL YES)
 
 # ComboShip: TODO (Linux) — the AppImage below still targets the standalone `2ship` target
 # (--executable / desktop-file / icon-file all reference 2ship). Left intact deliberately; rework
-# to bundle the full combo runtime (ComboShip + libultraship.dll + comboui.dll) when enabling Linux
+# to bundle the full combo runtime (Ship2Ship + libultraship.dll + comboui.dll) when enabling Linux
 # packaging, mirroring the Windows ZIP component set in CPackProjectConfig.cmake.
 set(CPACK_EXTERNAL_ENABLE_STAGING YES)
 set(CPACK_EXTERNAL_PACKAGE_SCRIPT "${PROJECT_BINARY_DIR}/appimage-generate.cmake")

@@ -3,8 +3,8 @@ name: Build (Linux)
 # Reusable Linux build pipeline: full Release build (Ninja + gcc), port o2r generation, and a
 # headless comborando seed-generation smoke test — the same end-to-end check used to validate the
 # port locally (the fill runs both games' oracles in-process, so it exercises the ELF combo ABI
-# without ROMs). Produces a runnable ComboShip-linux artifact (users add their own extracted
-# oot.o2r/mm.o2r) plus a self-contained ComboShip-linux-appimage — the plain tree links against
+# without ROMs). Produces a runnable Ship2Ship-linux artifact (users add their own extracted
+# oot.o2r/mm.o2r) plus a self-contained Ship2Ship-linux-appimage — the plain tree links against
 # the runner's system libraries, so on other distros it needs a matching ABI (see
 # docs/BUILDING_LINUX.md); the AppImage bundles them. Called by build-artifacts.yml (gate runs
 # there) and release.yml (v* tags, no gate — merged code).
@@ -68,8 +68,8 @@ jobs:
         run: cmake --build build-cmake --target comborando -j 4
       - name: Build comboui
         run: cmake --build build-cmake --target comboui -j 4
-      - name: Build ComboShip
-        run: cmake --build build-cmake --target ComboShip -j 4
+      - name: Build Ship2Ship
+        run: cmake --build build-cmake --target Ship2Ship -j 4
 
       # Port asset archives (--norom), same as the Windows job.
       - name: Generate soh.o2r
@@ -92,18 +92,18 @@ jobs:
       - name: Stage Linux package + build AppImage
         run: ./scripts/linux/make-appimage.sh build-cmake _packages
 
-      - name: Upload ComboShip-linux artifact
+      - name: Upload Ship2Ship-linux artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ComboShip-linux
+          name: Ship2Ship-linux
           path: _packages/stage
           if-no-files-found: error
 
       # GitHub zips artifact contents on download, which drops the exec bit — the docs tell users
       # to chmod +x the AppImage after unzipping (standard for CI-distributed AppImages).
-      - name: Upload ComboShip-linux AppImage
+      - name: Upload Ship2Ship-linux AppImage
         uses: actions/upload-artifact@v4
         with:
-          name: ComboShip-linux-appimage
-          path: _packages/ComboShip-*-linux-x86_64.AppImage
+          name: Ship2Ship-linux-appimage
+          path: _packages/Ship2Ship-*-linux-x86_64.AppImage
           if-no-files-found: error

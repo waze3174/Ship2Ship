@@ -1,5 +1,5 @@
 #!/bin/sh
-# ComboShip: assert that ComboShip's writable data (save containers, seeds) follows the same base
+# ComboShip: assert that Ship2Ship's writable data (save containers, seeds) follows the same base
 # directory as the games' own saves — libultraship's Context::GetAppDirectoryPath: SHIP_HOME on
 # macOS/Linux, else the working directory.
 #
@@ -56,7 +56,7 @@ status=0
 echo "A: SHIP_HOME absolute (the .app / AppRun case)"
 ( cd / && SHIP_HOME="$tmp" "$tmp/check" ) || status=1
 echo "B: SHIP_HOME tilde-relative (exactly what combo/macosx/Info.plist stores)"
-( cd / && SHIP_HOME='~/Library/Application Support/com.comboship.ComboShip' "$tmp/check" ) || status=1
+( cd / && SHIP_HOME='~/Library/Application Support/com.ship2ship.Ship2Ship' "$tmp/check" ) || status=1
 echo "C: no SHIP_HOME (paths stay CWD-relative, beside the games' own saves)"
 ( cd / && env -u SHIP_HOME "$tmp/check" ) || status=1
 

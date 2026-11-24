@@ -12,7 +12,7 @@ endif()
 
 # ComboShip: the upstream default packs only the "2s2h" component (just 2ship.dll) — a leftover
 # from the vendored 2Ship project. The Windows ZIP must bundle the FULL combo runtime:
-#   combo = ComboShip.exe + libultraship.dll + comboui.dll + assets/ + readme.txt + mods/soh + mods/2ship
+#   combo = Ship2Ship.exe + libultraship.dll + comboui.dll + assets/ + readme.txt + mods/soh + mods/2ship
 #   ship  = soh.dll  + soh.o2r  + gamecontrollerdb.txt
 #   2s2h  = 2ship.dll + 2ship.o2r
 # (oot.o2r / mm.o2r are ROM-derived and intentionally NOT packaged — testers extract their own.)
@@ -49,7 +49,7 @@ endif()
 # configure_file their own Info.plist to the SAME ${CMAKE_BINARY_DIR}/macosx/Info.plist, so relying
 # on that relative name would pick up whichever game configured last.
 if (CPACK_GENERATOR MATCHES "Bundle")
-    set(CPACK_BUNDLE_NAME "ComboShip")
+    set(CPACK_BUNDLE_NAME "Ship2Ship")
     set(CPACK_BUNDLE_PLIST "${CPACK_COMBO_BUNDLE_PLIST}")
     set(CPACK_BUNDLE_ICON "${CPACK_COMBO_BUNDLE_ICON}")
     set(CPACK_BUNDLE_APPLE_CERT_APP "-") # ad-hoc; a real identity is needed for distribution
@@ -57,5 +57,5 @@ if (CPACK_GENERATOR MATCHES "Bundle")
     # The Bundle generator installs monolithically, which greedily runs EVERY install() rule in the
     # build tree — that dragged gtest/gmock's include/ and lib/ into Contents/Resources. Restrict the
     # install to the "combo" component explicitly (4-tuple: build dir; project; component; subdir).
-    set(CPACK_INSTALL_CMAKE_PROJECTS "${CPACK_COMBO_BINARY_DIR};ComboShip;combo;/")
+    set(CPACK_INSTALL_CMAKE_PROJECTS "${CPACK_COMBO_BINARY_DIR};Ship2Ship;combo;/")
 endif()

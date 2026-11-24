@@ -3,12 +3,12 @@
 #
 #   scripts/linux/make-appimage.sh [build-dir] [packages-dir]
 #
-#   build-dir     CMake build tree with libultraship/soh/2ship/comboui/ComboShip and the
+#   build-dir     CMake build tree with libultraship/soh/2ship/comboui/Ship2Ship and the
 #                 GenerateSohOtr / Generate2ShipOtr targets already built (default: build-cmake)
 #   packages-dir  output directory (default: _packages); produces
 #                   <packages-dir>/stage                                — runnable tree (the
-#                       same layout the ComboShip-linux CI artifact ships)
-#                   <packages-dir>/ComboShip-<version>-linux-x86_64.AppImage
+#                       same layout the Ship2Ship-linux CI artifact ships)
+#                   <packages-dir>/Ship2Ship-<version>-linux-x86_64.AppImage
 #
 # The plain staged tree links against the build host's system libraries (a user on another
 # distro hits e.g. "libtinyxml2.so.10: cannot open shared object file"); the AppImage bundles
@@ -24,9 +24,9 @@ mkdir -p "$OUT"
 OUT="$(cd "$OUT" && pwd)"
 DEPLOY="$BUILD/combo"
 
-VERSION="$(sed -n 's/^set(COMBO_RELEASE_VERSION "\([^"]*\)".*/\1/p' "$SRC/CMakeLists.txt")"
+VERSION="$(sed -n 's/^set(SHIP2SHIP_VERSION "\([^"]*\)".*/\1/p' "$SRC/CMakeLists.txt")"
 if [ -z "$VERSION" ]; then
-    echo "WARNING: could not read COMBO_RELEASE_VERSION from CMakeLists.txt" >&2
+    echo "WARNING: could not read SHIP2SHIP_VERSION from CMakeLists.txt" >&2
     VERSION="0.0.0"
 fi
 
@@ -36,7 +36,7 @@ fi
 STAGE="$OUT/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-cp -L "$DEPLOY/ComboShip" "$DEPLOY/comborando" "$DEPLOY/comboui.so" "$DEPLOY/libsoh.so" \
+cp -L "$DEPLOY/Ship2Ship" "$DEPLOY/comborando" "$DEPLOY/comboui.so" "$DEPLOY/libsoh.so" \
       "$DEPLOY/lib2ship.so" "$DEPLOY/libultraship.so" "$STAGE/"
 cp -r "$DEPLOY/assets" "$STAGE/"
 for d in mods presets randomizer; do
@@ -45,7 +45,7 @@ done
 cp "$BUILD/soh/soh.o2r" "$BUILD/mm/2ship.o2r" "$STAGE/"
 
 # --- AppDir: the staged tree under usr/bin, minus comborando (headless validator; the
-# AppImage is the game — the validator ships in the plain ComboShip-linux artifact).
+# AppImage is the game — the validator ships in the plain Ship2Ship-linux artifact).
 APPDIR="$OUT/AppDir"
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
@@ -70,18 +70,18 @@ fi
 (
     cd "$OUT"
     export APPIMAGE_EXTRACT_AND_RUN=1
-    export OUTPUT="ComboShip-$VERSION-linux-x86_64.AppImage"
+    export OUTPUT="Ship2Ship-$VERSION-linux-x86_64.AppImage"
     export VERSION
     "$LINUXDEPLOY" --appdir "$APPDIR" \
-        --executable "$APPDIR/usr/bin/ComboShip" \
+        --executable "$APPDIR/usr/bin/Ship2Ship" \
         --deploy-deps-only "$APPDIR/usr/bin/libsoh.so" \
         --deploy-deps-only "$APPDIR/usr/bin/lib2ship.so" \
         --deploy-deps-only "$APPDIR/usr/bin/libultraship.so" \
         --deploy-deps-only "$APPDIR/usr/bin/comboui.so" \
-        --desktop-file "$SRC/combo/linux/ComboShip.desktop" \
-        --icon-file "$SRC/combo/linux/ComboShip.png" \
+        --desktop-file "$SRC/combo/linux/Ship2Ship.desktop" \
+        --icon-file "$SRC/combo/linux/Ship2Ship.png" \
         --custom-apprun "$SRC/combo/linux/AppRun" \
         --output appimage
 )
 
-echo "AppImage: $OUT/ComboShip-$VERSION-linux-x86_64.AppImage"
+echo "AppImage: $OUT/Ship2Ship-$VERSION-linux-x86_64.AppImage"

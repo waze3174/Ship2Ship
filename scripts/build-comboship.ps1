@@ -1,8 +1,8 @@
-# Build the launcher exe: ComboShip.exe  (POST_BUILD copies DLLs, port .o2r, and assets next to it)
+# Build the launcher exe: Ship2Ship.exe  (POST_BUILD copies DLLs, port .o2r, and assets next to it)
 # Usage:  .\build-comboship.ps1 [--Debug | --Release]   (defaults to Debug)
 # Depends on soh; building this also builds soh if stale. Runnable output: build\x64\combo\<config>\.
 
-$target = 'ComboShip'
+$target = 'Ship2Ship'
 
 # --- pick config from args: accepts --Debug / -Debug / Debug (any dash, case-insensitive) ---
 $config = 'Debug'

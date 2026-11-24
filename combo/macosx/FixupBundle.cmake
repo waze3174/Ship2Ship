@@ -20,7 +20,7 @@ set(_modules "")
 foreach(_m libultraship.dylib comboui.dylib libsoh.dylib lib2ship.dylib)
     list(APPEND _modules "${_macos}/${_m}")
 endforeach()
-fixup_bundle("${_macos}/ComboShip" "${_modules}" "")
+fixup_bundle("${_macos}/Ship2Ship" "${_modules}" "")
 
 # sdl2-compat (Homebrew's `sdl2`) loads SDL3 with dlopen, which fixup_bundle cannot see, so a bundle
 # carrying it passes verify_app and then fails to start anywhere.

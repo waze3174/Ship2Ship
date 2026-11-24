@@ -1,4 +1,4 @@
-// ComboShip.exe icon + version info. CMake fills the @...@ values (combo/CMakeLists.txt).
+// Ship2Ship.exe icon + version info. CMake fills the @...@ values (combo/CMakeLists.txt).
 #include <winver.h>
 
 IDI_ICON1 ICON "@COMBO_RC_ICON@"
@@ -17,11 +17,11 @@ BEGIN
         BLOCK "040904b0"
         BEGIN
             VALUE "CompanyName",      "@COMBO_PROJECT_TEAM@"
-            VALUE "FileDescription",  "ComboShip"
+            VALUE "FileDescription",  "Ship2Ship"
             VALUE "FileVersion",      "@COMBO_RELEASE_VERSION@"
-            VALUE "InternalName",     "ComboShip"
-            VALUE "OriginalFilename", "ComboShip.exe"
-            VALUE "ProductName",      "ComboShip"
+            VALUE "InternalName",     "Ship2Ship"
+            VALUE "OriginalFilename", "Ship2Ship.exe"
+            VALUE "ProductName",      "Ship2Ship"
             VALUE "ProductVersion",   "@COMBO_RELEASE_VERSION@"
         END
     END

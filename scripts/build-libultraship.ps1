@@ -1,6 +1,6 @@
 # Build the shared engine: libultraship.dll
 # Usage:  .\build-libultraship.ps1 [--Debug | --Release]   (defaults to Debug)
-# Build order when several targets changed: libultraship -> soh -> 2ship -> ComboShip.
+# Build order when several targets changed: libultraship -> soh -> 2ship -> Ship2Ship.
 
 $target = 'libultraship'
 

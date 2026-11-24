@@ -16,7 +16,11 @@ set(COMBO_EPOCH 1)  # ← bump for ComboShip-owned breaks / o2r-forcing releases
 
 # Manual release identity; SOLE authority for combosave compat (gated in combo/ComboShip.cpp).
 # See docs/UPSTREAM_MERGES.md for the bump rule.
-set(COMBO_RELEASE_VERSION "0.3.0" CACHE STRING "ComboShip release version (manual; gates combosave compat)" FORCE)
+set(COMBO_RELEASE_VERSION "0.3.0" CACHE STRING "Combo release version (manual; gates combosave compat)" FORCE)
+
+# Ship2Ship product version: display only (the in-game banner and the AppImage file name). Not tied to the
+# combosave gate above or to the o2r archive version (the project VERSION).
+set(SHIP2SHIP_VERSION "0.1.0" CACHE STRING "Ship2Ship release version (display only)" FORCE)
 
 set(COMBO_PINS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-pins.json")
 # Reconfigure whenever the pins change so the derived version stays in sync.
@@ -35,8 +39,8 @@ math(EXPR COMBO_PATCH "0x${COMBO_MM_HEX} & 0x7FFF")
 string(SUBSTRING "${COMBO_SOH_SHA}" 0 7 COMBO_SOH_SHORT)
 string(SUBSTRING "${COMBO_MM_SHA}"  0 7 COMBO_MM_SHORT)
 
-project(ComboShip VERSION ${COMBO_EPOCH}.${COMBO_MINOR}.${COMBO_PATCH} LANGUAGES C CXX)
-message(STATUS "ComboShip version ${PROJECT_VERSION} "
+project(Ship2Ship VERSION ${COMBO_EPOCH}.${COMBO_MINOR}.${COMBO_PATCH} LANGUAGES C CXX)
+message(STATUS "Ship2Ship version ${PROJECT_VERSION} "
                "(epoch ${COMBO_EPOCH}, soh ${COMBO_SOH_SHORT}, mm ${COMBO_MM_SHORT})")
 
 # ComboShip: libultraship/soh/2ship/comboui build as shared objects, so every vendored static
@@ -52,8 +56,8 @@ include(CMake/2ship-cvars.cmake)
 include(CMake/lus-cvars.cmake)
 
 # In-game banner (gBuildVersion): release version + readable upstream identity.
-set(PROJECT_BUILD_NAME "ComboShip v${COMBO_RELEASE_VERSION} | Combo Build e${COMBO_EPOCH} soh-${COMBO_SOH_SHORT} mm-${COMBO_MM_SHORT}" CACHE STRING "" FORCE)
-# Company field per binary: each game DLL credits its upstream, the launcher is ComboShip.
+set(PROJECT_BUILD_NAME "Ship2Ship v${SHIP2SHIP_VERSION} | Combo Build e${COMBO_EPOCH} soh-${COMBO_SOH_SHORT} mm-${COMBO_MM_SHORT}" CACHE STRING "" FORCE)
+# Company field per binary: each game DLL credits its upstream, the launcher is Ship2Ship.
 set(PROJECT_TEAM "github.com/harbourmasters" CACHE STRING "" FORCE)
 set(COMBO_PROJECT_TEAM "github.com/Varuuna/ComboShip")
 
@@ -428,7 +432,7 @@ add_subdirectory(combo ${CMAKE_BINARY_DIR}/combo)
 ################################################################################
 # Meta target to build both games and the combo executable
 ################################################################################
-add_custom_target(combo ALL DEPENDS soh 2ship ComboShip)
+add_custom_target(combo ALL DEPENDS soh 2ship Ship2Ship)
 
 ################################################################################
 # Asset archive generation targets
@@ -502,14 +506,14 @@ endif()
 # component and we lay the whole runtime out here from paths that actually exist.
 if(APPLE)
     configure_file(${CMAKE_SOURCE_DIR}/combo/macosx/Info.plist.in
-                   ${CMAKE_BINARY_DIR}/macosx/ComboShip-Info.plist @ONLY)
+                   ${CMAKE_BINARY_DIR}/macosx/Ship2Ship-Info.plist @ONLY)
     # Carried into CPackConfig.cmake for the pack-time Bundle branch (must be set before include(CPack)).
-    set(CPACK_COMBO_BUNDLE_PLIST "${CMAKE_BINARY_DIR}/macosx/ComboShip-Info.plist")
-    set(CPACK_COMBO_BUNDLE_ICON  "${CMAKE_SOURCE_DIR}/combo/macosx/ComboShip.icns")
+    set(CPACK_COMBO_BUNDLE_PLIST "${CMAKE_BINARY_DIR}/macosx/Ship2Ship-Info.plist")
+    set(CPACK_COMBO_BUNDLE_ICON  "${CMAKE_SOURCE_DIR}/combo/macosx/Ship2Ship.icns")
     set(CPACK_COMBO_BINARY_DIR   "${CMAKE_BINARY_DIR}")
 
     # Executable + the four loadable modules -> Contents/MacOS.
-    install(PROGRAMS "$<TARGET_FILE:ComboShip>"    DESTINATION ../MacOS COMPONENT combo)
+    install(PROGRAMS "$<TARGET_FILE:Ship2Ship>"    DESTINATION ../MacOS COMPONENT combo)
     install(PROGRAMS "$<TARGET_FILE:libultraship>" DESTINATION ../MacOS COMPONENT combo)
     install(PROGRAMS "$<TARGET_FILE:comboui>"      DESTINATION ../MacOS COMPONENT combo)
     install(PROGRAMS "$<TARGET_FILE:soh>"          DESTINATION ../MacOS COMPONENT combo)

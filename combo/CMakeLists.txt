@@ -1,11 +1,11 @@
 cmake_minimum_required(VERSION 3.26.0 FATAL_ERROR)
 
-project(ComboShip LANGUAGES C CXX)
+project(Ship2Ship LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_C_STANDARD 23)
 
-# ── ComboShip builds soh/2ship as SHARED DLLs (upstream builds them as exes), so MSVC emits DLL-boundary
+# ── Ship2Ship builds soh/2ship as SHARED DLLs (upstream builds them as exes), so MSVC emits DLL-boundary
 #    warnings their exe build never sees — and soh's /WX (#6733) makes them hard errors (e.g. C4273
 #    'inconsistent dll linkage' on the CRT floorf/ceilf forward-decls in OTRGlobals.cpp). Silence that
 #    *class* only for the shared game targets; /WX still catches genuine issues (it caught a real
@@ -59,7 +59,7 @@ target_sources(comboui PRIVATE ${imgui_SOURCE_DIR}/misc/cpp/imgui_stdlib.cpp)
 # ComboShip: deploy comboui.dll directly into the shared runtime dir (x64/<config>),
 # matching how soh/2ship set their own RUNTIME_OUTPUT_DIRECTORY. Without this, a
 # per-target `--target comboui` build lands in build/x64/combo/<config> and never
-# reaches the exe's load path until the ComboShip exe is rebuilt — a stale-DLL trap.
+# reaches the exe's load path until the Ship2Ship exe is rebuilt — a stale-DLL trap.
 set_target_properties(comboui PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY_DEBUG   "${CMAKE_SOURCE_DIR}/x64/Debug"
     RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/x64/Release"
@@ -68,7 +68,7 @@ set_target_properties(comboui PROPERTIES
 )
 # ComboShip Linux: same hidden-visibility rule as soh/2ship (see their CMakeLists) — only the
 # ComboUI_* ABI (COMBO_EXPORT) is resolvable process-wide. RUNTIME_OUTPUT_DIRECTORY above doesn't
-# govern shared libs on Unix; comboui.so lands beside the ComboShip executable by default here.
+# govern shared libs on Unix; comboui.so lands beside the Ship2Ship executable by default here.
 if (NOT MSVC)
     target_compile_options(comboui PRIVATE -fvisibility=hidden -fvisibility-inlines-hidden)
     target_link_libraries(comboui PRIVATE ${CMAKE_DL_LIBS}) # Combo_ResolveSym uses dlsym
@@ -91,35 +91,35 @@ set(COMBO_SOURCES
 )
 
 # Create executable
-add_executable(ComboShip ${COMBO_SOURCES})
+add_executable(Ship2Ship ${COMBO_SOURCES})
 
 # Portable relative-include fix: MSVC VS generator implicitly adds the source file's directory,
 # but Ninja/Unix builds do not. Explicitly add the combo source dir so that includes like
 # "rando/CrossForeign.h" resolve on all generators.
-target_include_directories(ComboShip PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories(Ship2Ship PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # nlohmann/json is used by combo/rando/CrossForeign.h (header-only, pulled transitively through vcpkg)
 find_package(nlohmann_json REQUIRED)
-target_link_libraries(ComboShip PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
+target_link_libraries(Ship2Ship PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
 
 # COMBO_RELEASE_VERSION: launcher-only gate for combosave compat (the games don't gate, so no macro there).
-target_compile_definitions(ComboShip PRIVATE COMBO_RELEASE_VERSION="${COMBO_RELEASE_VERSION}")
+target_compile_definitions(Ship2Ship PRIVATE COMBO_RELEASE_VERSION="${COMBO_RELEASE_VERSION}")
 
-# ComboShip owns the persistent Anchor network connection (Phase 1), so it links SDL_net directly.
+# Ship2Ship owns the persistent Anchor network connection (Phase 1), so it links SDL_net directly.
 # Mirrors soh's linkage (SDL2_net::SDL2_net-static on the static-md triplet, plain otherwise). We do
-# NOT link SDL2main here — ComboShip provides its own main().
+# NOT link SDL2main here — Ship2Ship provides its own main().
 find_package(SDL2 REQUIRED)
 find_package(SDL2_net REQUIRED)
 # SDL2_net before SDL2: a static libSDL2_net.a needs SDL2 symbols resolved by what FOLLOWS it on
 # the link line, and Linux's default --as-needed would otherwise drop the earlier libSDL2.so.
 if(TARGET SDL2_net::SDL2_net-static)
-    target_link_libraries(ComboShip PRIVATE SDL2_net::SDL2_net-static SDL2::SDL2)
+    target_link_libraries(Ship2Ship PRIVATE SDL2_net::SDL2_net-static SDL2::SDL2)
 else()
-    target_link_libraries(ComboShip PRIVATE SDL2_net::SDL2_net SDL2::SDL2)
+    target_link_libraries(Ship2Ship PRIVATE SDL2_net::SDL2_net SDL2::SDL2)
 endif()
 
 # Add dependencies to ensure games are built first
-add_dependencies(ComboShip
+add_dependencies(Ship2Ship
     soh
     2ship
     libultraship
@@ -128,7 +128,7 @@ add_dependencies(ComboShip
 
 # ComboShip: standalone HEADLESS cross-world seed generator/validator (combo/ComboRandoHeadless.cpp).
 # Loads soh.dll/2ship.dll at runtime and drives the rando-only headless init + cross-world fill — no
-# window, ResourceManager, audio, or ComboShip.exe boot. Console tool; links only nlohmann_json since
+# window, ResourceManager, audio, or Ship2Ship.exe boot. Console tool; links only nlohmann_json since
 # CrossWorldRando.h is header-only. Run from x64/<config> (next to the game DLLs).
 # EXCLUDE_FROM_ALL: a dev/validation tool most builders don't need, so it's kept out of the default
 # build entirely — build it explicitly with `cmake --build <dir> --target comborando` when wanted.
@@ -146,51 +146,51 @@ endif()
 
 # Windows-specific settings
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    # Icon + version info for ComboShip.exe; the version is COMBO_RELEASE_VERSION padded to 4 parts.
+    # Icon + version info for Ship2Ship.exe; the version is COMBO_RELEASE_VERSION padded to 4 parts.
     string(REGEX MATCHALL "[0-9]+" COMBO_RC_VERSION_PARTS "${COMBO_RELEASE_VERSION}")
     list(APPEND COMBO_RC_VERSION_PARTS 0 0 0 0)
     list(SUBLIST COMBO_RC_VERSION_PARTS 0 4 COMBO_RC_VERSION_PARTS)
     list(JOIN COMBO_RC_VERSION_PARTS "," COMBO_RC_VERSION_COMMAS)
-    set(COMBO_RC_ICON "${CMAKE_CURRENT_SOURCE_DIR}/windows/ComboShip.ico")
-    configure_file(windows/ComboShip.rc.in ${CMAKE_CURRENT_BINARY_DIR}/ComboShip.rc @ONLY)
-    target_sources(ComboShip PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/ComboShip.rc)
+    set(COMBO_RC_ICON "${CMAKE_CURRENT_SOURCE_DIR}/windows/Ship2Ship.ico")
+    configure_file(windows/ComboShip.rc.in ${CMAKE_CURRENT_BINARY_DIR}/Ship2Ship.rc @ONLY)
+    target_sources(Ship2Ship PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/Ship2Ship.rc)
 
     # ComboShip: build the exe straight into the shared runtime dir (x64/<config>), matching how the
     # game DLLs (soh/2ship/libultraship/comboui) set their own output dir. x64/<config> is then the
     # SINGLE deploy location — the exe and every DLL already land here, so there is no second copy in
     # the per-target build tree (build/x64/combo/<config>) to go stale and cause a stale-DLL launch.
-    set_target_properties(ComboShip PROPERTIES
-        OUTPUT_NAME "ComboShip"
+    set_target_properties(Ship2Ship PROPERTIES
+        OUTPUT_NAME "Ship2Ship"
         RUNTIME_OUTPUT_DIRECTORY_DEBUG   "${CMAKE_SOURCE_DIR}/x64/Debug"
         RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/x64/Release"
     )
 
     # Release: no console window (kept in Debug for logs). Same /SUBSYSTEM:WINDOWS soh uses; soh relies
-    # on SDL2main for WinMain, but ComboShip has its own main() (see above), so /ENTRY:mainCRTStartup
+    # on SDL2main for WinMain, but Ship2Ship has its own main() (see above), so /ENTRY:mainCRTStartup
     # keeps it. Errors still persist to *_extract_error.log.
     if(MSVC)
-        target_link_options(ComboShip PRIVATE
+        target_link_options(Ship2Ship PRIVATE
             $<$<CONFIG:Release>:/SUBSYSTEM:WINDOWS;/ENTRY:mainCRTStartup>)
     endif()
 else()
     # ComboShip Linux/macOS: the games' shared objects land in their own build dirs; mirror the
     # Windows single-deploy-dir layout by symlinking them beside the launcher, whose loader dlopens
     # ./libsoh.so etc. from its own directory (cwd == exe dir at runtime). Symlinks, not copies:
-    # a copy staged by ComboShip's POST_BUILD goes stale when only a game lib rebuilds (ComboShip
+    # a copy staged by Ship2Ship's POST_BUILD goes stale when only a game lib rebuilds (Ship2Ship
     # doesn't relink for that) — the same stale-module trap the Windows output-dir pinning avoids.
-    add_custom_command(TARGET ComboShip POST_BUILD
+    add_custom_command(TARGET Ship2Ship POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:soh>
-            $<TARGET_FILE_DIR:ComboShip>/$<TARGET_FILE_NAME:soh>
+            $<TARGET_FILE_DIR:Ship2Ship>/$<TARGET_FILE_NAME:soh>
         COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:2ship>
-            $<TARGET_FILE_DIR:ComboShip>/$<TARGET_FILE_NAME:2ship>
+            $<TARGET_FILE_DIR:Ship2Ship>/$<TARGET_FILE_NAME:2ship>
         COMMAND ${CMAKE_COMMAND} -E create_symlink $<TARGET_FILE:libultraship>
-            $<TARGET_FILE_DIR:ComboShip>/$<TARGET_FILE_NAME:libultraship>
+            $<TARGET_FILE_DIR:Ship2Ship>/$<TARGET_FILE_NAME:libultraship>
     )
 endif()
 
 # The exe and every game module land in one deploy dir (x64/<config> on Windows via the output-dir
 # pinning above; the combo build dir elsewhere via the module copies above), so only the asset
-    # tree and the PORT/custom .o2r archives need deploying. $<TARGET_FILE_DIR:ComboShip> == x64/<config>,
+    # tree and the PORT/custom .o2r archives need deploying. $<TARGET_FILE_DIR:Ship2Ship> == x64/<config>,
     # so this is config-correct for Debug AND Release.
     #
     # Extractor assets, one flat assets/ tree for BOTH extractors: soh's Torch ymls (config.yml + per-
@@ -200,17 +200,17 @@ endif()
     # fails on ("Raw data size: 0x0", reached EOF). Clearing makes the source tree authoritative each
     # build. (The user's ROM/port archives live in the dir root, NOT under assets/, so this is safe.)
     # See docs/merges/2026-06-20.md.
-    add_custom_command(TARGET ComboShip POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:ComboShip>/assets
+    add_custom_command(TARGET Ship2Ship POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E rm -rf $<TARGET_FILE_DIR:Ship2Ship>/assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/soh/assets/yml
-            $<TARGET_FILE_DIR:ComboShip>/assets
+            $<TARGET_FILE_DIR:Ship2Ship>/assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/mm/assets/extractor
-            $<TARGET_FILE_DIR:ComboShip>/assets
+            $<TARGET_FILE_DIR:Ship2Ship>/assets
         COMMAND ${CMAKE_COMMAND} -E copy_directory
             ${CMAKE_SOURCE_DIR}/mm/assets/xml
-            $<TARGET_FILE_DIR:ComboShip>/assets/xml
+            $<TARGET_FILE_DIR:Ship2Ship>/assets/xml
     )
 
     # PORT/custom .o2r deploy — guarded so a missing archive doesn't fail the build (see comment above).
@@ -218,17 +218,17 @@ endif()
     # configure time. A dev who has run GenerateSohOtr/Generate2ShipOtr has them; the compile-only CI
     # gate has neither and skips this block. If CI later generates the .o2r, reconfigure picks them up.
     if(EXISTS "${CMAKE_SOURCE_DIR}/soh/soh.o2r")
-        add_custom_command(TARGET ComboShip POST_BUILD
+        add_custom_command(TARGET Ship2Ship POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_SOURCE_DIR}/soh/soh.o2r $<TARGET_FILE_DIR:ComboShip>/soh.o2r
+                ${CMAKE_SOURCE_DIR}/soh/soh.o2r $<TARGET_FILE_DIR:Ship2Ship>/soh.o2r
         )
     else()
         message(STATUS "ComboShip: soh/soh.o2r not found — skipping .o2r deploy (run GenerateSohOtr to produce it).")
     endif()
     if(EXISTS "${CMAKE_SOURCE_DIR}/mm/2ship.o2r")
-        add_custom_command(TARGET ComboShip POST_BUILD
+        add_custom_command(TARGET Ship2Ship POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
-                ${CMAKE_SOURCE_DIR}/mm/2ship.o2r $<TARGET_FILE_DIR:ComboShip>/2ship.o2r
+                ${CMAKE_SOURCE_DIR}/mm/2ship.o2r $<TARGET_FILE_DIR:Ship2Ship>/2ship.o2r
         )
     else()
         message(STATUS "ComboShip: mm/2ship.o2r not found — skipping .o2r deploy (run Generate2ShipOtr to produce it).")
@@ -253,7 +253,7 @@ if(APPLE)
                 INSTALL_RPATH "@loader_path")
         endif()
     endforeach()
-    foreach(_combo_exe ComboShip comborando)
+    foreach(_combo_exe Ship2Ship comborando)
         if(TARGET ${_combo_exe})
             set_target_properties(${_combo_exe} PROPERTIES
                 BUILD_WITH_INSTALL_RPATH FALSE
@@ -265,7 +265,7 @@ if(APPLE)
     # Apple frameworks for soh's own ObjC++ TU (DarwinSpeechSynthesizer.mm -> AVSpeechSynthesizer,
     # NSString, and the objc runtime Foundation pulls in). libultraship links these too, but
     # PRIVATE — which is why upstream never needed this: there libultraship is STATIC, so its
-    # PRIVATE deps still propagate to whatever links it. ComboShip builds it SHARED (COMBO_BUILD),
+    # PRIVATE deps still propagate to whatever links it. Ship2Ship builds it SHARED (COMBO_BUILD),
     # and a shared library resolves its own PRIVATE deps and propagates nothing, leaving soh with
     # undefined _OBJC_CLASS_$_AVSpeechSynthesizer at link.
     if(TARGET soh)
@@ -280,9 +280,9 @@ if(APPLE)
     # mappings unusable. Deploy it beside the exe like the rest of the runtime.
     # ponytail: Darwin-gated to keep this diff attributable to the macOS port, but nothing here is
     # Darwin-specific — the Linux build has the same gap. Drop the if(APPLE) to fix both.
-    add_custom_command(TARGET ComboShip POST_BUILD
+    add_custom_command(TARGET Ship2Ship POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt $<TARGET_FILE_DIR:ComboShip>/gamecontrollerdb.txt
+            ${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt $<TARGET_FILE_DIR:Ship2Ship>/gamecontrollerdb.txt
     )
 endif()
 
@@ -290,5 +290,5 @@ endif()
 # in the top-level CMakeLists installs the exe to Contents/MacOS, and this rule would additionally
 # drop a duplicate copy into Contents/Resources (CPack's Bundle install prefix).
 if(NOT APPLE)
-    install(TARGETS ComboShip DESTINATION . COMPONENT combo)
+    install(TARGETS Ship2Ship DESTINATION . COMPONENT combo)
 endif()

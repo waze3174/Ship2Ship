@@ -1,10 +1,10 @@
 [Desktop Entry]
 Version=1.0
-Name=ComboShip Ultimate
+Name=Ship2Ship
 Comment=Ocarina of Time + Majora's Mask combo randomizer
-Exec=ComboShip
+Exec=Ship2Ship
 Terminal=true
-Icon=ComboShip
+Icon=Ship2Ship
 Type=Application
 Categories=Game;
 X-AppImage-Integrate=false
