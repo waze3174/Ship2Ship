@@ -45,6 +45,8 @@ set(COMBOUI_SOURCES
     gui/ComboPlayPreset.cpp
     gui/ComboPresets.cpp
     gui/ComboPresetsPanel.cpp
+    gui/ComboConfigImport.cpp
+    gui/ComboConfigImportPanel.cpp
     gui/ComboBottleShelfWindow.cpp
 )
 add_library(comboui SHARED ${COMBOUI_SOURCES})

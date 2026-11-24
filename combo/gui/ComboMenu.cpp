@@ -1,7 +1,7 @@
 // combo/gui/ComboMenu.cpp
 #include "ComboMenu.h"
 #include "ComboSettingsLink.h" // one control for a preference both games own separately
-#include "ComboPresetPanels.h" // Settings > Presets panel
+#include "ComboPresetPanels.h" // Settings > Presets and Import from ComboShip panels
 #include "ComboExport.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
@@ -492,6 +492,7 @@ struct HubEntry {
         COMBO_HINT_TRACKER,
         COMBO_TIMERS,
         COMBO_PRESETS,
+        COMBO_CONFIG_IMPORT,
         COMBO_NETWORK
     } kind;
     const ComboRando::GameMenu* game = nullptr; // ENGINE/OOT_RANDO/MM_RANDO
@@ -1374,6 +1375,12 @@ void ComboMenu::DrawSharedPanel() {
         pre.group = "Settings";
         pre.kind = HubEntry::COMBO_PRESETS;
         e.push_back(std::move(pre));
+        // Combo-owned import of another ComboShip install's comboship.json.
+        HubEntry imp;
+        imp.label = "Import from ComboShip";
+        imp.group = "Settings";
+        imp.kind = HubEntry::COMBO_CONFIG_IMPORT;
+        e.push_back(std::move(imp));
         if (!e.empty())
             groups.push_back({ "Settings", std::move(e) });
         // Network group: the Anchor team-sync control (covers BOTH games) plus the Ship of Harkinian
@@ -1510,6 +1517,8 @@ void ComboMenu::DrawSharedPanel() {
         DrawTimersSharedPanel();
     } else if (active->kind == HubEntry::COMBO_PRESETS) {
         DrawPresetsSharedPanel();
+    } else if (active->kind == HubEntry::COMBO_CONFIG_IMPORT) {
+        DrawConfigImportSharedPanel();
     } else if (active->kind == HubEntry::COMBO_NETWORK) {
         DrawNetworkSharedPanel();
     } else {

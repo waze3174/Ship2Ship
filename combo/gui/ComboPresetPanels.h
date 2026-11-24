@@ -11,6 +11,10 @@ namespace ComboRando {
 // ComboPresetsPanel.cpp.
 void DrawPresetsSharedPanel();
 
+// Settings > Import from ComboShip: pull another ComboShip install's comboship.json into this one.
+// ComboConfigImportPanel.cpp.
+void DrawConfigImportSharedPanel();
+
 // One line of result text, green for success and red for an error; nothing when `text` is empty.
 void DrawStatusLine(const std::string& text, bool isError);
 
