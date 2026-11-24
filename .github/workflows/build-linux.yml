@@ -107,3 +107,16 @@ jobs:
           name: Ship2Ship-linux-appimage
           path: _packages/Ship2Ship-*-linux-x86_64.AppImage
           if-no-files-found: error
+
+      # The Lost Woods link changes the cross-game crossing the logic uses (Lost Woods hub instead of the Mask
+      # Shop), and with the Majora's Mask start it changes the forced settings. Generate a handful of seeds each
+      # way, then replay one link-on seed forward to prove it beatable.
+      - name: Seed checks, Lost Woods link on and off (comborando)
+        working-directory: build-cmake/combo
+        run: |
+          ./comborando --seed ci-lwl-off --count 5 --no-lost-woods-link
+          ./comborando --seed ci-lwl-off-mm --count 5 --no-lost-woods-link --starting-game mm
+          ./comborando --seed ci-lwl-on --count 5 --lost-woods-link
+          ./comborando --seed ci-lwl-on-mm --count 5 --lost-woods-link --starting-game mm
+          ./comborando --seed ci-lwl-on-replay --count 1 --lost-woods-link --starting-game mm
+          ./comborando --playthrough saves/combo/comborando.spoiler.json
