@@ -3408,7 +3408,14 @@ static void Combo_OnOOTSaveInit(int fileNum) {
             c["combo"].erase("hintsRead");
         // A mode a deleted save left behind must not reach LoadComboCompletion before this save writes its own.
         c["combo"].erase(ComboRando::kComboModeKey);
+        // Each game still holds the Bottle Shelf of the save it last read, and OOT's new save was just written with
+        // it. A new save starts with an empty shelf in both games.
+        c["combo"].erase("bottleShelf");
         FlushContainer(fileNum);
+    }
+    for (FnShelfSet setShelf : { SOH_BottleShelfSetState, MM_BottleShelfSetState }) {
+        if (setShelf)
+            setShelf("{}");
     }
     const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
     if (quest == ComboRando::kSohQuestComboMm) {

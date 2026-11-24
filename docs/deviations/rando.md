@@ -2330,6 +2330,15 @@ mirrored empty bottles (a free native slot first, else the shelf). A shelf swap 
 (MM: every form) pointing at that slot. UI: `combo/gui/ComboBottleShelfWindow.cpp` (combo menu → "Open Bottle
 Shelf"; `gCombo.BottleShelf.Open`).
 
+**Save reads (fixed 2026-11-24):** the push in `Combo_ReadGameSave` is right for a load, but MM also reads its section
+before each write: `SaveManager_SaveCurrentForCombo`'s read-modify-write, the flash owl and new-cycle writers, and the
+Saria hint save. Those reads replaced MM's live shelf with the stored one and the write stored it back, so MM's
+`mirroredIn` never moved from its stored value and MM counted its mirrored bottles as found in MM. Each reconcile then
+added OOT's found count to both games again, until MM's six slots were full (one bottle found in OOT: up to 6 in MM
+and 7 in OOT). MM's shelf bottles were also lost at every MM write. Those reads now keep the live shelf
+(`LiveBottleShelfGuard`, `mm/2s2h/SaveManager/SaveManager.cpp`). A new save also starts with an empty shelf in both
+games (`Combo_OnOOTSaveInit`); it used to inherit the shelf of the save each game had read last.
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.
