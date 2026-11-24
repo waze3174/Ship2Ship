@@ -2336,7 +2336,8 @@ Saria hint save. Those reads replaced MM's live shelf with the stored one and th
 `mirroredIn` never moved from its stored value and MM counted its mirrored bottles as found in MM. Each reconcile then
 added OOT's found count to both games again, until MM's six slots were full (one bottle found in OOT: up to 6 in MM
 and 7 in OOT). MM's shelf bottles were also lost at every MM write. Those reads now keep the live shelf
-(`LiveBottleShelfGuard`, `mm/2s2h/SaveManager/SaveManager.cpp`).
+(`LiveBottleShelfGuard`, `mm/2s2h/SaveManager/SaveManager.cpp`). A new save also starts with an empty shelf in both
+games (`Combo_OnOOTSaveInit`); it used to inherit the shelf of the save each game had read last.
 
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
