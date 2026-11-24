@@ -575,6 +575,8 @@ static std::map<int, nlohmann::json> g_containerCache;
 // Slots whose container was backed up for a COMBO_RELEASE_VERSION mismatch; guarded by g_containerMutex.
 // OOT drains it on the main thread (Combo_TakeEvictionNotice) to surface a popup.
 static std::vector<int> g_evictedSlots;
+// Lets the per-frame poll skip g_containerMutex, which a save write on another thread can hold for tens of ms.
+static std::atomic<bool> g_hasEvictedSlots{ false };
 
 static int g_foregroundGame = 0; // ComboRando::GAME_OOT at startup (shared health: only it writes combo.health)
 // Single place the foreground game changes, so every transition point notifies comboui consistently.
@@ -639,6 +641,7 @@ static nlohmann::json& LoadOrCreateContainer(int fileNum) {
             ComboReleaseMajorMinor(rel->get<std::string>()) != ComboReleaseMajorMinor(COMBO_RELEASE_VERSION)) {
             std::filesystem::rename(path, path.string() + "-" + std::to_string(std::time(nullptr)) + ".bak", ec);
             g_evictedSlots.push_back(fileNum); // caller holds g_containerMutex
+            g_hasEvictedSlots = true;
             parsed = false;
         }
     }
@@ -696,11 +699,14 @@ static void FlushContainer(int fileNum) {
 // OOT (main thread) polls this each frame via SOH_SetOutdatedSaveNotice: pops the next slot whose
 // container was backed up for a release mismatch, or -1 if none. Mirrors the SOH_SetCopyContainer wiring.
 static int Combo_TakeEvictionNotice() {
+    if (!g_hasEvictedSlots)
+        return -1;
     std::lock_guard<std::mutex> lk(g_containerMutex);
     if (g_evictedSlots.empty())
         return -1;
     int slot = g_evictedSlots.front();
     g_evictedSlots.erase(g_evictedSlots.begin());
+    g_hasEvictedSlots = !g_evictedSlots.empty();
     return slot;
 }
 
