@@ -1402,6 +1402,7 @@ s32 Combo_BremenMarching(void) {
     return sComboMaskAct == COMBO_MASKACT_MARCH;
 }
 void Player_Action_ComboBremenMarch(Player* this, PlayState* play); // MM Player_Action_11 (below)
+void func_8084B498(Player* this); // (below) the Fairy Ocarina's item action if owned, else the Ocarina of Time's
 void Player_Action_ComboKamaroDance(Player* this, PlayState* play); // MM Player_Action_12 (below)
 void Player_Action_ComboShowMmItem(Player* this, PlayState* play);  // MM Player_Action_ExchangeItem, no taker (below)
 static s32 Combo_AnimIs(LinkAnimationHeader* anim, const char* comboMmAnim) {
@@ -3158,8 +3159,9 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             return;
         }
         if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BREMEN) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND)) {
-            // MM func_80839978
-            this->itemAction = PLAYER_IA_NONE; // MM sets PLAYER_IA_OCARINA as a marker: nothing in hand
+            // MM func_80839978. MM's PLAYER_IA_OCARINA is what puts the ocarina in Link's hand for the march (its
+            // instrument model group); it needs no ocarina in the inventory.
+            func_8084B498(this);
             Player_SetupActionPreserveItemAction(play, this, Player_Action_ComboBremenMarch, 0);
             Player_AnimReplacePlayLoopAdjusted(play, this, COMBO_MM_ANIM("gPlayerAnim_clink_normal_okarina_walk"),
                                                4 | PLAYER_ANIM_MOVEMENT_RESET_BY_AGE);

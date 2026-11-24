@@ -211,6 +211,10 @@ extern "C" int Combo_MmForeignAmmo(int foreignItem, int* full) {
 // model for one age only; the other age (SoH's Timeless Equipment) borrows it, as SoH's "Equipment Always Visible"
 // does.
 extern "C" const void* Combo_MmOotHeldDL(Player* player, int limbIndex) {
+    if (player->stateFlags3 & PLAYER_STATE3_20000000) {
+        // The Bremen march keeps the held item but draws MM's ocarina hands (MM func_80839978).
+        return nullptr;
+    }
     const bool adult = Combo_MM_AdultBodyActive(&player->actor);
     switch (player->heldItemAction) {
         case PLAYER_IA_COMBO_OOT_BOOMERANG:
