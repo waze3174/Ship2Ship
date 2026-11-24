@@ -286,6 +286,14 @@ write makes MM's per-slot backup redundant). One seam catches the native flashro
 combo-persist, Saria-hint, and drag-drop. `SaveManager_DeleteSaveFile` clears the section by writing
 `null`.
 
+**Save timing (`gCombo.Debug.SaveTiming`, off by default; 2026-11-24):** `combo/ComboSaveTiming.h`. With it on,
+each game logs `[ComboShip] save timing:` lines: MM's `SaveManager_SaveCurrentForCombo` split into read (launcher
+read + parse), serialize, and write (dump + launcher write, which includes the container flush); OOT's
+`SaveFileThreaded` container write (on the save thread); and any shared-reconcile tick over 1 ms in either game.
+The launcher has no log file of its own, so the container flush is timed only inside the callers' write.
+`Combo_ReadGameSave` takes the container's `combo` object by reference (`ComboObjectOf`): it holds the baked seed,
+and it was deep-copied once or twice on every save read (twice for a dormant MM save).
+
 **Baked combo rando (self-contained, no runtime file read):** the consolidated spoiler (foreign
 cross-game item map + cross-hints) is stored in `combo.rando` at save creation (`Combo_OnOOTSaveInit`)
 and pushed once per save-load into both DLLs via `SOH_LoadComboRando` / `MM_LoadComboRando` →

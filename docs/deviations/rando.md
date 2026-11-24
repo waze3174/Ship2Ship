@@ -2344,7 +2344,8 @@ received in OOT (rupees and hearts too) and every randomizer give in MM, and `MM
 MM's save each time, even when no bottle was added. That write runs on the game thread: a read-modify-write of MM's
 section plus a rewrite of the whole `.combosav`. The same write after a cross-game grant took 73-164 ms (median 92,
 37 grants) on the owner's Steam Deck, measured from the `MM_GrantCrossItem` log lines. It now writes only when a
-bottle was added.
+bottle was added. `gCombo.Debug.BottleSaveEveryReconcile` (off by default) brings back the old write, so one build
+can time both with `gCombo.Debug.SaveTiming` (see boot-shutdown.md, "Save timing").
 
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
