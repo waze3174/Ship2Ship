@@ -5951,7 +5951,7 @@ s32 func_808382DC(Player* this, PlayState* play) {
                 }
                 return 0;
             }
-            // MM's Blast Mask: his raised shield takes its blast (z_en_bom_combo_keg.c).
+            // MM's Blast Mask: a blast his shield bounced doesn't reach his body (z_en_bom_combo_keg.c).
             if (EnBom_ComboBlastMaskShielded(play, this)) {
                 return 0;
             }
