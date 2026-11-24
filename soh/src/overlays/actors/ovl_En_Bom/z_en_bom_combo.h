@@ -31,6 +31,10 @@ s32 EnBom_ComboIsKeg(Actor* bomb);
 // explodes on its first update. NULL when it couldn't be spawned.
 EnBom* EnBom_ComboSpawnBlastMask(PlayState* play, Vec3f* pos);
 
+// For Link's damage check (z_player.c): true when this frame's hit on `player` is to be ignored because his raised
+// shield takes the Blast Mask's blast, as in MM.
+s32 EnBom_ComboBlastMaskShielded(PlayState* play, Player* player);
+
 // Hooks from z_en_bom.c. Each returns true when it handled the actor (vanilla code is skipped).
 s32 EnBom_ComboInit(EnBom* this, PlayState* play);
 s32 EnBom_ComboDestroy(EnBom* this, PlayState* play);

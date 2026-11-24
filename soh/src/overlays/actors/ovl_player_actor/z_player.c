@@ -5904,6 +5904,10 @@ s32 func_808382DC(Player* this, PlayState* play) {
                 }
                 return 0;
             }
+            // MM's Blast Mask: his raised shield takes its blast (z_en_bom_combo_keg.c).
+            if (EnBom_ComboBlastMaskShielded(play, this)) {
+                return 0;
+            }
 #endif
 
             //! @bug The second set of conditions here seems intended as a way for Link to "block" hits by rolling.

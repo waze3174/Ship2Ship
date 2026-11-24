@@ -25,6 +25,8 @@ typedef struct EnBom {
     s16 comboKegRoll;                             // MM EnBom.unk_1FA (the barrel rolling)
     s32 comboSfxSlot;                             // MM sfx source slot (ComboGuestAudio.cpp), 0 = none yet
     struct EnBomComboClearTag* comboClearTag;     // MM EnClearTag's effects (the explosion-effects instance only)
+    u8 comboBlastMask;                            // MM's Blast Mask bomb (EnBom_ComboSpawnBlastMask)
+    u8 comboBlastGuarded;                         // Link's raised shield has taken this Blast Mask blast
 #endif
 } EnBom; // size = 0x0208
 
