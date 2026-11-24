@@ -214,6 +214,8 @@ COMBO_EXPORT void MM_SetOnComboReturnCallback(void (*cb)(int kind));
 COMBO_EXPORT void MM_RequestComboReturn(void);
 // Teleport songs: portal-kind return to OOT arriving at the given OOT entrance (see BenPort.cpp).
 void Combo_RequestCrossSwitch(int ootEntrance);
+// The Clock Tower portal: back to OOT outside the Happy Mask Shop.
+void Combo_RequestPortalReturn(void);
 COMBO_EXPORT void MM_PrepareForTransition(void);
 COMBO_EXPORT void MM_ResumeGame(int fileNum);
 #endif

@@ -70,6 +70,8 @@ CrowdControl* CrowdControl::Instance;
 #include "rando/ComboGames.h"                     // ComboShip: Games (OoT only / MM only / Combo)
 #include "rando/CrossWarpLogic.h"                 // ComboShip (teleport songs): cross-game warp logic bits
 #include "2s2h/Rando/MiscBehavior/MiscBehavior.h" // ComboShip: MM_LoadComboRando cache invalidation + ComboRando types
+// ComboShip: the Lost Woods link
+#include "2s2h/Rando/MiscBehavior/ComboLostWoodsLink.h"
 #endif
 
 #include "2s2h/GameInteractor/GameInteractor.h"
@@ -201,6 +203,11 @@ extern "C" void Combo_RequestCrossSwitch(int ootEntrance) {
         return;
     }
     sComboCrossTargetOOT = ootEntrance;
+    sComboReturnPending = true;
+}
+
+// The Clock Tower portal: back to OOT's default arrival, outside the Happy Mask Shop.
+extern "C" void Combo_RequestPortalReturn(void) {
     sComboReturnPending = true;
 }
 
@@ -1178,10 +1185,11 @@ extern "C" void InitOTR(int argc, char* argv[]) {
         // GAMEMODE_NORMAL only: MM's attract demo (GAMEMODE_TITLE_SCREEN, after Sram_InitNewSave wiped
         // the save) scene-hops through here, and would both teleport the player to OOT and persist the
         // wiped save over the slot.
-        // Not in a solo seed (ComboGames.h): the Clock Tower is just MM's Clock Tower there.
+        // Not in a solo seed (ComboGames.h): the Clock Tower is just MM's Clock Tower there. With the Lost Woods link
+        // on, the door ends in the hall and the Happy Mask Salesman is the portal (ComboLostWoodsLink.cpp).
         if (sceneId == SCENE_INSIDETOWER && spawnNum == 1 && gSaveContext.gameMode == GAMEMODE_NORMAL &&
-            !Combo_GamesSolo()) {
-            sComboReturnPending = true;
+            !Combo_GamesSolo() && !Combo_MM_ClockTowerEntryStaysInMm()) {
+            Combo_RequestPortalReturn();
         }
     });
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameStateMainStart>([]() {

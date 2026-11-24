@@ -8,6 +8,9 @@
 #include "z64shrink_window.h"
 #include "libc/string.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboLostWoodsLink.h" // ComboShip: the Lost Woods link
+#endif
 
 ActorCutscene sGlobalCutsceneList[] = {
     // CS_ID_GLOBAL_78
@@ -519,6 +522,13 @@ s16 CutsceneManager_GetCurrentSubCamId(s16 csId) {
 s16 CutsceneManager_FindEntranceCsId(void) {
     PlayState* play;
     s32 csId;
+
+#ifdef COMBO_BUILD
+    // ComboShip: arriving from OoT's Lost Woods skips the intro's entrance cutscene.
+    if (Combo_MM_LostWoodsLinkSkipsEntranceCs()) {
+        return CS_ID_NONE;
+    }
+#endif
 
     for (csId = 0; csId < sSceneCutsceneCount; csId++) {
         if (sSceneCutsceneList[csId].scriptIndex != CS_SCRIPT_ID_NONE) {

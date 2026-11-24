@@ -25,6 +25,7 @@
 #include "2s2h/ShipUtils.h"
 #include "ComboExport.h"
 #include "Rando/Logic/Logic.h"
+#include "Rando/MiscBehavior/ComboLostWoodsLink.h"
 #include "Rando/Rando.h"
 
 namespace Rando::Entrances {
@@ -132,6 +133,10 @@ void LoadFromSeed(const nlohmann::json& seed) {
 
 // Runtime seam (C linkage, called from fenced lines in z_player.c / z_door_ana.c / z_en_holl.c).
 extern "C" s32 Combo_MM_RedirectExit(s32 entrance) {
+    // The Lost Woods link's own exit is final: the shuffle and the cross-game doors never rewrite it.
+    const s32 linked = Combo_MM_LostWoodsLinkExit(entrance);
+    if (linked != entrance)
+        return linked;
     if (!IS_RANDO || Rando::Entrances::sOverrides.empty())
         return entrance;
     // Scene-layer bits ride on the low nibble of an exit value only for cutscene layers; exits taken by
