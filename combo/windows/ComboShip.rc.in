@@ -18,11 +18,11 @@ BEGIN
         BEGIN
             VALUE "CompanyName",      "@COMBO_PROJECT_TEAM@"
             VALUE "FileDescription",  "Ship2Ship"
-            VALUE "FileVersion",      "@COMBO_RELEASE_VERSION@"
+            VALUE "FileVersion",      "@SHIP2SHIP_VERSION@"
             VALUE "InternalName",     "Ship2Ship"
             VALUE "OriginalFilename", "Ship2Ship.exe"
             VALUE "ProductName",      "Ship2Ship"
-            VALUE "ProductVersion",   "@COMBO_RELEASE_VERSION@"
+            VALUE "ProductVersion",   "@SHIP2SHIP_VERSION@"
         END
     END
     BLOCK "VarFileInfo"

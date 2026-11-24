@@ -5,12 +5,12 @@
     <key>CFBundleDevelopmentRegion</key><string>English</string>
     <key>CFBundleName</key><string>Ship2Ship</string>
     <key>CFBundleExecutable</key><string>Ship2Ship</string>
-    <key>CFBundleGetInfoString</key><string>@COMBO_RELEASE_VERSION@</string>
+    <key>CFBundleGetInfoString</key><string>@SHIP2SHIP_VERSION@</string>
     <key>CFBundleIconFile</key><string>Ship2Ship.icns</string>
     <key>CFBundleIdentifier</key><string>com.ship2ship.Ship2Ship</string>
     <key>CFBundleInfoDictionaryVersion</key><string>6.0</string>
     <key>CFBundlePackageType</key><string>APPL</string>
-    <key>CFBundleShortVersionString</key><string>@COMBO_RELEASE_VERSION@</string>
+    <key>CFBundleShortVersionString</key><string>@SHIP2SHIP_VERSION@</string>
     <key>CFBundleVersion</key><string>@CMAKE_PROJECT_VERSION@</string>
     <key>NSHumanReadableCopyright</key><string>Ship2Ship — unofficial. Built on Ship of Harkinian and 2 Ship 2 Harkinian.</string>
     <key>LSApplicationCategoryType</key><string>public.app-category.games</string>
