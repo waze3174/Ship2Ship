@@ -71,6 +71,7 @@
 #include "Enhancements/gameplaystats.h"
 #ifdef COMBO_BUILD
 #include "soh/Enhancements/TimeDisplay/TimeDisplay.h" // ComboShip: NAVI_* phase bounds for SOH_GetOverlayTimers
+#include "soh/Enhancements/randomizer/ComboMasterQuest.h"
 #endif
 #include "soh/Enhancements/savestates.h"
 #include "soh/Enhancements/speedrun/Speedrun.h"
@@ -4651,6 +4652,7 @@ static void Combo_ApplyPriceOverrides() {
 extern "C" COMBO_EXPORT void SOH_SetComboRandoSeed(uint64_t seed) {
     sComboRandoSeed = seed;
     sComboRandoSeedSet = true;
+    ComboMasterQuest_Unpin(); // the new seed's set is its stored one (pushed after this) or its own first roll
 }
 #endif
 
@@ -4948,6 +4950,9 @@ extern "C" COMBO_EXPORT const char* SOH_DumpRandoStaticData(void) {
         SOH_PrepRandoContext();
 
 #ifdef COMBO_BUILD
+        // Keep this prep's MQ roll for the rest of the attempt: the oracle's lazy init runs FinalizeSettings again
+        // and would roll a different set.
+        ComboMasterQuest_PinCurrent();
         // Seed the rando RNG from the combo seed BEFORE confined placement so dungeon rewards/own-dungeon
         // items/songs are reproducible per seed (mirrors the MM side); Combo_SeedShopRng() below re-seeds
         // so the shop-slot set stays dump/apply-consistent. Confine own-dungeon/reward/song items via

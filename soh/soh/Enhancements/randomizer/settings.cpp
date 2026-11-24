@@ -12,6 +12,7 @@
 
 #ifdef COMBO_BUILD
 #include "rando/SharedItems.h" // ComboShip: Shared Items family indices (SF_WALLET)
+#include "soh/Enhancements/randomizer/ComboMasterQuest.h"
 // ComboShip (#136): combo owns the win condition (combined Triforce goal), forced in FinalizeSettings.
 // A plain constant, not an #ifdef inside the OPT_CALLBACK macro arguments.
 extern "C" int gComboGoalHunt;
@@ -3047,6 +3048,13 @@ void Context::FinalizeSettings(const std::set<RandomizerCheck>& excludedLocation
             mOptions[dungeon->GetMQSetting()].Set(RO_MQ_SET_VANILLA);
         }
     }
+#ifdef COMBO_BUILD
+    // ComboShip: a combo seed's stored MQ set replaces the roll above, so the logic and the pool built from it
+    // match the layout the seed was generated with.
+    if (ComboMasterQuest_ApplyPinned(*mDungeons)) {
+        mOptions[RSK_MQ_DUNGEON_COUNT].Set(static_cast<uint8_t>(mDungeons->CountMQ()));
+    }
+#endif
 
     // Set keyring for each dungeon
     for (const auto dungeon : dungeons) {
