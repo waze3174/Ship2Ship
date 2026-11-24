@@ -27,6 +27,7 @@ extern "C" int gComboStartingGameMM;
 extern "C" int gComboSharedMask;
 extern "C" int gComboUnifiedInventory; // ComboUnifiedInventory.cpp
 extern "C" int gComboMirrorStartMask;  // OTRGlobals.cpp
+extern "C" int gComboLostWoodsLink;    // OTRGlobals.cpp: the seed has the Lost Woods link (the OOT->MM portal)
 static constexpr bool kComboOwnsWincon = true;
 // ComboShip (#136): OOT's half of the combo-owned pool, for the menu-side dependent-count ranges.
 // Mirrors CwOotPieces in combo/rando/CrossWorldRando.h — the two splits must stay identical.
@@ -2781,11 +2782,16 @@ void Context::FinalizeSettings(const std::set<RandomizerCheck>& excludedLocation
             }
         }
     }
-    // ComboShip (#135): an MM start must leave OOT enterable from nothing — the Clock Tower door lands
-    // an itemless child outside the Mask Shop, and an itemless child must be able to leave the forest.
+    // ComboShip (#135): an MM start must leave OOT enterable from nothing, and an itemless child must be able to walk
+    // back to the portal.
+    //   Mask Shop portal: the Clock Tower door lands the child outside the Mask Shop, so the forest must be openable.
+    //   Lost Woods link: the crossing is the Lost Woods hub, reached from Kokiri Forest, so the forest can stay closed
+    //                    but climbing the Kokiri Forest ledge must not wait for a shuffled Climb.
     if (gComboStartingGameMM) {
         mOptions[RSK_STARTING_AGE].Set(RO_AGE_CHILD);
-        if (mOptions[RSK_FOREST].Is(RO_CLOSED_FOREST_ON)) {
+        if (gComboLostWoodsLink) {
+            mOptions[RSK_SHUFFLE_CLIMB].Set(RO_GENERIC_OFF);
+        } else if (mOptions[RSK_FOREST].Is(RO_CLOSED_FOREST_ON)) {
             mOptions[RSK_FOREST].Set(RO_CLOSED_FOREST_DEKU_ONLY);
         }
     }
@@ -2813,8 +2819,9 @@ void Context::FinalizeSettings(const std::set<RandomizerCheck>& excludedLocation
         mOptions[RSK_EXCLUDE_MASK_SHOP_KEY].Set(RO_GENERIC_OFF);
     }
 #ifdef COMBO_BUILD
-    // ComboShip (#135): an MM start must not leave the portal's own key behind the portal.
-    else if (gComboStartingGameMM) {
+    // ComboShip (#135): an MM start must not leave the portal's own key behind the portal. With the Lost Woods link the
+    // Mask Shop is an ordinary shop and its key an ordinary key.
+    else if (gComboStartingGameMM && !gComboLostWoodsLink) {
         mOptions[RSK_EXCLUDE_MASK_SHOP_KEY].Set(RO_GENERIC_ON);
     }
 #endif
@@ -2822,8 +2829,9 @@ void Context::FinalizeSettings(const std::set<RandomizerCheck>& excludedLocation
         mOptions[RSK_EXCLUDE_MASK_SHOP_ENTRANCE].Set(RO_GENERIC_OFF);
     }
 #ifdef COMBO_BUILD
-    // ComboShip (#135): keep the Mask Shop entrance where the MM-start return route expects it.
-    else if (gComboStartingGameMM) {
+    // ComboShip (#135): keep the Mask Shop entrance where the MM-start return route expects it (the Lost Woods link
+    // has no such route).
+    else if (gComboStartingGameMM && !gComboLostWoodsLink) {
         mOptions[RSK_EXCLUDE_MASK_SHOP_ENTRANCE].Set(RO_GENERIC_ON);
     }
 #endif

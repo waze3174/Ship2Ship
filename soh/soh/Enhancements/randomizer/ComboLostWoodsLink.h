@@ -9,6 +9,9 @@ extern "C" {
 
 struct PlayState;
 
+// 1 when the loaded seed has the link on and both games are played (OTRGlobals.cpp).
+int Combo_LostWoodsLinkOn(void);
+
 // 1 when the Market's Mask Shop is OoT's own shop, not the way into Termina: the link is on, and the corridor end is
 // the only way between the games.
 int Combo_OOT_LostWoodsLinkKeepsMaskShop(void);

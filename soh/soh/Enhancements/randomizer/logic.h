@@ -188,4 +188,11 @@ class Logic {
     std::shared_ptr<Context> ctx;
     bool inLogic[LOGIC_MAX];
 }; // class Logic
+
+#ifdef COMBO_BUILD
+// ComboShip: the region whose access means "OOT can reach Termina": the OoT Lost Woods hub while the seed has the Lost
+// Woods link on, else the Market's Mask Shop. The OOT->MM gate, the teleport-song pads and the MM-start re-entry check
+// all read it.
+RandomizerRegion ComboPortalRegion();
+#endif
 } // namespace Rando

@@ -10,6 +10,8 @@
 //
 // --starting-game <oot|mm|random> overrides the menu's Starting Game CVar for generate mode (#135).
 // --games <ootmm|oot|mm> overrides the menu's Games CVar (combo/rando/ComboGames.h) for generate mode.
+// --lost-woods-link / --no-lost-woods-link override the menu's Lost Woods link CVar (ComboLostWoodsLink.h) for generate
+// mode. A --playthrough run reads the link from the spoiler.
 //
 // Exact-seed repro (generate mode): --settings <consolidated.json> restores that seed's OOT/MM settings
 // and tricks, and --master-seed <n> uses n directly instead of hashing --seed. Together they reproduce a
@@ -39,6 +41,7 @@
 #include <sstream>
 #include <string>
 
+#include "rando/ComboLostWoodsLink.h"
 #include "rando/CrossWorldRando.h"
 #include "rando/CrossEntrance.h"
 #include "rando/MasterQuestSeed.h"
@@ -137,6 +140,7 @@ static int Run(int argc, char** argv) {
     std::string dumpEntrancesFile; // full-coop-sync §B1: write MM's entrance graph and exit
     std::string mmEntrancesArg;    // §B1: "off" | "all" | csv of overworld,interior,dungeon,decoupled,mixed
     int unifiedArg = -1;           // --unified / --no-unified (else the menu CVar)
+    int lostWoodsLinkArg = -1;     // --lost-woods-link / --no-lost-woods-link (else the menu CVar)
     std::string crossArg;          // §B2: "off" | csv of overworld,interior,dungeon[,pct=N] (else the menu CVars)
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
@@ -166,6 +170,10 @@ static int Run(int argc, char** argv) {
             unifiedArg = 1;
         } else if (a == "--no-unified") {
             unifiedArg = 0;
+        } else if (a == "--lost-woods-link") {
+            lostWoodsLinkArg = 1;
+        } else if (a == "--no-lost-woods-link") {
+            lostWoodsLinkArg = 0;
         } else if (a == "--mm-entrances" && i + 1 < argc) {
             mmEntrancesArg = argv[++i];
         } else if (a == "--dump-mm-entrances" && i + 1 < argc) {
@@ -257,6 +265,12 @@ static int Run(int argc, char** argv) {
     auto pushFormLogicCredit = [&](bool on) {
         if (SOH_SetComboFormLogicCredit)
             SOH_SetComboFormLogicCredit(on ? 1 : 0);
+    };
+    // Seed-bound Lost Woods link: the OOT->MM portal region and the MM start's shaping.
+    auto SOH_SetComboLostWoodsLink = Sym<void (*)(int)>(soh, "SOH_SetComboLostWoodsLink");
+    auto pushLostWoodsLink = [&](bool on) {
+        if (SOH_SetComboLostWoodsLink)
+            SOH_SetComboLostWoodsLink(on ? 1 : 0);
     };
     // Seed-bound Master Quest dungeons: pushed right after each SOH_SetSeed (which unpins), before the dump's prep.
     auto SOH_SetComboMasterQuestDungeons = Sym<FnTakeStr>(soh, "SOH_SetComboMasterQuestDungeons");
@@ -401,6 +415,9 @@ static int Run(int argc, char** argv) {
             pushMirrorStart(spoiler.value("unifiedInventory", false), mmSettings);
             pushFormLogicCredit(spoiler.value("formLogicCredit", false) ||
                                 (std::getenv("COMBO_FORM_CREDIT_TEST") != nullptr));
+            pushLostWoodsLink(!ComboRando::ComboGamesSolo(seedGames) &&
+                              spoiler.value(ComboRando::LostWoodsLink::kSeedKey,
+                                            ComboRando::LostWoodsLink::kModelledWhenSeedLacksKey));
             // A real in-game save's placement map lists only SHUFFLED checks; non-shuffled items the
             // oracle still gates on (OOT vanilla shop items, MM boss remains when not shuffled) live in
             // the dump's fixed[]. Merge them in so those gates (e.g. MM RemainsCount for the Moon) resolve.
@@ -702,6 +719,18 @@ static int Run(int argc, char** argv) {
             formLogicCredit = nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("formLogicCredit", false);
         } catch (...) {}
     }
+    // Lost Woods link: --lost-woods-link / --no-lost-woods-link win, else the menu CVar (via soh); a solo seed has
+    // none.
+    bool lostWoodsLink = ComboRando::LostWoodsLink::kDefault != 0;
+    if (lostWoodsLinkArg >= 0) {
+        lostWoodsLink = lostWoodsLinkArg == 1;
+    } else if (SOH_ReadComboEntranceCVarsFn) {
+        try {
+            lostWoodsLink = nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn())
+                                .value(ComboRando::LostWoodsLink::kSeedKey, lostWoodsLink);
+        } catch (...) {}
+    }
+    lostWoodsLink = lostWoodsLink && !solo;
     // Shared Items: --shared-items wins ("all"/"none"/comma-separated keys); else the menu CVars.
     uint32_t sharedMask = 0;
     if (sharedItemsArg == "all") {
@@ -731,7 +760,8 @@ static int Run(int argc, char** argv) {
               << (startCfg == 1   ? ", starting game MM"
                   : startCfg == 2 ? ", starting game random"
                                   : "")
-              << (solo ? std::string(", games ") + ComboRando::ComboGamesKey(games) : std::string()) << "\n";
+              << (solo ? std::string(", games ") + ComboRando::ComboGamesKey(games) : std::string())
+              << (lostWoodsLink ? ", Lost Woods link" : "") << "\n";
     int failures = 0;
     auto t0 = std::chrono::steady_clock::now();
     for (int i = 0; i < count; ++i) {
@@ -808,6 +838,7 @@ static int Run(int argc, char** argv) {
             if (SOH_SetComboUnifiedInventory)
                 SOH_SetComboUnifiedInventory(unified ? 1 : 0);
             pushFormLogicCredit(formLogicCredit);
+            pushLostWoodsLink(lostWoodsLink);
             {
                 nlohmann::json mmLive = nlohmann::json::object();
                 try {
@@ -935,6 +966,7 @@ static int Run(int argc, char** argv) {
                         consolidated["unifiedInventory"] = true;
                     if (formLogicCredit)
                         consolidated["formLogicCredit"] = true;
+                    consolidated[ComboRando::LostWoodsLink::kSeedKey] = lostWoodsLink;
                     if (SOH_DumpComboMasterQuestDungeons) {
                         auto mq = ComboRando::MasterQuestFromDump(SOH_DumpComboMasterQuestDungeons());
                         if (mq.is_array())

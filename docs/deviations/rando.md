@@ -1578,6 +1578,9 @@ forces, when the resolved start is MM:
 - `RSK_EXCLUDE_MASK_SHOP_KEY` ON when Lock Overworld Doors is on, and `RSK_EXCLUDE_MASK_SHOP_ENTRANCE`
   ON when interior shuffle is on — the portal's own key/door must not sit behind the portal.
 
+With the Lost Woods link on (below) the Mask Shop is not the portal: the forest and exclusion forces are skipped and
+`RSK_SHUFFLE_CLIMB` is forced off instead; see "Lost Woods link".
+
 Both force-branches are `else`-chained onto #134's force-clears, so parent-off still wins. As with
 `RSK_WINCON`, the spoiler's `oot.settings` blob records the player's CVars, not the forced values; the
 authoritative record is top-level `startingGame`.
@@ -1644,7 +1647,8 @@ copy; `Combo_GamesSolo()`:
 **What the WomboComboShip additions do in a solo seed.** Everything that carries items or state between the games
 follows the same check:
 - Generation (`RunComboFillBody`): Unified Inventory, the form logic credit and the cross-game entrance shuffle are
-  forced off, so a solo spoiler has no `unifiedInventory`, `formLogicCredit` or cross layout; `CrossWorldCombinedFill`
+  forced off, so a solo spoiler has no `unifiedInventory`, `formLogicCredit` or cross layout and stores
+  `lostWoodsLink: false`; `CrossWorldCombinedFill`
   applies no cross-game entrances in logic. `comborando` does the same for Unified Inventory.
 - `DeliverCrossItem` (the launcher's cross-grant, also fed by Anchor) refuses.
 - The merged pause menus read the other game's save through `Snapshot()` (`ComboPause.cpp`, both games); in a solo seed
@@ -2805,12 +2809,41 @@ MM's.
 ## Lost Woods link (ComboShip Ultimate)
 
 An optional walk between the two games. While it is on it is the only way across: the Mask Shop / Clock Tower portal
-is off (below). With it off, that portal is ComboShip's original. The play-time option
-`gCombo.LostWoodsLink` ("Lost Woods link (OoT <-> Termina)", Combo menu next to the other cross-game play options),
-default on (`kDefault`; off until Ship2Ship v0.1.0). It is not stored in the seed and the fill does not model it: reachability only grows, so it is a shortcut
-the logic doesn't know about. It is active only in a combo save where both games are played (`Combo_GamesSolo()` is
-false); one-game seeds and every vanilla slot (always one game) refuse it. Presets carry it through the `gCombo.`
-prefix (`combo/ComboPresetScope.h`). Shared constants: `combo/rando/ComboLostWoodsLink.h`.
+is off (below). With it off, that portal is ComboShip's original.
+
+It is a seed setting. `gCombo.LostWoodsLink` ("Lost Woods link (OoT <-> Termina)", Combo menu, Generate page, in the
+Unified Inventory group) is the choice for the next seed, default on (`kDefault`). Generation stores it as the top-level
+`lostWoodsLink` (a bool, `kSeedKey`) next to `games`, and the runtime reads it back from the slot's baked `combo.rando`:
+the launcher pushes it to both DLLs (`SOH_SetComboLostWoodsLink`, `MM_SetComboLostWoodsLink`) on slot load, on seed
+reload and after each generation, and the walk never reads the CVar. One-game seeds and every vanilla slot (always one
+game) store and play it off (`Combo_LostWoodsLinkOn()` also requires `Combo_GamesSolo()` to be false). A seed with no
+`lostWoodsLink` key (made before the link was a setting) is played with the link on, the default when it shipped
+(`kPlayedWhenSeedLacksKey`), but reloaded and validated with the shaping it was made with (`kModelledWhenSeedLacksKey`,
+off), so its pool and settings do not change. Presets carry the CVar through the `gCombo.` prefix
+(`combo/ComboPresetScope.h`). Shared constants: `combo/rando/ComboLostWoodsLink.h`.
+
+**Logic.** The generator's OOT->MM gate is one bit, `Combo_SOH_Rando_GetPortalOpen`: the OOT oracle's access to a
+portal region at either age (`OTRGlobals.cpp`). `Rando::ComboPortalRegion()` (`logic.cpp`) names that region:
+- Link off: `RR_MARKET_MASK_SHOP`, behind the Market's child, day and Mask Shop Key door (`market.cpp`). Unchanged.
+- Link on: `RR_THE_LOST_WOODS`, the room-0 hub Kokiri Forest's south exit leads to (the region the north wrong turn is
+  in), at any age. Its access is whatever the region graph says, so entrance shuffle that moves Kokiri Forest, the Lost
+  Woods entrances or the Goron City and Zora's River shortcuts moves the portal with it; nothing is a fixed path. The
+  Mask Shop Key, the Market door's child and day conditions no longer matter for crossing. `RR_MARKET_MASK_SHOP` is an
+  ordinary shop interior: its mask borrowing event (`LOGIC_CAN_BORROW_MASKS`) is reachable, which in a link-off combo
+  seed it effectively never was.
+- The same region serves everything that asked "can OOT reach Termina": the MM gate in the fill
+  (`CrossWorldRando.h`, `ComboPlaythrough.h`), the teleport-song pads (`Logic::ComboCrossWarp`) and the MM-start
+  re-entry assertion (`ootClosedFixpoint(placements, {}).portalOpen`, "a player who strays into OOT with nothing can
+  walk back in"). MM->OOT needs no region of its own in logic: OOT is always rooted at its own start, and arriving
+  at the hub is a place OOT's graph already contains.
+- The Mask Shop Key still stays inside OOT (`fill.cpp`, assumed-fill in OOT) in both modes.
+- MM start (`FinalizeSettings`, `gComboStartingGameMM` with `gComboLostWoodsLink`): Child age is still forced. The
+  forest stays as set (Closed is no longer forced to Closed Deku: the hub is on the forest's side of the gate), the
+  Mask Shop key and entrance exclusions are not forced (that key opens an ordinary shop), and `RSK_SHUFFLE_CLIMB` is
+  forced off, because Kokiri Forest's ledge to the Lost Woods needs Climb and an itemless child must reach the hub. The
+  options grey out accordingly (`SOH_RefreshComboStartingGameUI`).
+- `comborando`: generation takes `--lost-woods-link` / `--no-lost-woods-link` (else the menu CVar, default on; a solo
+  seed has none) and writes `lostWoodsLink`; `--playthrough` reads it from the spoiler.
 
 The route:
 - OoT Lost Woods, room 0, the north wrong turn (scene collision polygon 48, floor triangle (-60,0,-400) (60,0,-400)
@@ -2835,7 +2868,8 @@ The route:
   borrowing, `VB_HAPPY_MASK_SHOP_CHECK_SOLD_OUT` under `MaskSelect`). ComboShip's switch to MM on entering the shop
   (`SCENE_HAPPY_MASK_SHOP` in the `OnSceneInit` hook in `OTRGlobals.cpp`) is skipped. The shop's sign check stays
   unregistered (`ShuffleSigns.cpp`), so it is not a randomized check.
-- Link off: the Mask Shop door and the Clock Tower spawn 1 are the portal, unchanged.
+- Link off: the Mask Shop door and the Clock Tower spawn 1 are the portal, unchanged, and logic gates Termina on the
+  Mask Shop.
 
 Hooks:
 - `z_player.c` (OoT) `Player_HandleExitsAndVoids`: `COMBO_LOST_WOODS_LINK_EXIT` before `Entrance_OverrideNextIndex`, so

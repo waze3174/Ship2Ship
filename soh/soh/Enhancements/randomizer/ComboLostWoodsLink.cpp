@@ -11,7 +11,6 @@
 #ifdef COMBO_BUILD
 
 // C++ headers first: z64.h pulls <memory> under the extern "C" below
-#include <libultraship/bridge/consolevariablebridge.h>
 #include <libultraship/libultraship.h>
 #include <spdlog/spdlog.h>
 
@@ -28,7 +27,6 @@ extern "C" {
 #include "variables.h"
 extern PlayState* gPlayState;
 void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
-int Combo_GamesSolo(void);                     // OTRGlobals.cpp
 }
 
 namespace {
@@ -68,9 +66,8 @@ void LostWoodsMarker_Draw(Actor* thisx, PlayState* play) {
     }
 }
 
-// The link is on, in a combo save where both games are played.
 bool Active() {
-    return CVarGetInteger(Link::kCVar, Link::kDefault) != 0 && !Combo_GamesSolo();
+    return Combo_LostWoodsLinkOn() != 0;
 }
 
 short MarkerActorId() {

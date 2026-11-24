@@ -27,6 +27,7 @@ bool ComboUnifiedItemIsTimeless(RandomizerGet item); // ComboUnifiedInventory.cp
 #endif
 // Set by Combo_SOH_Rando_SetOwnedItems for the combined fill's oracle queries; 0 everywhere else.
 extern "C" int gComboOracleCrossIn;
+extern "C" int gComboLostWoodsLink; // OTRGlobals.cpp: the seed being generated or played has the Lost Woods link
 #endif
 
 #ifdef COMBO_BUILD
@@ -863,6 +864,10 @@ bool Logic::CanUse(RandomizerGet itemName) {
 }
 
 #ifdef COMBO_BUILD
+RandomizerRegion ComboPortalRegion() {
+    return gComboLostWoodsLink ? RR_THE_LOST_WOODS : RR_MARKET_MASK_SHOP;
+}
+
 // ComboShip (teleport songs): MM's copy of warp song `warpIndex` reaches its pad if this age can reach Termina.
 bool Logic::ComboCrossWarp(int warpIndex) {
     const uint32_t in = static_cast<uint32_t>(gComboOracleCrossIn);
@@ -870,7 +875,7 @@ bool Logic::ComboCrossWarp(int warpIndex) {
         return false;
     if (IsChild && (in & ComboRando::CW_OOT_IN_MM_START))
         return true;
-    Region* portal = RegionTable(RR_MARKET_MASK_SHOP);
+    Region* portal = RegionTable(ComboPortalRegion());
     if ((IsChild && portal->Child()) || (IsAdult && portal->Adult()))
         return true;
     return (in & ComboRando::CW_OOT_IN_MM_OWL) && CanUse(RG_SONG_OF_SOARING);

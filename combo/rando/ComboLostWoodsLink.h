@@ -9,15 +9,22 @@
 //   Clock Tower: the stone doors stay open. The Happy Mask Salesman and OoT's Mask Shop work as in vanilla, so the
 //   corridor end is the only way between the games.
 //
-// It is a play-time shortcut: the CVar is not stored in the seed and the fill does not model it, so reachability only
-// grows. It is active only in a combo save where both games are played (Combo_GamesSolo() refuses a one-game seed
-// and every vanilla slot).
+// It is a seed setting (Generate page, CVar kCVar), stored in the seed as kSeedKey. Logic models it: with the link on,
+// OoT->MM needs the OoT Lost Woods hub (RR_THE_LOST_WOODS) instead of the Market's Mask Shop, and the Mask Shop is an
+// ordinary shop. It is active only in a combo save where both games are played (a one-game seed and every vanilla slot
+// store and play it off).
 #pragma once
 
 namespace ComboRando::LostWoodsLink {
 
-inline constexpr const char* kCVar = "gCombo.LostWoodsLink";
-inline constexpr int kDefault = 1; // on unless the player turns it off
+inline constexpr const char* kCVar = "gCombo.LostWoodsLink"; // the Generate page's choice for the next seed
+inline constexpr int kDefault = 1;                           // on unless the player turns it off
+
+// Seed key (top-level, next to "games"). A seed made before logic knew the link has no key: it is played with the link
+// on (the default when the link shipped), but its generation-time shaping (settings.cpp) stays as it was made.
+inline constexpr const char* kSeedKey = "lostWoodsLink";
+inline constexpr bool kPlayedWhenSeedLacksKey = true;
+inline constexpr bool kModelledWhenSeedLacksKey = false;
 
 // OoT scene SCENE_LOST_WOODS (spot10): the collision polygon of the north wrong turn in room 0. Its surface type is
 // shared with a second polygon, so the polygon index is the key.

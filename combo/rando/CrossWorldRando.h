@@ -69,8 +69,9 @@ struct OracleFns {
     void (*SetOwnedItems)(const char*);
     const char* (*GetReachableChecks)(void);
     void (*PlaceItem)(const char*, const char*);
-    // OOT only (null for MM): is the OOT->MM portal region reachable? Valid only immediately after a
-    // GetReachableChecks call, whose owned-set it describes (the DLL piggybacks on that search).
+    // OOT only (null for MM): is the OOT->MM portal region (the Market's Mask Shop, or the Lost Woods hub in a seed
+    // with the Lost Woods link, ComboLostWoodsLink.h) reachable? Valid only immediately after a GetReachableChecks
+    // call, whose owned-set it describes (the DLL piggybacks on that search).
     uint8_t (*GetPortalOpen)(void) = nullptr;
     // Teleport-song bits for the last GetReachableChecks. Null = out of logic.
     uint32_t (*GetCrossOut)(void) = nullptr;
@@ -248,7 +249,8 @@ constexpr int kEntranceFillAttempts = 12;
 constexpr int kMaxPasses = 3;      // passes within one fill
 constexpr int kMaxPrereqTries = 4; // Tier-1 repicks of just the portal prerequisites
 
-// MM access is gated on the OOT->MM portal region (Happy Mask Shop) via ootOracle.GetPortalOpen.
+// MM access is gated on the OOT->MM portal region (Happy Mask Shop, or the Lost Woods hub in a seed with the Lost
+// Woods link) via ootOracle.GetPortalOpen.
 // progress: optional thread-safe progress struct polled by the UI. May be nullptr.
 // forcedOotJson: OOT checks the dump can't carry (e.g. Link's Pocket). Each forced item is reserved
 // out of the cross pool, owned-from-start for logic, and appended to the OOT placements.
