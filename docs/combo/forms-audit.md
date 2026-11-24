@@ -454,3 +454,31 @@ by form, against the OOT port.
   The watched-transformation record is shared (`seenTransform` <-> MM weekEventReg 30).
 - **N/A in Hyrule:** `pn_kakku`, `pn_kakkufinish`, `pn_rakkafinish`, `pn_batabata` are Deku Flower launch/glide
   (OOT has no Deku Flowers). `L_okarina_get` (`D_8085E354`) is an MM cutscene action.
+
+## Steam Deck report (2026-11-24): fins, stuck pound, spiked roll vs grass
+
+Owner, on build 2a683d1: holding B as the Zora never readies the fins (it does in MM); a roll sometimes turns
+into a ground pound, and then every curl pounds until the mask comes off and back on; the spiked roll doesn't
+cut grass.
+
+- **Fins and the stuck pound: one cause.** SoH's Assignable Tunics and Boots
+  (`gEnhancements.AssignableTunicsAndBoots`, on in the owner's config) answers `VB_EXECUTE_PLAYER_ACTION_FUNC`
+  with false and calls `actionFunc` itself. All of ComboShip's per-frame form work sat inside that `if`, so it
+  never ran:
+  - the held-B fins step (`Player_UseItem(Combo_FormHeldBItem())`) and its traces (COMBO_DEBUG_FINS, the FORM_B
+    "held-B item" line), so the fins never came out;
+  - the end-of-frame clear of `sComboGoronPunchRequest` and `sComboPoundRequest`. After one Goron B press the
+    pound request stayed set, and the ball pounds on the first grounded frame it reads it: the frame a curl
+    finishes, and again right after each landing. Only `Combo_RefreshFormBody` (a mask change) cleared it.
+  - Also skipped: the fin put-away, the Zora jump kick's shin hit, and the interrupted-ball cleanup.
+
+  Fix: the form work now brackets the VB call. It runs whenever the action may run (`!PAUSE_ACTION_FUNC`), whoever
+  runs it. Deck trace evidence: every pound starts on a curl's last frame (`b08` = the walking speed the curl
+  started from, `vy 14.0`), and pounds repeat on landing at the same spot.
+- **Spiked roll vs grass.** The ball draws no skeleton, so `bodyPartsPos` stayed where the Goron curled.
+  `Player_UpdateCommon` sizes the body cylinder from them (feet to head + 10), so the roll's attack, hurtbox and
+  OC stayed at the height of the curl. The Deck roll curled at y 0 and reached the grass near Kokiri Forest at
+  y -200, so its cylinder passed about 200 units above the grass. MM places the parts on the ball every draw
+  (`func_80846460` in `Player_Draw`). The port now does the same in the ball's draw (`Combo_GoronCurledBodyParts`,
+  shared with the guard): the cylinder runs from the ground to 34 up, as in MM. The grass row in `sCrossObjects`
+  already accepts the roll and the spikes (MM `z_en_kusa.c:89`, 0x0580C71C).

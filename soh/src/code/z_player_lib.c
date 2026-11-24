@@ -1264,6 +1264,7 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
 #ifdef COMBO_BUILD
     extern s32 gComboGoronBall;
     extern s16 Combo_ZoraBarrierStrength(void);
+    extern void Combo_GoronCurledBodyParts(Player * player);
     if (comboForm && (Combo_OotForm() == COMBO_FORM_ZORA) && (Combo_ZoraBarrierStrength() != 0)) {
         // MM Player_Draw: the barrier shell, stood up and lifted to Link's middle, before the body
         OPEN_DISPS(play->state.gfxCtx);
@@ -1276,6 +1277,7 @@ void Player_DrawImpl(PlayState* play, void** skeleton, Vec3s* jointTable, s32 dL
         Matrix_Pop();
     }
     if (comboForm && gComboGoronBall && (Combo_OotForm() == COMBO_FORM_GORON)) {
+        Combo_GoronCurledBodyParts((Player*)data);                // MM Player_Draw: func_80846460, then the ball
         Combo_OotFormDrawBall(play, ((Actor*)data)->shape.rot.y); // curled up and rolling (only ever as a Goron)
     } else if (comboForm && (Combo_OotForm() == COMBO_FORM_GORON) &&
                (((Player*)data)->stateFlags1 & PLAYER_STATE1_SHIELDING) && Combo_GoronGuardDraw(play)) {
