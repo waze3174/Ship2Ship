@@ -57,8 +57,9 @@ int Combo_MmPauseSlotAmmo(int ootSlot);           // OOT's ammo digits for that 
 const char* Combo_MmPauseIconTex(int item);       // OOT icon (inside an "oot" bracket)
 const char* Combo_MmPauseNameTex(int item);       // OOT name plate (inside an "oot" bracket)
 int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
-// The MM item whose own code runs a foreign OOT item in Termina on OOT's bag (OOT's Deku Sticks and Deku Nuts when MM
-// has none): the button keeps the foreign id, so that code knows to check and spend OOT's count. 0xFF = none.
+// The MM item whose own code runs a foreign OOT item in Termina on OOT's bag (OOT's Deku Sticks, Deku Nuts, Bombs,
+// Bombchus and Bow when MM has none): the button keeps the foreign id, so that code knows to check and spend OOT's
+// count. 0xFF = none.
 int Combo_MmPauseForeignHostItem(int item);
 int Combo_MmPauseUseItem(int item);      // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
 int Combo_MmPauseForeignSlot(int item);  // OOT slot behind a foreign id, -1 = not foreign

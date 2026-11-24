@@ -26,6 +26,7 @@
 #include "ComboForms.h"
 #include "ComboPause.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"
 
 extern "C" {
@@ -532,10 +533,10 @@ extern "C" int Combo_PauseLiveMmItem(int item) {
 }
 
 // ---- MM items OOT's own code runs in Hyrule ----------------------------------------------------------------------
-// MM's stick, nut and explosive code is OOT's, line for line (mm z_player.c: the take-out ammo checks in
+// MM's stick, nut, explosive and bow code is OOT's, line for line (mm z_player.c: the take-out ammo checks in
 // Player_UseItem, the break in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64, the
-// bomb / bombchu take-out in Player_InitExplosiveIA), so OOT's own runs them, on MM's bag (z_player.c
-// Combo_PlayerAmmo), with OOT's models and actors.
+// bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_808305BC and the shot in func_80831194),
+// so OOT's own runs them, on MM's bag (z_player.c Combo_PlayerAmmo), with OOT's models and actors.
 extern "C" int Combo_PauseForeignHostItem(int item) {
     switch (LiveMmItem(item)) {
         case MM_ITEM_DEKU_STICK:
@@ -546,9 +547,25 @@ extern "C" int Combo_PauseForeignHostItem(int item) {
             return ITEM_BOMB;
         case MM_ITEM_BOMBCHU:
             return ITEM_BOMBCHU;
+        case MM_ITEM_BOW:
+            return ITEM_BOW;
         default:
             return ITEM_NONE;
     }
+}
+
+// OOT's age rule for the OOT item that runs an MM item (z_kaleido_scope.h CHECK_AGE_REQ_ITEM, so Timeless Equipment and
+// Unified Inventory lift it as they do for OOT's own). OOT's pause greys its own items out by it; an MM item comes from
+// the Termina face, which knows no ages, so Player_UseItem refuses it there instead.
+extern "C" int Combo_PauseForeignAgeOk(int item) {
+    constexpr u8 kAgeReqNone = 9; // z_kaleido_scope.h AGE_REQ_NONE
+    const int oot = Combo_PauseForeignHostItem(item);
+    if (oot == ITEM_NONE) {
+        return 1;
+    }
+    const u8 req = gItemAgeReqs[oot];
+    return GameInteractor_Should(VB_ITEM_MEETS_AGE_REQ, (req == kAgeReqNone) || (req == gSaveContext.linkAge), oot) ? 1
+                                                                                                                    : 0;
 }
 
 // ---- MM bottles in Hyrule ---------------------------------------------------------------------------------------

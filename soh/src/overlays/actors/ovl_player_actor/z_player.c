@@ -3346,7 +3346,7 @@ s32 func_80834380(PlayState* play, Player* this, s32* itemPtr, s32* typePtr) {
     } else if (play->shootingGalleryStatus != 0) {
         return play->shootingGalleryStatus;
     } else {
-        return AMMO(*itemPtr);
+        return COMBO_PLAYER_AMMO(*itemPtr);
     }
 }
 
@@ -3718,7 +3718,7 @@ s32 func_808350A4(PlayState* play, Player* this) {
                 if (!(Combo_DekuBubbleActive() && (item == ITEM_SLINGSHOT))) // the Deku's bubbles cost no seeds
 #endif
             {
-                Inventory_ChangeAmmo(item, -1);
+                COMBO_PLAYER_CHANGE_AMMO(item, -1);
             }
 
             if (play->shootingGalleryStatus == 1) {
@@ -4279,12 +4279,13 @@ static s32 Combo_WaterAllowsUse(Player* this, s32 isZoraMask) {
 }
 
 // MM items OOT's own code runs (Combo_PauseForeignHostItem) check and spend MM's bag: the bag is the one of the button
-// the item came from, its foreign id for an MM button, ITEM_NONE for OOT's own. A stick stays in hand, so its bag is
-// the one it was taken out with; a nut or an explosive is spent as it is taken out.
+// the item came from, its foreign id for an MM button, ITEM_NONE for OOT's own. A stick or a bow stays in hand, so its
+// bag is the one it was taken out with; a nut or an explosive is spent as it is taken out.
 static s32 sComboStickBag = ITEM_NONE;
 static s32 sComboNutBag = ITEM_NONE;
 static s32 sComboBombBag = ITEM_NONE;
 static s32 sComboBombchuBag = ITEM_NONE;
+static s32 sComboArrowBag = ITEM_NONE;
 
 static s32* Combo_AmmoBag(s32 ootItem) {
     switch (ootItem) {
@@ -4296,6 +4297,8 @@ static s32* Combo_AmmoBag(s32 ootItem) {
             return &sComboBombBag;
         case ITEM_BOMBCHU:
             return &sComboBombchuBag;
+        case ITEM_BOW:
+            return &sComboArrowBag;
         default:
             return NULL;
     }
@@ -4303,6 +4306,9 @@ static s32* Combo_AmmoBag(s32 ootItem) {
 
 // The OOT item whose ammo an item action's code checks and spends, ITEM_NONE for none.
 static s32 Combo_AmmoItemOf(s32 itemAction) {
+    if ((itemAction >= PLAYER_IA_BOW) && (itemAction <= PLAYER_IA_BOW_0E)) {
+        return ITEM_BOW;
+    }
     switch (itemAction) {
         case PLAYER_IA_DEKU_STICK:
             return ITEM_STICK;
@@ -4318,9 +4324,11 @@ static s32 Combo_AmmoItemOf(s32 itemAction) {
 }
 
 static void Combo_ChooseAmmoBag(Player* this, s32 item, s32 itemAction) {
-    s32* bag = Combo_AmmoBag(Combo_AmmoItemOf(itemAction));
+    const s32 ammoItem = Combo_AmmoItemOf(itemAction);
+    s32* bag = Combo_AmmoBag(ammoItem);
 
-    if ((bag == NULL) || ((itemAction == PLAYER_IA_DEKU_STICK) && (this->heldItemAction == itemAction))) {
+    if ((bag == NULL) ||
+        (((ammoItem == ITEM_STICK) || (ammoItem == ITEM_BOW)) && (this->heldItemAction == itemAction))) {
         return;
     }
     *bag = (Combo_PauseForeignHostItem(item) != ITEM_NONE) ? item : ITEM_NONE;
@@ -4388,7 +4396,13 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         // MM's Great Fairy's Sword: a C-button sword as in MM (press to draw, press again to swing), child or adult.
         Combo_PauseLogUse(item, "Great Fairy's Sword -> wielded (MM model, OOT two-handed swing)");
     } else if (Combo_PauseForeignHostItem(item) != ITEM_NONE) {
-        // MM's Deku Stick / Deku Nut / Bomb / Bombchu: OOT's code below runs it (MM's is the same code), on MM's bag.
+        // MM's Deku Stick / Deku Nut / Bomb / Bombchu / Hero's Bow: OOT's code below runs it (MM's is the same code),
+        // on MM's bag, under OOT's age rule for its own (the bow: adult).
+        if (!Combo_PauseForeignAgeOk(item)) {
+            Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
+            Combo_PauseLogUse(item, "-> OOT's age rule for the same item refuses it -> error sfx");
+            return;
+        }
         Combo_PauseLogUse(item, "-> OOT's action for the same item, on MM's bag");
     } else if (Combo_PauseIsForeign(item)) {
         const s32 comboForm = Combo_PauseForeignForm(item);

@@ -530,10 +530,11 @@ extern "C" int Combo_MmPauseUseItem(int item) {
     }
 }
 
-// OOT's stick, nut and explosive code is MM's, line for line (OOT z_player.c: the take-out ammo checks in
+// OOT's stick, nut, explosive and bow code is MM's, line for line (OOT z_player.c: the take-out ammo checks in
 // Player_UseItem, the break in func_80842AC4, the burn-out in Player_UpdateBurningDekuStick, the nut throw in
-// Player_Action_8084E604, the bomb / bombchu take-out in Player_InitExplosiveIA), so MM's own runs them, on OOT's bag
-// (z_player.c Combo_PlayerAmmo), with MM's models and actors.
+// Player_Action_8084E604, the bomb / bombchu take-out in Player_InitExplosiveIA, the arrow count in func_80834380 and
+// the shot in func_808350A4), so MM's own runs them, on OOT's bag (z_player.c Combo_PlayerAmmo), with MM's models and
+// actors.
 extern "C" int Combo_MmPauseForeignHostItem(int item) {
     switch (LiveOotItem(item)) {
         case OOT_ITEM_STICK:
@@ -544,6 +545,8 @@ extern "C" int Combo_MmPauseForeignHostItem(int item) {
             return ITEM_BOMB;
         case OOT_ITEM_BOMBCHU:
             return ITEM_BOMBCHU;
+        case OOT_ITEM_BOW:
+            return ITEM_BOW;
         default:
             return ITEM_NONE;
     }

@@ -4236,7 +4236,7 @@ s32 func_808305BC(PlayState* play, Player* this, ItemId* item, ArrowType* typePa
         return play->bButtonAmmoPlusOne;
     }
 
-    return AMMO(*item);
+    return COMBO_PLAYER_AMMO(*item);
 }
 
 u16 D_8085CFB0[] = {
@@ -4565,7 +4565,7 @@ bool func_80831194(PlayState* play, Player* this) {
                                        Combo_MmOotAmmo(COMBO_OOT_ITEM_SLINGSHOT));
                     } else
 #endif
-                        Inventory_ChangeAmmo(item, -1);
+                        COMBO_PLAYER_CHANGE_AMMO(item, -1);
                 }
             }
 
@@ -4786,12 +4786,13 @@ void func_80831944(PlayState* play, Player* this) {
 
 #ifdef COMBO_BUILD
 // An OOT item MM's own code runs (Combo_MmPauseForeignHostItem) checks and spends OOT's bag: the bag is that of the
-// button the item came from, the OOT item for an OOT button, -1 for MM's own. A stick stays in hand, so its bag is the
-// one it was taken out with; a nut or an explosive is spent as it is taken out.
+// button the item came from, the OOT item for an OOT button, -1 for MM's own. A stick or a bow stays in hand, so its
+// bag is the one it was taken out with; a nut or an explosive is spent as it is taken out.
 static s32 sComboStickBag = -1;
 static s32 sComboNutBag = -1;
 static s32 sComboBombBag = -1;
 static s32 sComboBombchuBag = -1;
+static s32 sComboArrowBag = -1;
 
 static s32* Combo_AmmoBag(s32 item) {
     switch (item) {
@@ -4803,6 +4804,8 @@ static s32* Combo_AmmoBag(s32 item) {
             return &sComboBombBag;
         case ITEM_BOMBCHU:
             return &sComboBombchuBag;
+        case ITEM_BOW:
+            return &sComboArrowBag;
         default:
             return NULL;
     }
@@ -4810,6 +4813,9 @@ static s32* Combo_AmmoBag(s32 item) {
 
 // The MM item whose ammo an item action's code checks and spends, ITEM_NONE for none.
 static ItemId Combo_AmmoItemOf(PlayerItemAction itemAction) {
+    if ((itemAction >= PLAYER_IA_BOW) && (itemAction <= PLAYER_IA_BOW_LIGHT)) {
+        return ITEM_BOW;
+    }
     switch (itemAction) {
         case PLAYER_IA_DEKU_STICK:
             return ITEM_DEKU_STICK;
@@ -4825,9 +4831,11 @@ static ItemId Combo_AmmoItemOf(PlayerItemAction itemAction) {
 }
 
 static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction itemAction) {
-    s32* bag = Combo_AmmoBag(Combo_AmmoItemOf(itemAction));
+    const ItemId ammoItem = Combo_AmmoItemOf(itemAction);
+    s32* bag = Combo_AmmoBag(ammoItem);
 
-    if ((bag == NULL) || ((itemAction == PLAYER_IA_DEKU_STICK) && (this->heldItemAction == itemAction))) {
+    if ((bag == NULL) ||
+        (((ammoItem == ITEM_DEKU_STICK) || (ammoItem == ITEM_BOW)) && (this->heldItemAction == itemAction))) {
         return;
     }
     *bag = (Combo_MmPauseForeignHostItem(item) != ITEM_NONE) ? Combo_MmOotItemOf(item) : -1;
