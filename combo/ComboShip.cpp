@@ -3364,6 +3364,8 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         c["combo"]["notes"] = "";
         if (c["combo"].contains("hintsRead"))
             c["combo"].erase("hintsRead");
+        // A mode a deleted save left behind must not reach LoadComboCompletion before this save writes its own.
+        c["combo"].erase(ComboRando::kComboModeKey);
         FlushContainer(fileNum);
     }
     const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
