@@ -4,6 +4,7 @@
 // auto-detect, Import / Skip. The launcher does the JSON parse + merge + apply; this file only renders and reports
 // the chosen paths.
 #include "ComboSettingsImportScreen.h"
+#include "ComboConfigImport.h" // ComboPresets::DescribeConfigCheck, shared with the menu import
 #include "ComboExport.h"
 #include "ComboFilePicker.h"  // native Browse dialog (comdlg32 / pfd), shared with the extraction screen
 #include "ComboWidgetStyle.h" // ComboMenu_ThemeColor / PushButton / PopButton
@@ -31,14 +32,32 @@ constexpr int kSohSlot = 0;
 constexpr int kMmSlot = 1;
 constexpr int kComboSlot = 2;
 
+constexpr const char* kNotImportedNote = "This file will not be imported.";
+constexpr const char* kUseGameSlotNote =
+    "If it is a Ship of Harkinian or 2 Ship 2 Harkinian config, choose it in that game's slot instead.";
+
 struct ConfigSlot {
     const char* label = "";
     const char* fileName = "";         // expected filename for auto-detect
     const char* macAppSupportDir = ""; // that game's bundle id, for the macOS auto-detect below
-    ComboFnValidateConfig validate = nullptr;
+    ComboFnCheckConfig check = nullptr;
     std::string path;
-    bool valid = false;
+    ComboConfigCheck result = COMBO_CONFIG_OK;
 };
+
+ComboConfigCheck CheckSlotFile(const ConfigSlot& slot, const std::string& path) {
+    return slot.check ? slot.check(path.c_str()) : COMBO_CONFIG_OK;
+}
+
+// Red, wrapped: why the chosen file is refused. Only OK files are imported (see ComboSettingsImport.h).
+void DrawRefusal(ComboConfigCheck result, const ImVec4& red) {
+    ImGui::PushStyleColor(ImGuiCol_Text, red);
+    ImGui::TextWrapped("%s %s", ComboPresets::DescribeConfigCheck(result), kNotImportedNote);
+    if (result == COMBO_CONFIG_NO_COMBO) {
+        ImGui::TextWrapped("%s", kUseGameSlotNote);
+    }
+    ImGui::PopStyleColor();
+}
 
 // Directories to probe for an existing install's config, most likely first.
 // Windows and Linux installs keep the config beside the executable, so the working directory covers
@@ -109,18 +128,19 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
     slots[kSohSlot].label = "Ship of Harkinian (OoT)";
     slots[kSohSlot].fileName = "shipofharkinian.json";
     slots[kSohSlot].macAppSupportDir = "com.shipofharkinian.soh";
-    slots[kSohSlot].validate = cb ? cb->sohValidate : nullptr;
+    slots[kSohSlot].check = cb ? cb->sohCheck : nullptr;
     slots[kMmSlot].label = "2 Ship 2 Harkinian (MM)";
     slots[kMmSlot].fileName = "2ship2harkinian.json";
     slots[kMmSlot].macAppSupportDir = "com.2ship2harkinian.2s2h";
-    slots[kMmSlot].validate = cb ? cb->mmValidate : nullptr;
+    slots[kMmSlot].check = cb ? cb->mmCheck : nullptr;
     slots[kComboSlot].label = "ComboShip";
     slots[kComboSlot].fileName = "comboship.json";
-    slots[kComboSlot].validate = cb ? cb->comboValidate : nullptr;
+    slots[kComboSlot].check = cb ? cb->comboCheck : nullptr;
     bool includeModsAndControls = true;
 
     // Auto-detect each game's config (same convenience as the ROM auto-scan). First hit wins; a
     // rejected file keeps searching, so a stale copy in the working dir can't mask a real install.
+    // This install's own comboship.json (the window init has already saved it) is rejected by the check.
     for (auto& s : slots) {
         std::error_code ec;
         for (const auto& dir : ConfigSearchDirs(s.macAppSupportDir)) {
@@ -129,9 +149,9 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
                 continue;
             }
             const std::string found = candidate.string();
-            if (!s.validate || s.validate(found.c_str()) != 0) {
+            if (CheckSlotFile(s, found) == COMBO_CONFIG_OK) {
                 s.path = found;
-                s.valid = true;
+                s.result = COMBO_CONFIG_OK;
                 break;
             }
         }
@@ -210,7 +230,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
                     std::string picked = PickConfigFile();
                     if (!picked.empty()) {
                         s.path = picked;
-                        s.valid = !s.validate || s.validate(picked.c_str()) != 0;
+                        s.result = CheckSlotFile(s, picked);
                     }
                 }
                 if (!ComboFilePicker::Available()) {
@@ -218,11 +238,11 @@ extern "C" COMBO_EXPORT int ComboUI_RunSettingsImport(const ComboSettingsImportC
                 }
                 ComboMenu_PopButton();
                 if (!s.path.empty()) {
-                    ImGui::SameLine();
-                    if (s.valid) {
+                    if (s.result == COMBO_CONFIG_OK) {
+                        ImGui::SameLine();
                         ImGui::TextColored(kGreen, "Looks like a %s config", s.label);
                     } else {
-                        ImGui::TextColored(kRed, "May not be a %s config", s.label);
+                        DrawRefusal(s.result, kRed);
                     }
                 }
                 if (i == kComboSlot) {

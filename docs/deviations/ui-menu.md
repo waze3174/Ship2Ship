@@ -612,8 +612,16 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 - **Loaded save:** keys the randomizer reads at generation or slot bind (`gRandoSettings.`, `gRando.`, `gCombo.Rando.`) are
   held back unless the OoT file-select screen is up and MM is not foreground (`SeedBoundChangesAllowed`); the status
   line says how many were skipped. Everything else applies live.
-- **Menu import:** validates the file (JSON object, CVars block with a `gCombo` section), copies the current config to
-  `comboship.json.bak-<timestamp>`, then applies through the same writer. Only the `CVars` block is read, never `Window`.
+- **File check:** `ComboConfigTree::ReadConfigFile` is the one check for both imports. It returns a reason
+  (`ComboConfigCheck` in `combo/ComboSettingsImport.h`): can't open, not JSON, no `CVars`, no `gCombo` (ComboShip files
+  only), or this install's own `comboship.json`, which is never a source. Both screens show the reason in plain words
+  (`ComboPresets::DescribeConfigCheck`), and a file that fails is not imported.
+- **Menu import:** checks the file as above, copies the current config to `comboship.json.bak-<timestamp>`, then applies
+  through the same writer. Only the `CVars` block is read, never `Window`.
 - **First launch:** the import screen has a third slot for a `comboship.json` (`ComboSettingsImportResult::comboPath`).
-  The launcher filters its CVars with the same scope and merges it as the lowest-priority base under 2Ship and SoH.
+  The launcher runs the same check on Import that the screen showed, for every slot. It filters the ComboShip file's
+  CVars with the same scope and merges it as the lowest-priority base under 2Ship and SoH. `ConfigVersion` comes from
+  the SoH file, else from the ComboShip file; without one, `RunVersionUpdates` would re-run every OoT updater over
+  current settings (v2 wipes the Audio Editor's replaced sequences, v7 remaps bridge, Ganon's Boss Key and Triforce
+  Hunt settings).
 - **Not changed:** the stock OOT / MM Presets sidebars still exist in the per-game tabs.

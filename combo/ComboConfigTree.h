@@ -9,8 +9,12 @@
 // (first-launch import) share one definition of what a config file looks like.
 #pragma once
 
+#include "ComboSettingsImport.h" // ComboConfigCheck
+
 #include <nlohmann/json.hpp>
 
+#include <filesystem>
+#include <fstream>
 #include <map>
 #include <string>
 
@@ -18,6 +22,9 @@ namespace ComboConfigTree {
 
 using Leaves = std::map<std::string, nlohmann::json>;
 
+constexpr const char* kConfigFileName = "comboship.json";
+// Top-level key: the last OoT config updater (soh/soh/config/ConfigUpdaters.cpp) that ran over the file.
+constexpr const char* kConfigVersionKey = "ConfigVersion";
 constexpr const char* kCVarsBlock = "CVars";
 // Present in every config ComboShip has written; neither game's own config has it.
 constexpr const char* kComboCVarRoot = "gCombo";
@@ -92,14 +99,52 @@ template <typename Keep> nlohmann::json FilterTree(const nlohmann::json& cvars, 
     return out;
 }
 
-// True for a config file that ComboShip itself has written: an object whose CVars block has the
-// gCombo section. Vanilla SoH / 2S2H configs and arbitrary JSON are refused.
-inline bool LooksLikeComboShipConfig(const nlohmann::json& root) {
-    if (!root.is_object() || !root.contains(kCVarsBlock) || !root[kCVarsBlock].is_object()) {
+enum class ConfigKind {
+    Ship,      // any SoH / 2S2H / ComboShip config: a JSON object with a CVars block
+    ComboShip, // a config ComboShip itself has written: its CVars block also has the gCombo section
+};
+
+// Same file by resolved path. Used to refuse this install's own config as an import source.
+inline bool IsSameFile(const std::filesystem::path& a, const std::filesystem::path& b) {
+    std::error_code ec;
+    const std::filesystem::path resolvedA = std::filesystem::weakly_canonical(a, ec);
+    if (ec) {
         return false;
     }
-    const nlohmann::json& cvars = root[kCVarsBlock];
-    return cvars.contains(kComboCVarRoot) && cvars[kComboCVarRoot].is_object();
+    const std::filesystem::path resolvedB = std::filesystem::weakly_canonical(b, ec);
+    return !ec && resolvedA == resolvedB;
+}
+
+// Reads `path` and checks that it is a `kind` config. `ownConfigPath` is this install's comboship.json, which is
+// never a source. On COMBO_CONFIG_OK the parsed file is in `out`. Never throws: the launcher's check runs
+// as a callback from comboui.
+inline ComboConfigCheck ReadConfigFile(const std::string& path, const std::filesystem::path& ownConfigPath,
+                                       ConfigKind kind, nlohmann::json& out) {
+    try {
+        if (IsSameFile(path, ownConfigPath)) {
+            return COMBO_CONFIG_OWN_FILE;
+        }
+        std::ifstream in(path);
+        if (!in) {
+            return COMBO_CONFIG_UNREADABLE;
+        }
+        nlohmann::json root = nlohmann::json::parse(in, nullptr, false);
+        if (!root.is_object()) {
+            return COMBO_CONFIG_NOT_JSON;
+        }
+        const auto cvars = root.find(kCVarsBlock);
+        if (cvars == root.end() || !cvars->is_object()) {
+            return COMBO_CONFIG_NO_CVARS;
+        }
+        if (kind == ConfigKind::ComboShip) {
+            const auto combo = cvars->find(kComboCVarRoot);
+            if (combo == cvars->end() || !combo->is_object()) {
+                return COMBO_CONFIG_NO_COMBO;
+            }
+        }
+        out = std::move(root);
+        return COMBO_CONFIG_OK;
+    } catch (...) { return COMBO_CONFIG_UNREADABLE; }
 }
 
 } // namespace ComboConfigTree

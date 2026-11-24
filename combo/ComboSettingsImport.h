@@ -7,14 +7,24 @@
 
 extern "C" {
 
-// Optional soft validator: returns nonzero if the file looks like the expected game's config. Used
-// only to show a hint in the screen, never to block import. May be null.
-typedef int (*ComboFnValidateConfig)(const char* path);
+// What a settings file turned out to be. Anything but COMBO_CONFIG_OK is not imported.
+typedef enum ComboConfigCheck {
+    COMBO_CONFIG_OK = 0,
+    COMBO_CONFIG_UNREADABLE, // the file could not be opened
+    COMBO_CONFIG_NOT_JSON,   // not a JSON object
+    COMBO_CONFIG_NO_CVARS,   // no CVars block, so not a Ship config
+    COMBO_CONFIG_NO_COMBO,   // a Ship config without ComboShip's gCombo section (ComboShip slot only)
+    COMBO_CONFIG_OWN_FILE,   // this install's own comboship.json
+} ComboConfigCheck;
+
+// Checks the file at `path` for one slot. The screen shows the result, and the launcher runs the same
+// check again on Import and takes the file only when it is COMBO_CONFIG_OK. May be null (no check).
+typedef ComboConfigCheck (*ComboFnCheckConfig)(const char* path);
 
 typedef struct ComboSettingsImportCallbacks {
-    ComboFnValidateConfig sohValidate;
-    ComboFnValidateConfig mmValidate;
-    ComboFnValidateConfig comboValidate; // a comboship.json from another ComboShip install
+    ComboFnCheckConfig sohCheck;
+    ComboFnCheckConfig mmCheck;
+    ComboFnCheckConfig comboCheck; // a comboship.json from another ComboShip install
 } ComboSettingsImportCallbacks;
 
 // Filled by the screen. Paths are "" when that slot was left empty.

@@ -27,4 +27,7 @@ struct ImportOutcome {
 // block or anything else outside its CVars. Backs up the current comboship.json first.
 ImportOutcome ImportComboShipConfig(const std::string& path, const ImportOptions& options);
 
+// Why a settings file was refused, in plain words, for both import screens. "" for COMBO_CONFIG_OK.
+const char* DescribeConfigCheck(ComboConfigCheck check);
+
 } // namespace ComboPresets
