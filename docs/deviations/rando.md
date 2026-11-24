@@ -2746,3 +2746,45 @@ callback, and `Combo_OnOOTSaveInit` branches on it.
 
 Not changed: Anchor. A vanilla slot has no cross items, and the launcher still pumps Anchor packets into MM's dormant
 save, which can belong to another slot.
+
+## Lost Woods link (ComboShip Ultimate)
+
+An optional walk between the two games, next to the Mask Shop / Clock Tower switch (which stays). The play-time option
+`gCombo.LostWoodsLink` ("Lost Woods link (OoT <-> Termina)", Combo menu next to the other cross-game play options),
+default off. It is not stored in the seed and the fill does not model it: reachability only grows, so it is a shortcut
+the logic doesn't know about. It is active only in a combo save where both games are played (`Combo_GamesSolo()` is
+false); one-game seeds and every vanilla slot (always one game) refuse it. Presets carry it through the `gCombo.`
+prefix (`combo/ComboPresetScope.h`). Shared constants: `combo/rando/ComboLostWoodsLink.h`.
+
+The route:
+- OoT Lost Woods, room 0, the north wrong turn (scene collision polygon 48, floor triangle (-60,0,-400) (60,0,-400)
+  (0,0,-800); the surface type is shared with a second polygon, so the index is the key) -> MM `Z2_LOST_WOODS` spawn 0.
+  A stump (MM's `gKeikokuDemoTallTreeCutDL`, scale 0.05) marks the tunnel at (-90,0,-380) while the link is on.
+- MM Lost Woods, east exit (the sky drop to Before Clock Town) -> Before Clock Town spawn 1, the Deku Butler area. The
+  Butler area's intro flags are set as `SkipIntroSequence` does (switch0 bits 0 and 2, the chest), in the cycle and the
+  permanent flags, plus INSIDETOWER switch0 bit 0.
+- Before Clock Town, room 1, a box beside the studded door (x 1235..1320, z -1210..-1070, y -30..80) -> OoT entrance
+  0x1B1 (Lost Woods spawn 3, the north tunnel mouth), age kept. The pit respawn (spawn 3 at x 1380) is outside the box,
+  and Link must have been outside it first.
+- The Clock Tower hall: the two stone door leaves (`BG_CTOWER_ROT` params 1 and 2) are killed at init, so the hall opens
+  onto the twisting corridor, whose far end already exits to Before Clock Town spawn 1. Clock Town's door now ends in
+  the hall (owner decision 2026-11-24); pushing against the Happy Mask Salesman (within 55 units of (-106,-79) for 15
+  frames, after being 150 away) takes the Clock Tower portal to OoT's Mask Shop. `kClockTowerEntryStaysInMm` in
+  `ComboLostWoodsLink.cpp` turns that back into today's behaviour (spawn 1 goes straight to OoT).
+
+Hooks:
+- `z_player.c` (OoT) `Player_HandleExitsAndVoids`: `COMBO_LOST_WOODS_LINK_EXIT` before `Entrance_OverrideNextIndex`, so
+  the entrance tracker and the cross-entrance redirect never see Kokiri Forest's 0x286. Returns through
+  `Combo_OOT_LostWoodsLinkExit` -> `Combo_RequestCrossSwitch(0xC400)`.
+- `z_eventmgr.c` (MM) `CutsceneManager_FindEntranceCsId`: no entrance cutscene for an arrival from OoT at Lost Woods
+  spawn 0 (`gComboCrossArrival`). The intro actors (Skull Kid, Epona, Tatl) kill themselves when no cutscene plays. The
+  Song of Time flashback (spawn 1) and MM's own intro are untouched.
+- `ComboEntrances.cpp` `Combo_MM_RedirectExit` (MM): the east exit's rewrite comes first and is final, so Cross-Game
+  Entrances (WomboComboShip) never rewrite the link's own switches. Neither MM graph (no Lost Woods or Before Clock Town
+  region) nor the Clock Tower scenes (`kFixedScenes`) are shuffled, and the two return triggers call
+  `Combo_RequestCrossSwitch` directly (OoT arrival 0x1B1 carries bit 0x10000, which keeps OoT from overriding it).
+- `BenPort.cpp` (MM): the Clock Tower spawn-1 portal is skipped while the link keeps Link in the hall;
+  `Combo_RequestPortalReturn` is the shared portal request.
+- `mm/2s2h/Rando/MiscBehavior/ComboLostWoodsLink.cpp`: the `OnSceneInit`, `OnActorInit` (stone doors) and
+  `OnGameStateUpdate` (the two trigger boxes) hooks. `soh/soh/Enhancements/randomizer/ComboLostWoodsLink.cpp`: the
+  marker actor (registered in ActorDB like `Obj_Aqua`) and its `OnSceneSpawnActors` spawn.
