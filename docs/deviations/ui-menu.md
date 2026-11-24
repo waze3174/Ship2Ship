@@ -585,3 +585,35 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 | Bow, arrows, bombs, chus, sticks, nuts, lens, beans, ocarina, bottles | twin rule kept (MM's own copy when MM holds it) | — | — | decision: shared items; OOT-identical behaviour not separately verified |
 | Ruto's Letter, OOT trade items | no (MM error sound) | — | — | OWED: hold up / show as OOT does |
 | Hyrule Equipment face (swords, shields, tunics, boots, strength, scale) | no | — | — | OWED |
+
+## Named presets and the ComboShip settings import (combo-owned)
+
+**Why:** neither port has a settings preset that is safe here. OOT's preset apply replaces whole CVar blocks with
+`Config::SetBlock`, and `gSettings` / `gEnhancements` are shared, so it wipes both games' mod lists and every key MM owns
+(see the residuals under the mod menu above). Players also keep one install per play style only because of that.
+
+**What:** Settings > Presets and Settings > Import from ComboShip in the combo menu (`combo/gui/ComboPresetsPanel.cpp`,
+`ComboConfigImportPanel.cpp`).
+- **Storage:** `presets/<name>.json` beside `comboship.json` (`ComboRando::DataDir()`: the working directory on
+  Windows, `$SHIP_HOME` on Linux, the AppImage and macOS). Format `{"format":"ComboShipPreset","version":1,"settings":{"<dotted CVar>": value}}`;
+  colours are 3 or 4 number arrays. Names are ASCII letters, digits, space and `- _ . ( )`, so the file name is the same on every OS.
+- **Scope:** `combo/ComboPresetScope.h` is the one allowlist, used by save, apply, the menu import and the first-launch
+  import. Roots found in the trees: soh `gRandoSettings gRandoEnhancements gCosmetics gEnhancements gSettings gTrackers
+  gCheats gAudioEditor gAddTraps gGameplayStats gRemote gGeneral gOpenWindows gDeveloperTools`; 2S2H `gRando gCosmetic
+  gEnhancements gSettings gModes gFixes gNotifications gHudEditor gDisplayOverlay gCheats gAudioEditor gRemote
+  gDeveloperTools gWindows`. `gSettings` and `gRemote` are listed key group by key group; graphics, window, LED, debug,
+  per-run state and the transient `Seeded` / `MmPlaced` markers are never carried. Mod lists
+  (`gSettings.EnabledMods*`) and controls (`gSettings.Controllers.*`, mouse and nav keys) are import-only, behind
+  "Also import mods list and controls".
+- **Apply:** `ComboPresets::WriteLeaves` (`ComboPlayPreset.cpp`, the leaf writer that came with WomboComboShip's control
+  presets, which are gone) writes only the preset's keys with the typed CVar setters, skips keys already at the
+  requested value, hands each changed key to both games' `*_MenuApplyCVarChange` (a key one game does not know has no
+  init func there, so the call is a no-op), reloads controllers when bindings changed, and saves. Never `SetBlock`.
+- **Loaded save:** keys the randomizer reads at generation or slot bind (`gRandoSettings.`, `gRando.`, `gCombo.Rando.`) are
+  held back unless the OoT file-select screen is up and MM is not foreground (`SeedBoundChangesAllowed`); the status
+  line says how many were skipped. Everything else applies live.
+- **Menu import:** validates the file (JSON object, CVars block with a `gCombo` section), copies the current config to
+  `comboship.json.bak-<timestamp>`, then applies through the same writer. Only the `CVars` block is read, never `Window`.
+- **First launch:** the import screen has a third slot for a `comboship.json` (`ComboSettingsImportResult::comboPath`).
+  The launcher filters its CVars with the same scope and merges it as the lowest-priority base under 2Ship and SoH.
+- **Not changed:** the stock OOT / MM Presets sidebars still exist in the per-game tabs.
