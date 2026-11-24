@@ -61,7 +61,7 @@ struct State {
 
 // The consumables both games carry, one count for both.
 // Seeds: only OOT has a bullet bag, but OOT's Slingshot fires in Termina too (ComboOotItems.cpp), and spends from
-// this shared count there (MM_ComboSharedSeeds), so a seed shot in Termina is gone in Hyrule.
+// this shared count there (SpendDormantAmmo), so a seed shot in Termina is gone in Hyrule.
 enum AmmoKind {
     kAmmoArrows = 0,
     kAmmoBombs,
@@ -115,6 +115,20 @@ struct Runtime {
 // not thrown away: it is still there in the game with the bigger bag.
 // A count that grew in a dormant game's save (an item delivered into it from the other game) is added on arrival, by
 // what that save held when we last wrote it (writtenAmmo), the same way as the heart pieces.
+//
+// JoinedAmmo: the shared count once a game's own count `v` joins it (that game's first tick after a load, a switch or
+// taking the item).
+inline int JoinedAmmo(const State& s, int game, int kind, int v) {
+    const int w = s.writtenAmmo[game][kind];
+    if (s.ammo[kind] < 0) {
+        return v; // nothing shared yet: this game's count is it
+    }
+    if (w < 0) {
+        return (v > s.ammo[kind]) ? v : s.ammo[kind]; // this game's first count (old save / first item)
+    }
+    return (v > w) ? s.ammo[kind] + (v - w) : s.ammo[kind]; // plus what was gained while dormant
+}
+
 inline void TickAmmo(Runtime& rt, int game, const Native& n) {
     State& s = rt.s;
     for (int i = 0; i < kAmmoKinds; i++) {
@@ -129,14 +143,7 @@ inline void TickAmmo(Runtime& rt, int game, const Native& n) {
         const int cap = (a.cap > *a.count) ? a.cap : *a.count;
         int v = *a.count;
         if (rt.lastAmmo[i] < 0) {
-            const int w = s.writtenAmmo[game][i];
-            if (s.ammo[i] < 0) {
-                s.ammo[i] = v; // nothing shared yet: this game's count is it
-            } else if (w < 0) {
-                s.ammo[i] = (v > s.ammo[i]) ? v : s.ammo[i]; // this game's first count (old save / first item)
-            } else if (v > w) {
-                s.ammo[i] += v - w; // gained while dormant
-            }
+            s.ammo[i] = JoinedAmmo(s, game, i, v);
             v = (s.ammo[i] > cap) ? cap : s.ammo[i];
             *a.count = (int8_t)v;
         } else {
@@ -288,6 +295,33 @@ inline void TickIfEnabled(Runtime& rt, int game, const Native& n) {
     } else {
         Release(rt);
     }
+}
+
+// The other (dormant) game's bag, seen from the game being played: its items on this game's buttons and its face of
+// this game's pause menu. `v` / `cap`: the dormant save's count and bag; `kind`: its shared consumable, -1 = none.
+// With sharing on, the count it will show when Link arrives (TickAmmo's rule), which is the count a use spends; its
+// save alone goes stale as soon as this game spends or gains the shared count. Otherwise its save's own count.
+inline int DormantAmmo(const Runtime& rt, int game, int kind, int v, int cap) {
+    if (!Enabled() || (kind < 0) || (kind >= kAmmoKinds)) {
+        return v;
+    }
+    const int shared = JoinedAmmo(rt.s, game, kind, v);
+    const int bag = (cap > v) ? cap : v;
+    return (shared > bag) ? bag : shared;
+}
+
+// A use in this game spends from the dormant game's bag (OOT's Slingshot in Termina), with sharing on: the shared
+// count moves by `change`, what the dormant game's own bag let the use change (as TickAmmo follows a game's own
+// count), and the dormant save's count `v` counts as written, since whatever was delivered into it is joined now.
+// false = sharing is off (spend from the dormant save itself).
+inline bool SpendDormantAmmo(Runtime& rt, int game, int kind, int change, int v) {
+    if (!Enabled() || (kind < 0) || (kind >= kAmmoKinds)) {
+        return false;
+    }
+    const int next = JoinedAmmo(rt.s, game, kind, v) + change;
+    rt.s.ammo[kind] = (next < 0) ? 0 : next;
+    rt.s.writtenAmmo[game][kind] = v;
+    return true;
 }
 
 inline std::string ToJson(const Runtime& rt) {

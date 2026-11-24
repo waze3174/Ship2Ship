@@ -4817,6 +4817,35 @@ static int16_t gItemAmmoX[] = { B_BUTTON_X + 2, C_LEFT_BUTTON_X + 1, C_DOWN_BUTT
 static int16_t gItemAmmoY[] = { B_BUTTON_Y + 18, C_LEFT_BUTTON_Y + 17, C_DOWN_BUTTON_Y + 17, C_RIGHT_BUTTON_Y + 17,
                                 DPAD_UP_Y + 11,  DPAD_DOWN_Y + 11,     DPAD_LEFT_Y + 11,     DPAD_RIGHT_Y + 11 };
 
+#ifdef COMBO_BUILD
+// ComboShip (merged pause menus): an MM item on a button shows MM's ammo as a use spends it, at (x, y) and coloured as
+// Interface_DrawAmmoCount draws OOT's own, which knows OOT's ammo items only. 1 = drawn.
+static s32 Interface_ComboDrawForeignAmmoCount(PlayState* play, s16 button, s16 alpha, s16 x, s16 y) {
+    s32 full = 0;
+    const s32 ammo = Combo_PauseForeignAmmoDigits(gSaveContext.equips.buttonItems[button], &full);
+
+    if (ammo < 0) {
+        return 0;
+    }
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    if (full) {
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 120, 255, 0, alpha);
+    }
+    if (ammo == 0) {
+        gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 100, 100, 100, alpha);
+    }
+    if (ammo >= 10) {
+        OVERLAY_DISP =
+            Gfx_TextureIA8(OVERLAY_DISP, (u8*)_gAmmoDigit0Tex[ammo / 10], 8, 8, x, y, 8, 8, 1 << 10, 1 << 10);
+    }
+    OVERLAY_DISP =
+        Gfx_TextureIA8(OVERLAY_DISP, (u8*)_gAmmoDigit0Tex[ammo % 10], 8, 8, x + 6, y, 8, 8, 1 << 10, 1 << 10);
+    CLOSE_DISPS(play->state.gfxCtx);
+    return 1;
+}
+#endif
+
 void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
     s16 i;
     s16 ammo;
@@ -5045,6 +5074,12 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
         ItemIconPos[3][0] = OTRGetRectDimensionFromRightEdge(ItemIconPos_ori[3][0]);
         ItemIconPos[3][1] = ItemIconPos_ori[3][1];
     }
+
+#ifdef COMBO_BUILD
+    if (Interface_ComboDrawForeignAmmoCount(play, button, alpha, ItemIconPos[button][0], ItemIconPos[button][1])) {
+        return;
+    }
+#endif
 
     OPEN_DISPS(play->state.gfxCtx);
 

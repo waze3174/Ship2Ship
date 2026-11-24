@@ -8,8 +8,8 @@
 //     mm/src/overlays/actors/ovl_player_actor/z_player_combo_oot.inc, on PLAYER_IA_COMBO_OOT_* item actions;
 //   - OOT's actors as combo files in MM's overlay dirs (OOT's Boomerang = MM EnBoom params COMBO_OOT_BOOMERANG, ...);
 //   - OOT's models through "__OTR__@oot:" routed display lists (OOT's ResourceManager stays resident);
-//   - OOT's save stays the owner: ammo, upgrades and age rules come from OOT through SOH_ComboTermina_* exports
-//     (soh/soh/Enhancements/randomizer/ComboTerminaItems.cpp).
+//   - OOT's save stays the owner: ammo (SOH_ComboAmmoBag), equipment and age rules come from OOT through its exports
+//     (soh/soh/Enhancements/randomizer/ComboTerminaItems.cpp, ComboSharedHealth.cpp).
 // Only damage / puzzle credit maps to MM (e.g. the Boomerang's damage bit is MM's Zora-boomerang bit).
 #ifdef COMBO_BUILD
 
@@ -151,33 +151,60 @@ extern "C" int Combo_MmOotItemAgeOk(int foreignItem) {
     return sAgeOk(item, LinkAdult() ? 1 : 0);
 }
 
-// Seeds are one count for both games (combo/ComboSharedHealth.h) and that count travels with the shared state, not in
-// OOT's dormant save: OOT reloads its save when Link returns, so a seed taken from the dormant save came back.
-extern "C" int MM_ComboSharedSeeds(void);
-extern "C" void MM_ComboSharedSeedsSet(int count);
+// With "Shared health, magic and ammo" on, OOT's consumables are one count with MM's (combo/ComboSharedHealth.h), and
+// that count travels with the shared state, not in OOT's dormant save: OOT's save alone goes stale. MM's shared side
+// (ComboSharedHealth.cpp) answers for it; with sharing off it hands back OOT's own count.
+extern "C" int Combo_SharedOotAmmo(int kind, int ootCount, int ootCap);
+extern "C" int Combo_SharedOotAmmoSpend(int kind, int change, int ootCount);
+
+namespace {
+struct OotBag {
+    int count = -1; // what a use spends (and what OOT will show on arrival), -1 = not an ammo item OOT holds
+    int cap = 0;    // OOT's bag
+    int kind = -1;  // the shared consumable
+    int own = -1;   // OOT's save's own count
+};
+
+OotBag BagOf(int ootItem) {
+    typedef int (*FnAmmoBag)(int, int*, int*);
+    static FnAmmoBag sBag = Sym<FnAmmoBag>("SOH_ComboAmmoBag");
+    OotBag b;
+    if (sBag != nullptr) {
+        b.own = sBag(ootItem, &b.cap, &b.kind);
+    }
+    if (b.own >= 0) {
+        b.count = Combo_SharedOotAmmo(b.kind, b.own, b.cap);
+    }
+    return b;
+}
+} // namespace
 
 extern "C" int Combo_MmOotAmmo(int ootItem) {
-    static FnIntInt sAmmo = Sym<FnIntInt>("SOH_ComboTermina_Ammo");
-    if ((ootItem == COMBO_OOT_ITEM_SLINGSHOT) && (MM_ComboSharedSeeds() >= 0)) {
-        return MM_ComboSharedSeeds();
-    }
-    return sAmmo ? sAmmo(ootItem) : 0;
+    return BagOf(ootItem).count;
 }
 
 extern "C" void Combo_MmOotChangeAmmo(int ootItem, int delta) {
     static FnVoidIntInt sChange = Sym<FnVoidIntInt>("SOH_ComboTermina_ChangeAmmo");
-    static FnIntInt sUpg = Sym<FnIntInt>("SOH_ComboTermina_UpgradeValue");
-    if (ootItem == COMBO_OOT_ITEM_SLINGSHOT) {
-        // OOT's Inventory_ChangeAmmo for seeds, on the shared count: capped by OOT's bullet bag (30 / 40 / 50).
-        static const int kBulletBag[4] = { 0, 30, 40, 50 };
-        const int upg = sUpg ? sUpg(5 /* OOT UPG_BULLET_BAG */) : 1;
-        const int cap = kBulletBag[(upg >= 0 && upg <= 3) ? upg : 1];
-        int v = Combo_MmOotAmmo(ootItem) + delta;
-        MM_ComboSharedSeedsSet((v > cap) ? cap : v);
+    const OotBag b = BagOf(ootItem);
+    if (b.count < 0) {
         return;
     }
-    if (sChange)
+    // OOT's Inventory_ChangeAmmo: never below 0, never above OOT's bag.
+    int next = b.count + delta;
+    next = (next < 0) ? 0 : ((next > b.cap) ? b.cap : next);
+    // Sharing off: OOT's own save, which OOT writes before it loads the save again (SOH_ResumeGame).
+    if (!Combo_SharedOotAmmoSpend(b.kind, next - b.count, b.own) && (sChange != nullptr)) {
         sChange(ootItem, delta);
+    }
+}
+
+extern "C" int Combo_MmForeignAmmo(int foreignItem, int* full) {
+    const int oot = Combo_MmOotItemOf(foreignItem);
+    const OotBag b = (oot >= 0) ? BagOf(oot) : OotBag{};
+    if (full != nullptr) {
+        *full = (b.count >= 0) && (b.count >= b.cap);
+    }
+    return b.count;
 }
 
 // OOT's hand models (soh z_player_lib.c sPlayerDListGroups) for the OOT items Link holds in Termina. OOT has each

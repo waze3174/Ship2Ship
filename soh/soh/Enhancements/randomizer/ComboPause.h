@@ -45,6 +45,9 @@ int Combo_PauseIsForeign(int item);
 unsigned char Combo_PauseSlotItem(int pageSlot);  // foreign id of a foreign-tab slot, ITEM_NONE when empty
 unsigned char Combo_PauseSlotItemAny(int mmSlot); // MM's item in that MM slot (0-47), ITEM_NONE when empty
 int Combo_PauseSlotAmmo(int pageSlot);            // MM ammo digits for that slot, -1 = none
+// The ammo digits for a foreign (MM) item on an OOT button: MM's count as a use spends it (with shared consumables,
+// what MM will show), -1 = none. `full` (may be NULL): MM's bag is full (the count is drawn green).
+int Combo_PauseForeignAmmoDigits(int foreignId, int* full);
 const char* Combo_PauseIconTex(int item);         // MM icon (draw inside a "mm" bracket); NULL = unavailable
 const char* Combo_PauseNameTex(int item);         // MM name plate (inside a "mm" bracket)
 int Combo_PauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);

@@ -2662,6 +2662,10 @@ Features that change the rules of play are off until the player turns them on in
   (`combo/ComboSharedHealth.h`). With it off the shared state is cleared every frame and the launcher skips the
   heart and ammo conversions of cross-delivered items. Seed generation and logic never read it; logic still counts
   every heart at full value, so with it on a check that needs many hearts can need more than logic assumed.
+  The other game's ammo items (on this game's buttons and its face of this game's pause menu) show the shared count
+  as that game will show it on arrival, `ComboHealth::DormantAmmo`; OOT's Slingshot fired in Termina spends from the
+  shared seeds (`SpendDormantAmmo`). With it off they show, and the Slingshot spends, OOT's own save, written at the
+  switch back before OOT reloads it (`Combo_TerminaPersistDormantSave`).
 - `gCombo.Rando.FormLogicCredit` (seed-bound, stored as `formLogicCredit`): logic may credit MM's Zora and Goron
   Masks as Hyrule abilities (`ComboFormCredit` in `logic.cpp`). Off: no seed ever requires a form's ability.
   The launcher pushes the setting with `SOH_SetComboFormLogicCredit` before each oracle pass; a seed without the
