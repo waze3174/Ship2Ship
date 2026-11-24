@@ -552,6 +552,32 @@ the pre-fix segfault reproduced on demand; post-fix, `oot.z64` routes to the OoT
 `MM_ClassifyRom` accepts). Also verified by hand on Windows: ROMs dragged onto the extraction
 screen route through the `WM_DROPFILES`/DXGI path into the correct slots.
 
+## ROM Setup: an optional OoT Master Quest slot (ComboShip Ultimate)
+
+The extraction screen has a third slot, "OoT Master Quest (optional)". It takes a Master Quest OoT ROM and produces
+`oot-mq.o2r` through the same `SOH_StartExtraction` as the OoT slot: Torch picks the archive name from `config.yml` by
+hashing the ROM, so a Master Quest ROM always lands in `oot-mq.o2r` whichever slot started it.
+
+- **Which archive a ROM makes:** `SOH_GetRomQuest(path)` (`OTRGlobals.cpp`, `Extractor::ClassifyRomQuest`) reads the
+  ROM header only, like `SOH_ClassifyRom`, and returns `COMBO_ROM_QUEST_VANILLA`, `_MASTER` or `_UNKNOWN`
+  (`combo/ComboExtract.h`). It uses `IsMasterQuest()`, the same version-CRC set `config.yml` maps to `oot-mq.o2r`. The
+  launcher requires the export and hands it to the screen as `sohQuest`.
+- **Routing:** the auto-scan and a dropped ROM go to the first slot they fit, so a Master Quest ROM skips the OoT slot
+  and lands in the Master Quest slot (if that archive is still missing). A ROM picked with Browse is put where the
+  player chose and judged there: a Master Quest ROM in the OoT slot reads "This is a Master Quest ROM; put it in the
+  Master Quest slot", and a vanilla one in the Master Quest slot reads "This is not a Master Quest ROM; put it in the
+  Ocarina of Time slot". Neither is extracted to the wrong archive.
+- **Ready:** the OoT (vanilla) and MM slots are required when their archives are missing; the Master Quest slot never
+  is. An empty Master Quest slot is skipped. A filled one must be valid, so Extract waits while it holds a bad ROM;
+  "Clear" empties it. A slot whose archive exists shows "(already extracted)".
+- **Extraction order:** OoT, MM, then Master Quest, one progress bar at a time. `SOH_StartExtraction` now accepts a new
+  job as soon as the previous one reports done (the done flag is the job's last statement), since two OoT jobs run back
+  to back.
+- **Launcher checks:** `OOTArchivesExist()` is split into `OOTVanillaArchiveExists()` (`oot.o2r`, required) and
+  `OOTMasterQuestArchiveExists()` (`oot-mq.o2r`, optional). A folder with only `oot-mq.o2r` now opens the screen for
+  the vanilla ROM; the combo needs `oot.o2r`. The screen opens only when `oot.o2r` or the MM archive is missing, and
+  nothing re-opens it mid-game, so a player who skipped the optional slot adds `oot-mq.o2r` by copying it in.
+
 ## Three more quit-to-MM-title seams (2026-08-22)
 
 Every path that reaches `TitleSetup_SetupTitleScreen` runs `Sram_InitNewSave()` (a `SAVETYPE_VANILLA`

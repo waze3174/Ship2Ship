@@ -440,6 +440,7 @@ static FnVoid SOH_InitWindowOnly = nullptr;
 static FnVoid SOH_FinishInit = nullptr;
 static ComboFnValidateRom SOH_ValidateRom = nullptr;
 static ComboFnValidateRom SOH_ClassifyRom = nullptr;
+static ComboFnRomQuest SOH_GetRomQuest = nullptr;
 static ComboFnStartExtraction SOH_StartExtraction = nullptr;
 static ComboFnGetProgress SOH_GetExtractionProgress = nullptr;
 static ComboFnValidateRom MM_ValidateRom = nullptr;
@@ -3579,12 +3580,17 @@ static bool ComboDataExists(const char* name) {
 
 // ---------- O2R existence checks ----------
 
-static bool OOTArchivesExist() {
-    // The OoT *ROM* archive (player-extracted) is oot.o2r / oot-mq.o2r. soh.o2r is the bundled PORT
+static bool OOTVanillaArchiveExists() {
+    // The OoT *ROM* archive (player-extracted) is oot.o2r. soh.o2r is the bundled PORT
     // archive (assets/fonts) that always ships with the build — it must NOT count here, or a genuine
     // first run (port archive present, ROM not yet extracted) would skip extraction and then hard-exit
     // inside Initialize() when oot.o2r is missing.
-    return ComboDataExists("oot-mq.o2r") || ComboDataExists("oot.o2r");
+    return ComboDataExists("oot.o2r");
+}
+
+// Optional: the Master Quest archive (oot-mq.o2r) is extracted from a second, Master Quest OoT ROM.
+static bool OOTMasterQuestArchiveExists() {
+    return ComboDataExists("oot-mq.o2r");
 }
 
 // ROM-derived archive (must be extracted from the player's MM ROM)
@@ -3805,6 +3811,7 @@ int main(int argc, char** argv) {
     SOH_FinishInit = (FnVoid)GetSym(sohModule, "SOH_FinishInit");
     SOH_ValidateRom = (ComboFnValidateRom)GetSym(sohModule, "SOH_ValidateRom");
     SOH_ClassifyRom = (ComboFnValidateRom)GetSym(sohModule, "SOH_ClassifyRom");
+    SOH_GetRomQuest = (ComboFnRomQuest)GetSym(sohModule, "SOH_GetRomQuest");
     SOH_StartExtraction = (ComboFnStartExtraction)GetSym(sohModule, "SOH_StartExtraction");
     SOH_GetExtractionProgress = (ComboFnGetProgress)GetSym(sohModule, "SOH_GetExtractionProgress");
     MM_ValidateRom = (ComboFnValidateRom)GetSym(mmModule, "MM_ValidateRom");
@@ -3951,17 +3958,19 @@ int main(int argc, char** argv) {
     // ComboShip needs an OoT ROM and an MM ROM. If either ROM archive is missing, create the shared
     // window from the bundled soh.o2r (SOH_InitWindowOnly — no ROM needed), then run comboui's
     // combo-owned extraction screen, which gathers BOTH ROMs and extracts them with progress bars.
+    // The screen also offers an optional OoT Master Quest ROM (oot-mq.o2r) while it is open.
     // It returns false if the player quits or extraction fails -> we exit. When the archives are
     // present we skip this entirely and use the monolithic SOH_Init() fast path below.
     bool windowInitialized = false;
     // Capture BEFORE any window/config init: a fresh install (no comboship.json) gets the settings
     // import offer. (The Config ctor doesn't create the file, but capturing early stays robust.)
     const bool freshInstall = !ComboConfigExists();
-    const bool needOot = !OOTArchivesExist();
+    const bool needOot = !OOTVanillaArchiveExists();
     const bool needMm = !MMRomArchiveExists();
     if (needOot || needMm) {
         if (!SOH_InitWindowOnly || !SOH_FinishInit || !SOH_ValidateRom || !SOH_StartExtraction ||
-            !SOH_GetExtractionProgress || !MM_ValidateRom || !MM_StartExtraction || !MM_GetExtractionProgress) {
+            !SOH_GetExtractionProgress || !SOH_GetRomQuest || !MM_ValidateRom || !MM_StartExtraction ||
+            !MM_GetExtractionProgress) {
             std::cerr << "ERROR: game DLLs missing the ComboShip extraction primitives (rebuild required)."
                       << std::endl;
             FreeDll(mmModule);
@@ -3990,6 +3999,8 @@ int main(int argc, char** argv) {
         cb.sohStart = SOH_StartExtraction;
         cb.sohProgress = SOH_GetExtractionProgress;
         cb.sohNeeded = needOot ? 1 : 0;
+        cb.sohMqNeeded = OOTMasterQuestArchiveExists() ? 0 : 1;
+        cb.sohQuest = SOH_GetRomQuest;
         cb.mmValidate = MM_ValidateRom;
         cb.mmClassify = MM_ClassifyRom;
         cb.mmStart = MM_StartExtraction;
@@ -4000,7 +4011,7 @@ int main(int argc, char** argv) {
             std::cerr << "[ComboShip] Extraction cancelled or failed — exiting." << std::endl;
             ComboExitEarly(1);
         }
-        if (!OOTArchivesExist() || !MMRomArchiveExists()) {
+        if (!OOTVanillaArchiveExists() || !MMRomArchiveExists()) {
             std::cerr << "ERROR: ROM archives still missing after extraction — exiting." << std::endl;
             ComboExitEarly(1);
         }

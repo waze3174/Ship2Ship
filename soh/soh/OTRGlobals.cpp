@@ -6,6 +6,7 @@
 #endif
 #include "OTRAudio.h"
 #include "ComboExport.h"
+#include "ComboExtract.h" // ComboShip: ComboRomQuest for SOH_GetRomQuest
 #include "ComboResolve.h"
 #include <algorithm>
 #include <atomic>
@@ -4413,14 +4414,32 @@ extern "C" COMBO_EXPORT int SOH_ClassifyRom(const char* romPath) {
     return extract.ClassifyRom(romPath) ? 1 : 0;
 }
 
+// ComboShip: says which archive romPath extracts to, so the launcher can keep Master Quest ROMs out of the
+// vanilla OoT slot and the other way round. Header-only, like SOH_ClassifyRom.
+extern "C" COMBO_EXPORT int SOH_GetRomQuest(const char* romPath) {
+    if (!romPath) {
+        return COMBO_ROM_QUEST_UNKNOWN;
+    }
+    Extractor extract;
+    switch (extract.ClassifyRomQuest(romPath)) {
+        case RomQuest::Vanilla:
+            return COMBO_ROM_QUEST_VANILLA;
+        case RomQuest::MasterQuest:
+            return COMBO_ROM_QUEST_MASTER;
+        default:
+            return COMBO_ROM_QUEST_UNKNOWN;
+    }
+}
+
 // Kicks Torch extraction of romPath on a background task. Non-blocking; returns 0 if a job is already
 // running or the arg is null. Poll SOH_GetExtractionProgress for completion.
 extern "C" COMBO_EXPORT int SOH_StartExtraction(const char* romPath) {
     if (!romPath) {
         return 0;
     }
-    if (gComboExtractFuture.valid() &&
-        gComboExtractFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready) {
+    // The done flag is the job's last statement, so a second ROM can start the frame after the first
+    // reports done, without waiting for the worker thread to be torn down.
+    if (gComboExtractFuture.valid() && !gComboExtractDone.load()) {
         return 0; // a job is still running
     }
     gComboExtractRomPath = romPath;

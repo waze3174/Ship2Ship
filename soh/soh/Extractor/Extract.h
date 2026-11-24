@@ -25,6 +25,13 @@ enum class RomSearchMode {
     MQ = 2,
 };
 
+// ComboShip: which archive a ROM extracts to (oot.o2r or oot-mq.o2r).
+enum class RomQuest {
+    Unknown,
+    Vanilla,
+    MasterQuest,
+};
+
 class Extractor {
     std::vector<uint8_t> mRomData;
     uint32_t mRomVerCrc = 0;
@@ -65,6 +72,8 @@ class Extractor {
     bool RunFileStandalone(std::string file);
     // ComboShip: header-only version check for the folder auto-scan (no full-ROM read/CRC).
     bool ClassifyRom(std::string file);
+    // ComboShip: header-only like ClassifyRom, then says which archive config.yml sends the ROM to.
+    RomQuest ClassifyRomQuest(std::string file);
     bool Run(std::string searchPath, RomSearchMode searchMode = RomSearchMode::Both);
     bool CallTorch(std::string installPath, std::string exportdir, std::atomic<size_t>* extractCount,
                    std::atomic<size_t>* totalExtract);

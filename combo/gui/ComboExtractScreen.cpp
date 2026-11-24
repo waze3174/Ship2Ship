@@ -30,20 +30,103 @@ using ComboRando::ComboMenu_ThemeColor; // port style helpers (combo/gui/ComboWi
 
 namespace {
 
+// Slot order on screen, and the order the ROMs are extracted in.
+enum SlotIndex { kSlotOot, kSlotMm, kSlotOotMq, kSlotCount };
+
+// How a ROM relates to the slot it was put in.
+enum class RomFit {
+    Fits,
+    NotARom,
+    WrongQuest, // a real OoT ROM, but the other quest's: Master Quest vs vanilla
+};
+
+constexpr const char* kMasterQuestInVanillaSlot = "This is a Master Quest ROM; put it in the Master Quest slot";
+constexpr const char* kVanillaInMasterQuestSlot = "This is not a Master Quest ROM; put it in the Ocarina of Time slot";
+
 struct RomSlot {
     const char* label = "";
-    bool needed = false; // archive missing -> must extract
+    // archive missing -> must extract
+    bool needed = false;
+    // may stay empty; an empty optional slot is skipped
+    bool optional = false;
+    // takes the Master Quest OoT ROM (and only that)
+    bool masterQuest = false;
     ComboFnValidateRom validate = nullptr;
-    ComboFnValidateRom classify = nullptr; // header-only version check for the auto-scan
+    // header-only version check for the auto-scan
+    ComboFnValidateRom classify = nullptr;
+    // splits vanilla from Master Quest; set on the two OoT slots only
+    ComboFnRomQuest quest = nullptr;
     ComboFnStartExtraction start = nullptr;
     ComboFnGetProgress progress = nullptr;
     std::string path;
-    bool valid = false;
+    RomFit fit = RomFit::NotARom;
     // extraction runtime state
     bool started = false;
     bool done = false;
     bool success = false;
+
+    bool valid() const {
+        return fit == RomFit::Fits;
+    }
+    // Empty optional slots are skipped; everything else that is needed gets extracted.
+    bool willExtract() const {
+        return needed && !(optional && path.empty());
+    }
+    // Required slots need a valid ROM. Optional ones may be empty, but not hold a bad ROM.
+    bool satisfied() const {
+        return !willExtract() || valid();
+    }
 };
+
+// The header-only check that routes auto-scanned and dropped ROMs; falls back to the full one.
+ComboFnValidateRom RoutingCheck(const RomSlot& s) {
+    return s.classify ? s.classify : s.validate;
+}
+
+// Whether the ROM at path belongs in slot s, judged with `check` (header-only to route, full on Browse).
+RomFit JudgeRom(const RomSlot& s, ComboFnValidateRom check, const char* path) {
+    if (!check || !check(path)) {
+        return RomFit::NotARom;
+    }
+    if (!s.quest) {
+        return RomFit::Fits;
+    }
+    const int quest = s.quest(path);
+    if (s.masterQuest) {
+        if (quest == COMBO_ROM_QUEST_MASTER) {
+            return RomFit::Fits;
+        }
+        return quest == COMBO_ROM_QUEST_VANILLA ? RomFit::WrongQuest : RomFit::NotARom;
+    }
+    return quest == COMBO_ROM_QUEST_MASTER ? RomFit::WrongQuest : RomFit::Fits;
+}
+
+// Puts the ROM in the slot only if it fits there. True if it was placed.
+bool ClaimRom(RomSlot& s, const std::string& path) {
+    const RomFit fit = JudgeRom(s, RoutingCheck(s), path.c_str());
+    if (fit != RomFit::Fits) {
+        return false;
+    }
+    s.path = path;
+    s.fit = fit;
+    return true;
+}
+
+// Puts the ROM in the slot whether or not it fits, so the slot can say what is wrong with it.
+void AssignRom(RomSlot& s, const std::string& path, ComboFnValidateRom check) {
+    s.path = path;
+    s.fit = JudgeRom(s, check, path.c_str());
+}
+
+void DrawRomProblem(const RomSlot& s, const ImVec4& color) {
+    ImGui::PushStyleColor(ImGuiCol_Text, color);
+    if (s.fit == RomFit::WrongQuest) {
+        ImGui::TextWrapped("%s", s.masterQuest ? kVanillaInMasterQuestSlot : kMasterQuestInVanillaSlot);
+    } else {
+        ImGui::TextWrapped("Not a valid %s ROM", s.label);
+    }
+    ImGui::PopStyleColor();
+}
 
 // Native open-file dialog filtered to N64 ROM extensions. Returns "" if cancelled.
 std::string PickRomFile() {
@@ -116,19 +199,33 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
     auto gui = wnd->GetGui();
     UseSharedImGuiContext();
 
-    RomSlot slots[2];
-    slots[0].label = "Ocarina of Time";
-    slots[0].needed = cb->sohNeeded != 0;
-    slots[0].validate = cb->sohValidate;
-    slots[0].classify = cb->sohClassify;
-    slots[0].start = cb->sohStart;
-    slots[0].progress = cb->sohProgress;
-    slots[1].label = "Majora's Mask";
-    slots[1].needed = cb->mmNeeded != 0;
-    slots[1].validate = cb->mmValidate;
-    slots[1].classify = cb->mmClassify;
-    slots[1].start = cb->mmStart;
-    slots[1].progress = cb->mmProgress;
+    RomSlot slots[kSlotCount];
+    RomSlot& oot = slots[kSlotOot];
+    oot.label = "Ocarina of Time";
+    oot.needed = cb->sohNeeded != 0;
+    oot.validate = cb->sohValidate;
+    oot.classify = cb->sohClassify;
+    oot.quest = cb->sohQuest;
+    oot.start = cb->sohStart;
+    oot.progress = cb->sohProgress;
+    RomSlot& mm = slots[kSlotMm];
+    mm.label = "Majora's Mask";
+    mm.needed = cb->mmNeeded != 0;
+    mm.validate = cb->mmValidate;
+    mm.classify = cb->mmClassify;
+    mm.start = cb->mmStart;
+    mm.progress = cb->mmProgress;
+    // Same extraction functions as the OoT slot: the extractor sends a Master Quest ROM to oot-mq.o2r itself.
+    RomSlot& ootMq = slots[kSlotOotMq];
+    ootMq.label = "OoT Master Quest";
+    ootMq.needed = cb->sohMqNeeded != 0;
+    ootMq.optional = true;
+    ootMq.masterQuest = true;
+    ootMq.validate = cb->sohValidate;
+    ootMq.classify = cb->sohClassify;
+    ootMq.quest = cb->sohQuest;
+    ootMq.start = cb->sohStart;
+    ootMq.progress = cb->sohProgress;
 
     // Auto-scan the working directory and classify any ROMs found into the needed slots.
     {
@@ -136,14 +233,11 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
         ScanForRoms(std::filesystem::current_path(), candidates);
         for (const auto& c : candidates) {
             for (auto& s : slots) {
-                if (!s.needed || s.valid) {
+                if (!s.needed || s.valid()) {
                     continue;
                 }
                 // Route by the header-only classify (fast); fall back to full validate if unavailable.
-                ComboFnValidateRom check = s.classify ? s.classify : s.validate;
-                if (check && check(c.c_str())) {
-                    s.path = c;
-                    s.valid = true;
+                if (ClaimRom(s, c)) {
                     break;
                 }
             }
@@ -227,22 +321,15 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                     }
                     bool placed = false;
                     for (auto& s : slots) {
-                        if (!s.needed) {
-                            continue;
-                        }
-                        ComboFnValidateRom check = s.classify ? s.classify : s.validate;
-                        if (check && check(dropped.c_str())) {
-                            s.path = dropped;
-                            s.valid = true;
+                        if (s.needed && ClaimRom(s, dropped)) {
                             placed = true;
                             break;
                         }
                     }
                     if (!placed) {
                         for (auto& s : slots) {
-                            if (s.needed && !s.valid) {
-                                s.path = dropped;
-                                s.valid = false;
+                            if (s.needed && !s.valid()) {
+                                AssignRom(s, dropped, RoutingCheck(s));
                                 break;
                             }
                         }
@@ -252,6 +339,10 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                 ImGui::TextWrapped("ComboShip needs both an Ocarina of Time ROM and a Majora's Mask ROM. "
                                    "Select each ROM below or drag and drop ROM files onto this window, "
                                    "then click Extract. Both are required.");
+                if (ootMq.needed) {
+                    ImGui::TextWrapped("An Ocarina of Time Master Quest ROM is optional. Add it to play "
+                                       "Master Quest in addition to the regular game.");
+                }
                 if (!PickerAvailable()) {
                     // TextDisabled doesn't wrap (ran off the panel), and the game font has no
                     // em-dash glyph — so: wrapped text in the disabled color, ASCII only.
@@ -262,10 +353,10 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                 }
                 ImGui::Spacing();
 
-                for (int i = 0; i < 2; i++) {
+                for (int i = 0; i < kSlotCount; i++) {
                     RomSlot& s = slots[i];
                     ImGui::PushID(i);
-                    ImGui::TextColored(theme, "%s", s.label);
+                    ImGui::TextColored(theme, "%s%s", s.label, s.optional ? " (optional)" : "");
                     if (!s.needed) {
                         ImGui::SameLine();
                         ImGui::TextColored(kGreen, "(already extracted)");
@@ -278,21 +369,29 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                         if (ImGui::Button(s.path.empty() ? "Browse..." : "Change")) {
                             std::string picked = PickRomFile();
                             if (!picked.empty()) {
-                                s.path = picked;
-                                s.valid = s.validate && s.validate(picked.c_str());
+                                AssignRom(s, picked, s.validate);
                             }
                         }
                         if (!PickerAvailable()) {
                             ImGui::EndDisabled();
                         }
                         ComboMenu_PopButton();
+                        if (s.optional && !s.path.empty()) {
+                            ImGui::SameLine();
+                            ComboMenu_PushButton(theme);
+                            if (ImGui::Button("Clear")) {
+                                s.path.clear();
+                                s.fit = RomFit::NotARom;
+                            }
+                            ComboMenu_PopButton();
+                        }
                         ImGui::SameLine();
                         if (s.path.empty()) {
-                            ImGui::TextDisabled("required");
-                        } else if (s.valid) {
+                            ImGui::TextDisabled(s.optional ? "optional" : "required");
+                        } else if (s.valid()) {
                             ImGui::TextColored(kGreen, "Valid %s ROM", s.label);
                         } else {
-                            ImGui::TextColored(kRed, "Not a valid %s ROM", s.label);
+                            DrawRomProblem(s, kRed);
                         }
                     }
                     ImGui::Spacing();
@@ -303,7 +402,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
 
                 bool ready = true;
                 for (const auto& s : slots) {
-                    if (s.needed && !s.valid) {
+                    if (!s.satisfied()) {
                         ready = false;
                     }
                 }
@@ -332,8 +431,8 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                 if (activeSlot < 0) {
                     // Pick the next needed-but-unfinished slot, or finish.
                     int next = -1;
-                    for (int i = 0; i < 2; i++) {
-                        if (slots[i].needed && !slots[i].done) {
+                    for (int i = 0; i < kSlotCount; i++) {
+                        if (slots[i].willExtract() && !slots[i].done) {
                             next = i;
                             break;
                         }
@@ -341,7 +440,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                     if (next < 0) {
                         bool allOk = true;
                         for (const auto& s : slots) {
-                            if (s.needed && !s.success) {
+                            if (s.willExtract() && !s.success) {
                                 allOk = false;
                             }
                         }

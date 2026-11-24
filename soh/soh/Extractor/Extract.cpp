@@ -498,6 +498,14 @@ bool Extractor::ClassifyRom(std::string rom) {
     return verMap.contains(GetRomVerCrc());
 }
 
+RomQuest Extractor::ClassifyRomQuest(std::string rom) {
+    // PAL Debug 2 passes ClassifyRom but has no entry in IsMasterQuest or config.yml.
+    if (!ClassifyRom(rom) || GetRomVerCrc() == OOT_PAL_GC_DBG2) {
+        return RomQuest::Unknown;
+    }
+    return IsMasterQuest() ? RomQuest::MasterQuest : RomQuest::Vanilla;
+}
+
 bool Extractor::RunFileStandalone(std::string rom) {
     if (std::filesystem::is_directory(rom)) {
         return false;
