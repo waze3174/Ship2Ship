@@ -2689,3 +2689,55 @@ process) and every reload. Without the fix the set that logic was filled against
   assets (`__OTR__@mm:`) are objects, animations and audio, none of which have a `/nonmq/` component, and routed
   display lists resolve through `CrossRMRegistry` directly in the interpreter. MM's own scene paths do contain
   `/nonmq/`, so a soh-side caller that loaded an MM scene or room asset would be rewritten; none exists.
+
+## Save modes: vanilla OoT, Normal and Master Quest (ComboShip Ultimate)
+
+A save slot has a mode, stored in its `file{N}.combosav` container as `combo.mode`
+(`combo/rando/ComboMode.h`):
+
+```json
+"mode": { "game": "ootmm" | "oot" | "mm", "kind": "rando" | "vanilla", "quest": "normal" | "mq" }
+```
+
+- An absent key is a combo randomizer slot, exactly as before the setting. A vanilla `ootmm` is read as a randomizer
+  slot (a vanilla save has one game).
+- A new randomizer slot records `game` from its seed's `games` (the Games setting). `quest` only means something for a
+  vanilla OoT slot.
+- The launcher's helpers: `Combo_GetSlotMode(slot)` and `Combo_SetSlotMode(slot, mode)` for a slot's stored mode, and
+  `Combo_ActiveSlotIsVanillaOot()` for the loaded slot (`g_activeMode`, set by `LoadComboCompletion`). A copied slot
+  copies its mode; an erased slot loses it.
+
+### The quest carousel is the picker
+
+Under `COMBO_BUILD` the OoT file select offers Normal, Master Quest and Randomizer (`z_file_choose.c`,
+`SohFileSelect_IsQuestHidden`). Normal needs `oot.o2r` and Master Quest needs `oot-mq.o2r`
+(`ResourceMgr_GameHasOriginal` / `ResourceMgr_GameHasMasterQuest`, plus SoH's own File Select "Hide" options);
+Randomizer is always offered and is the default selection. Boss Rush and Speedrun stay out. `Sram_InitSave` no longer
+forces the randomizer quest. The launcher reads the new save's quest with `SOH_GetNewSaveQuest` inside the new-save
+callback, and `Combo_OnOOTSaveInit` branches on it.
+
+### A vanilla OoT slot
+
+- `Combo_InitVanillaOotSlot`: no seed is bound, no MM save is made (`MM_InitRandoSaveFile` is never called), the
+  container's `mm`, `combo.rando`, completion, shared health, bottle shelf and link state are dropped, and the mode is
+  stored. A pending seed stays pending for the next randomizer slot.
+- `Combo_OnOOTSaveLoad`: `LoadComboCompletion` runs first and resets every seed-bound launcher global (completion
+  latches, goal, starting game, shared mask, unified inventory, games, mode) from the slot, then pushes them to both
+  DLLs. A vanilla slot then clears the foreign map, hints and crossed doors a combo slot pushed (`SOH_/MM_LoadComboRando`
+  with null), skips the MM save peek, and releases the launcher's claim on MM's dormant memory
+  (`g_MmSaveInMemorySlot = -1`). Loading a combo slot afterwards repeats its normal path and re-reads its MM save.
+- A vanilla slot plays its mode's game (`g_comboGames = oot`), so every refusal of the Games setting applies: the Mask
+  Shop, the Clock Tower, the owl warp, warp songs, `Combo_RequestCrossSwitch`, `DeliverCrossItem`, the merged pause
+  faces, shared health, Shared Items and Unified Inventory. The final boss alone finishes the run (vanilla credits).
+- Forms: in a randomizer save `gCombo.Forms.InHyrule` decides, as before. In a vanilla save the separate
+  `gCombo.Forms.InVanillaOot` (default off, "Transformations in vanilla OoT" in the combo menu) decides, so OoT's
+  Goron and Zora Masks are plain masks unless the player turns it on (`Combo_FormsAllowed`). On every save load a form
+  or worn MM mask left by the previous slot is dropped when the new save doesn't allow forms.
+- Master Quest: the save's `isMasterQuest` comes from the chosen quest and `IsSceneMasterQuest` follows it. The seed's
+  pinned MQ set (`ComboMasterQuest.cpp`) only feeds the randomizer context and is not read for a vanilla slot.
+- Enhancements, cosmetics and mods are CVars and archives, so they apply to a vanilla slot unchanged. The combo-wide
+  play changes that aren't tied to a seed (one button layout for both ages, Start fast-forwarding cutscenes,
+  rupee clamping) also apply.
+
+Not changed: Anchor. A vanilla slot has no cross items, and the launcher still pumps Anchor packets into MM's dormant
+save, which can belong to another slot.
