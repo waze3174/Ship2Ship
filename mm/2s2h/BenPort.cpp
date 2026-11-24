@@ -4477,9 +4477,11 @@ extern "C" COMBO_EXPORT void MM_RaiseSharedTier(int family, int tier) try {
     tier = std::min(tier, def.mmTierCap);
     if (family == ComboRando::SF_BOTTLES) {
         // Pooled: `tier` is the shared TOTAL; hold that many (mirrored empties fill slots, then the shelf).
+        const int heldBefore = Combo_MM_BottlesHeld();
         while (Combo_MM_BottlesHeld() < tier)
             Combo_MM_BottlesAddMirrored();
-        if (gSaveContext.fileNum != 0xFF)
+        // The reconcile runs after every pickup in either game, so write the save only when a bottle was added.
+        if (Combo_MM_BottlesHeld() != heldBefore && gSaveContext.fileNum != 0xFF)
             SaveManager_SaveCurrentForCombo(); // persist dormant grants too, like the bombchu-bag poke
         return;
     }

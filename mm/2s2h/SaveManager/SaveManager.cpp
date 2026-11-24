@@ -354,13 +354,15 @@ void SaveManager_SaveCurrentForCombo() {
             try {
                 // at() so a malformed blob throws into the catch below; operator[] would insert
                 // nulls and leave a blob that only fails later, at load.
-                nlohmann::json keep = j.at("owlSave").at("save");
+                const nlohmann::json& blob = j.at("owlSave").at("save");
+                nlohmann::json isOwlSave = blob.at("isOwlSave");
+                nlohmann::json pauseSaveEntrance = blob.at("shipSaveInfo").at("pauseSaveEntrance");
+                nlohmann::json respawn = blob.at("shipSaveInfo").at("respawn");
                 j["owlSave"] = gSaveContext;
                 // Blob-owned: live RAM clears these right after every owl write.
-                j["owlSave"]["save"]["isOwlSave"] = keep.at("isOwlSave");
-                j["owlSave"]["save"]["shipSaveInfo"]["pauseSaveEntrance"] =
-                    keep.at("shipSaveInfo").at("pauseSaveEntrance");
-                j["owlSave"]["save"]["shipSaveInfo"]["respawn"] = keep.at("shipSaveInfo").at("respawn");
+                j["owlSave"]["save"]["isOwlSave"] = std::move(isOwlSave);
+                j["owlSave"]["save"]["shipSaveInfo"]["pauseSaveEntrance"] = std::move(pauseSaveEntrance);
+                j["owlSave"]["save"]["shipSaveInfo"]["respawn"] = std::move(respawn);
                 if (comboDeadForSave) {
                     j["owlSave"]["save"]["saveInfo"]["playerData"]["health"] = 0x30;
                 }
@@ -376,7 +378,7 @@ void SaveManager_SaveCurrentForCombo() {
 #endif
     j["version"] = CURRENT_SAVE_VERSION;
     j["type"] = "2S2H_SAVE";
-    SaveManager_WriteSaveFile(fileName, j);
+    SaveManager_WriteSaveFile(fileName, std::move(j));
 }
 
 #ifdef COMBO_BUILD
