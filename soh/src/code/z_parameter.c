@@ -24,7 +24,10 @@
 #define COMBO_TUNIC_COUNTS()                  \
     ((Combo_OotForm() == COMBO_FORM_HUMAN) || \
      (Combo_OotForm() == COMBO_FORM_FIERCE_DEITY)) // tunics help the human bodies (owner: FD is human)
+// ComboShip: MM's Blast Mask greys out B while it cools down (MM Interface_UpdateButtonsPart2 ~3306).
+#define COMBO_B_COOLING_DOWN() Combo_BlastMaskCoolingDown()
 #else
+#define COMBO_B_COOLING_DOWN() 0
 #define COMBO_WATER_PROOF() 0
 #define COMBO_HEAT_PROOF() 0
 #define COMBO_TUNIC_COUNTS() 1
@@ -1106,7 +1109,7 @@ void func_80083108(PlayState* play) {
                                 Interface_LoadItemIcon1(play, 0);
                             }
                         }
-                    } else if ((gSaveContext.buttonStatus[0] & 0xFF) == BTN_DISABLED) {
+                    } else if (((gSaveContext.buttonStatus[0] & 0xFF) == BTN_DISABLED) && !COMBO_B_COOLING_DOWN()) {
                         sp28 = 1;
 
                         if (((gSaveContext.buttonStatus[0] & 0xFF) == BTN_DISABLED) ||
@@ -1141,6 +1144,13 @@ void func_80083108(PlayState* play) {
 
                         gSaveContext.buttonStatus[0] = BTN_DISABLED;
                     }
+                }
+
+                // ComboShip: the Blast Mask's cooldown keeps B ("Explode") greyed out; the branch above enables it
+                // again once the cooldown is over.
+                if (COMBO_B_COOLING_DOWN() && (gSaveContext.buttonStatus[0] != BTN_DISABLED)) {
+                    gSaveContext.buttonStatus[0] = BTN_DISABLED;
+                    sp28 = 1;
                 }
 
                 for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
@@ -5587,7 +5597,15 @@ void Interface_Draw(PlayState* play) {
         gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
         gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATERGBA_PRIM, G_CC_MODULATERGBA_PRIM);
 
-        if (!(interfaceCtx->unk_1FA)) {
+#ifdef COMBO_BUILD
+        // ComboShip: an MM B-action mask shows MM's own B label ("Explode", ...) in place of the B item, as MM's
+        // Interface_DrawBButtonIcons does, from MM's do_action_static. OOT's own B labels (textbox, pause) come first.
+        const char* comboBLabel = interfaceCtx->unk_1FA ? NULL : Combo_MaskBActionLabel();
+#else
+        const char* comboBLabel = NULL;
+#endif
+
+        if (!(interfaceCtx->unk_1FA) && (comboBLabel == NULL)) {
             // B Button Icon & Ammo Count
             if (gSaveContext.equips.buttonItems[0] != ITEM_NONE) {
                 if (fullUi) {
@@ -5663,9 +5681,20 @@ void Interface_Draw(PlayState* play) {
                               PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, interfaceCtx->bAlpha);
 
-            gDPLoadTextureBlock_4b(OVERLAY_DISP++, interfaceCtx->doActionSegment[1], G_IM_FMT_IA, DO_ACTION_TEX_WIDTH(),
+            const char* bLabelTexture = (comboBLabel != NULL) ? comboBLabel : interfaceCtx->doActionSegment[1];
+#ifdef COMBO_BUILD
+            if (comboBLabel != NULL) {
+                gSPComboRMPush(OVERLAY_DISP++, "mm");
+            }
+#endif
+            gDPLoadTextureBlock_4b(OVERLAY_DISP++, bLabelTexture, G_IM_FMT_IA, DO_ACTION_TEX_WIDTH(),
                                    DO_ACTION_TEX_HEIGHT(), 0, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP,
                                    G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
+#ifdef COMBO_BUILD
+            if (comboBLabel != NULL) {
+                gSPComboRMPop(OVERLAY_DISP++);
+            }
+#endif
 
             R_B_LABEL_DD = (1 << 10) / (WREG(37 + languageOffset) / 100.0f);
             gSPWideTextureRectangle(OVERLAY_DISP++, BbtnPosX << 2, BbtnPosY << 2,

@@ -16884,8 +16884,7 @@ void Player_Update(Actor* thisx, PlayState* play) {
                     input.press.button &= ~pictoBtns;
                     input.cur.button &= ~pictoBtns;
                 }
-                if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BLAST) || Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BREMEN) ||
-                    Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_KAMARO)) {
+                if (Combo_MaskBActionLabel() != NULL) {
                     if (CHECK_BTN_ALL(input.press.button, BTN_B)) {
                         sComboMaskBPress = true;
                     }
