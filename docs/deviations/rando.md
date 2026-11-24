@@ -2736,10 +2736,10 @@ callback, and `Combo_OnOOTSaveInit` branches on it.
 - Master Quest: the save's `isMasterQuest` comes from the chosen quest and `IsSceneMasterQuest` follows it. The seed's
   pinned MQ set (`ComboMasterQuest.cpp`) only feeds the randomizer context and is not read for a vanilla slot.
 - Enhancements, cosmetics and mods are CVars and archives, so they apply to a vanilla slot unchanged.
-- Three combo play changes that need no seed are gated on `IS_RANDO`, so a vanilla slot plays like stock SoH: the one
-  button layout for both ages (`Inventory_SwapAgeEquipment`, `z_parameter.c`), Start fast-forwarding cutscenes
-  (`Combo_CutsceneFastForward`, `z_play.c`) and rupee clamping (`Rupees_ChangeBy` while no play state exists, and the
-  per-frame repair in `Interface_Update`, `z_parameter.c`). Randomizer saves, combo or one-game, keep all three.
+- Two combo play changes that need no seed are gated on `IS_RANDO`, so a vanilla slot plays like stock SoH: the one
+  button layout for both ages (`Inventory_SwapAgeEquipment`, `z_parameter.c`) and Start fast-forwarding cutscenes
+  (`Combo_CutsceneFastForward`, `z_play.c`). Randomizer saves, combo or one-game, keep both. The rupee clamp in
+  `Rupees_ChangeBy` and `Interface_Update` stays on for every save: it is a crash guard, not a rule change.
 - Everything else under `COMBO_BUILD` that reaches the play loop is keyed to MM content (forms, foreign items and
   masks, MM attacks, Pictograph Box, Powder Keg) or to the Games and Shared settings, which a vanilla slot turns off.
   The ROM-sample read in `audio_load.c` is an audio fix and stays on for every save.
