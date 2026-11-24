@@ -460,7 +460,8 @@ the owning game's count as a use spends it (MM host: `VB_DRAW_HUD_AMMO_COUNT` in
 consumables on, that is the shared count (`ComboHealth::DormantAmmo`), and the foreign face shows the same number.
 Use: OOT host — MM transformation
 masks → the form system (any mask while transformed changes back), other MM masks → worn with MM's model
-(`D_801C0B20`, routed `@mm:` DL on the head limb), anything else → OOT's error sound. MM host — OOT's Keaton / Bunny /
+(`D_801C0B20`, routed `@mm:` DL on the head limb), MM's Deku Sticks and Deku Nuts → OOT's own stick and nut code on
+MM's bag, the items in the "MM items in Hyrule" table below → their ports, anything else → OOT's error sound. MM host — OOT's Keaton / Bunny /
 Truth / Goron / Zora masks → MM's own masks, anything else → MM's error sound.
 
 **Shared layout.** `ComboEquipShare` now carries each button's origin (`"cx"`, `"dx"`: owning game + slot); the
@@ -501,6 +502,7 @@ Shared pieces added:
 | Pictograph Box | yes | MM picto lens, MM HUD focus frame, shutter, capture -> I8 -> I5 in MM's save, MM 0xF8 "Keep this picture? Yes/No" (MM's text), photo shown again on reuse, ColorPictograph CVar | lens, shutter, prompt, Yes, exit, reuse shows the photo (picto-48..88) | no Hyrule photo subjects (snap flags cleared); the prompt box is OOT's; MM's save isn't written to disk while in Hyrule (the colour PNG is) |
 | MM bottles (potions, milk, fairy, fish, bug, Poe, blue fire) | yes | OOT's bottle actions (MM's are the same code) writing the MM bottle's own slot (MM_ComboItems_SetSlot); MM content colours | Chateau drunk: MM slot 18 0x25 -> 0x12 (log) | MM bottles can't catch blue fire (MM's catch table has none); forms can't use MM bottles yet |
 | Chateau Romani | yes | MM drink (heal + magic) + infinite magic (MAGIC_STATE_CONSUME and lens drain skipped) | log "infinite magic until dawn" | adapted: lasts until the next OOT dawn (06:00) instead of MM's cycle reset; not saved |
+| Deku Stick, Deku Nut (when OOT has none of its own) | yes (2026-11-24, untested) | OOT's stick and nut actions (MM's are the same code: take-out ammo check, break, burn-out, nut throw), checking and spending MM's bag (`Combo_PlayerAmmo` in z_player.c; with shared consumables on, the shared count via `Combo_SharedMmAmmoSpend`, otherwise MM's resident save, as for the Powder Keg); before this, the error sound | code only | OOT's stick model in hand; no OOT age gate (MM's own rule); forms can't use them (OOT's rule for its own sticks and nuts); MM's bombs, bombchus, bow / arrows and magic beans on OOT's buttons still give the error sound |
 | Kotake's red potion | yes | MM maps it to the Poe drink (random -1 / +3 hearts) | code | |
 | Spring / Hot Spring Water | yes | MM pour (release action) spawning MM's ObjAqua (new actor); hot water melts OOT's Obj_Ice_Poly (MM's rule) | code | no frozen Goron / watered bean in Hyrule |
 | Gold Dust, Mushroom, Seahorse, Zora Egg, Hylian Loach, Deku Princess, Big Poe | yes | MM show route: bottle held up, MM 0xFE "This item doesn't seem to work here..." | same path as the Moon's Tear | no takers in Hyrule |

@@ -44,6 +44,7 @@ void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
 int Combo_GamesSolo(void);                     // OTRGlobals.cpp
 extern s16 gComboBlastMaskTimer;               // z_player_lib.c: MM blastMaskTimer for the Blast Mask in Hyrule
 int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap); // ComboSharedHealth.cpp: MM's bag with shared consumables
+int Combo_SharedMmAmmoSpend(int kind, int change, int mmCount); // ComboSharedHealth.cpp: spend it, 0 = sharing off
 }
 
 namespace {
@@ -215,19 +216,35 @@ int LiveMmItem(int foreignId) {
     return sMmItems[s] == 0xFF ? -1 : sMmItems[s];
 }
 
-// MM's bag for an MM ammo item, as Hyrule sees it (after a Snapshot, so MM's save is resident): the count a use spends,
-// which with shared consumables on is what MM will show on arrival, not only what MM's dormant save holds. -1 = not an
-// ammo item MM holds. `cap` (may be null): MM's bag.
-int MmAmmo(int mmItem, int* cap) {
+// MM's bag for an MM ammo item, as Hyrule sees it (after a Snapshot, so MM's save is resident).
+struct MmBag {
+    int count = -1; // what a use spends: with shared consumables on, what MM will show on arrival, not only what MM's
+                    // dormant save holds. -1 = not an ammo item MM holds
+    int cap = 0;    // MM's bag
+    int kind = -1;  // the shared consumable, -1 = not shared
+    int own = -1;   // MM's save's own count
+};
+
+MmBag BagOf(int mmItem) {
     typedef int (*FnAmmoBag)(int, int*, int*);
     static FnAmmoBag sBag = (FnAmmoBag)Combo_ResolveSym("2ship", "MM_ComboAmmoBag");
-    int bag = 0;
-    int kind = -1;
-    const int own = (sBag != nullptr) ? sBag(mmItem, &bag, &kind) : -1;
-    if (cap != nullptr) {
-        *cap = bag;
+    MmBag b;
+    if (sBag != nullptr) {
+        b.own = sBag(mmItem, &b.cap, &b.kind);
     }
-    return (own < 0) ? -1 : Combo_SharedMmAmmo(kind, own, bag);
+    if (b.own >= 0) {
+        b.count = Combo_SharedMmAmmo(b.kind, b.own, b.cap);
+    }
+    return b;
+}
+
+// BagOf's count; `cap` (may be null): MM's bag.
+int MmAmmo(int mmItem, int* cap) {
+    const MmBag b = BagOf(mmItem);
+    if (cap != nullptr) {
+        *cap = b.cap;
+    }
+    return b.count;
 }
 
 void Log(const char* fmt, ...) {
@@ -514,6 +531,21 @@ extern "C" int Combo_PauseLiveMmItem(int item) {
     return LiveMmItem(item);
 }
 
+// ---- MM's Deku Sticks and Deku Nuts in Hyrule --------------------------------------------------------------------
+// MM's stick and nut code is OOT's, line for line (mm z_player.c: the take-out ammo check in Player_UseItem, the break
+// in func_8083FF30, the burn-out in func_808442D8, the nut throw in Player_Action_64), so OOT's own runs them, on MM's
+// bag (z_player.c Combo_PlayerAmmo).
+extern "C" int Combo_PauseForeignOotAmmoItem(int item) {
+    switch (LiveMmItem(item)) {
+        case MM_ITEM_DEKU_STICK:
+            return ITEM_STICK;
+        case MM_ITEM_DEKU_NUT:
+            return ITEM_NUT;
+        default:
+            return ITEM_NONE;
+    }
+}
+
 // ---- MM bottles in Hyrule ---------------------------------------------------------------------------------------
 // MM's own bottle contents with an OOT player action that runs MM's behaviour (MM's bottle code is OOT's, line for
 // line: mm z_player.c Player_Action_67 drink / _69 fairy / _70 release vs OOT Player_Action_8084EAC0 / EED8 / EFC0):
@@ -570,13 +602,23 @@ extern "C" int Combo_PauseForeignAmmoDigits(int foreignId, int* full) {
     return ammo;
 }
 
-// MM Inventory_ChangeAmmo on MM's resident save for the MM item a foreign id names.
+// MM Inventory_ChangeAmmo for the MM item a foreign id names: on the shared count with sharing on (so the count drawn
+// and spent, BagOf's, moves), otherwise on MM's resident save.
 extern "C" int Combo_PauseForeignAmmoChange(int foreignId, int n) {
     typedef int (*FnChangeAmmo)(int, int);
     static FnChangeAmmo sChange = nullptr;
     const int mm = LiveMmItem(foreignId);
     if (mm < 0) {
         return 0;
+    }
+    const MmBag b = BagOf(mm);
+    if (b.count >= 0) {
+        const int bag = (b.cap > b.count) ? b.cap : b.count;
+        int next = b.count + n;
+        next = (next < 0) ? 0 : ((next > bag) ? bag : next);
+        if (Combo_SharedMmAmmoSpend(b.kind, next - b.count, b.own)) {
+            return 1;
+        }
     }
     if (sChange == nullptr) {
         sChange = (FnChangeAmmo)Combo_ResolveSym("2ship", "MM_ComboItems_ChangeAmmo");
