@@ -6,7 +6,8 @@
 //   OoT Lost Woods, the north wrong turn in room 0 -> MM Lost Woods (spawn 0)
 //   MM Lost Woods, east end -> the Clock Tower's twisting corridor, at its far end (not the sky drop)
 //   Clock Tower, the corridor's far end -> OoT Lost Woods (the north tunnel mouth)
-//   Clock Tower: the stone doors stay open, and the Happy Mask Salesman leads to OoT's Mask Shop
+//   Clock Tower: the stone doors stay open. The Happy Mask Salesman and OoT's Mask Shop work as in vanilla, so the
+//   corridor end is the only way between the games.
 //
 // It is a play-time shortcut: the CVar is not stored in the seed and the fill does not model it, so reachability only
 // grows. It is active only in a combo save where both games are played (Combo_GamesSolo() refuses a one-game seed

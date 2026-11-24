@@ -4,6 +4,8 @@
 //   Exit:   the north wrong turn in Lost Woods room 0 switches to MM's Lost Woods instead of looping back to Kokiri
 //           Forest. Player_HandleExitsAndVoids asks Combo_OOT_LostWoodsLinkExit before the entrance override, so the
 //           entrance tracker and the cross-game entrance redirect never see the wrong turn's own destination.
+//   Mask Shop: while the link is on, the Market's Mask Shop door leads into OoT's own shop; ComboShip's switch to MM
+//           there (OTRGlobals.cpp) asks Combo_OOT_LostWoodsLinkKeepsMaskShop first.
 //   Marker: a stump (MM's cut tree) in front of that tunnel's mouth while the link is on. A small combo actor,
 //           registered in ActorDB like MM's Obj_Aqua (ComboMmItems.cpp); it only draws.
 #ifdef COMBO_BUILD
@@ -121,6 +123,10 @@ void RegisterLostWoodsLinkMarker() {
 RegisterShipInitFunc sLostWoodsMarkerInit(RegisterLostWoodsLinkMarker, {});
 
 } // namespace
+
+extern "C" int Combo_OOT_LostWoodsLinkKeepsMaskShop(void) {
+    return Active();
+}
 
 extern "C" int Combo_OOT_LostWoodsLinkExit(PlayState* play, const void* poly, unsigned int bgId) {
     if (bgId != BGCHECK_SCENE || play->sceneNum != SCENE_LOST_WOODS || !Active()) {
