@@ -24,6 +24,8 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <nlohmann/json.hpp>
 
+extern "C" int Combo_GamesSolo(void); // each game's DLL: a one-game seed (combo/rando/ComboGames.h)
+
 namespace ComboHealth {
 
 // Off by default: sharing is a rule change, and the games behave as plain ComboShip unless the player turns it on in
@@ -266,8 +268,9 @@ inline void Tick(Runtime& rt, int game, const Native& n) {
     TickAmmo(rt, game, n);
 }
 
+// A one-game seed has no second game to share with, so the switch is inert there.
 inline bool Enabled() {
-    return CVarGetInteger(kCvarEnabled, 0) != 0;
+    return !Combo_GamesSolo() && CVarGetInteger(kCvarEnabled, 0) != 0;
 }
 
 // Sharing is off: forget what was shared, so that switching it on later starts again from each game's native fields

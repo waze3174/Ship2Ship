@@ -41,6 +41,7 @@ const char* const* KaleidoScope_ComboEquipmentTexs(void);  // z_kaleido_scope_PA
 const char* KaleidoScope_ComboItemNameTex(int item);       // z_kaleido_scope_PAL.c (OOT's ENG name plates)
 extern void* gItemIcons[];
 void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
+int Combo_GamesSolo(void);                     // OTRGlobals.cpp
 }
 
 namespace {
@@ -71,6 +72,10 @@ int8_t sMmAmmo[COMBO_PAUSE_MM_SLOTS];
 bool Snapshot() {
     if (!MmResolved())
         return false;
+    if (Combo_GamesSolo()) { // a one-game seed never shows or uses the other game's items
+        memset(sMmItems, 0xFF, sizeof(sMmItems));
+        return false;
+    }
     if (!sMmGetItems(sMmItems, sMmAmmo)) {
         memset(sMmItems, 0xFF, sizeof(sMmItems));
         return false;

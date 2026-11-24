@@ -122,6 +122,7 @@ extern "C" COMBO_EXPORT void MM_ComboPause_DebugGive(int mmItem) {
 extern "C" {
 extern u8 gPlayerFormItemRestrictions[PLAYER_FORM_MAX][114];
 void Combo_RequestCrossSwitch(int ootEntrance); // BenPort.cpp
+int Combo_GamesSolo(void);                      // BenPort.cpp
 }
 
 namespace {
@@ -149,6 +150,10 @@ int8_t sOotAmmo[COMBO_PAUSE_OOT_SLOTS];
 bool Snapshot() {
     if (!OotResolved())
         return false;
+    if (Combo_GamesSolo()) { // a one-game seed never shows or uses the other game's items
+        memset(sOotItems, 0xFF, sizeof(sOotItems));
+        return false;
+    }
     if (!sOotGetItems(sOotItems, sOotAmmo)) {
         memset(sOotItems, 0xFF, sizeof(sOotItems));
         return false;
@@ -293,7 +298,7 @@ uint8_t sOotEquip[16];
 uint8_t sOotEquipped[4];
 bool EquipSnapshot() {
     static FnEquipGrid sGrid = (FnEquipGrid)Combo_ResolveSym("soh", "SOH_ComboPause_GetEquipGrid");
-    if (sGrid == nullptr || !sGrid(sOotEquip, sOotEquipped)) {
+    if (sGrid == nullptr || Combo_GamesSolo() || !sGrid(sOotEquip, sOotEquipped)) {
         memset(sOotEquip, 0xFF, sizeof(sOotEquip));
         memset(sOotEquipped, 0, sizeof(sOotEquipped));
         return false;
