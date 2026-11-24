@@ -39,7 +39,6 @@ class EventAccess {
     }
 
     bool ConditionsMet() const {
-        auto ctx = Rando::Context::GetInstance();
         if (ctx->GetOption(RSK_NO_LOGIC).Is(RO_GENERIC_OFF)) {
             COMBO_FORM_CTX_RESET();
             return condition_function();
@@ -91,7 +90,6 @@ class LocationAccess {
     }
 
     bool GetConditionsMet() const {
-        auto ctx = Rando::Context::GetInstance();
         if (ctx->GetOption(RSK_NO_LOGIC).Is(RO_GENERIC_OFF)) {
             COMBO_FORM_CTX_RESET();
             return condition_function();
