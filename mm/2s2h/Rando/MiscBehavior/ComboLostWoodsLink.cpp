@@ -8,11 +8,9 @@
 //                Deku Butler area, which needs the Deku Mask.
 //   Return       The corridor's exit polygons (INSIDETOWER exit 1, normally to OPENINGDAN spawn 1) leave for OoT's
 //                Lost Woods.
-//   Clock Tower  The two stone door leaves in the hall no longer block the way down to the twisting corridor, and the
-//                Happy Mask Salesman leads to OoT's Mask Shop (the hall is where Clock Town's door now ends).
+//   Clock Tower  The two stone door leaves in the hall no longer block the way down to the twisting corridor (the hall
+//                is where Clock Town's door now ends). The Happy Mask Salesman there is left as in vanilla.
 #ifdef COMBO_BUILD
-
-#include <cmath>
 
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <spdlog/spdlog.h>
@@ -31,7 +29,6 @@ extern "C" {
 // BenPort.cpp
 int Combo_GamesSolo(void);
 void Combo_RequestCrossSwitch(int ootEntrance);
-void Combo_RequestPortalReturn(void);
 extern int gComboCrossArrival;
 }
 
@@ -42,7 +39,7 @@ namespace Link = ComboRando::LostWoodsLink;
 static_assert(Link::kMmLostWoodsSpawn0 == ENTRANCE(LOST_WOODS, 0), "the OoT side's MM arrival entrance");
 
 // Owner decision 2026-11-24: while the link is on, the Clock Tower's door from Clock Town ends in the hall, and the
-// Happy Mask Salesman there leads to OoT's Mask Shop. Off: Clock Town's door goes straight to OoT, as without the link.
+// corridor end is the only way to OoT. Off: Clock Town's door goes straight to OoT, as without the link.
 constexpr bool kClockTowerEntryStaysInMm = true;
 
 // Lost Woods' east exit leads to the intro fall; the link sends it to the Clock Tower's corridor end instead (spawn 0,
@@ -56,48 +53,11 @@ constexpr int kCorridorEndExit = ENTRANCE(OPENING_DUNGEON, 1);
 
 constexpr int kLostWoodsArrivalSpawn = 0;
 
-// The Happy Mask Salesman stands at (-106,-30,-79) in the hall (EN_OSN in Z2_INSIDETOWER room 0). Link triggers the
-// way to OoT by pushing against him: within this distance of his centre (his collider is 30 wide, Link's 12), for this
-// many frames, after having been this far away. The hall's route to the stone doors passes 106 units to his side.
-constexpr f32 kSalesmanX = -106.0f;
-constexpr f32 kSalesmanZ = -79.0f;
-constexpr f32 kSalesmanTouchDistance = 55.0f;
-constexpr f32 kSalesmanArmDistance = 150.0f;
-constexpr f32 kSalesmanMinY = -60.0f;
-constexpr f32 kSalesmanMaxY = 40.0f;
-constexpr int kSalesmanPushFrames = 15;
-
 // The stone door leaves are BgCtowerRot params 1 and 2; params 0 is the twisting corridor itself.
 constexpr int kStoneDoorFirstParams = BGCTOWERROT_STONE_DOOR_MAIN;
 
 // What SkipIntroSequence marks after the intro: the Happy Mask Salesman's flag in the Clock Tower.
 constexpr u32 kInsideTowerSwitchBits = 1 << 0;
-
-// Fires once Link has been clear of the trigger and then stays in it for `pushFrames` frames.
-struct Trigger {
-    bool armed = false;
-    bool fired = false;
-    int insideFrames = 0;
-
-    void Reset() {
-        *this = Trigger{};
-    }
-
-    bool Update(bool inside, bool clear, int pushFrames) {
-        if (fired) {
-            return false;
-        }
-        if (!armed) {
-            armed = clear;
-            return false;
-        }
-        insideFrames = inside ? insideFrames + 1 : 0;
-        fired = insideFrames >= pushFrames;
-        return fired;
-    }
-};
-
-Trigger sSalesman;
 
 // Set by the east exit: the next scene load is the corridor end, whose entrance cutscene is skipped. Any scene init
 // clears it.
@@ -114,34 +74,8 @@ void MarkIntroDone() {
     gSaveContext.save.saveInfo.permanentSceneFlags[SCENE_INSIDETOWER].switch0 |= kInsideTowerSwitchBits;
 }
 
-f32 DistanceXZ(const Vec3f& pos, f32 x, f32 z) {
-    return sqrtf(SQ(pos.x - x) + SQ(pos.z - z));
-}
-
-void UpdateSalesmanTrigger(const Vec3f& pos) {
-    const f32 distance = DistanceXZ(pos, kSalesmanX, kSalesmanZ);
-    const bool inside = distance <= kSalesmanTouchDistance && pos.y >= kSalesmanMinY && pos.y <= kSalesmanMaxY;
-
-    if (sSalesman.Update(inside, distance >= kSalesmanArmDistance, kSalesmanPushFrames)) {
-        SPDLOG_INFO("[ComboLostWoodsLink] Happy Mask Salesman -> OOT Mask Shop");
-        Combo_RequestPortalReturn();
-    }
-}
-
-void UpdateTriggers() {
-    PlayState* play = gPlayState;
-
-    if (play == nullptr || !kClockTowerEntryStaysInMm || play->sceneId != SCENE_INSIDETOWER || !Active() ||
-        gSaveContext.gameMode != GAMEMODE_NORMAL || play->transitionTrigger != TRANS_TRIGGER_OFF ||
-        Player_InCsMode(play)) {
-        return;
-    }
-    UpdateSalesmanTrigger(GET_PLAYER(play)->actor.world.pos);
-}
-
 void HandleSceneInit(s8 sceneId, s8 spawnNum) {
     sSkipCorridorEndCutscene = false;
-    sSalesman.Reset();
     if (Active() && (sceneId == SCENE_LOST_WOODS || sceneId == SCENE_INSIDETOWER)) {
         MarkIntroDone();
     }
@@ -156,7 +90,6 @@ void HandleStoneDoorInit(Actor* actor) {
 
 void RegisterComboLostWoodsLink() {
     COND_HOOK(OnSceneInit, true, HandleSceneInit);
-    COND_HOOK(OnGameStateUpdate, true, UpdateTriggers);
     COND_ID_HOOK(OnActorInit, ACTOR_BG_CTOWER_ROT, true, HandleStoneDoorInit);
 }
 

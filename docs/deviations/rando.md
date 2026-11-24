@@ -2795,7 +2795,8 @@ MM's.
 
 ## Lost Woods link (ComboShip Ultimate)
 
-An optional walk between the two games, next to the Mask Shop / Clock Tower switch (which stays). The play-time option
+An optional walk between the two games. While it is on it is the only way across: the Mask Shop / Clock Tower portal
+is off (below). With it off, that portal is ComboShip's original. The play-time option
 `gCombo.LostWoodsLink` ("Lost Woods link (OoT <-> Termina)", Combo menu next to the other cross-game play options),
 default on (`kDefault`; off until Ship2Ship v0.1.0). It is not stored in the seed and the fill does not model it: reachability only grows, so it is a shortcut
 the logic doesn't know about. It is active only in a combo save where both games are played (`Combo_GamesSolo()` is
@@ -2817,10 +2818,15 @@ The route:
 - Clock Tower, the corridor's far end (exit 1, polygons 551 and 552, normally to Before Clock Town spawn 1) -> OoT
   entrance 0x1B1 (Lost Woods spawn 3, the north tunnel mouth), age kept.
 - The Clock Tower hall: the two stone door leaves (`BG_CTOWER_ROT` params 1 and 2) are killed at init, so the hall opens
-  onto the twisting corridor. Clock Town's door now ends in
-  the hall (owner decision 2026-11-24); pushing against the Happy Mask Salesman (within 55 units of (-106,-79) for 15
-  frames, after being 150 away) takes the Clock Tower portal to OoT's Mask Shop. `kClockTowerEntryStaysInMm` in
-  `ComboLostWoodsLink.cpp` turns that back into today's behaviour (spawn 1 goes straight to OoT).
+  onto the twisting corridor. Clock Town's door now ends in the hall (owner decision 2026-11-24).
+  `kClockTowerEntryStaysInMm` in `ComboLostWoodsLink.cpp` turns that back into today's behaviour (spawn 1 goes straight
+  to OoT). The Happy Mask Salesman is left as in vanilla: Link talks to him, and the 2S2H rando's changes to him (the
+  Song of Healing check) apply.
+- The Market's Mask Shop door leads into OoT's own Mask Shop, which works as in vanilla and in the rando (mask
+  borrowing, `VB_HAPPY_MASK_SHOP_CHECK_SOLD_OUT` under `MaskSelect`). ComboShip's switch to MM on entering the shop
+  (`SCENE_HAPPY_MASK_SHOP` in the `OnSceneInit` hook in `OTRGlobals.cpp`) is skipped. The shop's sign check stays
+  unregistered (`ShuffleSigns.cpp`), so it is not a randomized check.
+- Link off: the Mask Shop door and the Clock Tower spawn 1 are the portal, unchanged.
 
 Hooks:
 - `z_player.c` (OoT) `Player_HandleExitsAndVoids`: `COMBO_LOST_WOODS_LINK_EXIT` before `Entrance_OverrideNextIndex`, so
@@ -2836,7 +2842,7 @@ Hooks:
   entrance; the corridor's far end calls `Combo_RequestCrossSwitch` and returns its own destination (OoT arrival 0x1B1
   carries bit 0x10000, which keeps OoT from overriding it).
 - `BenPort.cpp` (MM): the Clock Tower spawn-1 portal is skipped while the link keeps Link in the hall;
-  `Combo_RequestPortalReturn` is the shared portal request.
-- `mm/2s2h/Rando/MiscBehavior/ComboLostWoodsLink.cpp`: the `OnSceneInit`, `OnActorInit` (stone doors) and
-  `OnGameStateUpdate` (the Salesman push) hooks. `soh/soh/Enhancements/randomizer/ComboLostWoodsLink.cpp`: the
+  `Combo_RequestPortalReturn` is the portal request.
+- `OTRGlobals.cpp` (OoT) `OnSceneInit`: the Mask Shop switch asks `Combo_OOT_LostWoodsLinkKeepsMaskShop` first.
+- `mm/2s2h/Rando/MiscBehavior/ComboLostWoodsLink.cpp`: the `OnSceneInit` and `OnActorInit` (stone doors) hooks. `soh/soh/Enhancements/randomizer/ComboLostWoodsLink.cpp`: the
   marker actor (registered in ActorDB like `Obj_Aqua`) and its `OnSceneSpawnActors` spawn.

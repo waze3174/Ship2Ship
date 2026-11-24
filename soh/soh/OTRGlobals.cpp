@@ -7,6 +7,7 @@
 #include "OTRAudio.h"
 #include "ComboExport.h"
 #include "ComboExtract.h" // ComboShip: ComboRomQuest for SOH_GetRomQuest
+#include "soh/Enhancements/randomizer/ComboLostWoodsLink.h"
 #include "ComboResolve.h"
 #include <algorithm>
 #include <atomic>
@@ -1865,8 +1866,9 @@ static void Combo_FinishInit() {
         // A combo-driven arrival is over once the first scene has loaded.
         gComboCrossArrival = 0;
         // Cross-game OOT->MM trigger: entering the Happy Mask Shop. Not in a solo seed (ComboGames.h): the shop is
-        // just OOT's shop there.
-        if (sceneNum == SCENE_HAPPY_MASK_SHOP && !Combo_GamesSolo()) {
+        // just OOT's shop there. Nor with the Lost Woods link on, which keeps the shop and makes the Clock Tower
+        // corridor end the only way across.
+        if (sceneNum == SCENE_HAPPY_MASK_SHOP && !Combo_GamesSolo() && !Combo_OOT_LostWoodsLinkKeepsMaskShop()) {
             sComboSwitchFileNum = (int)gSaveContext.fileNum;
             sComboSwitchPending = true;
         }
