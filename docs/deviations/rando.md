@@ -2797,7 +2797,7 @@ MM's.
 
 An optional walk between the two games, next to the Mask Shop / Clock Tower switch (which stays). The play-time option
 `gCombo.LostWoodsLink` ("Lost Woods link (OoT <-> Termina)", Combo menu next to the other cross-game play options),
-default off. It is not stored in the seed and the fill does not model it: reachability only grows, so it is a shortcut
+default on (`kDefault`; off until Ship2Ship v0.1.0). It is not stored in the seed and the fill does not model it: reachability only grows, so it is a shortcut
 the logic doesn't know about. It is active only in a combo save where both games are played (`Combo_GamesSolo()` is
 false); one-game seeds and every vanilla slot (always one game) refuse it. Presets carry it through the `gCombo.`
 prefix (`combo/ComboPresetScope.h`). Shared constants: `combo/rando/ComboLostWoodsLink.h`.

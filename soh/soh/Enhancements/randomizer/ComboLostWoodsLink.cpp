@@ -67,7 +67,7 @@ void LostWoodsMarker_Draw(Actor* thisx, PlayState* play) {
 
 // The link is on, in a combo save where both games are played.
 bool Active() {
-    return CVarGetInteger(Link::kCVar, 0) != 0 && !Combo_GamesSolo();
+    return CVarGetInteger(Link::kCVar, Link::kDefault) != 0 && !Combo_GamesSolo();
 }
 
 short MarkerActorId() {

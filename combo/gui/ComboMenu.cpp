@@ -1916,7 +1916,7 @@ void ComboMenu::DrawComboPanel() {
                                 "Deku/Goron/Zora/Fierce Deity forms. Set it once in the Anchor panel.");
         }
         {
-            bool woodsLink = CVarGetInteger(ComboRando::LostWoodsLink::kCVar, 0) != 0;
+            bool woodsLink = CVarGetInteger(ComboRando::LostWoodsLink::kCVar, ComboRando::LostWoodsLink::kDefault) != 0;
             ImGui::BeginDisabled(solo); // a one-game seed never crosses between the games
             ComboRando::ComboMenu_PushCheckbox(goalTheme);
             if (ImGui::Checkbox("Lost Woods link (OoT <-> Termina)", &woodsLink)) {

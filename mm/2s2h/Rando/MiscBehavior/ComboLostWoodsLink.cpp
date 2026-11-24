@@ -109,7 +109,7 @@ Trigger sStuddedDoor;
 Trigger sSalesman;
 
 bool Active() {
-    return CVarGetInteger(Link::kCVar, 0) != 0 && !Combo_GamesSolo();
+    return CVarGetInteger(Link::kCVar, Link::kDefault) != 0 && !Combo_GamesSolo();
 }
 
 void OrSceneFlags(s16 sceneId, u32 switchBits, u32 chestBits) {
