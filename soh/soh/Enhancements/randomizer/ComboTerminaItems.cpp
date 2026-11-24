@@ -87,11 +87,31 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_SetEquipValue(int equipType, int va
     }
     if (CVarGetInteger(CVAR_ENHANCEMENT("EquipmentCanBeRemoved"), 0) && (value == CUR_EQUIP_VALUE(equipType))) {
         Inventory_ChangeEquipment(equipType, 1); // OOT: "unequip" = the Kokiri piece
+        sDormantSaveChanged = true;
         return 1;
     }
     if (!CHECK_OWNED_EQUIP(equipType, value - 1)) {
         return 0;
     }
     Inventory_ChangeEquipment(equipType, value);
+    sDormantSaveChanged = true;
     return 1;
+}
+
+// SoH's "Assignable Tunics and Boots" (soh/soh/Enhancements/Items/AssignableTunicsAndBoots.cpp, UseTunicBoots) for a
+// tunic or boots button pressed in Termina: put the piece in `value` on, or back to Kokiri when it is already on.
+// Returns the value now worn, 0 when OOT does not own the piece or Link's age may not wear it.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_ToggleEquipValue(int equipType, int value, int adult) {
+    if (!SaveResident() || ((equipType != EQUIP_TYPE_TUNIC) && (equipType != EQUIP_TYPE_BOOTS)) || (value < 1) ||
+        (value > 3) || !CHECK_OWNED_EQUIP(equipType, value - 1)) {
+        return 0;
+    }
+    const int item = ((equipType == EQUIP_TYPE_TUNIC) ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + (value - 1);
+    if (!SOH_ComboTermina_ItemAgeOk(item, adult)) {
+        return 0;
+    }
+    const int worn = (CUR_EQUIP_VALUE(equipType) == value) ? 1 : value; // 1 = the Kokiri piece
+    Inventory_ChangeEquipment(equipType, worn);
+    sDormantSaveChanged = true;
+    return worn;
 }

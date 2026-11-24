@@ -39,6 +39,8 @@ extern "C" {
 #include "functions.h"
 }
 
+extern "C" int Combo_MmOotTunicValue(void); // ComboOotItems.cpp: 1 Kokiri, 2 Goron, 3 Zora, 0 = no OOT save
+
 namespace {
 
 int sLinkAdult = 0; // launcher push: OOT's Link is adult
@@ -248,7 +250,11 @@ const Color_RGB8 kTunicColors[3] = { { 30, 105, 27 }, { 100, 20, 0 }, { 0, 60, 1
 // The player's tunic color choice: OOT's cosmetics editor for the tunic OOT has equipped (its body is OOT's), then
 // MM's "Human Tunic" cosmetic for the green tunic (the color picked for Link in Termina), else the stock color.
 Color_RGB8 AdultTunicColor() {
-    const int t = (sTunic >= 0 && sTunic < 3) ? sTunic : 0;
+    // OOT's save, live: a tunic put on in Termina (its pause menu, a tunic button) shows at once. The launcher push
+    // (sTunic) covers the moment before OOT's save is readable.
+    const int live = Combo_MmOotTunicValue() - 1;
+    const int tunic = (live >= 0) ? live : sTunic;
+    const int t = (tunic >= 0 && tunic < 3) ? tunic : 0;
     static const char* const kOotCosmetic[3] = { "gCosmetics.Link.KokiriTunic", "gCosmetics.Link.GoronTunic",
                                                  "gCosmetics.Link.ZoraTunic" };
     const std::string oot = kOotCosmetic[t];
@@ -305,7 +311,7 @@ extern "C" void* Combo_MM_AdultDrawPrep(void* gfxIn, int mmEyeIndex, int mmMouth
     const int packed = (c.r << 16) | (c.g << 8) | c.b;
     if (packed != sLastColor) {
         sLastColor = packed;
-        fprintf(stderr, "[ComboAdultBody] tunic %d color %d,%d,%d\n", sTunic, c.r, c.g, c.b);
+        fprintf(stderr, "[ComboAdultBody] tunic color %d,%d,%d\n", c.r, c.g, c.b);
     }
     gDPSetEnvColor(gfx++, c.r, c.g, c.b, 0);
     return gfx;
