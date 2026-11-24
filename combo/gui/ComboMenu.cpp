@@ -17,6 +17,7 @@
 #include "rando/CrossForeign.h"     // ComboRando::ContainerPath — anchored save-container location
 #include "rando/ComboPlaythrough.h" // plando: ParseSpoilerPlacements + Suffix/BuildForeignArray + slot paths
 #include "rando/ComboGames.h"       // Games (OoT only / MM only / Combo)
+#include "rando/ComboLostWoodsLink.h"
 #include <imgui.h>
 #include <libultraship/libultraship.h>         // CVar bridge (CVarGet/Set* incl. color) + color.h (Color_RGBA8)
 #include <ship/window/gui/IconsFontAwesome4.h> // ICON_FA_* for the header action buttons
@@ -1912,6 +1913,26 @@ void ComboMenu::DrawComboPanel() {
             ImGui::SameLine();
             ImGui::TextDisabled("Your Anchor color becomes every tunic in both games: Kokiri/Goron/Zora Tunic and the\n"
                                 "Deku/Goron/Zora/Fierce Deity forms. Set it once in the Anchor panel.");
+        }
+        {
+            bool woodsLink = CVarGetInteger(ComboRando::LostWoodsLink::kCVar, 0) != 0;
+            ImGui::BeginDisabled(solo); // a one-game seed never crosses between the games
+            ComboRando::ComboMenu_PushCheckbox(goalTheme);
+            if (ImGui::Checkbox("Lost Woods link (OoT <-> Termina)", &woodsLink)) {
+                CVarSetInteger(ComboRando::LostWoodsLink::kCVar, woodsLink ? 1 : 0);
+                if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                    ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+            }
+            ComboRando::ComboMenu_PopCheckbox();
+            ImGui::SetItemTooltip(
+                "Ocarina of Time's Lost Woods: the north wrong turn, marked by a tree stump, leads to Majora's\n"
+                "Mask's Lost Woods, and its east end to Before Clock Town. There the twisting path up to the Clock\n"
+                "Tower is open, and the studded door beside the Deku Butler's area leads back to the Lost Woods.\n"
+                "The Happy Mask Salesman in the Clock Tower leads to the Mask Shop. Clock Town's door ends in the\n"
+                "Tower hall. A shortcut the seed's logic does not know about.");
+            ImGui::EndDisabled();
+            ImGui::SameLine();
+            ImGui::TextDisabled("Walk between the games through the Lost Woods.");
         }
         if (ImGui::Button("Open Bottle Shelf"))
             CVarSetInteger("gCombo.BottleShelf.Open", 1);
