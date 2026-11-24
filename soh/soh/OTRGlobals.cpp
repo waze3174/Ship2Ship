@@ -159,6 +159,7 @@
 #include "rando/CrossForeign.h"     // ComboShip (#164): g_comboForeignJson for the hint-key map replay
 #include "rando/SharedItems.h"      // ComboShip: Shared Items family table
 #include "rando/ComboGames.h"       // ComboShip: Games (OoT only / MM only / Combo)
+#include "rando/ComboMode.h"        // ComboShip: save modes (vanilla OoT, kSohQuest*)
 #include "rando/CrossWarpLogic.h"   // ComboShip (teleport songs): cross-game warp logic bits
 #include "soh/Enhancements/randomizer/hook_handlers.h" // ComboShip (#164): OOT_ForeignMapGen
 #include <functional>                                  // ComboShip (#164): shared hint-resolution callbacks
@@ -3165,6 +3166,15 @@ extern "C" COMBO_EXPORT void SOH_GetCurrentPlayerName(unsigned char out8[8]) {
     for (int i = 0; i < 8; i++) {
         out8[i] = gSaveContext.playerName[i];
     }
+}
+
+// ComboShip: the quest of the save being created (QUEST_NORMAL, QUEST_MASTER or QUEST_RANDOMIZER). Valid inside the
+// new-save callback; the launcher turns it into the slot's mode.
+static_assert(QUEST_NORMAL == ComboRando::kSohQuestNormal && QUEST_MASTER == ComboRando::kSohQuestMaster &&
+                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer,
+              "combo/rando/ComboMode.h quest ids must match z64save.h");
+extern "C" COMBO_EXPORT int SOH_GetNewSaveQuest(void) {
+    return gSaveContext.ship.quest.id;
 }
 
 // ComboShip (#83): OOT persists these per-save; MM keeps its equivalents in global.json, which combo

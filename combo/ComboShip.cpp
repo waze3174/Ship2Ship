@@ -40,6 +40,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL_net.h>
 
+#include "rando/ComboMode.h"
 #include "rando/CrossForeign.h"
 #include "rando/CrossWorldRando.h"
 #include "rando/ComboPlaythrough.h"
@@ -270,6 +271,8 @@ static FnSetSaveCallback SOH_SetOnLoadSaveCallback = nullptr;
 static FnSetSaveCallback SOH_SetOnExitSaveCallback = nullptr;
 typedef void (*FnGetPlayerName)(unsigned char*);
 static FnGetPlayerName SOH_GetCurrentPlayerName = nullptr;
+// The quest of the save OOT is creating (ComboRando::kSohQuest*); valid inside the new-save callback.
+static FnInt SOH_GetNewSaveQuest = nullptr;
 // Nonzero = the slot's MM half is missing/broken; nothing was loaded (see SaveManager_LoadSaveFile).
 typedef int (*FnMMLoadSave)(int);
 static FnMMLoadSave MM_LoadSaveForCombo = nullptr;
@@ -922,6 +925,29 @@ static int Combo_GetLastGame(int fileNum) {
     return (g == ComboRando::GAME_MM) ? ComboRando::GAME_MM : ComboRando::GAME_OOT;
 }
 
+// The slot's mode (combo/rando/ComboMode.h), combo.mode in its container. Absent = a combo randomizer slot.
+[[maybe_unused]] // read by the mode picker and the MM front end (later stages)
+static ComboRando::ComboMode Combo_GetSlotMode(int fileNum) {
+    if (!ComboIsValidSlot(fileNum))
+        return ComboRando::ComboMode{};
+    std::lock_guard<std::mutex> lk(g_containerMutex);
+    auto& c = LoadOrCreateContainer(fileNum);
+    auto combo = c.find("combo");
+    if (combo == c.end() || !combo->is_object())
+        return ComboRando::ComboMode{};
+    auto mode = combo->find(ComboRando::kComboModeKey);
+    return mode == combo->end() ? ComboRando::ComboMode{} : ComboRando::ComboMode::FromJson(*mode);
+}
+
+static void Combo_SetSlotMode(int fileNum, const ComboRando::ComboMode& mode) {
+    if (!ComboIsValidSlot(fileNum))
+        return;
+    std::lock_guard<std::mutex> lk(g_containerMutex);
+    auto& c = LoadOrCreateContainer(fileNum);
+    c["combo"][ComboRando::kComboModeKey] = mode.ToJson();
+    FlushContainer(fileNum);
+}
+
 // ComboShip (#165): the slot's cross-game personal notes. One note per slot, editable from either
 // game. Returned in a thread_local buffer (same lifetime contract as Combo_ReadGameSave).
 static const char* Combo_GetNotes(int fileNum) {
@@ -1132,6 +1158,12 @@ static FnSetComboGames SOH_SetComboGames = nullptr;
 static FnSetComboGames MM_SetComboGames = nullptr;
 // Games of the LOADED slot.
 static ComboRando::ComboGames g_comboGames = ComboRando::COMBO_GAMES_BOTH;
+// Mode of the LOADED slot (combo/rando/ComboMode.h). A vanilla slot has no seed: g_comboGames is its game, so every
+// one-game refusal above applies to it as to a one-game seed.
+static ComboRando::ComboMode g_activeMode;
+static bool Combo_ActiveSlotIsVanillaOot() {
+    return g_activeMode.IsVanillaOot();
+}
 static void PushComboGames(ComboRando::ComboGames games) {
     if (SOH_SetComboGames)
         SOH_SetComboGames(static_cast<int>(games));
@@ -1745,6 +1777,7 @@ static void LoadComboCompletion(int slot) {
     g_sharedMask = 0;
     g_unifiedInventory = false;
     g_comboGames = ComboRando::COMBO_GAMES_BOTH;
+    g_activeMode = ComboRando::ComboMode{};
     if (MM_SetComboSharedItems)
         MM_SetComboSharedItems(0); // clear before the slot read below re-pushes the loaded value (or stays 0)
     {
@@ -1766,8 +1799,10 @@ static void LoadComboCompletion(int slot) {
         // Shared Items: absent key = mask 0 = feature off (old seeds unaffected).
         g_sharedMask = ComboRando::SharedMaskFromKeys(rando.value("sharedItems", nlohmann::json::array()));
         g_unifiedInventory = rando.value("unifiedInventory", false);
-        // Games: absent = combo (every seed before the setting).
-        g_comboGames = ComboRando::ComboGamesFromKey(rando.value("games", std::string("ootmm")));
+        // Games: absent = combo (every seed before the setting). A vanilla slot has no seed and plays its mode's game.
+        g_activeMode = ComboRando::ComboMode::FromJson(combo.value(ComboRando::kComboModeKey, nlohmann::json()));
+        const std::string seedGames = rando.value("games", std::string("ootmm"));
+        g_comboGames = g_activeMode.IsVanilla() ? g_activeMode.game : ComboRando::ComboGamesFromKey(seedGames);
     }
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
@@ -3288,6 +3323,35 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
     }
 }
 
+// Empty the foreign map, cross-hints and crossed doors a previously loaded combo slot pushed into both DLLs.
+static void Combo_ClearComboRando() {
+    if (SOH_LoadComboRando)
+        SOH_LoadComboRando(nullptr);
+    if (MM_LoadComboRando)
+        MM_LoadComboRando(nullptr);
+}
+
+// A new vanilla OoT slot: no seed is bound and no MM save is made. Anything a combo save that sat in this slot left in
+// the container is dropped, so the slot starts as a plain OoT file.
+static void Combo_InitVanillaOotSlot(int fileNum, ComboRando::OotQuest quest) {
+    {
+        std::lock_guard<std::mutex> lk(g_containerMutex);
+        auto& c = LoadOrCreateContainer(fileNum);
+        c["mm"] = nullptr;
+        for (const char* key : { "rando", "completion", "health", "bottleShelf", "link" })
+            c["combo"].erase(key);
+        FlushContainer(fileNum);
+    }
+    if (g_MmSaveInMemorySlot == fileNum)
+        g_MmSaveInMemorySlot = -1; // the MM save that sat in this slot is gone
+    Combo_SetSlotMode(fileNum, ComboRando::ComboMode::VanillaOot(quest));
+    LoadComboCompletion(fileNum); // the loaded slot is now this vanilla one: game = OoT, nothing seed-bound
+    Combo_ClearComboRando();
+    Combo_PushHintTrackerData(fileNum);
+    std::cout << "[ComboShip] Created VANILLA OoT slot " << fileNum
+              << (quest == ComboRando::OOT_QUEST_MQ ? " (Master Quest)" : " (Normal quest)") << std::endl;
+}
+
 static void Combo_OnOOTSaveInit(int fileNum) {
     // A new file starts in OOT. Explicit because not every delete path clears the container
     // (DeleteFileOnDeath calls DeleteZeldaFile directly), so a stale MM could otherwise survive here.
@@ -3301,6 +3365,12 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         if (c["combo"].contains("hintsRead"))
             c["combo"].erase("hintsRead");
         FlushContainer(fileNum);
+    }
+    const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
+    if (quest != ComboRando::kSohQuestRandomizer) {
+        Combo_InitVanillaOotSlot(fileNum, quest == ComboRando::kSohQuestMaster ? ComboRando::OOT_QUEST_MQ
+                                                                               : ComboRando::OOT_QUEST_NORMAL);
+        return;
     }
     // ComboShip: bind the pending consolidated seed to this slot — bake it into the container's
     // combo.rando (self-contained), then push it into both DLLs so foreign data is live immediately.
@@ -3333,6 +3403,10 @@ static void Combo_OnOOTSaveInit(int fileNum) {
             std::cout << "[ComboShip] slot " << fileNum << " starts in Majora's Mask" << std::endl;
         }
     }
+    ComboRando::ComboGames seedGames = ComboRando::COMBO_GAMES_BOTH;
+    if (seed.is_object())
+        seedGames = ComboRando::ComboGamesFromKey(seed.value("games", std::string("ootmm")));
+    Combo_SetSlotMode(fileNum, ComboRando::ComboMode::Rando(seedGames));
     // The new-save callback runs on OOT's thread with the entered file name current — carry it into
     // the matching MM save so both files show the player's name.
     unsigned char playerName[8] = { 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E }; // 0x3E = N64 blank glyph
@@ -3396,6 +3470,14 @@ static void Combo_ResumeMMIfLastSavedThere(int fileNum);
 // slot's MM save is already live in memory — reloading from disk would clobber newer progress.
 static void Combo_OnOOTSaveLoad(int fileNum) {
     LoadComboCompletion(fileNum); // refresh both-bosses-beaten flags for this slot
+    if (Combo_ActiveSlotIsVanillaOot()) {
+        // No seed and no MM save: drop what the slot loaded before this one left in both DLLs, and leave MM's
+        // dormant memory unclaimed (the MM tracker may have replaced it with nothing).
+        Combo_ClearComboRando();
+        Combo_PushHintTrackerData(fileNum);
+        g_MmSaveInMemorySlot = -1;
+        return;
+    }
     // Push the slot's baked combo rando (foreign map + cross-hints) into both DLLs, once per load.
     {
         std::string rando;
@@ -3647,6 +3729,7 @@ int main(int argc, char** argv) {
     SOH_SetOnLoadSaveCallback = (FnSetSaveCallback)GetSym(sohModule, "SOH_SetOnLoadSaveCallback");
     SOH_SetOnExitSaveCallback = (FnSetSaveCallback)GetSym(sohModule, "SOH_SetOnExitSaveCallback");
     SOH_GetCurrentPlayerName = (FnGetPlayerName)GetSym(sohModule, "SOH_GetCurrentPlayerName");
+    SOH_GetNewSaveQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveQuest");
     MM_LoadSaveForCombo = (FnMMLoadSave)GetSym(mmModule, "MM_LoadSaveForCombo");
     MM_InvalidateOwlBlobSlot = (FnMMInvalidateOwlBlob)GetSym(mmModule, "MM_InvalidateOwlBlobSlot");
     SOH_ParkForComboMMResume = (FnVoid)GetSym(sohModule, "SOH_ParkForComboMMResume");
