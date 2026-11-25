@@ -465,7 +465,9 @@ and the packets below are not understood by older builds.
   `UPDATE_ROOM_STATE`, which only keeps its room settings current). `LoadComboCompletion` discards both games'
   queues on every slot load, so nothing from the previous slot is applied to the next.
 - `LoadComboCompletion` resets the loaded master seed (the outbox scope) and the seen packet ids first, so a
-  vanilla slot keeps nothing of the previous slot.
+  vanilla slot keeps nothing of the previous slot. It also drops the held packets that have no seed
+  (`DropSeedlessOutbox`, `OutboxDropSeedless` in `combo/net/ComboAnchorOutbox.h`): a vanilla slot holds its packets
+  with seed 0, which the outbox sends into any playthrough, so they would otherwise reach the next rando slot's room.
 - **Out-of-range peer flags are rejected.** `SET_FLAG` / `UNSET_FLAG` with `sceneNum == SCENE_ID_MAX` go through
   `Anchor_IsGlobalFlagInRange` (`soh/soh/Network/Anchor/Packets/SetFlag.cpp`) before `RawAction::SetFlag` /
   `UnsetFlag`, live and dormant. The bounds come from the save arrays (`eventChkInf`, `itemGetInf`, `infTable`,

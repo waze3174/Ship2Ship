@@ -102,6 +102,25 @@ static void TestFlushSeedScoping() {
     CHECK(outbox.empty());
 }
 
+static void TestDropSeedless() {
+    std::deque<OutboxEntry> outbox;
+    OutboxPush(outbox, Entry(0, kRoomA, "vanilla-1"));
+    OutboxPush(outbox, Entry(111, kRoomA, "slotA-1"));
+    OutboxPush(outbox, Entry(0, "", "vanilla-2"));
+    OutboxPush(outbox, Entry(222, kRoomB, "slotB-1"));
+
+    CHECK(OutboxDropSeedless(outbox) == 2);
+    CHECK(outbox.size() == 2);
+    CHECK(outbox[0].packet == "slotA-1" && outbox[1].packet == "slotB-1"); // order kept
+
+    // Nothing seedless left: nothing dropped, and the survivors still go out in their own slot.
+    CHECK(OutboxDropSeedless(outbox) == 0);
+    CHECK(OutboxTakeSendable(outbox, 111, kRoomA, 1, kNow).send.size() == 1);
+
+    std::deque<OutboxEntry> empty;
+    CHECK(OutboxDropSeedless(empty) == 0);
+}
+
 static void TestFlushRoomScoping() {
     std::deque<OutboxEntry> outbox;
     OutboxPush(outbox, Entry(111, kRoomA, "for-A"));
@@ -226,6 +245,7 @@ void RunOutboxTests() {
     TestPushCapDropsOldest();
     TestFlushSeedScoping();
     TestFlushRoomScoping();
+    TestDropSeedless();
     TestAdoptScope();
     TestExpiry();
     TestRestampClientId();

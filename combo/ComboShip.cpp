@@ -1609,6 +1609,15 @@ static void ResetSeenPacketIds() {
     sSeenIds.Clear();
 }
 
+// Game thread: a save slot was (re)loaded. What a slot without a seed held must not reach the next slot's room.
+static void DropSeedlessOutbox() {
+    std::lock_guard<std::mutex> lk(sOutMutex);
+    if (Core::OutboxDropSeedless(sOutbox) == 0)
+        return;
+    sOutboxCount.store((int)sOutbox.size());
+    sOutboxDirty = true;
+}
+
 static void Toast(const char* prefix, const char* message, const char* suffix, const char* gateCvar) {
     FnComboToast fn = sActiveGame.load() == 1 ? MM_ComboToast : SOH_ComboToast;
     if (fn)
@@ -2635,6 +2644,7 @@ static void LoadComboCompletion(int slot) {
     // A slot with no baked seed (vanilla) must not keep the previous slot's co-op scope or its seen packets.
     g_loadedMasterSeed.store(0);
     ComboAnchor::ResetSeenPacketIds();
+    ComboAnchor::DropSeedlessOutbox();
     if (SOH_Anchor_DiscardDormant)
         SOH_Anchor_DiscardDormant();
     if (MM_Anchor_DiscardDormant)
