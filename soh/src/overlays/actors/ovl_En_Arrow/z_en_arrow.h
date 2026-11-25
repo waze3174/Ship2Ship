@@ -56,13 +56,13 @@ void EnArrow_ComboBubbleDraw(EnArrow* self, PlayState* play);
 s32 EnArrow_ComboBubbleHeadPose(Actor* heldActor, Vec3f* scale, s16* rotZ, s16* upperRotX);
 
 // ComboShip: 2S2H's bomb arrows (z_en_arrow_combo_bomb.c).
-// Tag: right after the player nocked `this` (spawned as his held arrow from the HUD button `heldItemButton`, 0 = B).
-void EnArrow_ComboBombArrowTag(EnArrow* this, PlayState* play, s32 heldItemButton, s32 arrowType);
+// Tag: right after the player nocked `self` (spawned as his held arrow from the HUD button `heldItemButton`, 0 = B).
+void EnArrow_ComboBombArrowTag(EnArrow* self, PlayState* play, s32 heldItemButton, s32 arrowType);
 // Release: the player lets go of his held actor; a bomb arrow takes its bomb from the bag.
 void EnArrow_ComboBombArrowRelease(Actor* heldActor);
 // Update: the fuse, the flash and the blast. true = the arrow has gone off (the rest of its update is skipped).
-s32 EnArrow_ComboBombArrowUpdate(EnArrow* this, PlayState* play);
-void EnArrow_ComboBombArrowDraw(EnArrow* this, PlayState* play);
+s32 EnArrow_ComboBombArrowUpdate(EnArrow* self, PlayState* play);
+void EnArrow_ComboBombArrowDraw(EnArrow* self, PlayState* play);
 #endif
 
 typedef enum {
