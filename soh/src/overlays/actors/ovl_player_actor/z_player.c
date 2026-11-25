@@ -1390,6 +1390,7 @@ static ComboMmUse sComboMmUseKind = COMBO_MMUSE_NONE;
 static s32 sComboMmUseItem = -1;           // MM item id of the MM item being used
 static s32 sComboKegItem = ITEM_NONE;      // foreign id of the MM Powder Keg being taken out (MM: Goron only)
 static s32 sComboPicto = false;            // MM unk_AA5 == PLAYER_UNKAA5_2: the first-person view is the Pictograph Box
+static s32 sComboDekuWaterHop = false;     // MM PLAYER_STATE3_200000: in the air after a Deku's hop off the water
 int Combo_PauseForeignAmmo(int foreignId); // ComboPause.cpp: MM's ammo for that MM item
 int Combo_PauseForeignAmmoChange(int foreignId, int n); // ComboPause.cpp: MM Inventory_ChangeAmmo
 // MM's B-button mask actions (MM Player_GetItemOnButton ITEM_F0/F1/F2): Blast Mask explode, Bremen march, Kamaro dance
@@ -4154,6 +4155,7 @@ s32 Player_SetupAction(PlayState* play, Player* this, PlayerActionFunc actionFun
     // ComboShip: MM Player_SetAction: func_800AEF44(meleeWeaponEffectIndex[2]) -- every new action ends the ground
     // trail, so the next Deku spin / Goron roll starts its own instead of joining the last one (owner 2026-11-15).
     Combo_TireMark_Break();
+    sComboDekuWaterHop = false; // MM clears PLAYER_STATE3_200000 with every action change
     if (sComboMaskAct != COMBO_MASKACT_NONE) {
         // ComboShip: MM func_80831454: leaving the march / dance stops its fanfare (SEQCMD_STOP_SEQUENCE FANFARE)
         Combo_MmStopFanfare();
@@ -6877,8 +6879,9 @@ s32 func_8083A4A8(Player* this, PlayState* play) {
 // a Deku's jump is a HOP: its speed grows with the hops used (0.3 + 0.18 per hop), on water it pops onto the surface
 // with a rising DEKUNUTS_JUMP sound, spends one of its five hops, and the last ends in a spin (func_808373A4). Hops
 // refill on solid ground (func_8083827C's else-branch, here func_8083AA10's).
-s32 sComboDekuHops = 5;       // MM remainingHopsCounter
-static f32 sComboDekuSpin[2]; // MM unk_B10[0] (spin speed), unk_B10[1] (spin left)
+#define COMBO_DEKU_HOPS_MAX 5
+s32 sComboDekuHops = COMBO_DEKU_HOPS_MAX; // MM remainingHopsCounter
+static f32 sComboDekuSpin[2];             // MM unk_B10[0] (spin speed), unk_B10[1] (spin left)
 
 // MM func_8083CBC4: air (and spin) steering. MM brakes 4x harder above 1.5x the run limit (unk_B50) where OOT clamps.
 static s32 Combo_FormAirControl(Player* this, f32 speedTarget, s16 yawTarget, f32 brake, f32 incr, f32 decr, s16 turn) {
@@ -6901,6 +6904,15 @@ static s32 Combo_FormAirControl(Player* this, f32 speedTarget, s16 yawTarget, f3
 }
 #define COMBO_MM_SE_PL_DEKUNUTS_JUMP5 0x9B4
 
+// 2S2H InfiniteDekuHopping.cpp (mm/2s2h/Enhancements/Player, MM's own CVar gEnhancements.Player.InfiniteDekuHopping),
+// VB_APPLY_AIR_CONTROL: a Deku's air steering takes half the speed target; after a hop off the water, all of it.
+static f32 Combo_DekuAirSpeedTarget(f32 speedTarget) {
+    if (sComboDekuWaterHop && CVarGetInteger("gEnhancements.Player.InfiniteDekuHopping", 0)) {
+        return speedTarget * 2.0f;
+    }
+    return speedTarget;
+}
+
 static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
     s16 yawDiff = this->yaw - this->actor.shape.rot.y;
     const s32 deku = Combo_OotForm() == COMBO_FORM_DEKU;
@@ -6920,7 +6932,7 @@ static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
     anim = ((ABS(yawDiff) >= 0x1000) || (this->linearVelocity <= 4.0f)) ? &gPlayerAnim_link_normal_jump
                                                                         : &gPlayerAnim_link_normal_run_jump;
     if (deku) {
-        speed *= 0.3f + ((5 - sComboDekuHops) * 0.18f);
+        speed *= 0.3f + ((COMBO_DEKU_HOPS_MAX - sComboDekuHops) * 0.18f);
         if (speed < 4.0f) {
             speed = 4.0f;
         }
@@ -6934,6 +6946,7 @@ static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
             this->av2.actionVar2 = 1;
             Combo_FormSfx(this, COMBO_MM_SE_PL_DEKUNUTS_JUMP5 + 1 - sComboDekuHops, NA_SE_PL_JUMP);
             Player_PlayVoiceSfx(this, voice);
+            sComboDekuWaterHop = true;
             sComboDekuHops--;
             if (sComboDekuHops == 0) { // MM: the last hop spins (func_808373A4: pn_attack + the spin sound)
                 this->stateFlags2 |= PLAYER_STATE2_HOPPING;
@@ -6941,6 +6954,10 @@ static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
                 sComboDekuSpin[0] = 20000.0f;
                 sComboDekuSpin[1] = 0x30000;
                 Combo_FormSfx(this, COMBO_MM_SE_PL_DEKUNUTS_ATTACK, NA_SE_IT_SWORD_SWING);
+                // 2S2H InfiniteDekuHopping.cpp VB_DEKU_LINK_SPIN_ON_LAST_HOP: the spin still plays, the hops refill
+                if (CVarGetInteger("gEnhancements.Player.InfiniteDekuHopping", 0) && (gSaveContext.health != 0)) {
+                    sComboDekuHops = COMBO_DEKU_HOPS_MAX;
+                }
             }
             return true;
         }
@@ -7219,7 +7236,7 @@ void func_8083AA10(Player* this, PlayState* play) {
     } else {
         this->fallStartHeight = this->actor.world.pos.y;
 #ifdef COMBO_BUILD
-        sComboDekuHops = 5; // MM: hops refill on solid ground
+        sComboDekuHops = COMBO_DEKU_HOPS_MAX; // MM: hops refill on solid ground
 #endif
     }
 }
@@ -13949,7 +13966,7 @@ void Player_Action_8084411C(Player* this, PlayState* play) {
             if (Combo_OotForm() == COMBO_FORM_DEKU) {
                 s16 prevYaw = this->yaw;
 
-                Combo_FormAirControl(this, sp4C * 0.5f, sp4A, 2.0f, 0.2f, 0.1f, 0x190);
+                Combo_FormAirControl(this, Combo_DekuAirSpeedTarget(sp4C) * 0.5f, sp4A, 2.0f, 0.2f, 0.1f, 0x190);
                 if ((this->skelAnime.animation != NULL) &&
                     (strcmp((const char*)this->skelAnime.animation,
                             (const char*)COMBO_MM_ANIM("gPlayerAnim_pn_attack")) == 0)) {
