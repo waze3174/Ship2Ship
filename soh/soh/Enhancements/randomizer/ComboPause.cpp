@@ -225,6 +225,8 @@ int LiveMmItem(int foreignId) {
     return sMmItems[s] == 0xFF ? -1 : sMmItems[s];
 }
 
+constexpr int kMmExtraPowderKegs = 3; // ExtraPowderKegs.cpp MAX_POWDER_KEGS
+
 // MM's bag for an MM ammo item, as Hyrule sees it (after a Snapshot, so MM's save is resident).
 struct MmBag {
     int count = -1; // what a use spends: with shared consumables on, what MM will show on arrival, not only what MM's
@@ -240,6 +242,10 @@ MmBag BagOf(int mmItem) {
     MmBag b;
     if (sBag != nullptr) {
         b.own = sBag(mmItem, &b.cap, &b.kind);
+    }
+    // 2S2H's "Extra Powder Kegs" (mm/2s2h/Enhancements/Items/ExtraPowderKegs.cpp, MM's own CVar): the bag holds three.
+    if ((mmItem == COMBO_MM_ITEM_POWDER_KEG) && CVarGetInteger("gEnhancements.Items.ExtraPowderKegs", 0)) {
+        b.cap = kMmExtraPowderKegs;
     }
     if (b.own >= 0) {
         b.count = Combo_SharedMmAmmo(b.kind, b.own, b.cap);
