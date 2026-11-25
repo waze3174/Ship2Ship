@@ -90,7 +90,15 @@ add_dependencies(comboui libultraship)
 # Source files
 set(COMBO_SOURCES
     ComboShip.cpp
+    discord/DiscordPresence.cpp
 )
+# Discord Rich Presence talks to the desktop app over a named pipe (Windows) or a Unix domain socket (Linux, macOS);
+# neither needs more than the system libraries.
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    list(APPEND COMBO_SOURCES discord/DiscordIpcWin.cpp)
+else()
+    list(APPEND COMBO_SOURCES discord/DiscordIpcPosix.cpp)
+endif()
 
 # Create executable
 add_executable(Ship2Ship ${COMBO_SOURCES})
@@ -106,6 +114,8 @@ target_link_libraries(Ship2Ship PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_
 
 # COMBO_RELEASE_VERSION: launcher-only gate for combosave compat (the games don't gate, so no macro there).
 target_compile_definitions(Ship2Ship PRIVATE COMBO_RELEASE_VERSION="${COMBO_RELEASE_VERSION}")
+# SHIP2SHIP_VERSION is display only; Discord Rich Presence shows it as the image's hover text.
+target_compile_definitions(Ship2Ship PRIVATE COMBO_SHIP2SHIP_VERSION="${SHIP2SHIP_VERSION}")
 
 # Ship2Ship owns the persistent Anchor network connection (Phase 1), so it links SDL_net directly.
 # Mirrors soh's linkage (SDL2_net::SDL2_net-static on the static-md triplet, plain otherwise). We do
@@ -145,6 +155,12 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/x64/Release"
     )
 endif()
+
+# Unit tests for the Discord Rich Presence formatter, framing and socket paths: pure header code, no Discord needed.
+# EXCLUDE_FROM_ALL like comborando: build with `cmake --build <dir> --target comboDiscordTest`, then run the exe.
+add_executable(comboDiscordTest EXCLUDE_FROM_ALL discord/tests/DiscordActivityTest.cpp)
+target_include_directories(comboDiscordTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(comboDiscordTest PRIVATE nlohmann_json::nlohmann_json)
 
 # Windows-specific settings
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")

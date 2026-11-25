@@ -57,6 +57,8 @@
 #include "ComboRelease.h"
 #include "ComboSaveTiming.h"
 #include "ComboContainerWriter.h"
+#include "discord/DiscordGameState.h"
+#include "discord/DiscordPresence.h"
 
 // Surfaces the real exception behind a silent terminate()/exit(3). With the shared dynamic
 // CRT, exceptions thrown in soh.dll/2ship.dll propagate across the DLL boundary to here.
@@ -1488,6 +1490,14 @@ static FnGetOwlWarpEntrance MM_GetOwlWarpEntrance = nullptr;
 static FnSetOwlFlagsProvider SOH_SetOwlFlagsProvider = nullptr;
 static FnSetOwlWarpEntranceProvider SOH_SetOwlWarpEntranceProvider = nullptr;
 
+// Discord Rich Presence (combo/discord/). Each game answers with its half of the state; the settings come from comboui,
+// which owns the CVars. SetActiveGame sets the flag, so the next tick takes a snapshot at once.
+static ComboDiscordGetStateFn SOH_DiscordGetState = nullptr;
+static ComboDiscordGetStateFn MM_DiscordGetState = nullptr;
+typedef uint32_t (*FnComboUIDiscordSettings)(void);
+static FnComboUIDiscordSettings ComboUI_GetDiscordSettings = nullptr;
+static std::atomic<bool> g_discordSnapshotDue{ true };
+
 namespace ComboAnchor {
 static std::thread sThread;
 static std::atomic<bool> sEnabled{ false };
@@ -1637,6 +1647,30 @@ static const char* Combo_Anchor_GetRoster() {
         cached = out.dump();
     } catch (...) { cached = "{}"; }
     return cached.c_str();
+}
+
+// Anchor's "Show locations" room setting: everyone sees everyone's area. Any other value keeps areas from some or all
+// players, so Discord must not show one either.
+static constexpr int kShowLocationsEveryone = 2;
+
+struct DiscordRoomInfo {
+    int playersOnline = 0; // 0 outside a room
+    bool locationsHidden = false;
+};
+
+// What Discord Rich Presence may say about the Anchor room: the player count and whether areas are hidden. Never the
+// room's name or id.
+static DiscordRoomInfo Combo_Anchor_DiscordRoomInfo() {
+    DiscordRoomInfo info;
+    if (!sConnected)
+        return info;
+    std::lock_guard<std::mutex> lk(sRosterMutex);
+    for (const auto& entry : sRoster) {
+        if (entry.second.online)
+            ++info.playersOnline;
+    }
+    info.locationsHidden = sRoomState.showLocationsMode != kShowLocationsEveryone;
+    return info;
 }
 
 // Background loop: connect, then relay outbound packets and feed inbound packets to the active
@@ -1796,6 +1830,7 @@ static void Shutdown() {
 // hooks (OnSceneSpawnActors/OnPlayerUpdate) when it resumes, so it needs no explicit activate.
 static void SetActiveGame(int game /* 0 = OOT, 1 = MM */) {
     sActiveGame.store(game);
+    g_discordSnapshotDue.store(true);
     g_comboHealthActiveGame = (game == 1) ? ComboRando::GAME_MM : ComboRando::GAME_OOT;
     if (game == 1) {
         if (MM_Anchor_Activate)
@@ -2418,9 +2453,89 @@ static void Combo_SharedReconcileNow() try {
     std::cerr << "[ComboShip] Combo_SharedReconcileNow threw: " << e.what() << std::endl;
 } catch (...) { std::cerr << "[ComboShip] Combo_SharedReconcileNow threw a non-std exception" << std::endl; }
 
+// ---- Discord Rich Presence (combo/discord/, docs/deviations/discord.md) ----
+// The game thread takes a snapshot about once a second and hands it to the presence thread, which formats it, sends it
+// when it changed (never more than every kMinSendInterval) and keeps the connection to Discord.
+
+static constexpr auto kDiscordSnapshotInterval = std::chrono::seconds(1);
+static constexpr int kSecondsPerMinute = 60;
+
+// The launcher has no log file of its own; like its other messages, these go to the console.
+static void Combo_DiscordLog(const std::string& message) {
+    std::cout << "[ComboShip][Discord] " << message << std::endl;
+}
+
+static ComboDiscord::DiscordPresence g_discord(ComboDiscord::kApplicationId, COMBO_SHIP2SHIP_VERSION, Combo_DiscordLog);
+
+// Whether the game not being played holds this slot's save, so its play time and checks belong to the same run. A one
+// game seed or a vanilla slot has no other half. OOT's save stays in memory while MM is played.
+static bool Combo_OtherGameHoldsSlot(bool playingMm) {
+    if (ComboRando::ComboGamesSolo(g_comboGames))
+        return false;
+    if (playingMm)
+        return true;
+    return g_comboCompletionSlot >= 0 && g_MmSaveInMemorySlot == g_comboCompletionSlot;
+}
+
+// Adds the other game's play time and check count to the played game's, so a combo run reads as one.
+static void Combo_DiscordAddOtherGame(bool playingMm, const ComboDiscordGameState& played,
+                                      ComboDiscord::PresenceState* state) {
+    int64_t playSeconds = played.playSeconds;
+    ComboDiscordGameState other;
+    const ComboDiscordGetStateFn otherState = playingMm ? SOH_DiscordGetState : MM_DiscordGetState;
+    if (otherState != nullptr && Combo_OtherGameHoldsSlot(playingMm) && otherState(&other, 0) != 0) {
+        playSeconds += other.playSeconds;
+        if (played.checksGotten >= 0 && other.checksGotten >= 0) {
+            state->checksGotten += other.checksGotten;
+            state->checksTotal += other.checksTotal;
+        }
+    }
+    state->playMinutes = playSeconds / kSecondsPerMinute;
+}
+
+static ComboDiscord::PresenceState Combo_DiscordState() {
+    ComboDiscord::PresenceState state;
+    const bool playingMm = ComboAnchor::sActiveGame.load() == 1;
+    state.game = playingMm ? ComboDiscord::Game::kMm : ComboDiscord::Game::kOot;
+    state.mode = ComboDiscord::ModeLabel(g_activeMode);
+
+    const ComboDiscordGetStateFn playedState = playingMm ? MM_DiscordGetState : SOH_DiscordGetState;
+    ComboDiscordGameState played;
+    if (playedState == nullptr || playedState(&played, 1) == 0 || played.inPlay == 0)
+        return state;
+
+    state.inPlay = true;
+    state.area = played.sceneName;
+    state.form = played.form;
+    state.adult = played.adult != 0;
+    state.maxHearts = played.maxHearts;
+    state.day = played.day;
+    state.minuteOfDay = played.minuteOfDay;
+    state.checksGotten = played.checksGotten;
+    state.checksTotal = played.checksTotal;
+    Combo_DiscordAddOtherGame(playingMm, played, &state);
+
+    const ComboAnchor::DiscordRoomInfo room = ComboAnchor::Combo_Anchor_DiscordRoomInfo();
+    state.coopPlayers = room.playersOnline;
+    state.locationsHidden = room.locationsHidden;
+    return state;
+}
+
+static void Combo_DiscordTick() {
+    static auto sLastSnapshot = std::chrono::steady_clock::time_point{};
+    const auto now = std::chrono::steady_clock::now();
+    if (!g_discordSnapshotDue.exchange(false) && now - sLastSnapshot < kDiscordSnapshotInterval)
+        return;
+    sLastSnapshot = now;
+    const uint32_t settings = ComboUI_GetDiscordSettings ? ComboUI_GetDiscordSettings() : 0;
+    const bool enabled = ComboDiscord::SettingOn(settings, ComboDiscord::kSettingEnabled);
+    g_discord.Publish(enabled, enabled ? Combo_DiscordState() : ComboDiscord::PresenceState{}, settings);
+}
+
 // Per-frame drain seam (SOH_/MM_SetSharedTickCb). Gated on both saves resident.
 static void Combo_SharedTick() try {
     Combo_DrainBossRelease();
+    Combo_DiscordTick();
     if (!g_sharedReconcilePending || g_sharedMask == 0)
         return;
     if (g_comboCompletionSlot < 0 || g_MmSaveInMemorySlot != g_comboCompletionSlot)
@@ -4347,6 +4462,9 @@ int main(int argc, char** argv) {
     MM_SetOtherTriforceCountCb = (FnSetOtherTriforceCountCb)GetSym(mmModule, "MM_SetOtherTriforceCountCb");
     MM_GetOwlActivationFlags = (FnGetOwlFlags)GetSym(mmModule, "MM_GetOwlActivationFlags");
     MM_GetOwlWarpEntrance = (FnGetOwlWarpEntrance)GetSym(mmModule, "MM_GetOwlWarpEntrance");
+    // Discord Rich Presence: each game's half of the state. A missing export just leaves that game at "In the menus".
+    SOH_DiscordGetState = (ComboDiscordGetStateFn)GetSym(sohModule, "SOH_DiscordGetState");
+    MM_DiscordGetState = (ComboDiscordGetStateFn)GetSym(mmModule, "MM_DiscordGetState");
     SOH_SetOwlFlagsProvider = (FnSetOwlFlagsProvider)GetSym(sohModule, "SOH_SetOwlFlagsProvider");
     SOH_SetOwlWarpEntranceProvider = (FnSetOwlWarpEntranceProvider)GetSym(sohModule, "SOH_SetOwlWarpEntranceProvider");
 
@@ -4680,6 +4798,7 @@ int main(int argc, char** argv) {
         ComboUI_SyncRandomizedCosmetics = (FnVoidArgless)GetSym(comboUIModule, "ComboUI_SyncRandomizedCosmetics");
         ComboUI_CosmeticsSyncGateEnabled = (FnComboUIGate)GetSym(comboUIModule, "ComboUI_CosmeticsSyncGateEnabled");
         ComboUI_ClaimGenRollSeed = (FnClaimGenRollSeed)GetSym(comboUIModule, "ComboUI_ClaimGenRollSeed");
+        ComboUI_GetDiscordSettings = (FnComboUIDiscordSettings)GetSym(comboUIModule, "ComboUI_GetDiscordSettings");
         if (ComboUI_Register) {
             ComboUI_Register();
             std::cout << "[ComboShip] comboui registered (unified menu installed)." << std::endl;
@@ -4913,6 +5032,10 @@ int main(int argc, char** argv) {
 
     StartShutdownWatchdog();
     const auto saveWriteDeadline = std::chrono::steady_clock::now() + kSaveWriterShutdownBudget;
+    // Closing the pipe clears the presence. Every wait of the worker is a fraction of a second, so this stops it well
+    // inside the save writer's budget.
+    ShutdownStage("Discord presence");
+    g_discord.Stop();
     // Both game loops are done: put their saves on disk before a teardown step can hang and the watchdog ends the
     // process with them still unwritten. Saves made later in teardown are written by Combo_FinishSaveWrites.
     ShutdownStage("writing saves");
