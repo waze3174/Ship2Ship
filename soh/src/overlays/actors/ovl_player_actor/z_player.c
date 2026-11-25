@@ -4511,7 +4511,10 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
 #ifdef COMBO_BUILD
             // MM's gate: the Zora Mask while swimming (either way), anything for a sunk Zora on the bottom
             || ((itemAction >= PLAYER_IA_MASK_KEATON) && (Combo_OotFormForMask(itemAction) == COMBO_FORM_ZORA)) ||
-            Combo_WaterAllowsUse(this, false)
+            Combo_WaterAllowsUse(this, false) ||
+            // 2S2H's Underwater Ocarina: on the bottom (iron boots, or the sunk Zora) the ocarina still plays
+            (Combo_PauseOcarinaUsableOnBottom(item) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
+             (Player_GetEnvironmentalHazard(play) == PLAYER_ENV_HAZARD_UNDERWATER_FLOOR))
 #endif
         ) {
 

@@ -437,6 +437,19 @@ extern "C" int Combo_PauseIsForeignMask(int item) {
     return mm >= MM_ITEM_MASK_DEKU && mm <= MM_ITEM_MASK_GIANT;
 }
 
+// 2S2H's "Underwater Ocarina" (mm/2s2h/Enhancements/Player/UnderwaterOcarina.cpp, MM's own CVar): on the bottom the
+// ocarina stays usable. In Hyrule that covers MM's Ocarina of Time and a transformed Link's ocarina; human Link's own
+// OOT ocarina keeps OOT's rule.
+extern "C" int Combo_PauseOcarinaUsableOnBottom(int item) {
+    if (!CVarGetInteger("gEnhancements.Player.UnderwaterOcarina", 0)) {
+        return 0;
+    }
+    if (Combo_PauseForeignHostItem(item) == ITEM_OCARINA_TIME) {
+        return 1;
+    }
+    return (Combo_OotForm() != COMBO_FORM_HUMAN) && ((item == ITEM_OCARINA_FAIRY) || (item == ITEM_OCARINA_TIME));
+}
+
 // 2S2H's "Equip Masks While Swimming" (mm/2s2h/Enhancements/Masks/EquipWhileSwimming.cpp, MM's own CVar): MM's wearable
 // masks, not the forms' and not the Giant's, keep their buttons while human Link swims or dives.
 extern "C" int Combo_PauseMaskUsableWhileSwimming(int item) {

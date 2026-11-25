@@ -1024,6 +1024,13 @@ void func_80083108(PlayState* play) {
                         }
                         gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
                     } else if ((Player_GetEnvironmentalHazard(play) == 2) &&
+                               Combo_PauseOcarinaUsableOnBottom(gSaveContext.equips.buttonItems[i])) {
+                        // 2S2H's Underwater Ocarina (VB_DISABLE_ITEM_UNDERWATER): on the bottom the ocarina stays on.
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    } else if ((Player_GetEnvironmentalHazard(play) == 2) &&
                                (Combo_PauseForeignHostItem(gSaveContext.equips.buttonItems[i]) == ITEM_LONGSHOT)) {
                         // MM's Hookshot runs as OOT's Longshot: on the bottom it works, as OOT's own does below.
                         if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
