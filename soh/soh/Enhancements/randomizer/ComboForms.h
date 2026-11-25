@@ -18,6 +18,10 @@ enum ComboForm {
 
 int Combo_OotForm(void);
 void Combo_OotSetForm(int form);
+// The launcher's form from Termina (-1: none). It is applied when the slot loads, over the form the save holds.
+void Combo_OotSetCrossingForm(int form);
+// Stores the form in OOT's save (section "comboForm"); once, at boot.
+void Combo_FormSaveRegister(void);
 int Combo_OotFormDrawActive(void* actor);
 void** Combo_OotFormLimbs(int* dListCount);
 void* Combo_OotFormWrapOverride(void* inner);
