@@ -87,9 +87,11 @@ template <typename Op> inline int RetryWhileHeld(Op op, std::error_code& ec) {
     return retries;
 }
 
+inline constexpr const char* kTempExtension = ".temp";
+
 inline std::filesystem::path TempPathOf(const std::filesystem::path& path) {
     auto tmp = path;
-    tmp += ".temp";
+    tmp += kTempExtension;
     return tmp;
 }
 

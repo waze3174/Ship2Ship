@@ -788,7 +788,8 @@ static nlohmann::json AnchorLinkState() {
 
 // Co-op hardening (2026-11-13): one-click bundle for bug reports. Copies the game logs, the launcher's
 // roster/link snapshot, any held co-op packets and the (non-secret) connection settings into
-// diagnostics/<time>/ beside the saves, then opens that folder (Windows). Never touches the saves.
+// diagnostics/<time>/ beside the saves, then opens that folder (Windows; elsewhere the panel shows its path).
+// Never touches the saves.
 static std::string sDiagnosticsResult;
 static void SaveCoopDiagnostics() {
     namespace fs = std::filesystem;
@@ -831,7 +832,7 @@ static void SaveCoopDiagnostics() {
         }
         {
             std::ofstream info(dest / "README.txt", std::ios::trunc);
-            info << "ComboShip co-op diagnostics\n"
+            info << "Ship2Ship co-op diagnostics\n"
                  << "Created: " << stamp << "\n"
                  << "Anchor host: " << CVarGetString(AnchorCVar::Host, "") << ":"
                  << CVarGetInteger(AnchorCVar::Port, 43383) << "\n"

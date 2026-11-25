@@ -38,6 +38,7 @@
 #include <cstdio>
 #include <random>
 #include <algorithm>
+#include <cctype>
 #include <nlohmann/json.hpp>
 
 // SDL_net.h pulls in SDL.h -> SDL_main.h, which #defines main -> SDL_main unless we opt out.
@@ -1963,6 +1964,7 @@ static const char* Combo_Anchor_GetRoster() {
 // (enqueue under the game's own mutex) and the thread-safe toast.
 constexpr int kPollMs = 5;
 constexpr int kOutboxCheckMs = 250;
+constexpr size_t kMaxFrameBytes = 1024 * 1024; // an unterminated frame past this is not a packet: drop the link
 
 // Hold sOutMutex. Everything still queued for a socket that just died: keep the save-affecting part.
 static void HoldUnsentLocked(std::queue<std::string>& unsent) {
@@ -2177,6 +2179,11 @@ static void ReceiveLoop() {
                     SOH_Anchor_RecvJson(packet.c_str());
                 if (MM_Anchor_RecvJson)
                     MM_Anchor_RecvJson(packet.c_str());
+            }
+            if (received.size() > kMaxFrameBytes) { // what is left has no NUL: one frame, still unfinished
+                std::cerr << "[ComboShip][Anchor] frame over " << kMaxFrameBytes
+                          << " bytes without an end, dropping the link" << std::endl;
+                break;
             }
         }
 
@@ -2566,6 +2573,14 @@ static void DeliverCrossItem(int targetGame, const char* itemName, const char* s
     }
 }
 
+// The dormant sibling's resident save is the loaded slot's only in a rando slot that plays both games, with the MM
+// save loaded from that same slot. Anywhere else (a vanilla slot, a one-game seed, MM's save left over from another
+// slot) a teammate's state would be applied to a save that is not this playthrough's.
+static bool DormantSiblingHoldsLoadedSlot() {
+    return !g_activeMode.IsVanilla() && !ComboRando::ComboGamesSolo(g_comboGames) && g_comboCompletionSlot >= 0 &&
+           g_MmSaveInMemorySlot == g_comboCompletionSlot;
+}
+
 // A6: invoked each frame BY the active game (via the registered pump seam). Applies queued
 // save-affecting co-op packets to the DORMANT game on the caller's (game) thread, so a teammate's
 // collection registers in the dormant game's save live instead of only on next entry.
@@ -2573,6 +2588,8 @@ static void PumpDormant() {
     // Connect/disconnect reactions (handshake, hook re-registration, on-connect resync) run here, on
     // the game thread, never on the receive thread.
     ComboAnchor::SyncLinkOnGameThread();
+    if (!DormantSiblingHoldsLoadedSlot())
+        return;
     if (ComboAnchor::sActiveGame.load() == 1) {
         if (SOH_Anchor_PumpDormant)
             SOH_Anchor_PumpDormant(); // MM foreground -> apply to dormant OOT
@@ -2612,6 +2629,9 @@ static void LoadComboCompletion(int slot) {
     g_comboGames = ComboRando::COMBO_GAMES_BOTH;
     g_lostWoodsLink = false;
     g_activeMode = ComboRando::ComboMode{};
+    // A slot with no baked seed (vanilla) must not keep the previous slot's co-op scope or its seen packets.
+    g_loadedMasterSeed.store(0);
+    ComboAnchor::ResetSeenPacketIds();
     if (MM_SetComboSharedItems)
         MM_SetComboSharedItems(0); // clear before the slot read below re-pushes the loaded value (or stays 0)
     {
@@ -2647,8 +2667,6 @@ static void LoadComboCompletion(int slot) {
             !ComboRando::ComboGamesSolo(g_comboGames) &&
             rando.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kPlayedWhenSeedLacksKey);
         g_loadedMasterSeed.store(rando.value("masterSeed", 0u)); // co-op outbox scope
-        // The games' state is the file's again: what was "already applied" may not be any more.
-        ComboAnchor::ResetSeenPacketIds();
     }
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
@@ -4784,9 +4802,48 @@ static bool LoadComboShipImport(const ComboSettingsImportResult& res, nlohmann::
 // can write. A co-op resync deliberately overwrites receiver-local values (HP, rupees, ...) and a bad
 // peer state or a bug could do worse; this keeps the last kSaveBackupsKept launches restorable by hand:
 // close the game, copy Save/backups/<time>/fileN.combosav back over Save/fileN.combosav.
+// The save writer's recovery files (fileN.combosav.temp) are copied too: a slot can live only in one of those.
+// Runs first in main, before any container is read, so before any recovery or migration touches the files.
 // Best-effort: any failure is logged and the launch continues.
+constexpr size_t kSaveBackupsKept = 10;
+constexpr const char* kSaveBackupStampFormat = "%Y-%m-%d_%H-%M-%S";
+constexpr const char* kSaveBackupStampShape = "dddd-dd-dd_dd-dd-dd"; // 'd' = one digit, any other character literal
+constexpr const char* kSaveContainerExtension = ".combosav";
+
+static bool IsSaveContainerFile(const std::filesystem::path& file) {
+    if (file.extension() == kSaveContainerExtension)
+        return true;
+    return file.extension() == ComboContainerIo::kTempExtension && file.stem().extension() == kSaveContainerExtension;
+}
+
+// A folder this backup made (named by kSaveBackupStampFormat). Anything else in Save/backups is not ours to prune.
+static bool IsSaveBackupFolderName(const std::string& name) {
+    const std::string shape = kSaveBackupStampShape;
+    if (name.size() != shape.size())
+        return false;
+    for (size_t i = 0; i < shape.size(); i++) {
+        const bool matches =
+            shape[i] == 'd' ? std::isdigit(static_cast<unsigned char>(name[i])) != 0 : name[i] == shape[i];
+        if (!matches)
+            return false;
+    }
+    return true;
+}
+
+// Timestamped names sort chronologically: keep the newest kSaveBackupsKept.
+static void PruneSaveBackups(const std::filesystem::path& root) {
+    std::error_code ec;
+    std::vector<std::filesystem::path> sets;
+    for (const auto& e : std::filesystem::directory_iterator(root, ec)) {
+        if (e.is_directory(ec) && IsSaveBackupFolderName(e.path().filename().string()))
+            sets.push_back(e.path());
+    }
+    std::sort(sets.begin(), sets.end());
+    for (size_t i = 0; i + kSaveBackupsKept < sets.size(); i++)
+        std::filesystem::remove_all(sets[i], ec);
+}
+
 static void BackupSaveContainersOnLaunch() {
-    constexpr size_t kSaveBackupsKept = 10;
     try {
         std::error_code ec;
         const auto saveDir = ComboRando::SaveDir();
@@ -4794,7 +4851,7 @@ static void BackupSaveContainersOnLaunch() {
             return;
         std::vector<std::filesystem::path> files;
         for (const auto& e : std::filesystem::directory_iterator(saveDir, ec)) {
-            if (e.is_regular_file(ec) && e.path().extension() == ".combosav")
+            if (e.is_regular_file(ec) && IsSaveContainerFile(e.path()))
                 files.push_back(e.path());
         }
         if (files.empty())
@@ -4808,7 +4865,7 @@ static void BackupSaveContainersOnLaunch() {
         localtime_r(&now, &local);
 #endif
         char stamp[32];
-        std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &local);
+        std::strftime(stamp, sizeof(stamp), kSaveBackupStampFormat, &local);
         const auto root = saveDir / "backups";
         const auto dest = root / stamp;
         std::filesystem::create_directories(dest, ec);
@@ -4825,16 +4882,7 @@ static void BackupSaveContainersOnLaunch() {
                 copied++;
         }
         std::cout << "[ComboShip] backed up " << copied << " save file(s) to " << dest.string() << std::endl;
-
-        // Prune: timestamped names sort chronologically, keep the newest kSaveBackupsKept.
-        std::vector<std::filesystem::path> sets;
-        for (const auto& e : std::filesystem::directory_iterator(root, ec)) {
-            if (e.is_directory(ec))
-                sets.push_back(e.path());
-        }
-        std::sort(sets.begin(), sets.end());
-        for (size_t i = 0; i + kSaveBackupsKept < sets.size(); i++)
-            std::filesystem::remove_all(sets[i], ec);
+        PruneSaveBackups(root);
     } catch (const std::exception& e) {
         std::cerr << "[ComboShip] save backup failed: " << e.what() << std::endl;
     } catch (...) { std::cerr << "[ComboShip] save backup failed\n"; }

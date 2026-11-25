@@ -125,7 +125,7 @@ else()
 endif()
 # ComboNetKeepAlive.cpp calls setsockopt/WSAIoctl directly (SDL2_net only links Winsock privately).
 if(WIN32)
-    target_link_libraries(ComboShip PRIVATE ws2_32)
+    target_link_libraries(Ship2Ship PRIVATE ws2_32)
 endif()
 
 # Add dependencies to ensure games are built first
