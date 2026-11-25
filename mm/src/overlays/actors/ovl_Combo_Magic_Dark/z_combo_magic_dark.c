@@ -14,8 +14,13 @@
  */
 
 #include "z_combo_magic_dark.h"
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
+#include <libultraship/bridge/consolevariablebridge.h>
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_UPDATE_DURING_OCARINA)
+
+// SoH's Infinite Nayru's Love (NayrusLove.cpp) holds the timer here, short of the flashing at 1100.
+#define COMBO_INFINITE_NAYRU_TIMER 0x44B
 
 #define OOT_DL(path) ((Gfx*)("__OTR__@oot:" path))
 
@@ -72,8 +77,13 @@ void ComboMagicDark_DiamondUpdate(Actor* thisx, PlayState* play) {
     ComboMagicDark* this = (ComboMagicDark*)thisx;
     u8 phi_a0;
     Player* player = GET_PLAYER(play);
-    s16 nayrusLoveTimer = gSaveContext.nayrusLoveTimer;
+    s16 nayrusLoveTimer;
     s32 msgMode = play->msgCtx.msgMode;
+
+    if (CVarGetInteger(COMBO_SOH_CVAR_INFINITE_NAYRU, 0)) {
+        gSaveContext.nayrusLoveTimer = COMBO_INFINITE_NAYRU_TIMER;
+    }
+    nayrusLoveTimer = gSaveContext.nayrusLoveTimer;
 
     // OOT MSGMODE_OCARINA_CORRECT_PLAYBACK (0x0D) = MM MSGMODE_E (0x0E); OOT MSGMODE_SONG_PLAYED = MM's.
     if ((msgMode == MSGMODE_E) || (msgMode == MSGMODE_SONG_PLAYED)) {

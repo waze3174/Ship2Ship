@@ -618,6 +618,12 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 | Hyrule Equipment face: tunics and boots | A puts them on (OOT's save); with SoH's "Assignable Tunics and Boots" a C button / D-pad direction takes them, and a press puts the piece on or back to Kokiri (SoH's `UseTunicBoots`) | `ComboPause.cpp` `UseGearOnPress`, `SOH_ComboTermina_ToggleEquipValue`; Goron Tunic heat and Zora Tunic water (`Interface_Update` hazard), Iron / Hover Boots (`Player_SetEquipmentData`) read OOT's save | — | Deck check owed (2026-11-24); human form only; MM's scene restrictions still grey the button (SoH keeps equipment enabled); no heavy-boots sound in MM |
 | Hyrule Equipment face: swords, shields, strength, scale | no (MM's own in Termina) | — | — | OOT shields on a button don't carry to Termina |
 
+## SoH enhancements on OoT items in Termina (2026-11-25, branch `ultimate/xenh-termina`)
+
+SoH's enhancements for an OoT item also apply when that item runs in Termina. The ports read SoH's own CVar strings (one CVar store for both games, SoH's defaults, read at use time; names in `ComboOotItems.h` as `COMBO_SOH_CVAR_*`), so each switch stays in SoH's menu. They apply only to OoT's own ports (`PLAYER_IA_COMBO_OOT_*`, OoT's EnBoom), never to MM's own items. No save or seed change.
+
+- **Infinite Nayru's Love** (`gCheats.InfiniteNayru`, SoH `NayrusLove.cpp`): while the diamond is up, `ComboMagicDarkDiamondUpdate` holds `nayrusLoveTimer` at 0x44B, so it never flashes or ends. Unlike SoH, which sets the timer every frame whether or not the spell was cast, it only keeps a cast diamond (and its scene-to-scene re-cast) alive.
+
 ## Dash After Roll in Hyrule (2026-11-25, branch `ultimate/dashroll`)
 
 SoH gets 2S2H's "Dash After Roll" (Enhancements -> QoL -> Controls): keep holding A after a roll and Link keeps dashing. It uses 2S2H's CVar string `gEnhancements.Player.DashAfterRoll` with the same values (0 Off, 1 On, 2 Stack with Bunny Hood), so both games share one setting.

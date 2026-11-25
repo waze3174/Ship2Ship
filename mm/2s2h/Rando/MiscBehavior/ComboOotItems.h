@@ -25,6 +25,10 @@ struct PlayState;
 #define COMBO_OOT_ITEM_MASK_GERUDO 0x2A
 #define COMBO_OOT_ITEM_ROCS_FEATHER 0x9D // SoH's randomizer item, in OOT's Nayru's Love slot
 
+// Ship of Harkinian's own CVar names, read by the OOT items' Termina ports at use time (one CVar store for both games,
+// SoH's defaults).
+#define COMBO_SOH_CVAR_INFINITE_NAYRU "gCheats.InfiniteNayru"
+
 // The item action an OOT item (foreign id on an MM button) runs in Termina: one of PLAYER_IA_COMBO_OOT_* for an OOT
 // item with a Termina port, PLAYER_IA_NONE otherwise (masks with a Termina twin go through Combo_MmPauseUseItem).
 int Combo_MmOotItemAction(int foreignItem);
