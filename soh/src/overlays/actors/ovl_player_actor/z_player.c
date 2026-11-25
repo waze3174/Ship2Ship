@@ -10971,6 +10971,10 @@ typedef struct {
 } ComboGoronRoll;
 static ComboGoronRoll sRoll;
 
+// 2S2H GoronRollingFastSpikes.cpp: the extra charge per frame (mm/2s2h/Enhancements/Masks, MM's own CVar
+// gEnhancements.Masks.GoronRollingFastSpikes). Stepping back to 4 when the charge stalls is vanilla's.
+#define COMBO_GORON_FAST_SPIKES_STEP 8
+
 // 2S2H's Goron rolling option "Spikes Require Shield" (mm/2s2h/Enhancements/Masks/GoronRollingIgnoresMagic.cpp,
 // gEnhancements.Masks.GoronRollingSpikesRequireShield, MM's own setting, read in Hyrule too).
 static s32 Combo_GoronSpikesRequireR(void) {
@@ -11404,6 +11408,9 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                         yTgt = this->yaw;
                     }
                     if (sRoll.b86[1] == 0) {
+                        if (CVarGetInteger("gEnhancements.Masks.GoronRollingFastSpikes", 0)) {
+                            sRoll.av1 += COMBO_GORON_FAST_SPIKES_STEP;
+                        }
                         if (Combo_GoronSpikesCharge()) {
                             sRoll.av1++;
                             Combo_FormSfx(this, COMBO_MM_SFX_CONTINUOUS(COMBO_MM_SE_PL_GORON_BALL_CHARGE),
