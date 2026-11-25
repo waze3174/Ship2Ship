@@ -2833,7 +2833,8 @@ A save slot has a mode, stored in its `file{N}.combosav` container as `combo.mod
 ```
 
 - An absent key is a combo randomizer slot, exactly as before the setting. A vanilla `ootmm` is read as a randomizer
-  slot (a vanilla save has one game). A vanilla Majora's Mask slot is `{ "game": "mm", "kind": "vanilla" }`
+  slot (a vanilla save has one game), unless it is marked `"sequential": true`: that is a back-to-back slot, both games
+  in one slot ([`back2back.md`](back2back.md)). A vanilla Majora's Mask slot is `{ "game": "mm", "kind": "vanilla" }`
   (`ComboMode::VanillaMm()`, `IsVanillaMm()`).
 - A new randomizer slot records `game` from its seed's `games` (the Games setting). `quest` only means something for a
   vanilla OoT slot.

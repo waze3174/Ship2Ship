@@ -14,4 +14,5 @@ for the merge mechanism and standing policies.
 - [`resource-mgmt.md`](resource-mgmt.md) — Resource manager & rendering: cross-RM display-list resolution, Fast3D segment guards, RM-scoped audio/cosmetics, and shader/texture fixes.
 - [`boot-shutdown.md`](boot-shutdown.md) — Boot, transition & shutdown: eager MM boot, sturdy shutdown, unified ROM extraction, cross-game erase, and resume fixes.
 - [`ui-menu.md`](ui-menu.md) — Menu & UI: combo-owned menu extraction, dual-game title logos, file-select changes, shared-settings consolidation, and the Advanced Resolution / controller-bindings editors.
+- [`back2back.md`](back2back.md) — The back-to-back mode: vanilla OoT then vanilla MM in one slot, the one-way gate between the games, and OoT's full ending leading on to Termina.
 - [`extractors.md`](extractors.md) — ZAPDTR & OTRExporter: the single shared extractor copy, runtime MM-vs-OOT ROM detection replacing `#ifdef GAME_MM`, and dynamic-CRT/shared-LUS build wiring.
