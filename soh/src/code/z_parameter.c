@@ -1687,12 +1687,19 @@ void Rando_Inventory_SwapAgeEquipment(void) {
 
 #ifdef COMBO_BUILD
 static void Inventory_SwapAgeEquipmentImpl(void);
+void ComboEquipShare_KeepAgeRuleAtSwap(int newAge, const u8* ownItems, const u8* ownSlots); // ComboEquipShare.cpp
 // ComboShip: one button layout for both ages (owner 2026-11-13: "the equips match up, but not between ages"; one item
 // pool, both Links use everything). The age swap still trades the B sword and the worn equipment per age as vanilla
-// does; C-left/down/right and the D-pad keep what they had. Randomizer saves only: a vanilla save swaps like SoH.
+// does; C-left/down/right and the D-pad keep what they had, except an item the new age can't use (owner 2026-11-25,
+// #21), which gives way to that age's own button as vanilla's swap would. Randomizer saves only: a vanilla save swaps
+// like SoH.
 void Inventory_SwapAgeEquipment(void) {
     u8 items[ARRAY_COUNT(gSaveContext.equips.buttonItems)];
     u8 slots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
+    u8 ownItems[ARRAY_COUNT(gSaveContext.equips.buttonItems)];
+    u8 ownSlots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
+    // Play_Destroy swaps before Player_Destroy commits play->linkAgeOnLoad: linkAge is still the age being left.
+    const s32 newAge = LINK_IS_ADULT ? LINK_AGE_CHILD : LINK_AGE_ADULT;
     s32 i;
 
     if (!IS_RANDO) {
@@ -1708,11 +1715,15 @@ void Inventory_SwapAgeEquipment(void) {
     }
     Inventory_SwapAgeEquipmentImpl();
     for (i = 1; i < ARRAY_COUNT(items); i++) {
+        ownItems[i] = gSaveContext.equips.buttonItems[i];
         gSaveContext.equips.buttonItems[i] = items[i];
     }
     for (i = 0; i < ARRAY_COUNT(slots); i++) {
+        ownSlots[i] = gSaveContext.equips.cButtonSlots[i];
         gSaveContext.equips.cButtonSlots[i] = slots[i];
     }
+    ownItems[0] = ITEM_NONE; // B is the sword's, not part of the layout
+    ComboEquipShare_KeepAgeRuleAtSwap(newAge, ownItems, ownSlots);
 }
 
 static void Inventory_SwapAgeEquipmentImpl(void) {
