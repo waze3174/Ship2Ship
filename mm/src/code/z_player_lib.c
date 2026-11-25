@@ -4160,10 +4160,12 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     if (func_800B7128(player)) {
                         Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
 #ifdef COMBO_BUILD
-                        // ComboShip: OOT's reticle reach (OOT: Hookshot 38600, Longshot 77600).
-                        Player_DrawHookshotReticle(play, player,
-                                                   (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f
-                                                                                                            : 77600.0f);
+                        // ComboShip: OOT's reticle reach (OOT: Hookshot 38600, Longshot 77600), times SoH's Hookshot
+                        // Reach Multiplier for OOT's two.
+                        Player_DrawHookshotReticle(
+                            play, player,
+                            ((player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f : 77600.0f) *
+                                Combo_MmOotHookshotReachMultiplier(player->heldItemAction));
 #else
                         Player_DrawHookshotReticle(play, player, 77600.0f);
 #endif

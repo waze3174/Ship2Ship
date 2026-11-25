@@ -29,6 +29,7 @@ struct PlayState;
 // SoH's defaults).
 #define COMBO_SOH_CVAR_INFINITE_NAYRU "gCheats.InfiniteNayru"
 #define COMBO_SOH_CVAR_FAST_FARORES "gEnhancements.FastFarores"
+#define COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER "gCheats.HookshotReachMultiplier"
 
 // The item action an OOT item (foreign id on an MM button) runs in Termina: one of PLAYER_IA_COMBO_OOT_* for an OOT
 // item with a Termina port, PLAYER_IA_NONE otherwise (masks with a Termina twin go through Combo_MmPauseUseItem).
@@ -57,6 +58,10 @@ const void* Combo_MmOotHeldDL(struct Player* player, int limbIndex);
 
 // An OOT resource's raw data (path without "__OTR__"), from OOT's resident ResourceManager; NULL if missing.
 void* Combo_MmOotRawResource(const char* path);
+
+// SoH's Hookshot Reach Multiplier for the item action in Link's hand: its CVar for OOT's Hookshot and Longshot, 1 for
+// anything else (MM's own Hookshot keeps its reach).
+float Combo_MmOotHookshotReachMultiplier(int heldItemAction);
 
 // Farore's Wind in Termina: OOT's "warp / dispel / exit" choice box, and the arrival flag Player_Init reads
 // (set: 1 / 0; query: -1 returns the flag).

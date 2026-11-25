@@ -140,6 +140,13 @@ extern "C" int Combo_MmIronFloorItemOk(int item) {
     return (oot == 0x0A) || (oot == 0x0B); // OOT ITEM_HOOKSHOT / ITEM_LONGSHOT
 }
 
+extern "C" float Combo_MmOotHookshotReachMultiplier(int heldItemAction) {
+    if ((heldItemAction != PLAYER_IA_COMBO_OOT_HOOKSHOT) && (heldItemAction != PLAYER_IA_COMBO_OOT_LONGSHOT)) {
+        return 1.0f;
+    }
+    return CVarGetFloat(COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER, 1.0f);
+}
+
 extern "C" int Combo_MmOotLinkAdult(void) {
     return LinkAdult() ? 1 : 0;
 }

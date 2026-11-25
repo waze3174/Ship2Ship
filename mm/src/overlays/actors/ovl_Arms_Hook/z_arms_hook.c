@@ -8,6 +8,9 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 #include "objects/object_link_child/object_link_child.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
+#endif
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -81,10 +84,11 @@ void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
         this->timer = 26;
 #ifdef COMBO_BUILD
         // ComboShip: OOT's Hookshot in Termina flies OOT's 13 frames (OOT ArmsHook_Wait: Hookshot 13, Longshot 26;
-        // MM's own hookshot is as long as OOT's Longshot).
+        // MM's own hookshot is as long as OOT's Longshot), times SoH's Hookshot Reach Multiplier for OOT's two.
         if (GET_PLAYER(play)->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) {
             this->timer = 13;
         }
+        this->timer *= Combo_MmOotHookshotReachMultiplier(GET_PLAYER(play)->heldItemAction);
 #endif
     }
 }
