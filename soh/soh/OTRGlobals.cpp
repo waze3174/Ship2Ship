@@ -1868,6 +1868,17 @@ static void Combo_FinishInit() {
         }
         CVarSave();
     }
+    // ComboShip: 2S2H's ConfigVersion2Updater (GFS B-Button Attack -> Active item on B) never runs in the combo, since
+    // SoH's updater registers first for that version; migrate the old option once, as above.
+    static const char* kOldGfsOnBCVar = "gEnhancements.Equipment.GreatFairySwordBButton";
+    static const char* kActiveItemOnBCVar = "gEnhancements.Equipment.ActiveItemOnB";
+    if (OTRGlobals::Instance->context->GetConsoleVariables()->Get(kOldGfsOnBCVar) != nullptr) {
+        if (CVarGetInteger(kOldGfsOnBCVar, 0) != 0) {
+            CVarSetInteger(kActiveItemOnBCVar, 1);
+        }
+        CVarClear(kOldGfsOnBCVar);
+        CVarSave();
+    }
     // ComboShip: drop old numeric exclusions before the rando menu reads them.
     if (Combo_ClearNumericExclusions()) {
         CVarSave();
