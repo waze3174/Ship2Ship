@@ -23,6 +23,10 @@ typedef struct EnBomChu {
     /* 0x180 */ s32 blure1Index;
     /* 0x184 */ s32 blure2Index;
     /* 0x188 */ ColliderSphere collider;
-} EnBomChu; // size = 0x1E0
+#ifdef COMBO_BUILD
+    // ComboShip: a bombchu taken out on OOT's bag takes SoH's explosive enhancements (OOT items in Termina).
+    /* 0x1E0 */ u8 comboIsOotOrigin;
+#endif
+} EnBomChu; // size = 0x1E0 (0x1E4 in a combo build)
 
 #endif // Z_EN_BOM_CHU_H

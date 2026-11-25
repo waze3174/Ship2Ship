@@ -19,6 +19,7 @@
 #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
 #include "overlays/actors/ovl_En_Arrow/z_en_arrow.h"
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
+#include "overlays/actors/ovl_En_Bom_Chu/z_en_bom_chu.h"
 #include "overlays/actors/ovl_En_Boom/z_en_boom.h"
 #include "overlays/actors/ovl_En_Box/z_en_box.h"
 #include "overlays/actors/ovl_En_Dnp/z_en_dnp.h"
@@ -96,6 +97,9 @@ static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
 // SoH's Remove Explosive Limit, for a bomb or bombchu taken out on OOT's bag (MM's own has 2S2H's switch).
 #define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) \
     (Combo_PlayerExplosiveFromOot(explosiveType) && CVarGetInteger(COMBO_SOH_CVAR_REMOVE_EXPLOSIVE_LIMIT, 0))
+// SoH's Prevent Bombchus Forcing First-Person, for a bombchu taken out on OOT's bag.
+#define COMBO_OOT_CHU_SKIPS_FIRST_PERSON(chu) \
+    (((EnBomChu*)(chu))->comboIsOotOrigin && CVarGetInteger(COMBO_SOH_CVAR_DISABLE_FIRST_PERSON_CHUS, 0))
 #else
 #define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
 #define COMBO_PLAYER_AMMO(item) AMMO(item)
@@ -103,6 +107,7 @@ static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
 #define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) ((void)0)
 #define COMBO_EXPLOSIVE_SPAWN_END() ((void)0)
 #define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) false
+#define COMBO_OOT_CHU_SKIPS_FIRST_PERSON(chu) false
 #endif
 
 void Player_Init(Actor* thisx, PlayState* play);
@@ -16943,7 +16948,7 @@ void Player_Action_41(Player* this, PlayState* play) {
             heldActor->velocity.y = 0.0f;
             heldActor->speed = 0.0f;
             func_808309CC(play, this);
-            if (heldActor->id == ACTOR_EN_BOM_CHU) {
+            if ((heldActor->id == ACTOR_EN_BOM_CHU) && !COMBO_OOT_CHU_SKIPS_FIRST_PERSON(heldActor)) {
                 func_80831814(this, play, PLAYER_UNKAA5_0);
             }
         }
