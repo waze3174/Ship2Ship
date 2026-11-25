@@ -409,11 +409,23 @@ typedef enum {
 } Quest;
 
 #ifdef COMBO_BUILD
-// ComboShip: the file select's fourth quest choice, a vanilla Majora's Mask slot. It lives only in the file select's
-// questType[] (never in gSaveContext.ship.quest.id), so no SoH code sees a quest it doesn't know; QUEST_SAVE_ID is
-// the quest the OoT half of that slot is stored as.
+// ComboShip: the file select's fourth and fifth quest choices, a vanilla Majora's Mask slot and a back-to-back slot
+// (vanilla Ocarina of Time, then vanilla Majora's Mask). They live only in the file select's questType[] (never in
+// gSaveContext.ship.quest.id), so no SoH code sees a quest it doesn't know; QUEST_SAVE_ID is the quest the OoT half of
+// that slot is stored as. A back-to-back file's is Master Quest when its setting asks for it and oot-mq.o2r is loaded.
 #define QUEST_COMBO_MM 6
-#define QUEST_SAVE_ID(carouselQuest) ((carouselQuest) == QUEST_COMBO_MM ? QUEST_NORMAL : (carouselQuest))
+#define QUEST_COMBO_BACK2BACK 7
+#ifdef __cplusplus
+extern "C" {
+#endif
+int Combo_BackToBackSaveQuest(void);
+#ifdef __cplusplus
+}
+#endif
+#define QUEST_SAVE_ID(carouselQuest)                                        \
+    ((carouselQuest) == QUEST_COMBO_BACK2BACK ? Combo_BackToBackSaveQuest() \
+     : (carouselQuest) == QUEST_COMBO_MM      ? QUEST_NORMAL                \
+                                              : (carouselQuest))
 #else
 #define QUEST_SAVE_ID(carouselQuest) (carouselQuest)
 #endif

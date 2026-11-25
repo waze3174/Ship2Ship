@@ -17,7 +17,8 @@
 
 #ifdef COMBO_BUILD
 extern void (*gComboSaveInitCallback)(int fileNum);
-// The file select's quest choice for the file being created (QUEST_COMBO_MM included), read by SOH_GetNewSaveQuest.
+// The file select's quest choice for the file being created (QUEST_COMBO_MM and QUEST_COMBO_BACK2BACK included), read
+// by SOH_GetNewSaveQuest.
 extern int gComboNewSaveQuest;
 // ComboShip: fired before questType is read so the combo generator can run and call
 // SOH_ApplyRandoPlacements before Randomizer_InitSaveFile consumes the placements.

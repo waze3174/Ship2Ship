@@ -12,6 +12,7 @@ extern "C" {
 #include <z64ocarina.h>
 extern s16 sLastPlayedSong;
 int Combo_GamesSolo(void);             // BenPort.cpp
+int Combo_CrossToHyruleOpen(void);     // BenPort.cpp
 extern u32 sOcarinaAvailableSongFlags; // code_8019AF00.c: bitmask of songs the recogniser currently accepts
 s32 Map_CurRoomHasMapI(PlayState* play);
 }
@@ -49,9 +50,10 @@ bool IsWarpSongId(int songId) {
 // Same refusals as MM's own Song of Soaring (z_message.c).
 bool SoaringForbiddenHere() {
     PlayState* play = gPlayState;
-    // A solo seed (combo/rando/ComboGames.h) never goes to Hyrule: refused like a room that forbids soaring.
+    // A solo seed (combo/rando/ComboGames.h) never goes to Hyrule, nor does a slot whose way into it is closed
+    // (combo/rando/ComboCrossGate.h): refused like a room that forbids soaring.
     return play->interfaceCtx.restrictions.songOfSoaring != 0 || Map_CurRoomHasMapI(play) ||
-           play->sceneId == SCENE_SECOM || Combo_GamesSolo();
+           play->sceneId == SCENE_SECOM || Combo_GamesSolo() || !Combo_CrossToHyruleOpen();
 }
 
 } // namespace

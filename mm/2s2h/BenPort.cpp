@@ -67,6 +67,7 @@ CrowdControl* CrowdControl::Instance;
 #ifdef COMBO_BUILD
 #include "ComboMenuSharedContext.h"               // ComboShip: shared per-DLL ImGui context helper (combo-owned)
 #include "rando/SharedItems.h"                    // ComboShip: Shared Items family table
+#include "rando/ComboCrossGate.h"                 // ComboShip: back-to-back slots' cross gate
 #include "rando/ComboGames.h"                     // ComboShip: Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h"             // ComboShip: the Lost Woods link seed setting
 #include "rando/CrossWarpLogic.h"                 // ComboShip (teleport songs): cross-game warp logic bits
@@ -195,6 +196,7 @@ static void Combo_ClearReturnRequests(void) {
 
 // ComboShip (teleport songs): switch to OOT and arrive at this entrance. Console: combo_warp_oot.
 extern "C" int Combo_GamesSolo(void);
+extern "C" int Combo_CrossToHyruleOpen(void);
 extern "C" void Combo_RequestCrossSwitch(int ootEntrance) {
     if (gSaveContext.gameMode != GAMEMODE_NORMAL) {
         SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: not in gameplay (gameMode={})", (int)gSaveContext.gameMode);
@@ -204,12 +206,20 @@ extern "C" void Combo_RequestCrossSwitch(int ootEntrance) {
         SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: refused, this seed is one game only");
         return;
     }
+    if (!Combo_CrossToHyruleOpen()) { // a back-to-back slot until Majora is beaten (ComboCrossGate.h)
+        SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: refused, the way into Hyrule is closed in this slot");
+        return;
+    }
     sComboCrossTargetOOT = ootEntrance;
     sComboReturnPending = true;
 }
 
 // The Clock Tower portal: back to OOT's default arrival, outside the Happy Mask Shop.
 extern "C" void Combo_RequestPortalReturn(void) {
+    if (!Combo_CrossToHyruleOpen()) {
+        SPDLOG_WARN("[ComboShip] Combo_RequestPortalReturn: refused, the way into Hyrule is closed in this slot");
+        return;
+    }
     sComboReturnPending = true;
 }
 
@@ -4471,6 +4481,24 @@ extern "C" COMBO_EXPORT void MM_SetComboLostWoodsLink(int on) {
 }
 extern "C" int Combo_LostWoodsLinkOn(void) {
     return gMMComboLostWoodsLink && !Combo_GamesSolo();
+}
+// The ways between the games that the loaded slot leaves open (combo/rando/ComboCrossGate.h), pushed by the launcher.
+// Every slot but a back-to-back one leaves all of them open.
+extern "C" int gMMComboCrossGate = ComboRando::CrossGate::kAllOpen;
+extern "C" COMBO_EXPORT void MM_SetComboCrossGate(int mask) {
+    gMMComboCrossGate = mask;
+}
+// Any way into Hyrule (the Clock Tower corridor, the portal, the warp songs, the entrances shuffled across).
+extern "C" int Combo_CrossToHyruleOpen(void) {
+    return ComboRando::CrossGate::ToHyruleOpen(gMMComboCrossGate) ? 1 : 0;
+}
+// MM's credits have ended (Play_Init reached the invalid entrance that returns to MM's own title). In a back-to-back
+// slot MM's title and file select are unreachable inside the launcher, so the slot goes back to OoT's title, as an owl
+// save quit does; the slot's save is not written again.
+extern "C" void Combo_MM_CreditsEnded(void) {
+    if (ComboRando::CrossGate::MmCreditsReturnToOot(gMMComboCrossGate)) {
+        Combo_RequestOwlSaveQuit();
+    }
 }
 extern "C" int Combo_MM_BombchuBagShared(void) {
     return (gMMComboSharedMask >> ComboRando::SF_BOMBCHU_BAG) & 1;

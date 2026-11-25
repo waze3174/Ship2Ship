@@ -31,12 +31,12 @@
 #ifdef COMBO_BUILD
 #include "ComboTitleMMAssets.h"
 
-// ComboShip: the quest-select carousel offers Normal, Master Quest, Randomizer and Majora's Mask. Normal and Master
-// Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save; SohFileSelect_IsQuestHidden
-// hides Boss Rush and Speedrun (the values between), and the quest whose archive (oot.o2r, oot-mq.o2r) isn't loaded.
-// A new file starts on Randomizer, the combo randomizer.
+// ComboShip: the quest-select carousel offers Normal, Master Quest, Randomizer, Majora's Mask and both games back to
+// back. Normal and Master Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save, back to
+// back both; SohFileSelect_IsQuestHidden hides Boss Rush and Speedrun (the values between), and the quest whose
+// archive (oot.o2r, oot-mq.o2r) isn't loaded. A new file starts on Randomizer, the combo randomizer.
 #define MIN_QUEST QUEST_NORMAL
-#define MAX_QUEST QUEST_COMBO_MM
+#define MAX_QUEST QUEST_COMBO_BACK2BACK
 #define DEFAULT_QUEST QUEST_RANDOMIZER
 #else
 #define MIN_QUEST (ResourceMgr_GameHasOriginal() ? QUEST_NORMAL : QUEST_MASTER)
@@ -1874,7 +1874,8 @@ const char* FileChoose_GetSohOptionsTitleTexName(Language lang) {
 }
 
 // #region SOH - quest label, drawn as the 64DD disk label with its lettering covered and our own text on top
-// The label of a file: its quest, or under COMBO_BUILD its mode (Combo, OoT or MM randomizer, vanilla Majora's Mask).
+// The label of a file: its quest, or under COMBO_BUILD its mode (Combo, OoT or MM randomizer, vanilla Majora's Mask,
+// both games back to back).
 // NULL for a plain Normal Quest file.
 static const char* FileChoose_GetQuestLabelText(s16 fileIndex) {
 #ifdef COMBO_BUILD
@@ -1988,8 +1989,14 @@ static void FileChoose_DrawQuestLabelText(FileChooseContext* this, Vtx* labelVtx
     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 0, 0, 0, alpha);
     gSPVertex(POLY_OPA_DISP++, vtx, len * 4, 0);
     for (int i = 0; i < len; i++) {
-        FileChoose_DrawCharacter(this->state.gfxCtx,
-                                 this->font.fontBuf + (letterA + text[i] - 'A') * FONT_CHAR_TEX_SIZE, i * 4);
+        if (text[i] == ' ') {
+            continue;
+        }
+        // digits sit at no fixed distance from A in the loaded font, so they come from the port's character table
+        void* glyph = (text[i] >= 'A' && text[i] <= 'Z')
+                          ? this->font.fontBuf + (letterA + text[i] - 'A') * FONT_CHAR_TEX_SIZE
+                          : Ship_GetCharFontTexture(text[i]);
+        FileChoose_DrawCharacter(this->state.gfxCtx, glyph, i * 4);
     }
 
     // back to the combiner the file buttons use
@@ -2190,6 +2197,12 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
                 FileChoose_DrawImageRGBA32(this->state.gfxCtx, 160, 135, gTitleZeldaShieldLogoTex, 160, 160);
                 Interface_DrawTextLine(this->state.gfxCtx, "Majora's Mask", 110, 176, 255, 255, 255, this->logoAlpha,
                                        1.0f, true);
+                break;
+
+            case QUEST_COMBO_BACK2BACK:
+                gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, this->logoAlpha);
+                // The app's logo alone, centred in the logo area: the mode plays both games and isn't a randomizer.
+                FileChoose_DrawImageRGBA32(this->state.gfxCtx, 160, 135, gTitleShip2ShipLogoTex, 128, 128);
                 break;
 #endif
         }

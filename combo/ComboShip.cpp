@@ -46,6 +46,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL_net.h>
 
+#include "rando/ComboCrossGate.h"
 #include "rando/ComboLostWoodsLink.h"
 #include "rando/ComboMode.h"
 #include "rando/CrossForeign.h"
@@ -288,6 +289,8 @@ typedef void (*FnGetPlayerName)(unsigned char*);
 static FnGetPlayerName SOH_GetCurrentPlayerName = nullptr;
 // The quest of the save OOT is creating (ComboRando::kSohQuest*); valid inside the new-save callback.
 static FnInt SOH_GetNewSaveQuest = nullptr;
+// The quest the new save's OoT half was stored as (kSohQuestNormal or kSohQuestMaster); valid in the same callback.
+static FnInt SOH_GetNewSaveStoredQuest = nullptr;
 // Nonzero = the slot's MM half is missing/broken; nothing was loaded (see SaveManager_LoadSaveFile).
 typedef int (*FnMMLoadSave)(int);
 static FnMMLoadSave MM_LoadSaveForCombo = nullptr;
@@ -1416,6 +1419,10 @@ static bool ComboBossesComplete(const bool completion[2]) {
         return completion[1];
     return completion[0] && completion[1];
 }
+// The ways between the games that the loaded slot's mode and final-boss record leave open.
+static int Combo_CrossGateMask() {
+    return ComboRando::CrossGate::Mask(g_activeMode, g_comboCompletion[0], g_comboCompletion[1]);
+}
 
 // Shared Items (OoTMM-style, combo/rando/SharedItems.h). SOH_SetComboSharedItems is OOT-only — it
 // shapes OOT's gen-time wallet force (settings.cpp); nothing on the MM side depends on the mask.
@@ -1474,6 +1481,15 @@ static void Combo_PushLostWoodsLink(bool on) {
         SOH_SetComboLostWoodsLink(on ? 1 : 0);
     if (MM_SetComboLostWoodsLink)
         MM_SetComboLostWoodsLink(on ? 1 : 0);
+}
+// Which ways between the games are open in the LOADED slot (combo/rando/ComboCrossGate.h), pushed to both DLLs.
+static FnSetInt SOH_SetComboCrossGate = nullptr;
+static FnSetInt MM_SetComboCrossGate = nullptr;
+static void Combo_PushCrossGate(int mask) {
+    if (SOH_SetComboCrossGate)
+        SOH_SetComboCrossGate(mask);
+    if (MM_SetComboCrossGate)
+        MM_SetComboCrossGate(mask);
 }
 // Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
 // follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.
@@ -2754,12 +2770,16 @@ static void LoadComboCompletion(int slot) {
             !ComboRando::ComboGamesSolo(g_comboGames) &&
             rando.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kPlayedWhenSeedLacksKey);
         g_loadedMasterSeed.store(rando.value("masterSeed", 0u)); // co-op outbox scope
+        // A back-to-back slot has no seed: its link always exists, and the cross gate decides when it is open.
+        if (g_activeMode.IsBackToBack())
+            g_lostWoodsLink = true;
     }
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
     Combo_PushLostWoodsLink(g_lostWoodsLink);
+    Combo_PushCrossGate(Combo_CrossGateMask());
     if (MM_SetComboVanillaSlot)
-        MM_SetComboVanillaSlot(g_activeMode.IsVanillaMm() ? 1 : 0);
+        MM_SetComboVanillaSlot(g_activeMode.HasVanillaMmSave() ? 1 : 0);
     if (SOH_SetComboGoal)
         SOH_SetComboGoal(g_goalHunt ? 1 : 0, g_goalRequired, ComboRando::CwOotPieces(g_goalTotal, g_comboGames));
     if (MM_SetComboGoal)
@@ -2806,6 +2826,7 @@ static void SaveComboCompletion(int slot) {
         c["combo"]["completion"]["triforce"] = g_comboTriforceDone;
         FlushContainer(slot);
     }
+    Combo_PushCrossGate(Combo_CrossGateMask());
     // #173: tints the timer overlay's total green. Pushed outside the container lock — comboui must
     // never re-enter the sidecar.
     if (ComboUI_SetComboComplete)
@@ -3024,8 +3045,9 @@ static void Combo_DrainReleaseCollect() {
     }
 }
 
-// Registered into both games: record THIS game's final-boss kill for its slot and return 1 iff BOTH
-// games' bosses are now dead (a solo seed: the played game's). game/fileNum use the GameId convention (0=OOT, 1=MM).
+// Registered into both games: record THIS game's final-boss kill for its slot and return 1 iff the game plays its full
+// ending: BOTH games' bosses are now dead (a solo seed: the played game's), or the slot is a back-to-back one, where
+// each game ends with its own credits. game/fileNum use the GameId convention (0=OOT, 1=MM).
 static int Combo_OnFinalBossDefeated(int game, int fileNum) {
     if ((game != 0 && game != 1) || !ComboIsValidSlot(fileNum))
         return 0;
@@ -3041,9 +3063,10 @@ static int Combo_OnFinalBossDefeated(int game, int fileNum) {
                   << " games=" << ComboRando::ComboGamesKey(g_comboGames) << std::endl;
     }
     // Like the completion above, this is reported again on each frame of the fade; a release already made ends it.
-    if (!g_comboReleased[game] && SOH_ComboReleaseOnBossKillEnabled && SOH_ComboReleaseOnBossKillEnabled() != 0)
+    if (!g_activeMode.IsVanilla() && !g_comboReleased[game] && SOH_ComboReleaseOnBossKillEnabled &&
+        SOH_ComboReleaseOnBossKillEnabled() != 0)
         g_releasePending[game] = true;
-    return ComboBossesComplete(g_comboCompletion) ? 1 : 0;
+    return (g_activeMode.IsBackToBack() || ComboBossesComplete(g_comboCompletion)) ? 1 : 0;
 }
 
 // ComboShip (#136): each game's piece-count getter, handed to the OTHER game so its pickup messages
@@ -4555,6 +4578,10 @@ static void Combo_InitVanillaSlot(int fileNum, const ComboRando::ComboMode& mode
     Combo_PushHintTrackerData(fileNum);
 }
 
+static ComboRando::OotQuest Combo_OotQuestOfSohQuest(int sohQuest) {
+    return sohQuest == ComboRando::kSohQuestMaster ? ComboRando::OOT_QUEST_MQ : ComboRando::OOT_QUEST_NORMAL;
+}
+
 // A new vanilla OoT slot: no MM save is made.
 static void Combo_InitVanillaOotSlot(int fileNum, ComboRando::OotQuest quest) {
     Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::VanillaOot(quest));
@@ -4580,6 +4607,29 @@ static void Combo_InitVanillaMmSlot(int fileNum) {
     Combo_EraseSeedAndSharedState(fileNum);
     Combo_SetLastGame(fileNum, ComboRando::GAME_MM);
     std::cout << "[ComboShip] Created VANILLA Majora's Mask slot " << fileNum << std::endl;
+}
+
+// A new back-to-back slot: vanilla Ocarina of Time, then vanilla Majora's Mask, one save of each and no seed. MM's
+// save is made now, as for a vanilla Majora's Mask slot, but the slot's last game is OoT: it is played first and MM is
+// entered through the Lost Woods once Ganon is beaten. The OoT half's quest is the one OoT just stored for the file
+// (the Master Quest setting, or Normal Quest without oot-mq.o2r), so the mode records what the save plays.
+static void Combo_InitBackToBackSlot(int fileNum) {
+    const ComboRando::OotQuest quest =
+        Combo_OotQuestOfSohQuest(SOH_GetNewSaveStoredQuest ? SOH_GetNewSaveStoredQuest() : ComboRando::kSohQuestNormal);
+    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack(quest));
+    if (!MM_InitVanillaSaveFile) {
+        std::cerr << "[ComboShip] ERROR: MM has no vanilla save creation, slot " << fileNum << " has no MM save."
+                  << std::endl;
+        return;
+    }
+    unsigned char playerName[8] = { 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E }; // 0x3E = N64 blank glyph
+    if (SOH_GetCurrentPlayerName)
+        SOH_GetCurrentPlayerName(playerName);
+    MM_InitVanillaSaveFile(fileNum, playerName);
+    Combo_EraseSeedAndSharedState(fileNum); // MM's write brought the live shared state of the last slot played along
+    Combo_SetLastGame(fileNum, ComboRando::GAME_OOT);
+    std::cout << "[ComboShip] Created BACK-TO-BACK slot " << fileNum << " (vanilla OoT"
+              << (quest == ComboRando::OOT_QUEST_MQ ? " Master Quest" : "") << ", then vanilla MM)" << std::endl;
 }
 
 // The label the OoT file select draws on a slot (ComboRando::ComboModeLabel: static strings, or nullptr for none).
@@ -4615,9 +4665,12 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         Combo_InitVanillaMmSlot(fileNum);
         return;
     }
+    if (quest == ComboRando::kSohQuestComboBackToBack) {
+        Combo_InitBackToBackSlot(fileNum);
+        return;
+    }
     if (quest != ComboRando::kSohQuestRandomizer) {
-        Combo_InitVanillaOotSlot(fileNum, quest == ComboRando::kSohQuestMaster ? ComboRando::OOT_QUEST_MQ
-                                                                               : ComboRando::OOT_QUEST_NORMAL);
+        Combo_InitVanillaOotSlot(fileNum, Combo_OotQuestOfSohQuest(quest));
         return;
     }
     // ComboShip: bind the pending consolidated seed to this slot — bake it into the container's
@@ -4721,11 +4774,11 @@ static void Combo_OnOOTSaveLoad(int fileNum) {
     if (g_activeMode.IsVanilla()) {
         // No seed and, for OoT, no MM save: drop what the slot loaded before this one left in both DLLs, and leave MM's
         // dormant memory unclaimed (the MM tracker may have replaced it with nothing). A vanilla Majora's Mask slot
-        // goes into MM, which loads its save itself.
+        // goes into MM, which loads its save itself, as does a back-to-back slot last saved in MM.
         Combo_ClearComboRando();
         Combo_PushHintTrackerData(fileNum);
         g_MmSaveInMemorySlot = -1;
-        if (g_activeMode.IsVanillaMm())
+        if (g_activeMode.HasVanillaMmSave())
             Combo_ResumeMMIfLastSavedThere(fileNum);
         return;
     }
@@ -5122,6 +5175,7 @@ int main(int argc, char** argv) {
     SOH_SetOnExitSaveCallback = (FnSetSaveCallback)GetSym(sohModule, "SOH_SetOnExitSaveCallback");
     SOH_GetCurrentPlayerName = (FnGetPlayerName)GetSym(sohModule, "SOH_GetCurrentPlayerName");
     SOH_GetNewSaveQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveQuest");
+    SOH_GetNewSaveStoredQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveStoredQuest");
     MM_LoadSaveForCombo = (FnMMLoadSave)GetSym(mmModule, "MM_LoadSaveForCombo");
     MM_InvalidateOwlBlobSlot = (FnMMInvalidateOwlBlob)GetSym(mmModule, "MM_InvalidateOwlBlobSlot");
     SOH_ParkForComboMMResume = (FnVoid)GetSym(sohModule, "SOH_ParkForComboMMResume");
@@ -5272,6 +5326,8 @@ int main(int argc, char** argv) {
     MM_SetComboGames = (FnSetComboGames)GetSym(mmModule, "MM_SetComboGames");
     SOH_SetComboLostWoodsLink = (FnSetInt)GetSym(sohModule, "SOH_SetComboLostWoodsLink");
     MM_SetComboLostWoodsLink = (FnSetInt)GetSym(mmModule, "MM_SetComboLostWoodsLink");
+    SOH_SetComboCrossGate = (FnSetInt)GetSym(sohModule, "SOH_SetComboCrossGate");
+    MM_SetComboCrossGate = (FnSetInt)GetSym(mmModule, "MM_SetComboCrossGate");
 
     // Shared Items seam — SOH_SetComboSharedItems is OOT-only (shapes the gen-time wallet force).
     SOH_SetComboSharedItems = (FnSetComboSharedItems)GetSym(sohModule, "SOH_SetComboSharedItems");

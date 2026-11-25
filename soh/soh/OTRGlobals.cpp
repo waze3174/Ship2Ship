@@ -163,12 +163,15 @@
 #include "ComboMenuSharedContext.h"   // ComboShip: shared per-DLL ImGui context helper (combo-owned)
 #include "rando/CrossForeign.h"       // ComboShip (#164): g_comboForeignJson for the hint-key map replay
 #include "rando/SharedItems.h"        // ComboShip: Shared Items family table
+#include "rando/ComboCrossGate.h"     // ComboShip: which ways between the games are open (back-to-back slots)
 #include "rando/ComboGames.h"         // ComboShip: Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h" // ComboShip: the Lost Woods link seed setting
 #include "rando/ComboMode.h"          // ComboShip: save modes (vanilla OoT, kSohQuest*)
 #include "rando/CrossWarpLogic.h"     // ComboShip (teleport songs): cross-game warp logic bits
 #include "soh/Enhancements/randomizer/hook_handlers.h" // ComboShip (#164): OOT_ForeignMapGen
 #include <functional>                                  // ComboShip (#164): shared hint-resolution callbacks
+// ComboShip: the back-to-back settings page's CVars
+#include "rando/ComboBackToBackSettings.h"
 #endif
 
 #ifdef _MSC_VER
@@ -3247,16 +3250,39 @@ extern "C" COMBO_EXPORT void SOH_GetCurrentPlayerName(unsigned char out8[8]) {
 }
 
 // ComboShip: the quest the file select offered for the save being created (QUEST_NORMAL, QUEST_MASTER,
-// QUEST_RANDOMIZER or QUEST_COMBO_MM). Valid inside the new-save callback; the launcher turns it into the slot's mode.
+// QUEST_RANDOMIZER, QUEST_COMBO_MM or QUEST_COMBO_BACK2BACK). Valid inside the new-save callback; the launcher turns
+// it into the slot's mode.
 static_assert(QUEST_NORMAL == ComboRando::kSohQuestNormal && QUEST_MASTER == ComboRando::kSohQuestMaster &&
-                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer && QUEST_COMBO_MM == ComboRando::kSohQuestComboMm,
+                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer &&
+                  QUEST_COMBO_MM == ComboRando::kSohQuestComboMm &&
+                  QUEST_COMBO_BACK2BACK == ComboRando::kSohQuestComboBackToBack,
               "combo/rando/ComboMode.h quest ids must match z64save.h");
 static_assert(SOH_SLOT_LABEL_MAX_LEN == ComboRando::kSlotLabelMaxLen,
               "OTRGlobals.h and combo/rando/ComboMode.h must agree on the slot label length");
-// The quest the file select offered for the file being created (QUEST_COMBO_MM included), set by Sram_InitSave.
+// The quest the file select offered for the file being created (QUEST_COMBO_MM and QUEST_COMBO_BACK2BACK included),
+// set by Sram_InitSave.
 extern "C" int gComboNewSaveQuest = QUEST_NORMAL;
 extern "C" COMBO_EXPORT int SOH_GetNewSaveQuest(void) {
     return gComboNewSaveQuest;
+}
+
+// ComboShip: the quest the OoT half of the save being created is stored as (QUEST_SAVE_ID). Valid inside the new-save
+// callback, after the save is written.
+extern "C" COMBO_EXPORT int SOH_GetNewSaveStoredQuest(void) {
+    return gSaveContext.ship.quest.id;
+}
+
+// ComboShip: whether oot-mq.o2r is loaded, so a Master Quest file can be played.
+extern "C" COMBO_EXPORT int SOH_GameHasMasterQuest(void) {
+    return OTRGlobals::Instance->HasMasterQuest();
+}
+
+// ComboShip: the quest a new back-to-back file stores for its Ocarina of Time half. Master Quest when the setting asks
+// for it and oot-mq.o2r is loaded, so a file that couldn't load is never made. The stored quest is the file's record:
+// every later load plays it, whatever the setting is then. Called by QUEST_SAVE_ID.
+extern "C" int Combo_BackToBackSaveQuest(void) {
+    const bool wantsMasterQuest = CVarGetInteger(ComboRando::kBackToBackMasterQuestCVar, 0) != 0;
+    return wantsMasterQuest && OTRGlobals::Instance->HasMasterQuest() ? QUEST_MASTER : QUEST_NORMAL;
 }
 
 // ComboShip: the launcher's label for a file's mode, drawn on the file select (static strings, so the pointer stays
@@ -3838,6 +3864,24 @@ extern "C" int Combo_GamesSolo(void) {
 extern "C" int Combo_LostWoodsLinkOn(void) {
     return gComboLostWoodsLink && !Combo_GamesSolo();
 }
+// The ways between the games that the loaded slot leaves open (combo/rando/ComboCrossGate.h), pushed by the launcher.
+// Every slot but a back-to-back one leaves all of them open.
+extern "C" int gComboCrossGate = ComboRando::CrossGate::kAllOpen;
+extern "C" COMBO_EXPORT void SOH_SetComboCrossGate(int mask) {
+    gComboCrossGate = mask;
+}
+// Any way into Termina (the warp songs, the owl statues, the pause menu, the entrances shuffled across).
+extern "C" int Combo_CrossToTerminaOpen(void) {
+    return ComboRando::CrossGate::ToTerminaOpen(gComboCrossGate) ? 1 : 0;
+}
+// The Lost Woods path into Termina, for the Link on screen: it opens earlier than the rest, for child Link.
+extern "C" int Combo_LostWoodsToTerminaOpen(void) {
+    return ComboRando::CrossGate::LostWoodsToTerminaOpen(gComboCrossGate, LINK_IS_CHILD) ? 1 : 0;
+}
+// The credits of OoT's half of a back-to-back slot have ended: the slot goes on in the Temple of Time, as child Link.
+extern "C" int Combo_OotCreditsContinueInTemple(void) {
+    return ComboRando::CrossGate::OotCreditsContinueInTemple(gComboCrossGate) ? 1 : 0;
+}
 // An explicit MM start forces these, so grey them out. Under Random they stay editable — the force is silent when MM
 // rolls. HandleStartingAgeUI owns RSK_STARTING_AGE in both directions. FinalizeSettings decides which of them an MM
 // start forces: with the Lost Woods link the Mask Shop exclusions are not needed and Climb must not be shuffled.
@@ -4365,7 +4409,7 @@ extern "C" int Combo_CancelPendingCrossSwitch(void) {
     return 1;
 }
 
-extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
+static void Combo_QueueCrossSwitch(int mmEntrance) {
     if (gSaveContext.fileNum > 2) {
         SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: no save loaded (fileNum={})", (int)gSaveContext.fileNum);
         return;
@@ -4377,6 +4421,25 @@ extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
     sComboCrossTargetMM = mmEntrance;
     sComboSwitchFileNum = (int)gSaveContext.fileNum;
     sComboSwitchPending = true;
+}
+
+// Every way into Termina but the Lost Woods path.
+extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
+    if (!Combo_CrossToTerminaOpen()) { // a back-to-back slot before both bosses are beaten (ComboCrossGate.h)
+        SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: refused, the way into Termina is closed in this slot");
+        return;
+    }
+    Combo_QueueCrossSwitch(mmEntrance);
+}
+
+// The Lost Woods path (ComboLostWoodsLink.cpp), which a back-to-back slot opens for child Link once Ganon is beaten.
+extern "C" void Combo_RequestLostWoodsCrossSwitch(int mmEntrance) {
+    if (!Combo_LostWoodsToTerminaOpen()) {
+        SPDLOG_WARN(
+            "[ComboShip] Combo_RequestLostWoodsCrossSwitch: refused, the Lost Woods path is closed in this slot");
+        return;
+    }
+    Combo_QueueCrossSwitch(mmEntrance);
 }
 
 // ComboShip (owner ruling 2026-11-12, age kept across games): Link's age + tunic in OOT's live save, read by the
