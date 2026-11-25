@@ -2006,6 +2006,58 @@ static void Combo_CrossDamageApply(Collider* collider, ColliderInfo* info, Damag
                        collider->actor->colChkInfo.damageEffect, collider->actor->colChkInfo.health);
     }
 }
+
+// MM's two-handed swords in Hyrule (the Great Fairy's Sword, Fierce Deity's Double Helix) hit with OOT's Giant's Knife
+// bits. OOT enemies that only child Link ever fights may have no Giant's Knife reaction at all: Big Octo's table is
+// DMG_ENTRY(0, 0) for every Giant slash, spin and jump, so it ignores the hit. For those, the sword uses the stronger
+// of the Master and Kokiri rows for the same attack. A table that has a Giant's Knife row keeps it.
+s32 Combo_UnbreakableTwoHander(Player* this); // z_player_lib.c
+
+// OOT DMG_* bit index of each Giant's Knife attack, then of the Master and Kokiri rows it falls back to.
+static const s8 sComboTwoHanderRows[][3] = {
+    { 10, 9, 8 },   // slash: DMG_SLASH_GIANT -> DMG_SLASH_MASTER, DMG_SLASH_KOKIRI
+    { 23, 24, 22 }, // spin: DMG_SPIN_GIANT -> DMG_SPIN_MASTER, DMG_SPIN_KOKIRI
+    { 26, 27, 25 }, // jump slash, great spin: DMG_JUMP_GIANT -> DMG_JUMP_MASTER, DMG_JUMP_KOKIRI
+};
+
+// The swing (Link's sword quads) or its spin (EnMThunder). The Fierce Deity beam is MM-tagged: CrossDamageMap decides.
+static s32 Combo_HitByMmTwoHander(PlayState* play, ColliderInfo* info) {
+    Player* player = GET_PLAYER(play);
+    Collider* at = info->acHit;
+
+    if ((player == NULL) || (at == NULL) || (at->actor == NULL) ||
+        (info->acHitInfo->toucher.comboMmDmg != CROSS_MM_TAG_NONE)) {
+        return false;
+    }
+    return ((at->actor == &player->actor) || (at->actor->id == ACTOR_EN_M_THUNDER)) &&
+           Combo_UnbreakableTwoHander(player);
+}
+
+static u8 Combo_TwoHanderTableEntry(PlayState* play, Collider* collider, ColliderInfo* info, DamageTable* tbl, s32 bit,
+                                    u8 entry) {
+    s32 i;
+
+    if ((entry != DMG_ENTRY(0, 0)) || !Combo_HitByMmTwoHander(play, info)) {
+        return entry;
+    }
+    for (i = 0; i < ARRAY_COUNT(sComboTwoHanderRows); i++) {
+        const u8 master = tbl->table[sComboTwoHanderRows[i][1]];
+        const u8 kokiri = tbl->table[sComboTwoHanderRows[i][2]];
+        u8 stronger;
+
+        if (sComboTwoHanderRows[i][0] != bit) {
+            continue;
+        }
+        stronger = ((master == DMG_ENTRY(0, 0)) || ((kokiri & 0xF) > (master & 0xF))) ? kokiri : master;
+        if (Combo_DebugEnv("COMBO_DEBUG_CROSSDMG")) {
+            Combo_DebugLog("[CrossDmg] actor 0x%04X <- MM two-handed sword: no Giant's Knife row (bit %d), hits as "
+                           "DMG_ENTRY(%d, 0x%X)\n",
+                           collider->actor->id, bit, stronger & 0xF, stronger >> 4);
+        }
+        return stronger;
+    }
+    return entry;
+}
 #endif
 
 s32 CollisionCheck_SetATvsAC(PlayState* play, Collider* at, ColliderInfo* atInfo, Vec3f* atPos, Collider* ac,
@@ -3346,8 +3398,12 @@ void CollisionCheck_ApplyDamage(PlayState* play, CollisionCheckContext* colChkCt
             }
         }
 
-        damage = tbl->table[i] & 0xF;
-        collider->actor->colChkInfo.damageEffect = tbl->table[i] >> 4 & 0xF;
+        u8 entry = tbl->table[i];
+#ifdef COMBO_BUILD
+        entry = Combo_TwoHanderTableEntry(play, collider, info, tbl, i, entry);
+#endif
+        damage = entry & 0xF;
+        collider->actor->colChkInfo.damageEffect = entry >> 4 & 0xF;
     }
 #ifdef COMBO_BUILD
     Combo_CrossDamageApply(collider, info, tbl, &damage);
