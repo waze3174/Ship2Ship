@@ -623,6 +623,7 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 SoH's enhancements for an OoT item also apply when that item runs in Termina. The ports read SoH's own CVar strings (one CVar store for both games, SoH's defaults, read at use time; names in `ComboOotItems.h` as `COMBO_SOH_CVAR_*`), so each switch stays in SoH's menu. They apply only to OoT's own ports (`PLAYER_IA_COMBO_OOT_*`, OoT's EnBoom), never to MM's own items. No save or seed change.
 
 - **Infinite Nayru's Love** (`gCheats.InfiniteNayru`, SoH `NayrusLove.cpp`): while the diamond is up, `ComboMagicDarkDiamondUpdate` holds `nayrusLoveTimer` at 0x44B, so it never flashes or ends. Unlike SoH, which sets the timer every frame whether or not the spell was cast, it only keeps a cast diamond (and its scene-to-scene re-cast) alive.
+- **Fast Farore's Wind** (`gEnhancements.FastFarores`, SoH `z_player.c` `func_8083AF44` and `Player_Action_808507F4`): in `ComboOot_StartCast` / `ComboOot_Action_Spell` the cast animations run at 2 x 0.83, the hold before the ending animation is 10 frames, and the cast no longer waits for the magic meter to go idle. Not ported: the faster warp-point pointer (`Actor_DrawFaroresWindPointer`; Termina draws no pointer).
 
 ## Dash After Roll in Hyrule (2026-11-25, branch `ultimate/dashroll`)
 
