@@ -1645,6 +1645,26 @@ extern "C" int (*gComboOutdatedSaveNotice)();
 // Shared Items pokes (defined with the rest of the Shared Items ABI further down).
 extern "C" void (*gComboSharedChanged)(int game, int fileNum);
 extern "C" void (*gComboSharedTick)(void);
+// ComboShip: the launcher writes the save containers on a thread of its own. Once a frame the game in play hands it the
+// kill switch and logs what the thread reports (combo/ComboContainerWriter.h). Set by SOH_SetContainerWriterFrame.
+static ComboSaveTiming::FnContainerWriterFrame gComboContainerWriterFrame = nullptr;
+static void Combo_PollSaveWriter() {
+    if (gComboContainerWriterFrame == nullptr) {
+        return;
+    }
+    ComboSaveTiming::ContainerWriterReport report;
+    gComboContainerWriterFrame(CVarGetInteger(ComboSaveTiming::kSyncWritesCVar, 0), &report);
+    const ComboSaveTiming::ReportLevel level =
+        ComboSaveTiming::WriterReportLevel(report, CVarGetInteger(ComboSaveTiming::kCVar, 0) != 0);
+    if (level == ComboSaveTiming::ReportLevel::kNone) {
+        return;
+    }
+    const spdlog::level::level_enum logLevel = (level == ComboSaveTiming::ReportLevel::kError)  ? spdlog::level::err
+                                               : (level == ComboSaveTiming::ReportLevel::kWarn) ? spdlog::level::warn
+                                                                                                : spdlog::level::info;
+    SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), logLevel, "[ComboShip] save timing: {}",
+                       ComboSaveTiming::DescribeWriterReport(report));
+}
 
 // ComboShip: InitOTR is split so the launcher can create the shared window (which needs only the
 // bundled soh.o2r, not a ROM) BEFORE the ROM archives exist, run its own unified extraction screen,
@@ -2187,6 +2207,7 @@ static void Combo_FinishInit() {
             }
         }
         ComboEquipShare_Tick(); // shared button layout pushed by the launcher (ComboEquipShare.cpp)
+        Combo_PollSaveWriter();
     });
 #endif
 
@@ -4004,6 +4025,9 @@ extern "C" COMBO_EXPORT void SOH_SetSharedChangedCb(void (*cb)(int, int)) {
 extern "C" void (*gComboSharedTick)(void) = nullptr;
 extern "C" COMBO_EXPORT void SOH_SetSharedTickCb(void (*cb)(void)) {
     gComboSharedTick = cb;
+}
+extern "C" COMBO_EXPORT void SOH_SetContainerWriterFrame(ComboSaveTiming::FnContainerWriterFrame frame) {
+    gComboContainerWriterFrame = frame;
 }
 
 extern "C" COMBO_EXPORT int SOH_GetTriforcePieceCount(void) {

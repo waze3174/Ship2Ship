@@ -1179,6 +1179,27 @@ static void Combo_MM_ReportFrameHitch(double reconcileMs) {
                 frameMs, (gPlayState != nullptr) ? (int)gPlayState->sceneId : -1, saves.asked, saves.written, saves.ms,
                 reconcileMs);
 }
+
+// ComboShip: the launcher writes the save containers on a thread of its own. Once a frame the game in play hands it the
+// kill switch and logs what the thread reports (combo/ComboContainerWriter.h). Set by MM_SetContainerWriterFrame.
+static ComboSaveTiming::FnContainerWriterFrame gComboContainerWriterFrame = nullptr;
+static void Combo_MM_PollSaveWriter() {
+    if (gComboContainerWriterFrame == nullptr) {
+        return;
+    }
+    ComboSaveTiming::ContainerWriterReport report;
+    gComboContainerWriterFrame(CVarGetInteger(ComboSaveTiming::kSyncWritesCVar, 0), &report);
+    const ComboSaveTiming::ReportLevel level =
+        ComboSaveTiming::WriterReportLevel(report, CVarGetInteger(ComboSaveTiming::kCVar, 0) != 0);
+    if (level == ComboSaveTiming::ReportLevel::kNone) {
+        return;
+    }
+    const spdlog::level::level_enum logLevel = (level == ComboSaveTiming::ReportLevel::kError)  ? spdlog::level::err
+                                               : (level == ComboSaveTiming::ReportLevel::kWarn) ? spdlog::level::warn
+                                                                                                : spdlog::level::info;
+    SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), logLevel, "[ComboShip] save timing: {}",
+                       ComboSaveTiming::DescribeWriterReport(report));
+}
 #endif
 
 extern "C" void InitOTR(int argc, char* argv[]) {
@@ -1260,6 +1281,7 @@ extern "C" void InitOTR(int argc, char* argv[]) {
             }
         }
         Combo_MM_ReportFrameHitch(reconcileMs);
+        Combo_MM_PollSaveWriter();
     });
 #endif
     Rando::Init();
@@ -3151,6 +3173,10 @@ extern "C" COMBO_EXPORT void MM_SetComboSaveIO(ComboRando::FnComboReadSave r, Co
 
 extern "C" COMBO_EXPORT void MM_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStats get) {
     SaveManager_SetContainerIoStatsGetter(get);
+}
+
+extern "C" COMBO_EXPORT void MM_SetContainerWriterFrame(ComboSaveTiming::FnContainerWriterFrame frame) {
+    gComboContainerWriterFrame = frame;
 }
 
 extern "C" COMBO_EXPORT void MM_SetComboLiveWriteRead(ComboRando::FnComboReadSaveForLiveWrite read) {

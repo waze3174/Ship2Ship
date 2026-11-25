@@ -55,6 +55,7 @@
 #include "ComboConfigTree.h"
 #include "ComboPresetScope.h"
 #include "ComboSaveTiming.h"
+#include "ComboContainerWriter.h"
 
 // Surfaces the real exception behind a silent terminate()/exit(3). With the shared dynamic
 // CRT, exceptions thrown in soh.dll/2ship.dll propagate across the DLL boundary to here.
@@ -368,6 +369,11 @@ static FnSetComboSaveIO MM_SetComboSaveIO = nullptr;
 typedef void (*FnSetContainerIoStatsGetter)(ComboSaveTiming::FnGetContainerIoStats);
 static FnSetContainerIoStatsGetter SOH_SetContainerIoStatsGetter = nullptr;
 static FnSetContainerIoStatsGetter MM_SetContainerIoStatsGetter = nullptr;
+// Optional: the per-frame call that hands the launcher gCombo.Debug.SyncSaveWrites and takes the save writer's report
+// for the game's log (Combo_ContainerWriterFrame).
+typedef void (*FnSetContainerWriterFrame)(ComboSaveTiming::FnContainerWriterFrame);
+static FnSetContainerWriterFrame SOH_SetContainerWriterFrame = nullptr;
+static FnSetContainerWriterFrame MM_SetContainerWriterFrame = nullptr;
 // Optional: the smaller read MM's live save uses (Combo_ReadGameSaveForLiveWrite).
 typedef void (*FnSetComboLiveWriteRead)(ComboRando::FnComboReadSaveForLiveWrite);
 static FnSetComboLiveWriteRead MM_SetComboLiveWriteRead = nullptr;
@@ -573,11 +579,13 @@ static FnDumpData SOH_DumpEntranceOverrides = nullptr;
 // ---------- ComboShip merged per-slot save container (Save/file{N+1}.combosav) ----------
 // One JSON file per slot holds both games' saves verbatim + combo metadata (completion + baked rando).
 // The launcher mediates every per-slot read/write through Combo_ReadGameSave/Combo_WriteGameSave
-// (pushed into each DLL at boot), so the in-process cache stays authoritative. Single mutex serializes
-// OOT's thread-pool writes, MM's synchronous writes, and Anchor cross-writes. Write = temp+rename,
-// never torn on crash. Each container carries "comboRelease" (COMBO_RELEASE_VERSION); a container from a
-// different major.minor is backed up to .bak and recreated — the launcher is the sole save-compat gate.
-// See docs/deviations/boot-shutdown.md.
+// (pushed into each DLL at boot), so the in-process cache stays authoritative: every read in the process comes from
+// it, never from the file, once a slot is loaded. Single mutex serializes OOT's thread-pool writes, MM's writes, and
+// Anchor cross-writes over the cache. A write serializes the slot under it and hands the text to the save writer
+// thread (combo/ComboContainerWriter.h: temp+rename, never torn on crash), which puts it on disk outside the mutex; the
+// header says how erases, uncached reads and quit are ordered behind it. Each container carries "comboRelease"
+// (COMBO_RELEASE_VERSION); a container from a different major.minor is backed up to .bak and recreated — the
+// launcher is the sole save-compat gate. See docs/deviations/boot-shutdown.md.
 static std::mutex g_containerMutex;
 static std::map<int, nlohmann::json> g_containerCache;
 // Slots whose container was backed up for a COMBO_RELEASE_VERSION mismatch; guarded by g_containerMutex.
@@ -589,6 +597,14 @@ static std::atomic<bool> g_hasEvictedSlots{ false };
 static thread_local ComboSaveTiming::ContainerIoStats tl_containerIoStats;
 static const ComboSaveTiming::ContainerIoStats* Combo_GetContainerIoStats() {
     return &tl_containerIoStats;
+}
+// gCombo.Debug.SyncSaveWrites, as the game in play last handed it over (Combo_ContainerWriterFrame, every frame): the
+// launcher links no CVar store, and container writes run on several threads.
+static std::atomic<bool> g_syncSaveWrites{ false };
+static void Combo_ContainerWriterFrame(int syncWrites, ComboSaveTiming::ContainerWriterReport* out) {
+    g_syncSaveWrites.store(syncWrites != 0);
+    if (out != nullptr)
+        ComboContainerIo::SharedWriter().TakeReport(out);
 }
 
 static int g_foregroundGame = 0; // ComboRando::GAME_OOT at startup (shared health: only it writes combo.health)
@@ -629,6 +645,8 @@ static nlohmann::json& LoadOrCreateContainer(int fileNum) {
         return it->second;
     nlohmann::json j;
     auto path = ComboContainerPath(fileNum);
+    // An erased slot can still have its last write going: read (and rename aside) only what it leaves on disk.
+    ComboContainerIo::SharedWriter().WaitIdle(fileNum);
     std::error_code ec;
     bool existed = std::filesystem::exists(path, ec);
     std::ifstream in(path);
@@ -674,47 +692,42 @@ static nlohmann::json& LoadOrCreateContainer(int fileNum) {
     return g_containerCache.emplace(fileNum, std::move(j)).first->second;
 }
 
-// Hold g_containerMutex. Serialize the cached container to a temp file, then atomic rename over it.
+// Hold g_containerMutex. Serialize the cached container and hand it to the save writer thread, or write it here when
+// gCombo.Debug.SyncSaveWrites is on or the writer cannot take it (ComboContainerWriter.h).
 static void FlushContainer(int fileNum) {
     auto it = g_containerCache.find(fileNum);
     if (it == g_containerCache.end())
         return;
-    std::error_code ec;
-    auto path = ComboContainerPath(fileNum);
     ComboSaveTiming::Stopwatch timer;
-    std::filesystem::create_directories(path.parent_path(), ec);
-    auto tmp = path;
-    tmp += ".temp";
-    {
-        std::ofstream out(tmp, std::ios::trunc | std::ios::binary);
-        tl_containerIoStats.openMs = timer.Lap();
-        // A failure here USED TO BE a bare `return`. With the path CWD-relative and a Finder-launched
-        // .app starting at "/" (read-only on macOS), that silently discarded every save while the
-        // game logged "Save File Finish" — a whole playthrough lost with no on-disk trace. The path
-        // is anchored now, but a save that cannot be written must be loud regardless of the reason.
-        if (!out.is_open()) {
-            std::cerr << "[ComboShip] ERROR: cannot write save container " << path << " — THIS SLOT IS NOT BEING SAVED."
-                      << std::endl;
+    it->second["comboRelease"] = COMBO_RELEASE_VERSION; // every write carries the current release
+    std::string text = it->second.dump();
+    tl_containerIoStats.containerDumpMs = timer.Lap();
+    tl_containerIoStats.containerBytes = text.size();
+    const auto path = ComboContainerPath(fileNum);
+    auto& writer = ComboContainerIo::SharedWriter();
+    if (!g_syncSaveWrites.load()) {
+        const ComboContainerIo::Writer::Handover handover = writer.Enqueue(fileNum, path, std::move(text));
+        if (handover.accepted) {
+            tl_containerIoStats.queuedWrites = handover.queued;
+            tl_containerIoStats.replacedUnwritten = handover.replaced;
             return;
         }
-        it->second["comboRelease"] = COMBO_RELEASE_VERSION; // every write carries the current release
-        const std::string text = it->second.dump();
-        tl_containerIoStats.containerDumpMs = timer.Lap();
-        tl_containerIoStats.containerBytes = text.size();
-        out << text;
-        out.close();
-        tl_containerIoStats.fileWriteMs = timer.Lap();
     }
-    std::filesystem::rename(tmp, path, ec);
-    if (ec) { // some filesystems won't replace-on-rename — remove then retry
-        std::filesystem::remove(path, ec);
-        std::filesystem::rename(tmp, path, ec);
+    // What the thread still has of this slot is older than this snapshot.
+    if (!writer.CancelAndWait(fileNum)) {
+        const std::string error = "save container of slot " + std::to_string(fileNum) +
+                                  " not written: the save writer was left writing that slot at quit";
+        std::cerr << "[ComboShip] ERROR: " << error << std::endl;
+        writer.NoteCallerWriteFailed(error);
+        return;
     }
-    tl_containerIoStats.renameMs = timer.Lap();
-    if (ec) {
-        std::cerr << "[ComboShip] ERROR: cannot commit save container " << path << " (" << ec.message()
-                  << ") — THIS SLOT IS NOT BEING SAVED." << std::endl;
-    }
+    const ComboContainerIo::FileWriteResult result = ComboContainerIo::WriteContainerFile(path, text);
+    tl_containerIoStats.syncWrite = true;
+    tl_containerIoStats.openMs = result.io.openMs;
+    tl_containerIoStats.fileWriteMs = result.io.fileWriteMs;
+    tl_containerIoStats.renameMs = result.io.renameMs;
+    if (!result.ok)
+        writer.NoteCallerWriteFailed(result.error);
 }
 
 // OOT (main thread) polls this each frame via SOH_SetOutdatedSaveNotice: pops the next slot whose
@@ -739,6 +752,8 @@ static void EraseComboContainer(int slot) {
         // and any dormant MM write would put the erased save back into the slot.
         if (g_MmSaveInMemorySlot == slot)
             g_MmSaveInMemorySlot = -1;
+        // The slot's waiting snapshot is dropped and its write in progress waited out, or it would put the file back.
+        ComboContainerIo::SharedWriter().CancelAndWait(slot);
         std::error_code ec;
         std::filesystem::remove(ComboContainerPath(slot), ec);
     }
@@ -1732,32 +1747,61 @@ static void SetActiveGame(int game /* 0 = OOT, 1 = MM */) {
 // window is leaving something running that locks the saves") -- a teardown step stuck on a thread join, an unreachable
 // Anchor relay's blocking connect, an audio/controller shutdown or a library unload -- and a live process keeps
 // ComboShip-data's .instance.lock, so later launches ran from an empty ComboShip-data-N. Saves are written during
-// play, so once teardown has had 10 s the process ends anyway, and logs/shutdown-watchdog.log names the step it was
-// stuck in (spdlog is gone by then).
+// play (the save writer gets kSaveWriterShutdownBudget of teardown to finish them), so once teardown has had 10 s the
+// process ends anyway, and logs/shutdown-watchdog.log names the step it was stuck in (spdlog is gone by then).
+static constexpr auto kShutdownWatchdogTimeout = std::chrono::seconds(10);
+// From the watchdog's start, the save writer's time to put the last saves on disk, short of the watchdog so it can
+// still report what it could not write.
+static constexpr auto kSaveWriterShutdownBudget = std::chrono::seconds(8);
+static_assert(kSaveWriterShutdownBudget < kShutdownWatchdogTimeout);
 static std::atomic<const char*> sShutdownStage{ "start" };
 static void ShutdownStage(const char* stage) {
     sShutdownStage.store(stage);
     std::cerr << "[ComboShip] shutdown: " << stage << std::endl;
 }
+// logs/shutdown-watchdog.log: teardown trouble, written when spdlog is already gone.
+static void AppendShutdownLog(const std::string& what) {
+    std::ofstream out("logs/shutdown-watchdog.log", std::ios::app);
+    if (!out)
+        return;
+    const std::time_t now = std::time(nullptr);
+    char when[32];
+    std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
+    out << when << " " << what << std::endl;
+}
 static void StartShutdownWatchdog() {
     std::thread([]() {
-        std::this_thread::sleep_for(std::chrono::seconds(10));
+        std::this_thread::sleep_for(kShutdownWatchdogTimeout);
         const char* stage = sShutdownStage.load();
         std::cerr << "[ComboShip] shutdown watchdog: teardown stuck in '" << stage << "' for 10 s, forcing exit"
                   << std::endl;
-        std::ofstream out("logs/shutdown-watchdog.log", std::ios::app);
-        if (out) {
-            const std::time_t now = std::time(nullptr);
-            char when[32];
-            std::strftime(when, sizeof(when), "%Y-%m-%d %H:%M:%S", std::localtime(&now));
-            out << when << " teardown stuck in '" << stage << "' for 10 s; forced exit" << std::endl;
-        }
+        AppendShutdownLog(std::string("teardown stuck in '") + stage + "' for 10 s; forced exit");
 #ifdef _WIN32
         TerminateProcess(GetCurrentProcess(), 0);
 #else
         _exit(0);
 #endif
     }).detach();
+}
+
+// Quit: the save writer puts what it still holds on disk and stops (ComboContainerWriter.h). What it could not write by
+// the deadline, and writes that failed since the game in play last logged, are reported here: spdlog is gone by now.
+static void Combo_FinishSaveWrites(std::chrono::steady_clock::time_point deadline) {
+    auto& writer = ComboContainerIo::SharedWriter();
+    const int unwritten = writer.Stop(deadline);
+    ComboSaveTiming::ContainerWriterReport report;
+    writer.TakeReport(&report);
+    const std::string described = ComboSaveTiming::DescribeWriterReport(report);
+    std::cerr << "[ComboShip] shutdown: " << described << std::endl;
+    if (report.failed > 0)
+        AppendShutdownLog(described);
+    if (unwritten > 0) {
+        const std::string lost = std::to_string(unwritten) +
+                                 " save snapshot(s) not on disk by the shutdown deadline; the last saves of those "
+                                 "slots are lost";
+        std::cerr << "[ComboShip] ERROR: " << lost << std::endl;
+        AppendShutdownLog(lost);
+    }
 }
 
 // Cross-game delivery dispatcher (issue #3). Registered into BOTH DLLs; invoked by the collector
@@ -4257,6 +4301,8 @@ int main(int argc, char** argv) {
     MM_SetComboSaveIO = (FnSetComboSaveIO)GetSym(mmModule, "MM_SetComboSaveIO");
     SOH_SetContainerIoStatsGetter = (FnSetContainerIoStatsGetter)GetSym(sohModule, "SOH_SetContainerIoStatsGetter");
     MM_SetContainerIoStatsGetter = (FnSetContainerIoStatsGetter)GetSym(mmModule, "MM_SetContainerIoStatsGetter");
+    SOH_SetContainerWriterFrame = (FnSetContainerWriterFrame)GetSym(sohModule, "SOH_SetContainerWriterFrame");
+    MM_SetContainerWriterFrame = (FnSetContainerWriterFrame)GetSym(mmModule, "MM_SetContainerWriterFrame");
     MM_SetComboLiveWriteRead = (FnSetComboLiveWriteRead)GetSym(mmModule, "MM_SetComboLiveWriteRead");
     SOH_LoadComboRando = (FnTakeStr)GetSym(sohModule, "SOH_LoadComboRando");
     MM_LoadComboRando = (FnTakeStr)GetSym(mmModule, "MM_LoadComboRando");
@@ -4623,6 +4669,10 @@ int main(int argc, char** argv) {
         SOH_SetContainerIoStatsGetter(&Combo_GetContainerIoStats);
     if (MM_SetContainerIoStatsGetter)
         MM_SetContainerIoStatsGetter(&Combo_GetContainerIoStats);
+    if (SOH_SetContainerWriterFrame)
+        SOH_SetContainerWriterFrame(&Combo_ContainerWriterFrame);
+    if (MM_SetContainerWriterFrame)
+        MM_SetContainerWriterFrame(&Combo_ContainerWriterFrame);
     if (MM_SetComboLiveWriteRead)
         MM_SetComboLiveWriteRead(&Combo_ReadGameSaveForLiveWrite);
     if (SOH_SetCopyContainer)
@@ -4734,6 +4784,11 @@ int main(int argc, char** argv) {
     }
 
     StartShutdownWatchdog();
+    const auto saveWriteDeadline = std::chrono::steady_clock::now() + kSaveWriterShutdownBudget;
+    // Both game loops are done: put their saves on disk before a teardown step can hang and the watchdog ends the
+    // process with them still unwritten. Saves made later in teardown are written by Combo_FinishSaveWrites.
+    ShutdownStage("writing saves");
+    ComboContainerIo::SharedWriter().Drain(saveWriteDeadline);
     // Teardown order is load-bearing: MM before SOH (MM holds a shared_ptr to the SHARED Context;
     // SOH's DeinitOTR releases the last ref, running ~Context here — saves geometry/config, destroys
     // the window). All thread-owners must be joined before the FreeDll calls (joining under the loader
@@ -4775,6 +4830,8 @@ int main(int argc, char** argv) {
         ShutdownStage("SOH_Deinit");
         SOH_Deinit();
     }
+    ShutdownStage("writing the last saves");
+    Combo_FinishSaveWrites(saveWriteDeadline);
     ShutdownStage("deinit done, freeing comboui");
 #ifdef _WIN32
     // ~Context destroyed lus's CrashHandler (and its filter is Context-dependent anyway);
