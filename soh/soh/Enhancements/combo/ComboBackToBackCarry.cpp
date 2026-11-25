@@ -5,9 +5,9 @@
 
 #include "ComboExport.h"
 #include "rando/ComboBackToBackCarry.h"
+#include "z64.h" // declares its own extern "C", and pulls in <memory> under C++
 
 extern "C" {
-#include "z64.h"
 #include "macros.h"
 #include "variables.h"
 }
