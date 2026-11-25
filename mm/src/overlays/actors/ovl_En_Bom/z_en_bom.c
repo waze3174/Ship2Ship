@@ -10,6 +10,10 @@
 #include "objects/gameplay_keep/gameplay_keep.h"
 
 #include "2s2h/GameInteractor/GameInteractor.h"
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
+#include <libultraship/bridge/consolevariablebridge.h>
+#endif
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -128,6 +132,27 @@ static InitChainEntry sInitChain[] = {
     ICHAIN_F32_DIV1000(gravity, -4000, ICHAIN_STOP),
 };
 
+#ifdef COMBO_BUILD
+// SoH's Bomb Timer Multiplier (soh z_en_bom.c EnBom_Init) for a bomb taken out on OOT's bag: the fuse is scaled, and
+// the bomb shows and sounds at once, since the cue at timer 67 would come late (or never) on a scaled fuse.
+static void EnBom_ComboInitOotOrigin(EnBom* this) {
+    f32 timerMultiplier;
+
+    this->comboIsOotOrigin = !this->isPowderKeg && Combo_MmOotExplosiveOriginPending(-1);
+    if (!this->comboIsOotOrigin) {
+        return;
+    }
+
+    timerMultiplier = CVarGetFloat(COMBO_SOH_CVAR_BOMB_TIMER_MULTIPLIER, 1.0f);
+    if (timerMultiplier != 1.0f) {
+        this->timer *= timerMultiplier;
+        this->comboFuseSetUp = true;
+        Actor_PlaySfx(&this->actor, NA_SE_PL_TAKE_OUT_SHIELD);
+        Actor_SetScale(&this->actor, enBomScales[this->isPowderKeg]);
+    }
+}
+#endif
+
 void EnBom_Init(Actor* thisx, PlayState* play) {
     EnBom* this = (EnBom*)thisx;
     s32 params;
@@ -173,6 +198,10 @@ void EnBom_Init(Actor* thisx, PlayState* play) {
     this->collider2.elements[0].dim.worldSphere.center.z = this->actor.world.pos.z;
 
     this->actor.flags |= ACTOR_FLAG_FREEZE_EXCEPTION;
+
+#ifdef COMBO_BUILD
+    EnBom_ComboInitOotOrigin(this);
+#endif
 
     if (Actor_HasParent(&this->actor, play)) {
         this->actionFunc = EnBom_WaitForRelease;
@@ -466,7 +495,12 @@ void EnBom_Update(Actor* thisx, PlayState* play) {
             }
         }
 
+#ifdef COMBO_BUILD
+        if ((!this->isPowderKeg && (this->timer == 67) && !this->comboFuseSetUp) ||
+            (this->isPowderKeg && (this->timer <= 2400))) {
+#else
         if ((!this->isPowderKeg && (this->timer == 67)) || (this->isPowderKeg && (this->timer <= 2400))) {
+#endif
             Actor_PlaySfx(thisx, NA_SE_PL_TAKE_OUT_SHIELD);
             Actor_SetScale(thisx, enBomScales[this->isPowderKeg]);
         }

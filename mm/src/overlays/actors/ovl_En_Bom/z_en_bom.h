@@ -35,6 +35,11 @@ typedef struct EnBom {
     /* 0x1FA */ s16 unk_1FA;
     /* 0x1FC */ u8 unk_1FC;
     /* 0x200 */ EnBomActionFunc actionFunc;
-} EnBom; // size = 0x204
+#ifdef COMBO_BUILD
+    // ComboShip: a bomb taken out on OOT's bag takes SoH's explosive enhancements (OOT items in Termina).
+    /* 0x204 */ u8 comboIsOotOrigin;
+    /* 0x205 */ u8 comboFuseSetUp; // the fuse was scaled at spawn (Bomb Timer Multiplier), so no take-out cue at 67
+#endif
+} EnBom; // size = 0x204 (0x206 in a combo build)
 
 #endif // Z_EN_BOM_H

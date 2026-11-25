@@ -87,10 +87,18 @@ static s32 Combo_PlayerAmmo(s32 item);
 static void Combo_PlayerChangeAmmo(s32 item, s16 n);
 #define COMBO_PLAYER_AMMO(item) Combo_PlayerAmmo(item)
 #define COMBO_PLAYER_CHANGE_AMMO(item, n) Combo_PlayerChangeAmmo(item, n)
+// The explosive spawned next came from an OOT item (a bomb or bombchu taken out on OOT's bag): see
+// Combo_MmOotExplosiveOriginPending.
+static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
+#define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) \
+    Combo_MmOotExplosiveOriginPending(Combo_PlayerExplosiveFromOot(explosiveType))
+#define COMBO_EXPLOSIVE_SPAWN_END() Combo_MmOotExplosiveOriginPending(0)
 #else
 #define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
 #define COMBO_PLAYER_AMMO(item) AMMO(item)
 #define COMBO_PLAYER_CHANGE_AMMO(item, n) Inventory_ChangeAmmo(item, n)
+#define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) ((void)0)
+#define COMBO_EXPLOSIVE_SPAWN_END() ((void)0)
 #endif
 
 void Player_Init(Actor* thisx, PlayState* play);
@@ -3561,11 +3569,13 @@ void Player_InitExplosiveIA(PlayState* play, Player* this) {
         gSaveContext.powderKegTimer = 200;
     }
 
+    COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType);
     explosiveActor = Actor_SpawnAsChild(&play->actorCtx, &this->actor, play, explosiveInfo->actorId,
                                         this->actor.world.pos.x, this->actor.world.pos.y, this->actor.world.pos.z,
                                         (explosiveType == PLAYER_EXPLOSIVE_POWDER_KEG) ? BOMB_EXPLOSIVE_TYPE_POWDER_KEG
                                                                                        : BOMB_EXPLOSIVE_TYPE_BOMB,
                                         this->actor.shape.rot.y, 0, BOMB_TYPE_BODY);
+    COMBO_EXPLOSIVE_SPAWN_END();
     if (explosiveActor != NULL) {
         if ((explosiveType == PLAYER_EXPLOSIVE_BOMB) && (play->unk_1887E != 0)) {
             play->unk_1887E--;
@@ -4851,6 +4861,17 @@ static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction item
         return;
     }
     *bag = (Combo_MmPauseForeignHostItem(item) != ITEM_NONE) ? Combo_MmOotItemOf(item) : -1;
+}
+
+static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType) {
+    switch (explosiveType) {
+        case PLAYER_EXPLOSIVE_BOMB:
+            return sComboBombBag >= 0;
+        case PLAYER_EXPLOSIVE_BOMBCHU:
+            return sComboBombchuBag >= 0;
+        default:
+            return false;
+    }
 }
 
 static s32 Combo_PlayerAmmo(s32 item) {

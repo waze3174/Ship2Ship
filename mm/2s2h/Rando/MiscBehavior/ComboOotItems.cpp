@@ -423,6 +423,13 @@ extern "C" const void* Combo_MmOotWornMaskDL(void) {
     }
 }
 
+static int sExplosiveOriginPending = 0;
+extern "C" int Combo_MmOotExplosiveOriginPending(int set) {
+    if (set >= 0)
+        sExplosiveOriginPending = set;
+    return sExplosiveOriginPending;
+}
+
 static int sFwArrivalPending = 0;
 extern "C" int Combo_MmOotFaroresWindArrivalPending(int set) {
     if (set >= 0)

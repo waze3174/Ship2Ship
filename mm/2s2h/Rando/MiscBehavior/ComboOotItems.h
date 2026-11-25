@@ -34,6 +34,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_FAST_BOOMERANG "gEnhancements.FastBoomerang"
 #define COMBO_SOH_CVAR_HOOKSHOT_EVERYTHING "gCheats.HookshotEverything"
 #define COMBO_SOH_CVAR_BOW_RETICLE "gEnhancements.BowReticle"
+#define COMBO_SOH_CVAR_BOMB_TIMER_MULTIPLIER "gCheats.BombTimerMultiplier"
 #define COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE "gEnhancements.HookshotableReticle"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR "gCosmetics.HookshotReticle.Target.Value"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR "gCosmetics.HookshotReticle.NonTarget.Value"
@@ -78,6 +79,10 @@ int Combo_MmOotHookshotEverything(int heldItemAction);
 // Longshot, drawn in place of MM's reticle at the hit point `poly` / `bgId` of Player_DrawHookshotReticle's line test.
 // Returns 1 when it drew the reticle, 0 when MM's own should be drawn.
 int Combo_MmOotDrawHookshotReticle(struct PlayState* play, struct Player* player, struct CollisionPoly* poly, int bgId);
+
+// Set while Player spawns an explosive that came from an OOT item (a bomb or bombchu taken out on OOT's bag), so the
+// actor's Init marks itself as OOT's and takes SoH's explosive enhancements. set: 1 / 0; query: -1 returns the flag.
+int Combo_MmOotExplosiveOriginPending(int set);
 
 // Farore's Wind in Termina: OOT's "warp / dispel / exit" choice box, and the arrival flag Player_Init reads
 // (set: 1 / 0; query: -1 returns the flag).
