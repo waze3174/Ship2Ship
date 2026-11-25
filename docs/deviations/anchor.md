@@ -492,6 +492,7 @@ and the packets below are not understood by older builds.
 - `Save/coop-outbox.json`: save-affecting packets that could not be sent (link down, or sent but not confirmed).
   Written through a temp file and a rename. Each entry carries the seed (`masterSeed`) and the room it was made for
   and is delivered only into that playthrough and room. Entries expire after 48 h, the file holds at most 4096.
+  The file carries the `COMBO_RELEASE_VERSION` major.minor (`"release"`); another release, or a file without the stamp, is not replayed.
 - `Save/backups/<yyyy-mm-dd_hh-mm-ss>/`: a copy of every `file*.combosav` and `file*.combosav.temp`, made at launch
   before any container is read. The newest 10 folders are kept; only folders named like that are ever pruned.
 - `diagnostics/<time>/`: the bundle above, made by the button only.

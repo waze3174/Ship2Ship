@@ -12,6 +12,7 @@
 using namespace ComboAnchorCore;
 
 static const int64_t kNow = 1800000000; // any fixed "now" (unix seconds)
+static const std::string kRelease = "0.4.0";
 static const std::string kRoomA = MakeScope("anchor.hm64.org", 43383, "roomA");
 static const std::string kRoomB = MakeScope("anchor.hm64.org", 43383, "roomB");
 
@@ -192,14 +193,15 @@ static void TestPersistenceRoundTrip() {
     OutboxPush(outbox, Entry(0, kRoomA, GiveItem(2, 3), kNow - 10)); // unknown seed: memory only
     OutboxPush(outbox, Entry(222, "", GiveItem(3, 3), kNow - 20));   // no scope yet
 
-    const nlohmann::json file = OutboxToJson(outbox);
+    const nlohmann::json file = OutboxToJson(outbox, kRelease);
     CHECK(file.value("version", 0) == 1);
+    CHECK(file.value("release", "") == "0.4");
     CHECK(file["entries"].size() == 2);
     CHECK(!file["entries"][1].contains("scope")); // empty scope is simply omitted
 
     // Through text, like the real file.
     std::deque<OutboxEntry> loaded;
-    CHECK(OutboxFromJson(nlohmann::json::parse(file.dump()), loaded, kNow) == 2);
+    CHECK(OutboxFromJson(nlohmann::json::parse(file.dump()), loaded, kNow, kRelease) == 2);
     CHECK(loaded.size() == 2);
     CHECK(loaded[0].seed == 111u && loaded[0].scope == kRoomA && loaded[0].heldAt == kNow - 10);
     CHECK(loaded[0].packet == GiveItem(1, 3));
@@ -208,18 +210,20 @@ static void TestPersistenceRoundTrip() {
     // An outbox with nothing persistable serializes to an empty entry list (the launcher removes the file).
     std::deque<OutboxEntry> memoryOnly;
     OutboxPush(memoryOnly, Entry(0, kRoomA, "x"));
-    CHECK(OutboxToJson(memoryOnly)["entries"].empty());
+    CHECK(OutboxToJson(memoryOnly, kRelease)["entries"].empty());
 }
 
 static void TestLoadIsDefensive() {
     // A file written by the first outbox build: no "scope" field.
-    const char* legacy = "{\"version\":1,\"entries\":[{\"seed\":111,\"heldAt\":1799999990,\"packet\":\"{}\"}]}";
+    const char* legacy =
+        "{\"version\":1,\"release\":\"0.4\",\"entries\":[{\"seed\":111,\"heldAt\":1799999990,\"packet\":\"{}\"}]}";
     std::deque<OutboxEntry> outbox;
-    CHECK(OutboxFromJson(nlohmann::json::parse(legacy), outbox, kNow) == 1);
+    CHECK(OutboxFromJson(nlohmann::json::parse(legacy), outbox, kNow, kRelease) == 1);
     CHECK(outbox.size() == 1 && outbox[0].scope.empty() && outbox[0].packet == "{}");
 
     // Bad entries are skipped one by one; the good one in between survives.
     nlohmann::json file = nlohmann::json::object();
+    file["release"] = "0.4";
     file["entries"] = nlohmann::json::array();
     file["entries"].push_back(nlohmann::json::parse("{\"seed\":0,\"heldAt\":1799999990,\"packet\":\"p\"}")); // no seed
     file["entries"].push_back(nlohmann::json::parse("{\"seed\":5,\"heldAt\":1799999990,\"packet\":\"\"}"));  // empty
@@ -229,14 +233,38 @@ static void TestLoadIsDefensive() {
     file["entries"].push_back(nlohmann::json::parse("\"just a string\""));
     file["entries"].push_back(nlohmann::json::parse("{\"seed\":5,\"heldAt\":1799999990,\"packet\":\"good\"}"));
     outbox.clear();
-    CHECK(OutboxFromJson(file, outbox, kNow) == 1);
+    CHECK(OutboxFromJson(file, outbox, kNow, kRelease) == 1);
     CHECK(outbox.size() == 1 && outbox[0].packet == "good");
 
     // Wrong shapes at the top never throw and load nothing.
     outbox.clear();
-    CHECK(OutboxFromJson(nlohmann::json::parse("[]"), outbox, kNow) == 0);
-    CHECK(OutboxFromJson(nlohmann::json::parse("{}"), outbox, kNow) == 0);
-    CHECK(OutboxFromJson(nlohmann::json::parse("{\"entries\":5}"), outbox, kNow) == 0);
+    CHECK(OutboxFromJson(nlohmann::json::parse("[]"), outbox, kNow, kRelease) == 0);
+    CHECK(OutboxFromJson(nlohmann::json::parse("{}"), outbox, kNow, kRelease) == 0);
+    CHECK(OutboxFromJson(nlohmann::json::parse("{\"release\":\"0.4\",\"entries\":5}"), outbox, kNow, kRelease) == 0);
+    CHECK(outbox.empty());
+}
+
+static void TestReleaseStamp() {
+    std::deque<OutboxEntry> held;
+    OutboxPush(held, Entry(111, kRoomA, GiveItem(1, 3), kNow - 10));
+    const nlohmann::json file = OutboxToJson(held, kRelease);
+    std::deque<OutboxEntry> outbox;
+
+    // Patch releases share the stamp; another major.minor is not replayed.
+    CHECK(ReleaseMajorMinor("0.4.0") == "0.4" && ReleaseMajorMinor("0.4.7") == "0.4");
+    CHECK(OutboxFromJson(file, outbox, kNow, "0.4.7") == 1);
+    outbox.clear();
+    CHECK(OutboxFromJson(file, outbox, kNow, "0.3.0") == 0);
+    CHECK(OutboxFromJson(file, outbox, kNow, "1.4.0") == 0);
+    CHECK(outbox.empty());
+
+    // A file from before the stamp, or with a stamp of the wrong type, loads nothing.
+    nlohmann::json unstamped = file;
+    unstamped.erase("release");
+    CHECK(OutboxFromJson(unstamped, outbox, kNow, kRelease) == 0);
+    nlohmann::json wrongType = file;
+    wrongType["release"] = 4;
+    CHECK(OutboxFromJson(wrongType, outbox, kNow, kRelease) == 0);
     CHECK(outbox.empty());
 }
 
@@ -251,4 +279,5 @@ void RunOutboxTests() {
     TestRestampClientId();
     TestPersistenceRoundTrip();
     TestLoadIsDefensive();
+    TestReleaseStamp();
 }

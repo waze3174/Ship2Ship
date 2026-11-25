@@ -641,12 +641,6 @@ static bool ComboIsValidSlot(int fileNum) {
     return fileNum >= 0 && fileNum <= 2;
 }
 
-// Save compat is gated on major.minor only: patch releases must never change save-affecting behavior.
-static std::string ComboReleaseMajorMinor(const std::string& v) {
-    size_t dot = v.find('.');
-    return v.substr(0, dot == std::string::npos ? std::string::npos : v.find('.', dot + 1));
-}
-
 // Reads a container file into j; false, with j untouched, when it cannot be opened or is not a whole JSON object.
 static bool ReadContainerJson(const std::filesystem::path& file, nlohmann::json& j) {
     std::ifstream in(file);
@@ -714,7 +708,8 @@ static nlohmann::json& LoadOrCreateContainer(int fileNum) {
     if (parsed) {
         auto rel = j.find("comboRelease");
         if (rel == j.end() || !rel->is_string() ||
-            ComboReleaseMajorMinor(rel->get<std::string>()) != ComboReleaseMajorMinor(COMBO_RELEASE_VERSION)) {
+            ComboAnchorCore::ReleaseMajorMinor(rel->get<std::string>()) !=
+                ComboAnchorCore::ReleaseMajorMinor(COMBO_RELEASE_VERSION)) {
             std::filesystem::rename(source, path.string() + "-" + std::to_string(std::time(nullptr)) + ".bak", ec);
             g_evictedSlots.push_back(fileNum); // caller holds g_containerMutex
             g_hasEvictedSlots = true;
@@ -1645,7 +1640,7 @@ static void PersistOutboxIfDirty() {
         if (!sOutboxDirty)
             return;
         sOutboxDirty = false;
-        const nlohmann::json file = Core::OutboxToJson(sOutbox);
+        const nlohmann::json file = Core::OutboxToJson(sOutbox, COMBO_RELEASE_VERSION);
         if (!file["entries"].empty())
             text = file.dump();
     }
@@ -1684,7 +1679,7 @@ static void LoadOutboxFromDiskLocked() {
     try {
         nlohmann::json j;
         in >> j;
-        const size_t loaded = Core::OutboxFromJson(j, sOutbox, (int64_t)std::time(nullptr));
+        const size_t loaded = Core::OutboxFromJson(j, sOutbox, (int64_t)std::time(nullptr), COMBO_RELEASE_VERSION);
         std::cout << "[ComboShip][Anchor] restored " << loaded << " held co-op packet(s) from disk" << std::endl;
     } catch (...) { std::cerr << "[ComboShip][Anchor] ignoring unreadable co-op outbox file\n"; }
     sOutboxCount.store((int)sOutbox.size());

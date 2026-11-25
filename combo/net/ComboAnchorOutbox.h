@@ -157,10 +157,18 @@ inline OutboxFlush OutboxTakeSendable(std::deque<OutboxEntry>& outbox, uint32_t 
     return result;
 }
 
-// Disk form: { "version": 1, "entries": [ { seed, heldAt, packet, scope? } ] }. Entries with an
-// unknown seed are not written: they could not be matched to a playthrough on a later run. "scope" is
-// optional, so files written by the first outbox build still load (and that build ignores the field).
-inline nlohmann::json OutboxToJson(const std::deque<OutboxEntry>& outbox) {
+// The save-compat part of a release string ("0.4.0" -> "0.4"): patch releases keep saves and held packets.
+inline std::string ReleaseMajorMinor(const std::string& release) {
+    const size_t dot = release.find('.');
+    return release.substr(0, dot == std::string::npos ? std::string::npos : release.find('.', dot + 1));
+}
+
+// Disk form: { "version": 1, "release": "<major.minor>", "entries": [ { seed, heldAt, packet, scope? } ] }.
+// Entries with an unknown seed are not written: they could not be matched to a playthrough on a later
+// run. "scope" is optional, so files written by the first outbox build still load (and that build
+// ignores the field). "release" is the build's COMBO_RELEASE_VERSION: a held packet's meaning can change
+// between releases, so a file from another release (or from before the stamp) is not replayed.
+inline nlohmann::json OutboxToJson(const std::deque<OutboxEntry>& outbox, const std::string& release) {
     nlohmann::json entries = nlohmann::json::array();
     for (const auto& e : outbox) {
         if (e.seed == 0)
@@ -175,14 +183,21 @@ inline nlohmann::json OutboxToJson(const std::deque<OutboxEntry>& outbox) {
     }
     nlohmann::json out = nlohmann::json::object();
     out["version"] = 1;
+    out["release"] = ReleaseMajorMinor(release);
     out["entries"] = std::move(entries);
     return out;
 }
 
-// Append the usable entries of a parsed outbox file. Skips expired, seedless, empty and malformed
-// entries; one bad entry never discards the rest. Returns how many were loaded.
-inline size_t OutboxFromJson(const nlohmann::json& file, std::deque<OutboxEntry>& outbox, int64_t now) {
+// Append the usable entries of a parsed outbox file written by this release. Loads nothing when the
+// release stamp is missing or differs. Skips expired, seedless, empty and malformed entries; one bad
+// entry never discards the rest. Returns how many were loaded.
+inline size_t OutboxFromJson(const nlohmann::json& file, std::deque<OutboxEntry>& outbox, int64_t now,
+                             const std::string& release) {
     if (!file.is_object())
+        return 0;
+    const auto stamp = file.find("release");
+    if (stamp == file.end() || !stamp->is_string() ||
+        ReleaseMajorMinor(stamp->get<std::string>()) != ReleaseMajorMinor(release))
         return 0;
     const auto entries = file.find("entries");
     if (entries == file.end() || !entries->is_array())
