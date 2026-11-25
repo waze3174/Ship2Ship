@@ -2,10 +2,11 @@
 // ComboShip: the mode of one save slot, stored in the slot's .combosav container as combo.mode:
 //   { "game": "ootmm"|"oot"|"mm", "kind": "rando"|"vanilla", "quest": "normal"|"mq", "sequential": true }
 // game is the game(s) the slot plays, kind is whether a randomizer seed is bound to it, and quest is the OoT quest
-// of a vanilla OoT slot. An absent key (every save before this setting) is a combo randomizer slot. A vanilla Majora's
-// Mask slot is { "game": "mm", "kind": "vanilla" }. A back-to-back slot (vanilla Ocarina of Time, then vanilla
-// Majora's Mask, in one slot) is { "game": "ootmm", "kind": "vanilla", "sequential": true }; "sequential" is written
-// only there.
+// of a vanilla OoT slot or of the Ocarina of Time half of a back-to-back slot. An absent key (every save before this
+// setting) is a combo randomizer slot. A vanilla Majora's Mask slot is { "game": "mm", "kind": "vanilla" }. A
+// back-to-back slot (vanilla Ocarina of Time, then vanilla Majora's Mask, in one slot) is
+// { "game": "ootmm", "kind": "vanilla", "sequential": true }; "sequential" is written only there, and a back-to-back
+// slot without a "quest" key (made before the Master Quest choice) is a Normal Quest one.
 // Header-only, compiled into the exe and soh.dll. See docs/deviations/rando.md "Save modes: vanilla OoT".
 #pragma once
 
@@ -81,8 +82,8 @@ struct ComboMode {
     static ComboMode VanillaMm() {
         return { COMBO_GAMES_MM, COMBO_KIND_VANILLA, OOT_QUEST_NORMAL, false };
     }
-    static ComboMode BackToBack() {
-        return { COMBO_GAMES_BOTH, COMBO_KIND_VANILLA, OOT_QUEST_NORMAL, true };
+    static ComboMode BackToBack(OotQuest quest) {
+        return { COMBO_GAMES_BOTH, COMBO_KIND_VANILLA, quest, true };
     }
 
     nlohmann::json ToJson() const {
@@ -114,14 +115,15 @@ struct ComboMode {
     }
 };
 
-// The label the OoT file select draws on a slot, in its small quest label box (uppercase letters only, at most
-// kSlotLabelMaxLen of them). nullptr: no label, a plain Normal Quest slot.
+// The label the OoT file select draws on a slot, in its small quest label box (uppercase letters, digits and spaces
+// only, at most kSlotLabelMaxLen of them). nullptr: no label, a plain Normal Quest slot.
 //   COMBO: Combo Randomizer   OOTR: OoT Randomizer   MMR: MM Randomizer
-//   MQ: OoT Master Quest      MM: Majora's Mask (vanilla)      S2S: both games back to back (vanilla)
+//   MQ: OoT Master Quest      MM: Majora's Mask (vanilla)
+//   S2S: both games back to back (vanilla)      S2S MQ: the same, with Ocarina of Time's Master Quest
 inline constexpr int kSlotLabelMaxLen = 8;
 inline const char* ComboModeLabel(const ComboMode& m) {
     if (m.IsBackToBack())
-        return "S2S";
+        return m.quest == OOT_QUEST_MQ ? "S2S MQ" : "S2S";
     if (m.IsVanillaMm())
         return "MM";
     if (m.IsVanillaOot())

@@ -1921,8 +1921,14 @@ static void FileChoose_DrawQuestLabelText(FileChooseContext* this, Vtx* labelVtx
     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 0, 0, 0, alpha);
     gSPVertex(POLY_OPA_DISP++, vtx, len * 4, 0);
     for (int i = 0; i < len; i++) {
-        FileChoose_DrawCharacter(this->state.gfxCtx,
-                                 this->font.fontBuf + (letterA + text[i] - 'A') * FONT_CHAR_TEX_SIZE, i * 4);
+        if (text[i] == ' ') {
+            continue;
+        }
+        // digits sit at no fixed distance from A in the loaded font, so they come from the port's character table
+        void* glyph = (text[i] >= 'A' && text[i] <= 'Z')
+                          ? this->font.fontBuf + (letterA + text[i] - 'A') * FONT_CHAR_TEX_SIZE
+                          : Ship_GetCharFontTexture(text[i]);
+        FileChoose_DrawCharacter(this->state.gfxCtx, glyph, i * 4);
     }
 
     // back to the combiner the file buttons use

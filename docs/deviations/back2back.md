@@ -7,9 +7,10 @@ child Link; Majora's defeat opens the way back. Save compatibility: no `COMBO_RE
 an existing field; the only new key is `sequential` inside `combo.mode`. An older build reads such a slot as a combo
 randomizer slot with no seed, so downgrading is not covered.
 
-This page records stage A: the plumbing and the story gates. Not done yet: MM's real opening on first entry, item locks
-in Termina, carrying capacities over, the settings tab, adult Link in Termina and "everything usable" after both games
-(see "Not done yet").
+This page records stage A: the plumbing and the story gates, and the first setting of the mode's own page (Master Quest
+for Ocarina of Time's half). Not done yet: MM's real opening on first entry, item locks in Termina, carrying capacities
+over, the rest of the settings page, adult Link in Termina and "everything usable" after both games (see "Not done
+yet").
 
 ## The mode
 
@@ -19,14 +20,14 @@ in Termina, carrying capacities over, the settings tab, adult Link in Termina an
 "mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true }
 ```
 
-- `ComboMode::BackToBack()`, `IsBackToBack()`. `sequential` is written only for this mode. `FromJson` reads a vanilla
+- `ComboMode::BackToBack(quest)`, `IsBackToBack()`. `sequential` is written only for this mode. `FromJson` reads a vanilla
   `ootmm` as a back-to-back slot only when `sequential` is true; every older mode reads exactly as before (a vanilla
   `ootmm` without it is still a randomizer slot).
 - `IsVanilla()` is true, so the launcher's vanilla paths (no seed bound, no combo rando pushed) apply. `game` is
   `ootmm`, so `Combo_GamesSolo()` is false in both DLLs and the cross-game code is not refused as in a one-game slot.
 - `HasVanillaMmSave()` (vanilla MM slot or back-to-back) is what `LoadComboCompletion` pushes to `MM_SetComboVanillaSlot`,
   so `Combo_LoadMMSaveFile` expects, and loads, a `SAVETYPE_VANILLA` save for the MM half.
-- `ComboModeLabel` returns `S2S`; the file select draws it where it draws the other mode labels
+- `ComboModeLabel` returns `S2S`, or `S2S MQ` for a Master Quest slot (see "Master Quest"); the file select draws it where it draws the other mode labels
   (`FileChoose_GetQuestLabelText`, `Combo_SlotModeLabel`).
 - Creation: `Combo_InitBackToBackSlot` (`combo/ComboShip.cpp`) makes the vanilla slot (no seed), then
   `MM_InitVanillaSaveFile`, as `Combo_InitVanillaMmSlot` does, but the slot's last game stays OoT. Nothing is shared:
@@ -36,10 +37,43 @@ in Termina, carrying capacities over, the settings tab, adult Link in Termina an
 ### The carousel entry
 
 `QUEST_COMBO_BACK2BACK` (7, `soh/include/z64save.h`) follows `QUEST_COMBO_MM` (6). Like it, it exists only in the file
-select's `questType[]` and `gComboNewSaveQuest`; `QUEST_SAVE_ID()` stores the OoT half as a Normal Quest file. Touched:
+select's `questType[]` and `gComboNewSaveQuest`; `QUEST_SAVE_ID()` stores the OoT half as a Normal Quest file, or a Master Quest one when the setting asks for it (see
+"Master Quest"). Touched:
 `MAX_QUEST` and the draw case (`z_file_choose.c`, the Ship2Ship logo 128x128 centred at 160,135 where the other logos are
 centred), `SohFileSelect_IsQuestHidden` and `SohFileSelect_CountVisibleQuests` (`FileSelectEnhancements.cpp`), and the
 static_assert in `OTRGlobals.cpp` that ties the value to `kSohQuestComboBackToBack` in `ComboMode.h`.
+
+## The settings page and Master Quest
+
+Settings > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
+the choices apply to new back-to-back files when they're created. Every setting on it is read once, when a file is
+created, and is fixed for that file from then on; later stages add the rest of the mode's settings to the same page.
+The CVars live under `gCombo.BackToBack.` (`combo/rando/ComboBackToBackSettings.h`); each is a leaf, and no
+`gCombo.BackToBack` leaf exists to collide with that subtree. Presets carry them like any other `gCombo.` preference.
+
+**Master Quest** (`gCombo.BackToBack.MasterQuest`, 0 or unset = Normal Quest, 1 = Master Quest). The file's quest is
+decided where OoT stores it:
+
+1. Choosing the back-to-back entry on the file select runs `QUEST_SAVE_ID` (`soh/include/z64save.h`), which for the
+   back-to-back entry calls `Combo_BackToBackSaveQuest` (`soh/soh/OTRGlobals.cpp`): `QUEST_MASTER` when the CVar is on
+   and `oot-mq.o2r` is loaded (`OTRGlobals::HasMasterQuest`, the check the carousel's own Master Quest entry uses),
+   else `QUEST_NORMAL`. It runs again when the file is created (`Sram_InitSave`, `z_sram.c`), and that is the value
+   saved: `gSaveContext.ship.quest.id`, exactly as for a vanilla Master Quest file.
+2. The new-save callback runs after OoT has written the save, so `Combo_InitBackToBackSlot` reads the stored quest
+   (`SOH_GetNewSaveStoredQuest`) and writes it into the slot's `combo.mode` as `"quest": "mq"`. The mode records what the
+   save plays; the setting is never read again.
+3. Every later load plays the stored quest: OoT's `IS_MASTER_QUEST` and `ResourceMgr_IsGameMasterQuest` follow
+   `quest.id`, whatever the CVar says by then. A slot made before this setting has no `quest` key and reads as Normal
+   Quest.
+
+Without `oot-mq.o2r` the page shows the setting greyed out with the reason ("Needs the Master Quest ROM (oot-mq.o2r)...",
+asked of `SOH_GameHasMasterQuest`), and a new back-to-back file is a Normal Quest one even if the CVar is on, so a file
+that cannot load is never made.
+
+The file select marks such a slot `S2S MQ` in the quest label box (it shows `S2S` for a Normal Quest one). Normal and
+Master Quest vanilla OoT slots show `MQ` through that same box; a back-to-back slot has only the one label, so its
+mode's label carries both. The label drawer (`FileChoose_DrawQuestLabelText`) draws letters from the loaded font as
+before and everything else (digits, which `S2S` needs) from the port's character table; a space is skipped.
 
 ## The cross gate
 
@@ -121,5 +155,5 @@ Read from the code, not run. Stage B replaces this.
 - MM's real opening on first entry (stage B).
 - Item locks in Termina and the pause menu's Hyrule face: while not solo, OoT's items are visible and usable from Termina
   as in a combo slot. Shared health (an opt-in CVar) also applies if the player has it on.
-- Carry-over of capacities (hearts, magic, quiver, bomb bag, wallet, bottles), the settings tab, adult Link in Termina
+- Carry-over of capacities (hearts, magic, quiver, bomb bag, wallet, bottles), the rest of the settings page, adult Link in Termina
   (the adult path stays closed), and everything usable after both games.

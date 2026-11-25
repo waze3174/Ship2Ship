@@ -3,6 +3,7 @@
 #include "ComboBothGames.h"    // Settings > Both games: one control that sets both games
 #include "ComboSettingsLink.h" // first-time merge of the two games' values
 #include "ComboPresetPanels.h" // Settings > Presets and Import from Ship2Ship or ComboShip panels
+#include "ComboBackToBackPanel.h"
 #include "ComboExport.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
@@ -497,7 +498,8 @@ struct HubEntry {
         COMBO_PRESETS,
         COMBO_CONFIG_IMPORT,
         COMBO_NETWORK,
-        COMBO_BOTH_GAMES
+        COMBO_BOTH_GAMES,
+        COMBO_BACK_TO_BACK
     } kind;
     const ComboRando::GameMenu* game = nullptr; // ENGINE/OOT_RANDO/MM_RANDO
     int sectionIndex = -1;
@@ -1401,6 +1403,14 @@ void ComboMenu::DrawSharedPanel() {
             if (!bothE.empty())
                 groups.push_back({ "Both games", std::move(bothE) });
         }
+        // Back to back: the settings of the back-to-back mode, applied to a file when it is created.
+        {
+            HubEntry b2b;
+            b2b.label = "New files";
+            b2b.group = "Back to back";
+            b2b.kind = HubEntry::COMBO_BACK_TO_BACK;
+            groups.push_back({ "Back to back", { std::move(b2b) } });
+        }
         // Network group: the Anchor team-sync control (covers BOTH games) plus the Ship of Harkinian
         // Network settings (Sail, Crowd Control) surfaced from the OOT menu model — moved here from the
         // OOT tab so all network settings live in one shared place.
@@ -1541,6 +1551,8 @@ void ComboMenu::DrawSharedPanel() {
         DrawNetworkSharedPanel();
     } else if (active->kind == HubEntry::COMBO_BOTH_GAMES) {
         DrawBothGamesTab(active->label.c_str());
+    } else if (active->kind == HubEntry::COMBO_BACK_TO_BACK) {
+        DrawBackToBackSharedPanel();
     } else {
         const CwSidebar& side = active->game->menu->sections[active->sectionIndex].sidebars[active->sidebarIndex];
         RenderSidebarWidgets(side, *active->game);

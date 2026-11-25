@@ -168,6 +168,8 @@
 #include "rando/CrossWarpLogic.h"     // ComboShip (teleport songs): cross-game warp logic bits
 #include "soh/Enhancements/randomizer/hook_handlers.h" // ComboShip (#164): OOT_ForeignMapGen
 #include <functional>                                  // ComboShip (#164): shared hint-resolution callbacks
+// ComboShip: the back-to-back settings page's CVars
+#include "rando/ComboBackToBackSettings.h"
 #endif
 
 #ifdef _MSC_VER
@@ -3216,6 +3218,25 @@ static_assert(SOH_SLOT_LABEL_MAX_LEN == ComboRando::kSlotLabelMaxLen,
 extern "C" int gComboNewSaveQuest = QUEST_NORMAL;
 extern "C" COMBO_EXPORT int SOH_GetNewSaveQuest(void) {
     return gComboNewSaveQuest;
+}
+
+// ComboShip: the quest the OoT half of the save being created is stored as (QUEST_SAVE_ID). Valid inside the new-save
+// callback, after the save is written.
+extern "C" COMBO_EXPORT int SOH_GetNewSaveStoredQuest(void) {
+    return gSaveContext.ship.quest.id;
+}
+
+// ComboShip: whether oot-mq.o2r is loaded, so a Master Quest file can be played.
+extern "C" COMBO_EXPORT int SOH_GameHasMasterQuest(void) {
+    return OTRGlobals::Instance->HasMasterQuest();
+}
+
+// ComboShip: the quest a new back-to-back file stores for its Ocarina of Time half. Master Quest when the setting asks
+// for it and oot-mq.o2r is loaded, so a file that couldn't load is never made. The stored quest is the file's record:
+// every later load plays it, whatever the setting is then. Called by QUEST_SAVE_ID.
+extern "C" int Combo_BackToBackSaveQuest(void) {
+    const bool wantsMasterQuest = CVarGetInteger(ComboRando::kBackToBackMasterQuestCVar, 0) != 0;
+    return wantsMasterQuest && OTRGlobals::Instance->HasMasterQuest() ? QUEST_MASTER : QUEST_NORMAL;
 }
 
 // ComboShip: the launcher's label for a file's mode, drawn on the file select (static strings, so the pointer stays

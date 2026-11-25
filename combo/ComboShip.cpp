@@ -278,6 +278,8 @@ typedef void (*FnGetPlayerName)(unsigned char*);
 static FnGetPlayerName SOH_GetCurrentPlayerName = nullptr;
 // The quest of the save OOT is creating (ComboRando::kSohQuest*); valid inside the new-save callback.
 static FnInt SOH_GetNewSaveQuest = nullptr;
+// The quest the new save's OoT half was stored as (kSohQuestNormal or kSohQuestMaster); valid in the same callback.
+static FnInt SOH_GetNewSaveStoredQuest = nullptr;
 // Nonzero = the slot's MM half is missing/broken; nothing was loaded (see SaveManager_LoadSaveFile).
 typedef int (*FnMMLoadSave)(int);
 static FnMMLoadSave MM_LoadSaveForCombo = nullptr;
@@ -3678,6 +3680,10 @@ static void Combo_InitVanillaSlot(int fileNum, const ComboRando::ComboMode& mode
     Combo_PushHintTrackerData(fileNum);
 }
 
+static ComboRando::OotQuest Combo_OotQuestOfSohQuest(int sohQuest) {
+    return sohQuest == ComboRando::kSohQuestMaster ? ComboRando::OOT_QUEST_MQ : ComboRando::OOT_QUEST_NORMAL;
+}
+
 // A new vanilla OoT slot: no MM save is made.
 static void Combo_InitVanillaOotSlot(int fileNum, ComboRando::OotQuest quest) {
     Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::VanillaOot(quest));
@@ -3707,9 +3713,12 @@ static void Combo_InitVanillaMmSlot(int fileNum) {
 
 // A new back-to-back slot: vanilla Ocarina of Time, then vanilla Majora's Mask, one save of each and no seed. MM's
 // save is made now, as for a vanilla Majora's Mask slot, but the slot's last game is OoT: it is played first and MM is
-// entered through the Lost Woods once Ganon is beaten.
+// entered through the Lost Woods once Ganon is beaten. The OoT half's quest is the one OoT just stored for the file
+// (the Master Quest setting, or Normal Quest without oot-mq.o2r), so the mode records what the save plays.
 static void Combo_InitBackToBackSlot(int fileNum) {
-    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack());
+    const ComboRando::OotQuest quest =
+        Combo_OotQuestOfSohQuest(SOH_GetNewSaveStoredQuest ? SOH_GetNewSaveStoredQuest() : ComboRando::kSohQuestNormal);
+    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack(quest));
     if (!MM_InitVanillaSaveFile) {
         std::cerr << "[ComboShip] ERROR: MM has no vanilla save creation, slot " << fileNum << " has no MM save."
                   << std::endl;
@@ -3721,7 +3730,8 @@ static void Combo_InitBackToBackSlot(int fileNum) {
     MM_InitVanillaSaveFile(fileNum, playerName);
     Combo_EraseSeedAndSharedState(fileNum); // MM's write brought the live shared state of the last slot played along
     Combo_SetLastGame(fileNum, ComboRando::GAME_OOT);
-    std::cout << "[ComboShip] Created BACK-TO-BACK slot " << fileNum << " (vanilla OoT, then vanilla MM)" << std::endl;
+    std::cout << "[ComboShip] Created BACK-TO-BACK slot " << fileNum << " (vanilla OoT"
+              << (quest == ComboRando::OOT_QUEST_MQ ? " Master Quest" : "") << ", then vanilla MM)" << std::endl;
 }
 
 // The label the OoT file select draws on a slot (ComboRando::ComboModeLabel: static strings, or nullptr for none).
@@ -3762,8 +3772,7 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         return;
     }
     if (quest != ComboRando::kSohQuestRandomizer) {
-        Combo_InitVanillaOotSlot(fileNum, quest == ComboRando::kSohQuestMaster ? ComboRando::OOT_QUEST_MQ
-                                                                               : ComboRando::OOT_QUEST_NORMAL);
+        Combo_InitVanillaOotSlot(fileNum, Combo_OotQuestOfSohQuest(quest));
         return;
     }
     // ComboShip: bind the pending consolidated seed to this slot — bake it into the container's
@@ -4177,6 +4186,7 @@ int main(int argc, char** argv) {
     SOH_SetOnExitSaveCallback = (FnSetSaveCallback)GetSym(sohModule, "SOH_SetOnExitSaveCallback");
     SOH_GetCurrentPlayerName = (FnGetPlayerName)GetSym(sohModule, "SOH_GetCurrentPlayerName");
     SOH_GetNewSaveQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveQuest");
+    SOH_GetNewSaveStoredQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveStoredQuest");
     MM_LoadSaveForCombo = (FnMMLoadSave)GetSym(mmModule, "MM_LoadSaveForCombo");
     MM_InvalidateOwlBlobSlot = (FnMMInvalidateOwlBlob)GetSym(mmModule, "MM_InvalidateOwlBlobSlot");
     SOH_ParkForComboMMResume = (FnVoid)GetSym(sohModule, "SOH_ParkForComboMMResume");

@@ -43,6 +43,7 @@ set(COMBOUI_SOURCES
     gui/ComboCosmeticsSync.cpp
     gui/ComboSettingsLink.cpp
     gui/ComboBothGames.cpp
+    gui/ComboBackToBackPanel.cpp
     gui/ComboPlayPreset.cpp
     gui/ComboPresets.cpp
     gui/ComboPresetsPanel.cpp
