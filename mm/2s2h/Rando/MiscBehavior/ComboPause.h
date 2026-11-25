@@ -59,8 +59,15 @@ const char* Combo_MmPauseNameTex(int item);       // OOT name plate (inside an "
 int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
 // The MM item whose own code runs a foreign OOT item in Termina on OOT's bag (OOT's Deku Sticks, Deku Nuts, Bombs,
 // Bombchus, Bow and Magic Beans when MM has none): the button keeps the foreign id, so that code knows to check and
-// spend OOT's count. 0xFF = none.
+// spend OOT's count. OOT's bottles (but Blue Fire and Ruto's Letter) are MM's same content, on OOT's slot. 0xFF = none.
 int Combo_MmPauseForeignHostItem(int item);
+// OOT's bottles in Termina. heldItemButton: Player heldItemButton.
+int Combo_MmPauseRunsAs(int item);   // the item itself, or for an OOT item Combo_MmPauseForeignHostItem
+int Combo_MmPauseIsBottle(int item); // MM's bottle or an OOT bottle (MM's bottle button rules apply)
+// 0 = the bottle on that button is OOT's and OOT's save has no such content (Termina's spring water, Zora Egg...).
+int Combo_MmPauseBottleCanHold(int heldItemButton, int mmItem);
+// An OOT bottle on that button takes MM content mmItem into OOT's slot; 0 = not OOT's (MM's own code writes MM's).
+int Combo_MmPauseSetForeignBottle(struct PlayState* play, int heldItemButton, int mmItem);
 int Combo_MmPauseUseItem(int item);      // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
 int Combo_MmPauseForeignSlot(int item);  // OOT slot behind a foreign id, -1 = not foreign
 int Combo_MmPauseOotItemAt(int ootSlot); // OOT's item in that OOT slot (live, 24-29 = gear), 0xFF = empty

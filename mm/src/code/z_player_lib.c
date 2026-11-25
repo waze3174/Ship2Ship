@@ -7,6 +7,7 @@
 #ifdef COMBO_BUILD
 #include "2s2h/Rando/MiscBehavior/ComboAdultBody.h" // ComboShip: adult Link in Termina
 #include "2s2h/Rando/MiscBehavior/ComboOotItems.h"  // ComboShip: OOT items in Termina
+#include "2s2h/Rando/MiscBehavior/ComboPause.h"     // ComboShip: OOT's bottles on MM's buttons
 #endif
 #include "2s2h/GameInteractor/GameInteractor.h"
 
@@ -1655,7 +1656,14 @@ void Player_SetEquipmentData(PlayState* play, Player* player) {
 
 void Player_UpdateBottleHeld(PlayState* play, Player* player, ItemId itemId, PlayerItemAction itemAction) {
     // #region 2S2H [Dpad]
+#ifdef COMBO_BUILD
+    // ComboShip: an OOT bottle on the button keeps its content in OOT's save, never in an MM slot (the button's slot
+    // byte is its foreign id); the button keeps that id, which then names the new content.
+    if (Combo_MmPauseSetForeignBottle(play, player->heldItemButton, itemId)) {
+    } else if (IS_HELD_DPAD(player->heldItemButton)) {
+#else
     if (IS_HELD_DPAD(player->heldItemButton)) {
+#endif
         Inventory_Dpad_UpdateBottleItem(play, itemId, HELD_ITEM_TO_DPAD(player->heldItemButton));
     } else {
         Inventory_UpdateBottleItem(play, itemId, player->heldItemButton);
