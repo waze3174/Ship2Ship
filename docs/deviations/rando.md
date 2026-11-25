@@ -3183,3 +3183,26 @@ large release is a burst, and teammates' partner feeds list the non-junk finds.
 `LoadComboCompletion` read, the five `GetSym` lines), `combo/gui/ComboMenu.cpp` (the checkbox),
 `soh/soh/Enhancements/randomizer/hook_handlers.cpp` (`ReplaceAdultTradeItem` in `RandomizerOnFlagSetHandler`). The two
 `ComboReleaseChecks.cpp` files and `combo/ComboRelease.h` are combo-owned.
+
+## 0.2.0 seed options in combo seeds (Ship2Ship, branch `ultimate/v0.2`)
+
+The 0.2.0 merge brought four seed options and a rename (scout report `reports/2026-11-25-scout-v0.2-seed-options.md`).
+The Fire Temple Goron shuffle and the new tricks and logic events needed nothing; the rest is wired as below.
+
+- **2S2H Additional Items** (`gRando.AdditionalItems`, a JSON list of `{item, count}` in the config, not a flat CVar).
+  The combo path never read it. `MM_DumpRandoStaticData` now puts the list into the `saveInfo` that `GeneratePools`
+  reads, and `MM_InitRandoSaveFile` writes it into the combo spoiler (`additionalItems`) so `ApplyToSaveContext` stores
+  it in the save. `MM_DumpRandoSettings` and `MM_RestoreRandoSettings` carry it like Starting Items; a snapshot without
+  it clears the list, and the restore's CVar loop skips the key. The combo's junk trim (parity doc, Table 2 row 4)
+  absorbs the extra items and hard-fails if native junk runs out.
+- **SoH Fisherman's Hat**: `RC_FISHERMANS_HAT` now has an `rcToRandomizerInf` entry (`RCToRandInf.cpp`), so the boss
+  release can spend its flag and the check tracker's read-back sees it (both go through `GetRandomizerInfFromCheck`).
+  `SOH_InitRandoHeadless` registers the Hat and Fire Temple Goron locations before `InitHashMaps()`; headless skips
+  `ShipInit`, which registers them in a full boot.
+- **SoH Nayru's Love Uses in Termina.** SoH's rule (`ConsumableNayrusLove.cpp`: off at 0, a use per received item, a use
+  spent when a cast starts with no timer running) only hooked Hyrule. In Termina `ComboOot_UseSpell` refuses the cast at
+  0 uses (error sound), and `ComboMagicDark_Init` spends one use on a new cast (not on the timer-running carry-over).
+  The count is OOT's save, read and spent through `SOH_ComboTermina_NayrusLoveUses` / `_SpendNayrusLove`
+  (`ComboTerminaItems.cpp`; the spend marks the dormant save for writing), wrapped for MM in `ComboOotItems.cpp`. The
+  HUD button count (green at the setting's value, as in Hyrule) and the Hyrule pause face show the remaining uses
+  (`Combo_MmOotAmmoDigits`, `Combo_MmPauseSlotAmmo`).

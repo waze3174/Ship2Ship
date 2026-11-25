@@ -691,6 +691,11 @@ Forms and MM items in Hyrule are SoH reimplementations, so 2S2H's hooks (`COND_V
 - **Loaded save:** keys the randomizer reads at generation or slot bind (`gRandoSettings.`, `gRando.`, `gCombo.Rando.`) are
   held back unless the OoT file-select screen is up and MM is not foreground (`SeedBoundChangesAllowed`); the status
   line says how many were skipped. Everything else applies live.
+- **Renamed settings:** the 0.2.0 merge renamed three CVars (`gRandoSettings.SleepingWaterfall` and
+  `gEnhancements.TimeSavers.SleepingWaterfall` to `...SleeplessWaterfall`, `gEnhancements.Equipment.GreatFairySwordBButton`
+  to `gEnhancements.Equipment.ActiveItemOnB`). A preset stores no per-key version, so `ComboPresets::Load` renames them
+  from the `kRenamedKeys` table in `combo/gui/ComboPresets.cpp`; when a preset holds both the old and the new key, the
+  new one wins. The preset format version is unchanged.
 - **File check:** `ComboConfigTree::ReadConfigFile` is the one check for both imports. It returns a reason
   (`ComboConfigCheck` in `combo/ComboSettingsImport.h`): can't open, not JSON, no `CVars`, no `gCombo` (ComboShip files
   only), or this install's own `ship2ship.json`, which is never a source. Both screens show the reason in plain words
