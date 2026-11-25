@@ -1,6 +1,7 @@
 // combo/gui/ComboMenu.cpp
 #include "ComboMenu.h"
 #include "ComboSettingsLink.h" // one control for a preference both games own separately
+#include "ComboBothGames.h"    // Settings > Both games: those controls drawn once
 #include "ComboPresetPanels.h" // Settings > Presets and Import from Ship2Ship or ComboShip panels
 #include "ComboExport.h"
 #include "ComboMenuModel.h"
@@ -354,10 +355,11 @@ void ComboMenu::DrawElement() {
                     Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
                 }
                 if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Hyrule and Termina each store their own copy of %d preferences —\n"
-                                      "camera speed and inversion, free-look distance, first-person aim,\n"
-                                      "the ocarina stick, D-pad item slots. With this on, setting one\n"
-                                      "sets the other; you never hunt for the second slider.",
+                    ImGui::SetTooltip("Hyrule and Termina each store their own copy of %d preferences --\n"
+                                      "camera, aiming, the ocarina stick, quality-of-life toggles, some cheats\n"
+                                      "and notification settings. With this on, setting one sets the other, and\n"
+                                      "each pair is shown once under Both games (or in this tab) instead of\n"
+                                      "in both games' tabs. Turn it off to set the two games separately.",
                                       ComboUI_SettingsLinkCount());
                 }
                 bool ootHud = CVarGetInteger("gCombo.MmHud.OotStyle", 1) != 0;
@@ -448,7 +450,7 @@ void ComboMenu::DrawSearchResults(const std::string& query) {
                         // game — otherwise two same-named buttons would collapse and one would vanish.
                         std::string cvar = wd.cvar ? wd.cvar : "";
                         std::string key = cvar.empty() ? (std::string(src.label) + "|" + (wd.name ? wd.name : ""))
-                                                       : NormalizeSearch(cvar);
+                                                       : NormalizeSearch(BothGamesSearchKey(cvar.c_str()));
                         if (!seen.insert(NormalizeSearch(key)).second)
                             continue; // a shared setting already shown from OOT
 
@@ -458,9 +460,14 @@ void ComboMenu::DrawSearchResults(const std::string& query) {
                         ImGui::PushID(src.label);
                         // 90px total widget-width budget split across the result columns.
                         RenderWidget(wd, game, 90 / cols);
-                        ImGui::TextColored(kBreadcrumbColor, "[%s] %s -> %s", src.label,
-                                           (sec.sectionLabel && sec.sectionLabel[0]) ? sec.sectionLabel : "Section",
-                                           (side.sidebarName && side.sidebarName[0]) ? side.sidebarName : "Section");
+                        if (const char* bothTab = BothGamesTabFor(wd.cvar)) {
+                            ImGui::TextColored(kBreadcrumbColor, "[Both games] %s", bothTab);
+                        } else {
+                            ImGui::TextColored(kBreadcrumbColor, "[%s] %s -> %s", src.label,
+                                               (sec.sectionLabel && sec.sectionLabel[0]) ? sec.sectionLabel : "Section",
+                                               (side.sidebarName && side.sidebarName[0]) ? side.sidebarName
+                                                                                         : "Section");
+                        }
                         ImGui::PopID();
                         ImGui::Spacing();
                         ++matches;
@@ -496,7 +503,8 @@ struct HubEntry {
         COMBO_TIMERS,
         COMBO_PRESETS,
         COMBO_CONFIG_IMPORT,
-        COMBO_NETWORK
+        COMBO_NETWORK,
+        COMBO_BOTH_GAMES
     } kind;
     const ComboRando::GameMenu* game = nullptr; // ENGINE/OOT_RANDO/MM_RANDO
     int sectionIndex = -1;
@@ -1386,6 +1394,19 @@ void ComboMenu::DrawSharedPanel() {
         e.push_back(std::move(imp));
         if (!e.empty())
             groups.push_back({ "Settings", std::move(e) });
+        // Both games: every setting the two games share, drawn once (ComboBothGames.cpp). The entry label is the tab.
+        {
+            std::vector<HubEntry> bothE;
+            for (const char* tab : BothGamesTabs()) {
+                HubEntry entry;
+                entry.label = tab;
+                entry.group = "Both games";
+                entry.kind = HubEntry::COMBO_BOTH_GAMES;
+                bothE.push_back(std::move(entry));
+            }
+            if (!bothE.empty())
+                groups.push_back({ "Both games", std::move(bothE) });
+        }
         // Network group: the Anchor team-sync control (covers BOTH games) plus the Ship of Harkinian
         // Network settings (Sail, Crowd Control) surfaced from the OOT menu model — moved here from the
         // OOT tab so all network settings live in one shared place.
@@ -1524,6 +1545,8 @@ void ComboMenu::DrawSharedPanel() {
         DrawConfigImportSharedPanel();
     } else if (active->kind == HubEntry::COMBO_NETWORK) {
         DrawNetworkSharedPanel();
+    } else if (active->kind == HubEntry::COMBO_BOTH_GAMES) {
+        DrawBothGamesTab(active->label.c_str());
     } else {
         const CwSidebar& side = active->game->menu->sections[active->sectionIndex].sidebars[active->sidebarIndex];
         RenderSidebarWidgets(side, *active->game);
@@ -1583,11 +1606,17 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
         return true;
     };
 
+    // A sidebar whose every control moved to Settings > Both games has nothing left to show.
+    const GameSide gameSide = isOot ? GameSide::Oot : GameSide::Mm;
+    auto sidebarVisible = [&](const CwSection& sec, const CwSidebar& sb) -> bool {
+        return sidebarShown(sec.sectionLabel, sb.sidebarName) && !BothGamesLeavesSidebarEmpty(sb, gameSide);
+    };
+
     // A section with no shown sidebars (e.g. the rando section after the tracker move) has no
     // content here — drop it from the header strip and the active-section resolution.
     auto sectionShown = [&](const CwSection& sec) -> bool {
         for (int sb = 0; sb < sec.sidebarCount; ++sb) {
-            if (sidebarShown(sec.sectionLabel, sec.sidebars[sb].sidebarName))
+            if (sidebarVisible(sec, sec.sidebars[sb]))
                 return true;
         }
         return false;
@@ -1639,7 +1668,7 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
     const CwSidebar* firstSide = nullptr;
     for (int sb = 0; sb < activeSec->sidebarCount; ++sb) {
         const CwSidebar& side = activeSec->sidebars[sb];
-        if (!sidebarShown(activeSec->sectionLabel, side.sidebarName))
+        if (!sidebarVisible(*activeSec, side))
             continue;
         if (!firstSide)
             firstSide = &side;
@@ -1660,7 +1689,7 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
     float sbNeed = 0.0f;
     for (int sb = 0; sb < activeSec->sidebarCount; ++sb) {
         const CwSidebar& side = activeSec->sidebars[sb];
-        if (!sidebarShown(activeSec->sectionLabel, side.sidebarName))
+        if (!sidebarVisible(*activeSec, side))
             continue;
         const char* lbl = (side.sidebarName && side.sidebarName[0]) ? side.sidebarName : "Section";
         sbNeed = std::max(sbNeed, ImGui::CalcTextSize(lbl).x);
@@ -1672,7 +1701,7 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
     ImGui::SetWindowFontScale(1.2f);                            // match SoH's 24px header/sidebar tier
     for (int sb = 0; sb < activeSec->sidebarCount; ++sb) {
         const CwSidebar& side = activeSec->sidebars[sb];
-        if (!sidebarShown(activeSec->sectionLabel, side.sidebarName))
+        if (!sidebarVisible(*activeSec, side))
             continue;
         const char* label = (side.sidebarName && side.sidebarName[0]) ? side.sidebarName : "Section";
         ImGui::PushID(sb);
@@ -1701,7 +1730,15 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
     } else if (!activeSide) {
         ImGui::TextUnformatted("Select an option.");
     } else {
-        RenderSidebarWidgets(*activeSide, game);
+        std::vector<CwWidget> visibleWidgets;
+        if (BothGamesFilterSidebar(*activeSide, gameSide, visibleWidgets)) {
+            CwSidebar filtered = *activeSide;
+            filtered.widgets = visibleWidgets.data();
+            filtered.widgetCount = static_cast<int32_t>(visibleWidgets.size());
+            RenderSidebarWidgets(filtered, game);
+        } else {
+            RenderSidebarWidgets(*activeSide, game);
+        }
     }
     ImGui::EndChild();
 }
