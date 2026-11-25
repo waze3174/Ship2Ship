@@ -4342,6 +4342,20 @@ static s32 Combo_AmmoItemOf(s32 itemAction) {
     }
 }
 
+// 2S2H's Faster Hookshot is MM's option, so ArmsHook asks whether the hookshot in hand is MM's: a foreign item on the
+// button (it runs as OOT's Longshot). Set when a hookshot is taken out; OOT's own is not MM's.
+static s32 sComboHookshotIsMm = false;
+
+s32 Combo_HookshotIsMm(void) {
+    return sComboHookshotIsMm;
+}
+
+static void Combo_NoteHookshotOrigin(s32 item, s32 itemAction) {
+    if ((itemAction == PLAYER_IA_HOOKSHOT) || (itemAction == PLAYER_IA_LONGSHOT)) {
+        sComboHookshotIsMm = Combo_PauseIsForeign(item);
+    }
+}
+
 static void Combo_ChooseAmmoBag(Player* this, s32 item, s32 itemAction) {
     const s32 ammoItem = Combo_AmmoItemOf(itemAction);
     s32* bag = Combo_AmmoBag(ammoItem);
@@ -4602,6 +4616,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
     itemAction = Player_ItemToItemAction(item);
 #ifdef COMBO_BUILD
     Combo_ChooseAmmoBag(this, item, itemAction);
+    Combo_NoteHookshotOrigin(item, itemAction);
 #endif
 
     if (((this->heldItemAction == this->itemAction) &&
