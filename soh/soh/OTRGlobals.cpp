@@ -3498,7 +3498,7 @@ void Combo_FlushDormantAccumulators(void) {
 bool Combo_OotIsForeground(void);
 
 // ComboShip: save-direct give of a resolved OOT item, without writing the save. The caller persists.
-static void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
+void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
     // ComboShip (#84): drop bottle CONTENTS when no bottle is free. Milk Bottle and Ruto's Letter are
     // excluded exactly as Item_Give excludes them — they create a new bottle, so gating them here
     // would permanently lose Ruto's Letter and softlock the seed.
@@ -3545,7 +3545,7 @@ static void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
 static int sComboSaveBatchDepth = 0;
 static bool sComboSaveOwed = false;
 
-static void Combo_PersistOOT() {
+void Combo_PersistOOT() {
     if (sComboSaveBatchDepth > 0) {
         sComboSaveOwed = true;
         return;

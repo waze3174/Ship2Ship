@@ -59,6 +59,9 @@ void UpdateAllOrdering();
 void UpdateAllAreas();
 void RecalculateAllAreaTotals();
 void SpoilAreaFromCheck(RandomizerCheck rc);
+#ifdef COMBO_BUILD
+void SpoilAreasFromChecks(const std::vector<RandomizerCheck>& checks);
+#endif
 void SpoilAreaFromCantObtain(RandomizerGet rg);
 void RecalculateAvailableChecks(RandomizerRegion startingRegion = RR_ROOT, RandoAgeTime startingAgeTime = RAT_NONE);
 void LoadFromPreset(const nlohmann::json& info);
