@@ -8052,7 +8052,10 @@ s32 func_8083868C(PlayState* play, Player* this) {
     if (this->unk_AA5 == PLAYER_UNKAA5_3) {
 #ifdef COMBO_BUILD
         if (this->heldItemAction == PLAYER_IA_COMBO_OOT_BOOMERANG) {
-            camMode = CAM_MODE_BOOMERANG; // ComboShip: OOT's boomerang aim camera (OOT CAM_MODE_AIM_BOOMERANG)
+            // ComboShip: OOT's boomerang aim camera (OOT CAM_MODE_AIM_BOOMERANG), or with SoH's Boomerang First Person
+            // (its own CVar, SoH's enhancements/AlwaysOnFixes.cpp) the first-person camera, as in Hyrule.
+            camMode =
+                CVarGetInteger(COMBO_SOH_CVAR_BOOMERANG_FIRST_PERSON, 0) ? CAM_MODE_FIRSTPERSON : CAM_MODE_BOOMERANG;
         } else
 #endif
             if (func_800B7118(this)) {
