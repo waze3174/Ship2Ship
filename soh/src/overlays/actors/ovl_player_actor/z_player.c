@@ -3394,6 +3394,10 @@ s32 func_8083442C(Player* this, PlayState* play) {
                     if ((this->heldActor != NULL) && (arrowType == ARROW_COMBO_DEKU_BUBBLE)) {
                         Magic_RequestChange(play, 2, MAGIC_CONSUME_NOW); // MM: Magic_Consume(play, 2, ...)
                     }
+                    if (this->heldActor != NULL) {
+                        // 2S2H's bomb arrows: the arrow takes a fuse if the button it was nocked from fires them
+                        EnArrow_ComboBombArrowTag((EnArrow*)this->heldActor, play, this->heldItemButton, arrowType);
+                    }
 #endif
                 }
             }
@@ -3736,6 +3740,9 @@ s32 func_808350A4(PlayState* play, Player* this) {
             Player_RequestRumble(this, 255, 20, 150, 0);
         }
 
+#ifdef COMBO_BUILD
+        EnArrow_ComboBombArrowRelease(this->heldActor); // 2S2H's bomb arrows: the shot's bomb leaves the bag
+#endif
         this->unk_A73 = 4;
         this->heldActor->parent = NULL;
         this->actor.child = NULL;
