@@ -101,7 +101,9 @@ void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
     // the should-hook so 2S2H's Faster Hookshot (which sets its own timer and returns false) is halved too.
     if (shoots) {
         if (GET_PLAYER(play)->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) {
-            this->timer /= 2;
+            // Rounded up: with Faster Hookshot (13 frames at double speed) a truncated 6 would fall short of OOT's
+            // reach, and a target at the edge of it would become unreachable; 7 overshoots it a little instead.
+            this->timer = (this->timer + 1) / 2;
         }
         this->timer *= Combo_MmOotHookshotReachMultiplier(GET_PLAYER(play)->heldItemAction);
     }
