@@ -209,6 +209,10 @@ typedef enum {
 // Defined in Packets/SetFlag.cpp.
 void Anchor_DormantWriteSceneFlag(s16 sceneNum, s16 flagType, s16 flag, bool set);
 void Anchor_DormantReplaceItem(u16 oldItem, u16 newItem);
+// A peer's global flag (SET_FLAG / UNSET_FLAG with sceneNum == SCENE_ID_MAX) is in range for its flagType. Both
+// handlers check it before RawAction::SetFlag / UnsetFlag, which index the save arrays without a check.
+// Defined in Packets/SetFlag.cpp.
+bool Anchor_IsGlobalFlagInRange(s16 flagType, s16 flag);
 // ComboShip: live partner feed (2026-11-07). itemGame = the item's home game ("oot"/"mm"), kind =
 // "item" (same-game co-op find) or "cross" (cross-game delivery). Defined in Anchor.cpp.
 void Anchor_SendPartnerFind(const std::string& itemName, const char* itemGame, const char* kind);
