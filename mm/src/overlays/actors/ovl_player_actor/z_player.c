@@ -100,6 +100,10 @@ static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
 // SoH's Prevent Bombchus Forcing First-Person, for a bombchu taken out on OOT's bag.
 #define COMBO_OOT_CHU_SKIPS_FIRST_PERSON(chu) \
     (((EnBomChu*)(chu))->comboIsOotOrigin && CVarGetInteger(COMBO_SOH_CVAR_DISABLE_FIRST_PERSON_CHUS, 0))
+// SoH's Crouch Stab Hammer Fix: OOT's Megaton Hammer's crouch stab carries the swing's damage.
+#define COMBO_OOT_HAMMER_CROUCH_STAB_FIXED(player)               \
+    (((player)->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) && \
+     CVarGetInteger(COMBO_SOH_CVAR_CROUCH_STAB_HAMMER_FIX, 0))
 #else
 #define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
 #define COMBO_PLAYER_AMMO(item) AMMO(item)
@@ -108,6 +112,7 @@ static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
 #define COMBO_EXPLOSIVE_SPAWN_END() ((void)0)
 #define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) false
 #define COMBO_OOT_CHU_SKIPS_FIRST_PERSON(chu) false
+#define COMBO_OOT_HAMMER_CROUCH_STAB_FIXED(player) false
 #endif
 
 void Player_Init(Actor* thisx, PlayState* play);
@@ -10928,7 +10933,7 @@ s32 func_8083FD80(Player* this, PlayState* play) {
     if (!Player_IsGoronOrDeku(this) && (Player_GetMeleeWeaponHeld(this) != PLAYER_MELEEWEAPON_NONE) &&
         (this->transformation != PLAYER_FORM_ZORA) && sPlayerUseHeldItem) {
         //! Calling this function sets the meleeWeaponQuads' damage properties correctly, patching "Power Crouch Stab".
-        if (GameInteractor_Should(VB_PATCH_POWER_CROUCH_STAB, true)) {
+        if (GameInteractor_Should(VB_PATCH_POWER_CROUCH_STAB, true) || COMBO_OOT_HAMMER_CROUCH_STAB_FIXED(this)) {
             func_8083375C(this, PLAYER_MWA_STAB_1H);
         }
         Player_Anim_PlayOnce(play, this, &gPlayerAnim_link_normal_defense_kiru);
