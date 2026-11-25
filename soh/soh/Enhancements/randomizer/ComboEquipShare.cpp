@@ -11,7 +11,7 @@
 //
 // In Hyrule, OOT's age rule holds on every item button (owner 2026-11-25, playtest #21): an item Link's age can't use
 // there (the bow, hookshot or magic arrows for child; the slingshot, boomerang or sticks for adult) doesn't stay on a
-// button after a crossing or a save load. See KeepAgeRule.
+// button after a crossing, a save load or an age swap. See KeepAgeRule.
 
 #include <cstdio>
 #include <cstring>
@@ -347,6 +347,13 @@ void ComboEquipShare_Tick() {
         return;
     for (int b = kFirstItemButton; b < kButtonCount; ++b)
         Interface_LoadItemIcon1(gPlayState, b);
+}
+
+// OOT's age swap in a randomizer save keeps one C-button and D-pad layout for both ages (z_parameter.c,
+// Inventory_SwapAgeEquipment). `own` is the new age's own set, what vanilla's swap puts on the buttons: it takes back a
+// button the new age can't use.
+extern "C" void ComboEquipShare_KeepAgeRuleAtSwap(int newAge, const u8* ownItems, const u8* ownSlots) {
+    KeepAgeRule(newAge, ownItems, ownSlots);
 }
 
 void ComboEquipShare_CaptureAtSwitch() {

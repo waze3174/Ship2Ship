@@ -2606,11 +2606,11 @@ Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and gra
     is judged as the OOT item that runs it (`Combo_PauseForeignHostItem`: bow, hookshot as Longshot, sticks, beans...).
     MM items with no Hyrule twin (MM's magic arrows, masks, the Pictograph Box) have no age rule.
   - **Where it runs** (`KeepAgeRule`, ComboEquipShare.cpp; randomizer saves only): on the C buttons and the D-pad
-    after a crossing's layout is applied, and on the first Play frame after every save load (a save made by an older
-    build loses an item it can't use).
-  - **A refused button** goes back to what OOT's save had there before the crossing. That needs Link to be able to
-    use it, still hold it, and not have it on another button; otherwise the button is emptied. The log line is
-    "OOT's age rule takes item XX off button N".
+    after a crossing's layout is applied, on the first Play frame after every save load (a save made by an older
+    build loses an item it can't use), and at OOT's age swap (`Inventory_SwapAgeEquipment`, z_parameter.c).
+  - **A refused button** goes back to what that age had there: OOT's save before the crossing, or the new age's own
+    set at an age swap, as vanilla's swap would. That needs Link to be able to use it, still hold it, and not have it
+    on another button; otherwise the button is emptied. The log line is "OOT's age rule takes item XX off button N".
   - **Lifted** (`Combo_AgeRulesLifted`, read on every call; owner 2026-11-25: "all these rules ... should not apply
     with the 'both links use every item' or unrestricted items cheat"): the seed's "Both Links use every item"
     (Unified Inventory: menu CVar `gCombo.Rando.UnifiedInventory`, seed key `unifiedInventory`, live flag
