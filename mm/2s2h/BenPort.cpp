@@ -3045,6 +3045,8 @@ extern "C" COMBO_EXPORT int MM_InitRandoSaveFile(int fileNum, const char* placem
         // ComboShip: mirror native OnFileCreate's use of the player's configured priority list.
         auto sariaPriorityItems = Rando::GetSariaPriorityItemsFromConfig();
         Rando::SetSariaPriorityItemsInSpoiler(spoiler, sariaPriorityItems);
+        auto additionalItems = Rando::GetAdditionalItemsFromConfig();
+        Rando::SetAdditionalItemsInSpoiler(spoiler, additionalItems);
         // ComboShip: the combo spoiler is friendly-named (check + item), cross-game collisions suffixed
         // "(MM)". Translate to the RC_/RI_ shape ApplyToSaveContext consumes so that shared code stays
         // untouched. Strip our own "(MM)" suffix; the foreign sentinel + any raw RI_ pass through.
@@ -3321,6 +3323,9 @@ extern "C" COMBO_EXPORT void MM_GetExtractionProgress(unsigned long long* count,
 }
 #endif
 
+// Key of the Additional Items list in the MM settings snapshot (a {item, count} array).
+static constexpr const char* kMMComboAdditionalItemsKey = "gRando.AdditionalItems";
+
 // ComboShip: headless dump of MM rando tables (checks + items), scoped to the current settings via
 // Rando::Logic::GeneratePools (mirrors RefreshMetrics() in Rando/Menu.cpp). Only checks the current
 // CVars actually shuffle are emitted, so the cross-world fill sees the same pool MM's own generator
@@ -3365,6 +3370,11 @@ extern "C" COMBO_EXPORT const char* MM_DumpRandoSettings(void) {
             sp.push_back(name);
     }
     j["gRando.SariaPriority"] = sp;
+    // Additional Items is a JSON config block too ({item, count} entries); carry it for the same reason.
+    nlohmann::json holder = nlohmann::json::object();
+    auto additionalItems = Rando::GetAdditionalItemsFromConfig();
+    Rando::SetAdditionalItemsInSpoiler(holder, additionalItems);
+    j[kMMComboAdditionalItemsKey] = holder["additionalItems"];
     cached = j.dump();
     return cached.c_str();
 }
@@ -3413,6 +3423,15 @@ extern "C" COMBO_EXPORT void MM_RestoreRandoSettings(const char* json) {
             }
             Rando::SetSariaPriorityItemsInConfig(items);
         }
+        // Additional Items: authoritative like the lists above; an older snapshot without it clears the list.
+        {
+            nlohmann::json holder = nlohmann::json::object();
+            if (j.contains(kMMComboAdditionalItemsKey)) {
+                holder["additionalItems"] = j[kMMComboAdditionalItemsKey];
+            }
+            auto additionalItems = Rando::GetAdditionalItemsFromSpoiler(holder);
+            Rando::SetAdditionalItemsInConfig(additionalItems);
+        }
         // ComboShip (full-coop-sync task 1.4): the snapshot is authoritative, as in SOH_RestoreRandoSettings:
         // pre-clear every option so a key missing from an older snapshot reads as its default, not as this
         // machine's local value.
@@ -3422,7 +3441,7 @@ extern "C" COMBO_EXPORT void MM_RestoreRandoSettings(const char* json) {
         }
         for (auto it = j.begin(); it != j.end(); ++it) {
             if (it.key() == "gRando.StartingItems" || it.key() == "gRando.ExcludedChecks" ||
-                it.key() == "gRando.SariaPriority")
+                it.key() == "gRando.SariaPriority" || it.key() == kMMComboAdditionalItemsKey)
                 continue;
             if (it.value().is_string())
                 CVarSetString(it.key().c_str(), it.value().get<std::string>().c_str());
@@ -3490,6 +3509,8 @@ extern "C" COMBO_EXPORT const char* MM_DumpRandoStaticData(void) {
     }
     auto startingItems = Rando::GetStartingItemsFromConfig();
     Rando::SetStartingItemsInSave(saveInfo, startingItems);
+    auto additionalItems = Rando::GetAdditionalItemsFromConfig();
+    Rando::SetAdditionalItemsInSave(saveInfo, additionalItems);
 
     std::vector<RandoCheckId> checkPool;
     std::vector<RandoItemId> itemPool;
