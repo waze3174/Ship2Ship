@@ -10,6 +10,9 @@
 //                Lost Woods.
 //   Clock Tower  The two stone door leaves in the hall no longer block the way down to the twisting corridor (the hall
 //                is where Clock Town's door now ends). The Happy Mask Salesman there is left as in vanilla.
+// Return and the stone doors follow the cross gate (combo/rando/ComboCrossGate.h): while the way into Hyrule is closed
+// (a back-to-back slot before Majora is beaten) the leaves stay, so the hall's door locks up as in vanilla, and the
+// corridor's far end leads where it does in vanilla.
 #ifdef COMBO_BUILD
 
 #include <spdlog/spdlog.h>
@@ -27,6 +30,7 @@ extern "C" {
 #include "overlays/actors/ovl_Bg_Ctower_Rot/z_bg_ctower_rot.h"
 // BenPort.cpp
 void Combo_RequestCrossSwitch(int ootEntrance);
+int Combo_CrossToHyruleOpen(void);
 extern int gComboCrossArrival;
 }
 
@@ -79,9 +83,10 @@ void HandleSceneInit(s8 sceneId, s8 spawnNum) {
     }
 }
 
-// The leaves would close the hall off from the corridor: they only open for Link coming from the corridor side.
+// The leaves would close the hall off from the corridor: they only open for Link coming from the corridor side. With
+// the way into Hyrule closed they stay, and the hall has no way back down.
 void HandleStoneDoorInit(Actor* actor) {
-    if (Active() && actor->params >= kStoneDoorFirstParams) {
+    if (Active() && Combo_CrossToHyruleOpen() && actor->params >= kStoneDoorFirstParams) {
         Actor_Kill(actor);
     }
 }
@@ -105,7 +110,7 @@ extern "C" int Combo_MM_LostWoodsLinkExit(int entrance) {
         SPDLOG_INFO("[ComboLostWoodsLink] Lost Woods east exit -> Clock Tower corridor end");
         return kCorridorEndEntrance;
     }
-    if (gPlayState->sceneId == SCENE_INSIDETOWER && entrance == kCorridorEndExit) {
+    if (gPlayState->sceneId == SCENE_INSIDETOWER && entrance == kCorridorEndExit && Combo_CrossToHyruleOpen()) {
         SPDLOG_INFO("[ComboLostWoodsLink] Clock Tower corridor end -> OOT Lost Woods 0x{:X}",
                     Link::kOotLostWoodsFromTermina);
         Combo_RequestCrossSwitch(Link::kOotLostWoodsFromTermina | Link::kOotEntranceFinalBit);

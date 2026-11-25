@@ -9,8 +9,13 @@ extern "C" {
 
 struct PlayState;
 
-// 1 when the loaded seed has the link on and both games are played (OTRGlobals.cpp).
+// 1 when the loaded seed has the link on and both games are played (OTRGlobals.cpp). A back-to-back slot has it from
+// the start; it is closed until the cross gate opens it (Combo_LostWoodsToTerminaOpen).
 int Combo_LostWoodsLinkOn(void);
+
+// 1 when the Lost Woods path into Termina is open for the Link on screen (OTRGlobals.cpp,
+// combo/rando/ComboCrossGate.h).
+int Combo_LostWoodsToTerminaOpen(void);
 
 // 1 when the Market's Mask Shop is OoT's own shop, not the way into Termina: the link is on, and the corridor end is
 // the only way between the games.

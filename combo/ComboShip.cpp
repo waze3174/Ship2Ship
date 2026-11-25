@@ -40,6 +40,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL_net.h>
 
+#include "rando/ComboCrossGate.h"
 #include "rando/ComboLostWoodsLink.h"
 #include "rando/ComboMode.h"
 #include "rando/CrossForeign.h"
@@ -1378,6 +1379,10 @@ static bool ComboBossesComplete(const bool completion[2]) {
         return completion[1];
     return completion[0] && completion[1];
 }
+// The ways between the games that the loaded slot's mode and final-boss record leave open.
+static int Combo_CrossGateMask() {
+    return ComboRando::CrossGate::Mask(g_activeMode, g_comboCompletion[0], g_comboCompletion[1]);
+}
 
 // Shared Items (OoTMM-style, combo/rando/SharedItems.h). SOH_SetComboSharedItems is OOT-only — it
 // shapes OOT's gen-time wallet force (settings.cpp); nothing on the MM side depends on the mask.
@@ -1424,6 +1429,15 @@ static void Combo_PushLostWoodsLink(bool on) {
         SOH_SetComboLostWoodsLink(on ? 1 : 0);
     if (MM_SetComboLostWoodsLink)
         MM_SetComboLostWoodsLink(on ? 1 : 0);
+}
+// Which ways between the games are open in the LOADED slot (combo/rando/ComboCrossGate.h), pushed to both DLLs.
+static FnSetInt SOH_SetComboCrossGate = nullptr;
+static FnSetInt MM_SetComboCrossGate = nullptr;
+static void Combo_PushCrossGate(int mask) {
+    if (SOH_SetComboCrossGate)
+        SOH_SetComboCrossGate(mask);
+    if (MM_SetComboCrossGate)
+        MM_SetComboCrossGate(mask);
 }
 // Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
 // follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.
@@ -2055,10 +2069,14 @@ static void LoadComboCompletion(int slot) {
         g_lostWoodsLink =
             !ComboRando::ComboGamesSolo(g_comboGames) &&
             rando.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kPlayedWhenSeedLacksKey);
+        // A back-to-back slot has no seed: its link always exists, and the cross gate decides when it is open.
+        if (g_activeMode.IsBackToBack())
+            g_lostWoodsLink = true;
     }
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
     Combo_PushLostWoodsLink(g_lostWoodsLink);
+    Combo_PushCrossGate(Combo_CrossGateMask());
     if (MM_SetComboVanillaSlot)
         MM_SetComboVanillaSlot(g_activeMode.HasVanillaMmSave() ? 1 : 0);
     if (SOH_SetComboGoal)
@@ -2107,6 +2125,7 @@ static void SaveComboCompletion(int slot) {
         c["combo"]["completion"]["triforce"] = g_comboTriforceDone;
         FlushContainer(slot);
     }
+    Combo_PushCrossGate(Combo_CrossGateMask());
     // #173: tints the timer overlay's total green. Pushed outside the container lock — comboui must
     // never re-enter the sidecar.
     if (ComboUI_SetComboComplete)
@@ -4300,6 +4319,8 @@ int main(int argc, char** argv) {
     MM_SetComboGames = (FnSetComboGames)GetSym(mmModule, "MM_SetComboGames");
     SOH_SetComboLostWoodsLink = (FnSetInt)GetSym(sohModule, "SOH_SetComboLostWoodsLink");
     MM_SetComboLostWoodsLink = (FnSetInt)GetSym(mmModule, "MM_SetComboLostWoodsLink");
+    SOH_SetComboCrossGate = (FnSetInt)GetSym(sohModule, "SOH_SetComboCrossGate");
+    MM_SetComboCrossGate = (FnSetInt)GetSym(mmModule, "MM_SetComboCrossGate");
 
     // Shared Items seam — SOH_SetComboSharedItems is OOT-only (shapes the gen-time wallet force).
     SOH_SetComboSharedItems = (FnSetComboSharedItems)GetSym(sohModule, "SOH_SetComboSharedItems");

@@ -24,7 +24,8 @@ extern PlayState* gPlayState;
 extern int (*gComboOwlFlagsProvider)(void);
 extern int (*gComboOwlWarpEntranceProvider)(int owlId);
 void Combo_RequestCrossSwitch(int mmEntrance);
-int Combo_GamesSolo(void); // OTRGlobals.cpp
+int Combo_GamesSolo(void);          // OTRGlobals.cpp
+int Combo_CrossToTerminaOpen(void); // OTRGlobals.cpp: shut in a back-to-back slot until both bosses are beaten
 // Declared first so OPEN_DISPS' block-scope declarations keep C linkage.
 void FrameInterpolation_RecordOpenChild(const void* a, int b);
 void FrameInterpolation_RecordCloseChild(void);
@@ -215,8 +216,8 @@ void CowOnSongPlayed(PlayState* play) {
     msgCtx->ocarinaMode = OCARINA_MODE_04;       // Link puts the ocarina away
     Message_CloseTextbox(play);
     // Vanilla warp-song refusal order (restriction flag is rando-exempt there too). A solo seed (combo/rando/
-    // ComboGames.h) never goes to Termina.
-    if (msgCtx->disableWarpSongs || Combo_GamesSolo()) {
+    // ComboGames.h) never goes to Termina, nor does a slot whose way into it is closed (combo/rando/ComboCrossGate.h).
+    if (msgCtx->disableWarpSongs || Combo_GamesSolo() || !Combo_CrossToTerminaOpen()) {
         sPendingText = 0x88C; // "You can't warp here!"
     } else {
         const int flags = gComboOwlFlagsProvider ? gComboOwlFlagsProvider() : -1;

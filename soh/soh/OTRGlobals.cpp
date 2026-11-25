@@ -161,6 +161,7 @@
 #include "ComboMenuSharedContext.h"   // ComboShip: shared per-DLL ImGui context helper (combo-owned)
 #include "rando/CrossForeign.h"       // ComboShip (#164): g_comboForeignJson for the hint-key map replay
 #include "rando/SharedItems.h"        // ComboShip: Shared Items family table
+#include "rando/ComboCrossGate.h"     // ComboShip: which ways between the games are open (back-to-back slots)
 #include "rando/ComboGames.h"         // ComboShip: Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h" // ComboShip: the Lost Woods link seed setting
 #include "rando/ComboMode.h"          // ComboShip: save modes (vanilla OoT, kSohQuest*)
@@ -3773,6 +3774,24 @@ extern "C" int Combo_GamesSolo(void) {
 extern "C" int Combo_LostWoodsLinkOn(void) {
     return gComboLostWoodsLink && !Combo_GamesSolo();
 }
+// The ways between the games that the loaded slot leaves open (combo/rando/ComboCrossGate.h), pushed by the launcher.
+// Every slot but a back-to-back one leaves all of them open.
+extern "C" int gComboCrossGate = ComboRando::CrossGate::kAllOpen;
+extern "C" COMBO_EXPORT void SOH_SetComboCrossGate(int mask) {
+    gComboCrossGate = mask;
+}
+// Any way into Termina (the warp songs, the owl statues, the pause menu, the entrances shuffled across).
+extern "C" int Combo_CrossToTerminaOpen(void) {
+    return ComboRando::CrossGate::ToTerminaOpen(gComboCrossGate) ? 1 : 0;
+}
+// The Lost Woods path into Termina, for the Link on screen: it opens earlier than the rest, for child Link.
+extern "C" int Combo_LostWoodsToTerminaOpen(void) {
+    return ComboRando::CrossGate::LostWoodsToTerminaOpen(gComboCrossGate, LINK_IS_CHILD) ? 1 : 0;
+}
+// The credits of OoT's half of a back-to-back slot have ended: the slot goes on in the Temple of Time, as child Link.
+extern "C" int Combo_OotCreditsContinueInTemple(void) {
+    return ComboRando::CrossGate::OotCreditsContinueInTemple(gComboCrossGate) ? 1 : 0;
+}
 // An explicit MM start forces these, so grey them out. Under Random they stay editable — the force is silent when MM
 // rolls. HandleStartingAgeUI owns RSK_STARTING_AGE in both directions. FinalizeSettings decides which of them an MM
 // start forces: with the Lost Woods link the Mask Shop exclusions are not needed and Climb must not be shuffled.
@@ -4300,7 +4319,7 @@ extern "C" int Combo_CancelPendingCrossSwitch(void) {
     return 1;
 }
 
-extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
+static void Combo_QueueCrossSwitch(int mmEntrance) {
     if (gSaveContext.fileNum > 2) {
         SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: no save loaded (fileNum={})", (int)gSaveContext.fileNum);
         return;
@@ -4312,6 +4331,25 @@ extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
     sComboCrossTargetMM = mmEntrance;
     sComboSwitchFileNum = (int)gSaveContext.fileNum;
     sComboSwitchPending = true;
+}
+
+// Every way into Termina but the Lost Woods path.
+extern "C" void Combo_RequestCrossSwitch(int mmEntrance) {
+    if (!Combo_CrossToTerminaOpen()) { // a back-to-back slot before both bosses are beaten (ComboCrossGate.h)
+        SPDLOG_WARN("[ComboShip] Combo_RequestCrossSwitch: refused, the way into Termina is closed in this slot");
+        return;
+    }
+    Combo_QueueCrossSwitch(mmEntrance);
+}
+
+// The Lost Woods path (ComboLostWoodsLink.cpp), which a back-to-back slot opens for child Link once Ganon is beaten.
+extern "C" void Combo_RequestLostWoodsCrossSwitch(int mmEntrance) {
+    if (!Combo_LostWoodsToTerminaOpen()) {
+        SPDLOG_WARN(
+            "[ComboShip] Combo_RequestLostWoodsCrossSwitch: refused, the Lost Woods path is closed in this slot");
+        return;
+    }
+    Combo_QueueCrossSwitch(mmEntrance);
 }
 
 // ComboShip (owner ruling 2026-11-12, age kept across games): Link's age + tunic in OOT's live save, read by the

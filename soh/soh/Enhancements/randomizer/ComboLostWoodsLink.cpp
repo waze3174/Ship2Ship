@@ -3,10 +3,11 @@
 //
 //   Exit:   the north wrong turn in Lost Woods room 0 switches to MM's Lost Woods instead of looping back to Kokiri
 //           Forest. Player_HandleExitsAndVoids asks Combo_OOT_LostWoodsLinkExit before the entrance override, so the
-//           entrance tracker and the cross-game entrance redirect never see the wrong turn's own destination.
+//           entrance tracker and the cross-game entrance redirect never see the wrong turn's own destination. While
+//           the path is closed (a back-to-back slot, combo/rando/ComboCrossGate.h) the wrong turn is vanilla.
 //   Mask Shop: while the link is on, the Market's Mask Shop door leads into OoT's own shop; ComboShip's switch to MM
 //           there (OTRGlobals.cpp) asks Combo_OOT_LostWoodsLinkKeepsMaskShop first.
-//   Marker: a stump (MM's cut tree) in front of that tunnel's mouth while the link is on. A small combo actor,
+//   Marker: a stump (MM's cut tree) in front of that tunnel's mouth while the path is open. A small combo actor,
 //           registered in ActorDB like MM's Obj_Aqua (ComboMmItems.cpp); it draws, and its trunk is solid like
 //           OoT's trees.
 #ifdef COMBO_BUILD
@@ -27,7 +28,7 @@ extern "C" {
 #include "functions.h"
 #include "variables.h"
 extern PlayState* gPlayState;
-void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
+void Combo_RequestLostWoodsCrossSwitch(int mmEntrance); // OTRGlobals.cpp
 }
 
 namespace {
@@ -109,8 +110,14 @@ void LostWoodsMarker_Draw(Actor* thisx, PlayState* play) {
     }
 }
 
+// The link exists in this slot.
 bool Active() {
     return Combo_LostWoodsLinkOn() != 0;
+}
+
+// The link exists and the Link on screen may take it: the stump is there and the wrong turn leaves for Termina.
+bool PathOpen() {
+    return Active() && Combo_LostWoodsToTerminaOpen() != 0;
 }
 
 short MarkerActorId() {
@@ -147,7 +154,7 @@ void SpawnMarkerInRoomZero() {
     PlayState* play = gPlayState;
 
     if (play == nullptr || play->sceneNum != SCENE_LOST_WOODS || play->roomCtx.curRoom.num != kMarkerRoom ||
-        !Active()) {
+        !PathOpen()) {
         return;
     }
     const short id = MarkerActorId();
@@ -169,7 +176,7 @@ extern "C" int Combo_OOT_LostWoodsLinkKeepsMaskShop(void) {
 }
 
 extern "C" int Combo_OOT_LostWoodsLinkExit(PlayState* play, const void* poly, unsigned int bgId) {
-    if (bgId != BGCHECK_SCENE || play->sceneNum != SCENE_LOST_WOODS || !Active()) {
+    if (bgId != BGCHECK_SCENE || play->sceneNum != SCENE_LOST_WOODS || !PathOpen()) {
         return 0;
     }
     const CollisionPoly* polyList = play->colCtx.colHeader->polyList;
@@ -177,7 +184,7 @@ extern "C" int Combo_OOT_LostWoodsLinkExit(PlayState* play, const void* poly, un
         return 0;
     }
     SPDLOG_INFO("[ComboLostWoodsLink] OOT north wrong turn -> MM Lost Woods 0x{:X}", Link::kMmLostWoodsSpawn0);
-    Combo_RequestCrossSwitch(Link::kMmLostWoodsSpawn0);
+    Combo_RequestLostWoodsCrossSwitch(Link::kMmLostWoodsSpawn0);
     return 1;
 }
 
