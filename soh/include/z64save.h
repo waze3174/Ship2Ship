@@ -275,6 +275,7 @@ typedef struct ShipSaveContextData {
     FaroresWindData backupFW;
     ShipQuestSaveContextData quest;
     u8 maskMemory;
+    u8 bombArrowsEquipped; // ComboShip: one bit per C / D-pad button (cButtonSlots index) that fires bomb arrows
     u8 filenameLanguage;
     //TODO: Move non-rando specific flags to a new sohInf and move the remaining randomizerInf to ShipRandomizerSaveContextData
     u16 randomizerInf[(RAND_INF_MAX + 15) / 16];

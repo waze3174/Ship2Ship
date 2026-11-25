@@ -1089,6 +1089,7 @@ void SaveManager::InitFileNormal() {
     gSaveContext.ship.pendingSaleMod = MOD_NONE;
     gSaveContext.ship.pendingIceTrapCount = 0;
     gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
+    gSaveContext.ship.bombArrowsEquipped = 0;
 
     // Init with normal quest unless only an MQ rom is provided
     gSaveContext.ship.quest.id = OTRGlobals::Instance->HasOriginal() ? QUEST_NORMAL : QUEST_MASTER;
@@ -2387,6 +2388,7 @@ void SaveManager::LoadBaseVersion4() {
     SaveManager::Instance->LoadData("dogParams", gSaveContext.dogParams);
     SaveManager::Instance->LoadData("filenameLanguage", gSaveContext.ship.filenameLanguage);
     SaveManager::Instance->LoadData("maskMemory", gSaveContext.ship.maskMemory);
+    SaveManager::Instance->LoadData("bombArrowsEquipped", gSaveContext.ship.bombArrowsEquipped);
 }
 
 void SaveManager::SaveBase(const SaveContext& saveContext, int sectionID, bool fullSave) {
@@ -2551,6 +2553,7 @@ void SaveManager::SaveBase(const SaveContext& saveContext, int sectionID, bool f
     SaveManager::Instance->SaveData("dogParams", saveContext.dogParams);
     SaveManager::Instance->SaveData("filenameLanguage", saveContext.ship.filenameLanguage);
     SaveManager::Instance->SaveData("maskMemory", saveContext.ship.maskMemory);
+    SaveManager::Instance->SaveData("bombArrowsEquipped", saveContext.ship.bombArrowsEquipped);
 }
 
 // Load a string into a char array based on size and ensuring it is null terminated when overflowed
