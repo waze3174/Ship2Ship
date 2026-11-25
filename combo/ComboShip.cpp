@@ -2060,7 +2060,7 @@ static void LoadComboCompletion(int slot) {
     PushComboGames(g_comboGames);
     Combo_PushLostWoodsLink(g_lostWoodsLink);
     if (MM_SetComboVanillaSlot)
-        MM_SetComboVanillaSlot(g_activeMode.IsVanillaMm() ? 1 : 0);
+        MM_SetComboVanillaSlot(g_activeMode.HasVanillaMmSave() ? 1 : 0);
     if (SOH_SetComboGoal)
         SOH_SetComboGoal(g_goalHunt ? 1 : 0, g_goalRequired, ComboRando::CwOotPieces(g_goalTotal, g_comboGames));
     if (MM_SetComboGoal)
@@ -3685,6 +3685,25 @@ static void Combo_InitVanillaMmSlot(int fileNum) {
     std::cout << "[ComboShip] Created VANILLA Majora's Mask slot " << fileNum << std::endl;
 }
 
+// A new back-to-back slot: vanilla Ocarina of Time, then vanilla Majora's Mask, one save of each and no seed. MM's
+// save is made now, as for a vanilla Majora's Mask slot, but the slot's last game is OoT: it is played first and MM is
+// entered through the Lost Woods once Ganon is beaten.
+static void Combo_InitBackToBackSlot(int fileNum) {
+    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack());
+    if (!MM_InitVanillaSaveFile) {
+        std::cerr << "[ComboShip] ERROR: MM has no vanilla save creation, slot " << fileNum << " has no MM save."
+                  << std::endl;
+        return;
+    }
+    unsigned char playerName[8] = { 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E, 0x3E }; // 0x3E = N64 blank glyph
+    if (SOH_GetCurrentPlayerName)
+        SOH_GetCurrentPlayerName(playerName);
+    MM_InitVanillaSaveFile(fileNum, playerName);
+    Combo_EraseSeedAndSharedState(fileNum); // MM's write brought the live shared state of the last slot played along
+    Combo_SetLastGame(fileNum, ComboRando::GAME_OOT);
+    std::cout << "[ComboShip] Created BACK-TO-BACK slot " << fileNum << " (vanilla OoT, then vanilla MM)" << std::endl;
+}
+
 // The label the OoT file select draws on a slot (ComboRando::ComboModeLabel: static strings, or nullptr for none).
 static const char* Combo_SlotModeLabel(int fileNum) {
     return ComboRando::ComboModeLabel(Combo_GetSlotMode(fileNum));
@@ -3716,6 +3735,10 @@ static void Combo_OnOOTSaveInit(int fileNum) {
     const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
     if (quest == ComboRando::kSohQuestComboMm) {
         Combo_InitVanillaMmSlot(fileNum);
+        return;
+    }
+    if (quest == ComboRando::kSohQuestComboBackToBack) {
+        Combo_InitBackToBackSlot(fileNum);
         return;
     }
     if (quest != ComboRando::kSohQuestRandomizer) {
@@ -3824,11 +3847,11 @@ static void Combo_OnOOTSaveLoad(int fileNum) {
     if (g_activeMode.IsVanilla()) {
         // No seed and, for OoT, no MM save: drop what the slot loaded before this one left in both DLLs, and leave MM's
         // dormant memory unclaimed (the MM tracker may have replaced it with nothing). A vanilla Majora's Mask slot
-        // goes into MM, which loads its save itself.
+        // goes into MM, which loads its save itself, as does a back-to-back slot last saved in MM.
         Combo_ClearComboRando();
         Combo_PushHintTrackerData(fileNum);
         g_MmSaveInMemorySlot = -1;
-        if (g_activeMode.IsVanillaMm())
+        if (g_activeMode.HasVanillaMmSave())
             Combo_ResumeMMIfLastSavedThere(fileNum);
         return;
     }

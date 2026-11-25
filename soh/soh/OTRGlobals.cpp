@@ -3201,13 +3201,17 @@ extern "C" COMBO_EXPORT void SOH_GetCurrentPlayerName(unsigned char out8[8]) {
 }
 
 // ComboShip: the quest the file select offered for the save being created (QUEST_NORMAL, QUEST_MASTER,
-// QUEST_RANDOMIZER or QUEST_COMBO_MM). Valid inside the new-save callback; the launcher turns it into the slot's mode.
+// QUEST_RANDOMIZER, QUEST_COMBO_MM or QUEST_COMBO_BACK2BACK). Valid inside the new-save callback; the launcher turns
+// it into the slot's mode.
 static_assert(QUEST_NORMAL == ComboRando::kSohQuestNormal && QUEST_MASTER == ComboRando::kSohQuestMaster &&
-                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer && QUEST_COMBO_MM == ComboRando::kSohQuestComboMm,
+                  QUEST_RANDOMIZER == ComboRando::kSohQuestRandomizer &&
+                  QUEST_COMBO_MM == ComboRando::kSohQuestComboMm &&
+                  QUEST_COMBO_BACK2BACK == ComboRando::kSohQuestComboBackToBack,
               "combo/rando/ComboMode.h quest ids must match z64save.h");
 static_assert(SOH_SLOT_LABEL_MAX_LEN == ComboRando::kSlotLabelMaxLen,
               "OTRGlobals.h and combo/rando/ComboMode.h must agree on the slot label length");
-// The quest the file select offered for the file being created (QUEST_COMBO_MM included), set by Sram_InitSave.
+// The quest the file select offered for the file being created (QUEST_COMBO_MM and QUEST_COMBO_BACK2BACK included),
+// set by Sram_InitSave.
 extern "C" int gComboNewSaveQuest = QUEST_NORMAL;
 extern "C" COMBO_EXPORT int SOH_GetNewSaveQuest(void) {
     return gComboNewSaveQuest;

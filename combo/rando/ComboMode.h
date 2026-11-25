@@ -1,9 +1,11 @@
 // combo/rando/ComboMode.h
 // ComboShip: the mode of one save slot, stored in the slot's .combosav container as combo.mode:
-//   { "game": "ootmm"|"oot"|"mm", "kind": "rando"|"vanilla", "quest": "normal"|"mq" }
+//   { "game": "ootmm"|"oot"|"mm", "kind": "rando"|"vanilla", "quest": "normal"|"mq", "sequential": true }
 // game is the game(s) the slot plays, kind is whether a randomizer seed is bound to it, and quest is the OoT quest
 // of a vanilla OoT slot. An absent key (every save before this setting) is a combo randomizer slot. A vanilla Majora's
-// Mask slot is { "game": "mm", "kind": "vanilla" }.
+// Mask slot is { "game": "mm", "kind": "vanilla" }. A back-to-back slot (vanilla Ocarina of Time, then vanilla
+// Majora's Mask, in one slot) is { "game": "ootmm", "kind": "vanilla", "sequential": true }; "sequential" is written
+// only there.
 // Header-only, compiled into the exe and soh.dll. See docs/deviations/rando.md "Save modes: vanilla OoT".
 #pragma once
 
@@ -25,15 +27,19 @@ enum OotQuest {
     OOT_QUEST_MQ = 1,
 };
 
-// SoH's QUEST_NORMAL / QUEST_MASTER / QUEST_RANDOMIZER / QUEST_COMBO_MM (soh/include/z64save.h), as
-// SOH_GetNewSaveQuest reports them; OTRGlobals.cpp static_asserts the values. QUEST_COMBO_MM is the file select's
-// fourth choice and never a quest an OoT save holds.
+// SoH's QUEST_NORMAL / QUEST_MASTER / QUEST_RANDOMIZER / QUEST_COMBO_MM / QUEST_COMBO_BACK2BACK
+// (soh/include/z64save.h), as SOH_GetNewSaveQuest reports them; OTRGlobals.cpp static_asserts the values.
+// QUEST_COMBO_MM and QUEST_COMBO_BACK2BACK are the file select's fourth and fifth choices and never a quest an OoT
+// save holds.
 inline constexpr int kSohQuestNormal = 0;
 inline constexpr int kSohQuestMaster = 1;
 inline constexpr int kSohQuestRandomizer = 2;
 inline constexpr int kSohQuestComboMm = 6;
+inline constexpr int kSohQuestComboBackToBack = 7;
 
 inline constexpr const char* kComboModeKey = "mode";
+
+inline constexpr const char* kSequentialKey = "sequential";
 
 inline const char* ComboKindKey(ComboKind k) {
     return k == COMBO_KIND_VANILLA ? "vanilla" : "rando";
@@ -46,6 +52,7 @@ struct ComboMode {
     ComboGames game = COMBO_GAMES_BOTH;
     ComboKind kind = COMBO_KIND_RANDO;
     OotQuest quest = OOT_QUEST_NORMAL;
+    bool sequential = false; // both games, vanilla, one after the other (see the header comment)
 
     bool IsVanilla() const {
         return kind == COMBO_KIND_VANILLA;
@@ -56,31 +63,53 @@ struct ComboMode {
     bool IsVanillaMm() const {
         return IsVanilla() && game == COMBO_GAMES_MM;
     }
+    bool IsBackToBack() const {
+        return sequential;
+    }
+    // The slot's Majora's Mask save is a vanilla one: a vanilla Majora's Mask slot, or the second half of a
+    // back-to-back slot.
+    bool HasVanillaMmSave() const {
+        return IsVanillaMm() || IsBackToBack();
+    }
 
     static ComboMode Rando(ComboGames game) {
-        return { game, COMBO_KIND_RANDO, OOT_QUEST_NORMAL };
+        return { game, COMBO_KIND_RANDO, OOT_QUEST_NORMAL, false };
     }
     static ComboMode VanillaOot(OotQuest quest) {
-        return { COMBO_GAMES_OOT, COMBO_KIND_VANILLA, quest };
+        return { COMBO_GAMES_OOT, COMBO_KIND_VANILLA, quest, false };
     }
     static ComboMode VanillaMm() {
-        return { COMBO_GAMES_MM, COMBO_KIND_VANILLA, OOT_QUEST_NORMAL };
+        return { COMBO_GAMES_MM, COMBO_KIND_VANILLA, OOT_QUEST_NORMAL, false };
+    }
+    static ComboMode BackToBack() {
+        return { COMBO_GAMES_BOTH, COMBO_KIND_VANILLA, OOT_QUEST_NORMAL, true };
     }
 
     nlohmann::json ToJson() const {
-        return { { "game", ComboGamesKey(game) }, { "kind", ComboKindKey(kind) }, { "quest", OotQuestKey(quest) } };
+        nlohmann::json j = { { "game", ComboGamesKey(game) },
+                             { "kind", ComboKindKey(kind) },
+                             { "quest", OotQuestKey(quest) } };
+        if (sequential)
+            j[kSequentialKey] = true;
+        return j;
     }
 
     // Anything but a well-formed object is a combo randomizer slot. A vanilla slot needs one game, so a vanilla
-    // "ootmm" is read as a randomizer slot rather than as a game with no save to play.
+    // "ootmm" is read as a randomizer slot rather than as a game with no save to play, unless it is marked sequential.
     static ComboMode FromJson(const nlohmann::json& j) {
         ComboMode m;
         if (!j.is_object())
             return m;
         m.game = ComboGamesFromKey(j.value("game", std::string("ootmm")));
         m.quest = j.value("quest", std::string("normal")) == "mq" ? OOT_QUEST_MQ : OOT_QUEST_NORMAL;
-        if (j.value("kind", std::string("rando")) == "vanilla" && ComboGamesSolo(m.game))
+        if (j.value("kind", std::string("rando")) != "vanilla")
+            return m;
+        if (ComboGamesSolo(m.game)) {
             m.kind = COMBO_KIND_VANILLA;
+        } else if (j.value(kSequentialKey, false)) {
+            m.kind = COMBO_KIND_VANILLA;
+            m.sequential = true;
+        }
         return m;
     }
 };
@@ -88,9 +117,11 @@ struct ComboMode {
 // The label the OoT file select draws on a slot, in its small quest label box (uppercase letters only, at most
 // kSlotLabelMaxLen of them). nullptr: no label, a plain Normal Quest slot.
 //   COMBO: Combo Randomizer   OOTR: OoT Randomizer   MMR: MM Randomizer
-//   MQ: OoT Master Quest      MM: Majora's Mask (vanilla)
+//   MQ: OoT Master Quest      MM: Majora's Mask (vanilla)      S2S: both games back to back (vanilla)
 inline constexpr int kSlotLabelMaxLen = 8;
 inline const char* ComboModeLabel(const ComboMode& m) {
+    if (m.IsBackToBack())
+        return "S2S";
     if (m.IsVanillaMm())
         return "MM";
     if (m.IsVanillaOot())
