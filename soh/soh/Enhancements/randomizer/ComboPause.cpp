@@ -210,8 +210,11 @@ int CurTab() {
         return sDrawTab;
     return sFace <= COMBO_PAUSE_FACE_MASKS ? sFace : COMBO_PAUSE_TAB_HYRULE;
 }
-int sWornMmMask = -1;   // MM item id of the MM mask Link wears in Hyrule (-1 = none)
-int sWornForeignId = 0; // its foreign id (the button it was used from must still hold it)
+int sWornMmMask = -1;            // MM item id of the MM mask Link wears in Hyrule (-1 = none)
+int sWornForeignId = 0;          // its foreign id (the button it was used from must still hold it)
+bool sWornWithoutButton = false; // 2S2H Easy Mask Equip: worn from the pause menu, on no button
+int sEasyEquipItem = ITEM_NONE;  // 2S2H Easy Mask Equip: the foreign id picked in the pause menu, used once it closes
+constexpr const char* kEasyMaskEquipCVar = "gEnhancements.Masks.EasyMaskEquip";
 
 int LiveMmItem(int foreignId) {
     const int s = ComboPause_OotDecode(foreignId);
@@ -467,12 +470,12 @@ extern "C" void Combo_PauseToggleMmMask(int item) {
     const int mm = LiveMmItem(item);
     if (mm < 0 || mm == sWornMmMask) {
         Log("MM mask 0x%02X off", sWornMmMask);
-        sWornMmMask = -1;
-        sWornForeignId = 0;
+        Combo_PauseClearMmMask();
         return;
     }
     sWornMmMask = mm;
     sWornForeignId = item;
+    sWornWithoutButton = CVarGetInteger(kEasyMaskEquipCVar, 0) && !Combo_PauseOnButton(item);
     Log("wearing MM mask 0x%02X (MM's model on Link's head)", mm);
 }
 
@@ -555,6 +558,39 @@ extern "C" int Combo_BlastMaskCoolingDown(void) {
 extern "C" int Combo_BlastMaskCooldown(void) {
     const float seconds = CVarGetFloat(kMmBlastMaskCooldownCVar, kMmBlastMaskCooldownMax);
     return (seconds < kMmBlastMaskCooldownMax) ? (int)(seconds * kMmFramesPerSecond) : kMmBlastMaskCooldownFrames;
+}
+
+// 2S2H's "Easy Mask Equip" (mm/2s2h/Enhancements/Masks/EasyMaskEquip.cpp HandleMaskPageSelection, MM's own CVar): A on
+// an MM mask in the pause menu picks it to go on, or come off, without a button; the pick is used once the menu closes
+// (Combo_PauseTakeEasyEquip), by the rules of any use. A second A on the same mask cancels. Returns 1 when A was taken.
+extern "C" int Combo_PauseMaskAPress(int item) {
+    if (!CVarGetInteger(kEasyMaskEquipCVar, 0) || !Combo_PauseIsForeignMask(item)) {
+        return 0;
+    }
+    if (LiveMmItem(item) == MM_ITEM_MASK_GIANT) {
+        Sfx_PlaySfxCentered(NA_SE_SY_ERROR); // MM: only in Twinmold's arena, which Hyrule lacks
+    } else if (sEasyEquipItem == item) {
+        sEasyEquipItem = ITEM_NONE;
+        Sfx_PlaySfxCentered(NA_SE_SY_MESSAGE_PASS);
+    } else {
+        sEasyEquipItem = item;
+        Sfx_PlaySfxCentered(NA_SE_SY_DECIDE);
+    }
+    return 1;
+}
+
+extern "C" int Combo_PauseWornWithoutButtonItem(void) {
+    return (sWornMmMask >= 0) && sWornWithoutButton ? sWornForeignId : ITEM_NONE;
+}
+
+extern "C" int Combo_PauseTakeEasyEquip(void) {
+    const int item = sEasyEquipItem;
+    sEasyEquipItem = ITEM_NONE;
+    return item;
+}
+
+extern "C" int Combo_PauseEasyEquipPending(void) {
+    return sEasyEquipItem;
 }
 
 extern "C" int Combo_PauseLiveMmItem(int item) {
@@ -807,13 +843,15 @@ extern "C" int Combo_PauseWearMmMaskFromButtons(int mm) {
 extern "C" void Combo_PauseClearMmMask(void) {
     sWornMmMask = -1;
     sWornForeignId = 0;
+    sWornWithoutButton = false;
 }
 
 extern "C" const void* Combo_PauseWornMmMaskDL(void) {
     if (sWornMmMask < 0 || !MmResolved())
         return nullptr;
-    // OOT's rule for its own masks: a mask comes off once it is on no button.
-    if (!Combo_PauseOnButton(sWornForeignId) || LiveMmItem(sWornForeignId) != sWornMmMask) {
+    // OOT's rule for its own masks: a mask comes off once it is on no button. 2S2H's Easy Mask Equip wears one on none.
+    const bool held = sWornWithoutButton ? CVarGetInteger(kEasyMaskEquipCVar, 0) : Combo_PauseOnButton(sWornForeignId);
+    if (!held || LiveMmItem(sWornForeignId) != sWornMmMask) {
         Combo_PauseClearMmMask();
         return nullptr;
     }

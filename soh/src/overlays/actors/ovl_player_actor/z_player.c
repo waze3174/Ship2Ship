@@ -4385,6 +4385,19 @@ static void Combo_WearPendingMask(Player* this) {
     }
     sComboPendingMask = ITEM_NONE;
 }
+
+// 2S2H Easy Mask Equip: the mask picked in the pause menu is used once the menu has closed (ProcessPendingMaskEquip).
+static void Combo_UseEasyEquipMask(PlayState* play, Player* this) {
+    if ((Combo_PauseEasyEquipPending() == ITEM_NONE) || (play->pauseCtx.state != 0) || Player_InCsMode(play)) {
+        return;
+    }
+    const s32 item = Combo_PauseTakeEasyEquip();
+
+    if ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignWearableMask(item)) {
+        sComboPendingMask = item; // MM QueueReturnToHumanThenRegular: back to human first, then the mask
+    }
+    Player_UseItem(play, this, item);
+}
 #endif
 
 void Player_UseItem(PlayState* play, Player* this, s32 item) {
@@ -16857,6 +16870,7 @@ void Player_Update(Actor* thisx, PlayState* play) {
     Input input;
 
 #ifdef COMBO_BUILD
+    Combo_UseEasyEquipMask(play, this);
     Combo_WearPendingMask(this);
     Combo_TestEnemyUpdate(play, this);
     {

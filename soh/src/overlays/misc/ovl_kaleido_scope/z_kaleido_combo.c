@@ -20,6 +20,8 @@ Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, void** textures); //
 
 #define COMBO_GRID_X(slot) (-96 + ((slot) % 6) * 32 + 2)
 #define COMBO_GRID_Y(pauseCtx, slot) (58 - ((slot) / 6) * 32 + (pauseCtx)->offsetY - 2)
+// One outline quad per button (B has none), one for the mask worn without a button.
+#define COMBO_OUTLINE_QUADS ARRAY_COUNT(gSaveContext.equips.buttonItems)
 
 static void Combo_SetQuad(Vtx* v, s16 x, s16 y, s16 w, s16 h, s16 texW, s16 texH) {
     s32 i;
@@ -222,6 +224,9 @@ static void KaleidoScope_ComboUpdateForeignCursor(PlayState* play) {
                 (!CVarGetInteger(CVAR_SETTING("DPadOnPause"), 0) || CHECK_BTN_ALL(input->cur.button, BTN_CUP))) {
                 buttonsToCheck |= BTN_DUP | BTN_DDOWN | BTN_DLEFT | BTN_DRIGHT;
             }
+            if (CHECK_BTN_ALL(input->press.button, BTN_A) && (Combo_PauseTab() == COMBO_PAUSE_TAB_MASKS)) {
+                Combo_PauseMaskAPress(cursorItem);
+            }
             if (CHECK_BTN_ANY(input->press.button, buttonsToCheck)) {
                 u8 equipItem;
                 u8 equipSlot;
@@ -244,6 +249,23 @@ static void KaleidoScope_ComboUpdateForeignCursor(PlayState* play) {
     if (oldCursorPoint != pauseCtx->cursorPoint[PAUSE_ITEM]) {
         Audio_PlaySfxGeneral(NA_SE_SY_CURSOR, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
                              &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+    }
+}
+
+// The outline quad (quad index `quad` of `extra`) around the slot holding foreign item `item`, if it is on this page.
+static void Combo_DrawSlotOutline(PauseContext* pauseCtx, Vtx* extra, s32 quad, u8 item) {
+    u16 j;
+
+    if (item == ITEM_NONE) {
+        return;
+    }
+    for (j = 0; j < 24; j++) {
+        if (Combo_PauseSlotItem(j) == item) {
+            Combo_SetQuad(&extra[quad * 4], COMBO_GRID_X(j) - 2, COMBO_GRID_Y(pauseCtx, j) + 2, 32, 32, 32, 32);
+            gSPVertex(POLY_OPA_DISP++, &extra[quad * 4], 4, 0);
+            POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(POLY_OPA_DISP, gEquippedItemOutlineTex, 32, 32, 0);
+            return;
+        }
     }
 }
 
@@ -273,7 +295,7 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
 
     // White outline around the slots whose item sits on a C button / D-pad direction (MM: gEquippedItemOutlineTex).
     // OOT's own outline vertices are placed from cButtonSlots; a foreign button's lives here.
-    extra = Graph_Alloc(play->state.gfxCtx, 7 * 4 * sizeof(Vtx));
+    extra = Graph_Alloc(play->state.gfxCtx, COMBO_OUTLINE_QUADS * 4 * sizeof(Vtx));
     gDPSetCombineLERP(POLY_OPA_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0, PRIMITIVE,
                       ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
@@ -283,18 +305,13 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
         if ((i >= 4) && !CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0)) {
             break;
         }
-        if (!Combo_PauseIsForeign(item)) {
-            continue;
-        }
-        for (j = 0; j < 24; j++) {
-            if (Combo_PauseSlotItem(j) == item) {
-                Combo_SetQuad(&extra[(i - 1) * 4], COMBO_GRID_X(j) - 2, COMBO_GRID_Y(pauseCtx, j) + 2, 32, 32, 32, 32);
-                gSPVertex(POLY_OPA_DISP++, &extra[(i - 1) * 4], 4, 0);
-                POLY_OPA_DISP = KaleidoScope_QuadTextureIA8(POLY_OPA_DISP, gEquippedItemOutlineTex, 32, 32, 0);
-                break;
-            }
+        if (Combo_PauseIsForeign(item)) {
+            Combo_DrawSlotOutline(pauseCtx, extra, i - 1, item);
         }
     }
+    // 2S2H's Easy Mask Equip: the mask worn from this menu sits on no button, and gets the same outline.
+    Combo_DrawSlotOutline(pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems) - 1,
+                          Combo_PauseWornWithoutButtonItem());
 
     gDPPipeSync(POLY_OPA_DISP++);
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
