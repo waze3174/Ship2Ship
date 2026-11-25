@@ -4378,7 +4378,10 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
     // ComboShip (merged pause menus): an MM item on a C button / D-pad direction (foreign id, ComboPauseABI.h).
     // Transformation masks run the form system (any mask while transformed changes back, as in Termina), other MM
     // masks are worn with MM's own model, and the rest play OOT's "can't use" until they have a Hyrule version.
-    gComboGfsInHand = Combo_PauseIsForeignGfs(item) && (Combo_OotForm() == COMBO_FORM_HUMAN);
+    // comboGfs is this use's item; gComboGfsInHand is what is in hand, so it changes only where the held item does
+    // ("Handle using a new held item" below). An item that leaves the sword out (a mask, the Lens, a nut, a spell, the
+    // ocarina, a bottle, a refused item) keeps it MM's Great Fairy's Sword.
+    const s32 comboGfs = Combo_PauseIsForeignGfs(item) && (Combo_OotForm() == COMBO_FORM_HUMAN);
     sComboMmUseKind = COMBO_MMUSE_NONE;
     sComboMmUseItem = Combo_PauseIsForeign(item) ? Combo_PauseLiveMmItem(item) : -1;
     sComboKegItem = ITEM_NONE;
@@ -4387,8 +4390,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         // it out (Player_InitExplosiveIA spawns MM's keg) with MM's own ammo.
         sComboKegItem = item;
         Combo_PauseLogUse(item, "Powder Keg (Goron) -> MM keg held overhead");
-    } else if (!gComboGfsInHand && (Combo_PauseForeignBottleAction(item) >= 0) &&
-               (Combo_OotForm() == COMBO_FORM_HUMAN)) {
+    } else if (!comboGfs && (Combo_PauseForeignBottleAction(item) >= 0) && (Combo_OotForm() == COMBO_FORM_HUMAN)) {
         // An MM bottle: OOT's bottle code below runs it (MM's is the same code); Player_UpdateBottleHeld writes the
         // result into MM's slot. Chateau Romani adds MM's infinite magic when drunk.
         sComboMmUseKind = COMBO_MMUSE_BOTTLE;
@@ -4398,7 +4400,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
         Combo_PauseLogUse(item, "Powder Keg -> MM: Goron only -> error sfx");
         return;
-    } else if (gComboGfsInHand) {
+    } else if (comboGfs) {
         gComboGfsItem = item;
         // MM's Great Fairy's Sword: a C-button sword as in MM (press to draw, press again to swing), child or adult.
         Combo_PauseLogUse(item, "Great Fairy's Sword -> wielded (MM model, OOT two-handed swing)");
@@ -4588,8 +4590,17 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
                     this->itemAction = itemAction;
                 }
             } else if ((itemAction != this->heldItemAction) ||
-                       ((this->heldActor == NULL) && (Player_ActionToExplosive(this, itemAction) >= 0))) {
+                       ((this->heldActor == NULL) && (Player_ActionToExplosive(this, itemAction) >= 0))
+#ifdef COMBO_BUILD
+                       // MM's GFS and OOT's Biggoron's Sword share the action: the other one is a new held item.
+                       || ((itemAction == PLAYER_IA_SWORD_BIGGORON) && (comboGfs != Combo_GfsInHand(this)))
+#endif
+            ) {
                 // Handle using a new held item
+#ifdef COMBO_BUILD
+                const s32 comboGfsWasInHand = gComboGfsInHand;
+                gComboGfsInHand = comboGfs; // the model group below is the new item's
+#endif
                 this->nextModelGroup = Player_ActionToModelGroup(this, itemAction);
                 nextAnimType = gPlayerModelTypes[this->nextModelGroup][PLAYER_MODELGROUPENTRY_ANIM];
 
@@ -4603,6 +4614,10 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
                     // Start the held item change process
                     this->heldItemId = item;
                     this->stateFlags1 |= PLAYER_STATE1_START_CHANGING_HELD_ITEM;
+#ifdef COMBO_BUILD
+                    // The old item stays in hand until Player_FinishItemChange uses this item again and swaps it.
+                    gComboGfsInHand = comboGfsWasInHand;
+#endif
                 } else {
                     // Init new held item for use
                     Player_DestroyHookshot(this);
