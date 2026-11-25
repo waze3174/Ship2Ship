@@ -10975,6 +10975,12 @@ static ComboGoronRoll sRoll;
 // gEnhancements.Masks.GoronRollingFastSpikes). Stepping back to 4 when the charge stalls is vanilla's.
 #define COMBO_GORON_FAST_SPIKES_STEP 8
 
+// 2S2H's Goron rolling option "Ignores Magic" (mm/2s2h/Enhancements/Masks/GoronRollingIgnoresMagic.cpp,
+// gEnhancements.Masks.GoronRollingIgnoresMagic, MM's own setting): the spikes cost no magic and need none.
+static s32 Combo_GoronIgnoresMagic(void) {
+    return CVarGetInteger("gEnhancements.Masks.GoronRollingIgnoresMagic", 0);
+}
+
 // 2S2H's Goron rolling option "Spikes Require Shield" (mm/2s2h/Enhancements/Masks/GoronRollingIgnoresMagic.cpp,
 // gEnhancements.Masks.GoronRollingSpikesRequireShield, MM's own setting, read in Hyrule too).
 static s32 Combo_GoronSpikesRequireR(void) {
@@ -10983,7 +10989,8 @@ static s32 Combo_GoronSpikesRequireR(void) {
 
 // MM VB_GORON_ROLL_DISABLE_SPIKE_MODE: the spikes retract.
 static s32 Combo_GoronSpikesRetract(void) {
-    s32 retract = !CHECK_BTN_ALL(sControlInput->cur.button, BTN_A) || (gSaveContext.magic == 0) ||
+    s32 retract = !CHECK_BTN_ALL(sControlInput->cur.button, BTN_A) ||
+                  (!Combo_GoronIgnoresMagic() && (gSaveContext.magic == 0)) ||
                   ((sRoll.av1 == 4) && (sRoll.b08 < 12.0f));
 
     return retract || (Combo_GoronSpikesRequireR() && !CHECK_BTN_ALL(sControlInput->cur.button, BTN_R));
@@ -10991,7 +10998,8 @@ static s32 Combo_GoronSpikesRetract(void) {
 
 // MM VB_GORON_ROLL_INCREASE_SPIKE_LEVEL: the spike charge keeps winding up.
 static s32 Combo_GoronSpikesCharge(void) {
-    s32 charge = (gSaveContext.magicState == MAGIC_STATE_IDLE) && (gSaveContext.magic >= 2) && (sRoll.av2 >= 0x36B0);
+    s32 hasMagic = (gSaveContext.magicState == MAGIC_STATE_IDLE) && (gSaveContext.magic >= 2);
+    s32 charge = (Combo_GoronIgnoresMagic() || hasMagic) && (sRoll.av2 >= 0x36B0);
 
     return charge && (!Combo_GoronSpikesRequireR() || CHECK_BTN_ALL(sControlInput->cur.button, BTN_R));
 }
@@ -11315,7 +11323,7 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                 sRoll.b86[1]++;
             }
             // MM MAGIC_STATE_CONSUME_GORON_ZORA: one point every 10 frames while the spikes are out.
-            if (++sRoll.spikeTimer >= 10) {
+            if (!Combo_GoronIgnoresMagic() && (++sRoll.spikeTimer >= 10)) {
                 sRoll.spikeTimer = 0;
                 if (gSaveContext.magic > 0) {
                     gSaveContext.magic--;
@@ -11356,7 +11364,9 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                     }
                     if (sRoll.av1 >= 0x36) {
                         // the spikes come out: 2 magic up front, then the drain above
-                        gSaveContext.magic = (gSaveContext.magic >= 2) ? (gSaveContext.magic - 2) : 0;
+                        if (!Combo_GoronIgnoresMagic()) {
+                            gSaveContext.magic = (gSaveContext.magic >= 2) ? (gSaveContext.magic - 2) : 0;
+                        }
                         sRoll.spikeTimer = 0;
                         sRoll.b08 = 18.0f;
                         sRoll.b86[1] = 1;
