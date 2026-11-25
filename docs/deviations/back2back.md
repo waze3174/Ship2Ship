@@ -43,6 +43,18 @@ select's `questType[]` and `gComboNewSaveQuest`; `QUEST_SAVE_ID()` stores the Oo
 centred), `SohFileSelect_IsQuestHidden` and `SohFileSelect_CountVisibleQuests` (`FileSelectEnhancements.cpp`), and the
 static_assert in `OTRGlobals.cpp` that ties the value to `kSohQuestComboBackToBack` in `ComboMode.h`.
 
+### The hide switch
+
+The mode is unfinished, so the carousel hides it until the player asks for it: `gCombo.BackToBack.Show`
+(`kBackToBackShowCVar`, `combo/rando/ComboBackToBackSettings.h`; 0 or unset = hidden), a checkbox at the top of Settings >
+Back to back. `SohFileSelect_IsQuestHidden` returns hidden for `QUEST_COMBO_BACK2BACK` while it is off, so the
+carousel's own skipping (`NextVisibleQuest`) and its fallback for a selection that becomes hidden apply as for a missing
+Master Quest archive. Only the new-file choice is hidden: a slot that already is a back-to-back one loads, plays and
+shows its `S2S` badge whatever the switch says. A slot made while it was on may not match the finished mode.
+
+**Co-op is not supported in this mode.** A back-to-back slot is `IsVanilla()`, so the co-op dormant gate stays closed and
+the boss release (`Combo_OnFinalBossDefeated` queues it only for a non-vanilla slot) refuses it.
+
 ## The settings page and Master Quest
 
 Settings > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
