@@ -124,6 +124,7 @@
 #include "soh/Network/CrowdControl/CrowdControl.h"
 #include "soh/Network/Sail/Sail.h"
 #include "soh/Network/Anchor/Anchor.h"
+#include "soh/Notification/Notification.h" // ComboShip: SOH_ComboToast (launcher co-op toasts)
 #include "soh/util.h" // ComboShip: SohUtils::GetSceneName (Anchor roster), AppendVector (entrance-shuffle pool)
 #include "soh/Enhancements/randomizer/SeedContext.h" // ComboShip: Rando::Context::GetSeed for roster seed-mismatch
 #include "Enhancements/game-interactor/GameInteractor.h"
@@ -3320,6 +3321,16 @@ extern "C" COMBO_EXPORT void SOH_Anchor_PumpDormant(void) {
         Anchor::Instance->PumpDormant();
     }
 }
+// The launcher calls this when the dormant OOT save is not the loaded slot's (or the slot just changed): what is
+// queued for it must never reach a save it was not meant for.
+extern "C" COMBO_EXPORT void SOH_Anchor_DiscardDormant(void) {
+    if (!Anchor::Instance) {
+        return;
+    }
+    if (const size_t discarded = Anchor::Instance->DiscardDormantPackets(); discarded > 0) {
+        SPDLOG_INFO("[Anchor] discarded {} queued co-op packet(s) that had no save to apply to", discarded);
+    }
+}
 // Bug 2: launcher-orchestrated resync (auto on connect + combo menu button), dormant-safe.
 // Finding 3: never let an exception unwind across this extern "C" boundary.
 extern "C" COMBO_EXPORT void SOH_Anchor_RequestResync(void) {
@@ -3330,6 +3341,19 @@ extern "C" COMBO_EXPORT void SOH_Anchor_RequestResync(void) {
     } catch (const std::exception& e) { SPDLOG_ERROR("[SOH_Anchor_RequestResync] {}", e.what()); } catch (...) {
         SPDLOG_ERROR("[SOH_Anchor_RequestResync] unknown exception");
     }
+}
+
+// Co-op hardening (2026-11-13): launcher link/presence toasts. Callable from the launcher's Anchor
+// thread (EmitThreadSafe queues it for the UI frame). gateCvar: a default-on display toggle, or null.
+extern "C" COMBO_EXPORT void SOH_ComboToast(const char* prefix, const char* message, const char* suffix,
+                                            const char* gateCvar) {
+    try {
+        if (gateCvar && gateCvar[0] != '\0' && !CVarGetInteger(gateCvar, 1)) {
+            return;
+        }
+        Notification::EmitThreadSafe(
+            { .prefix = prefix ? prefix : "", .message = message ? message : "", .suffix = suffix ? suffix : "" });
+    } catch (...) {} // never unwind into the launcher
 }
 
 // ComboShip: combo-native Anchor connection panel drives Enable/Disable (soh's own menu is hidden in

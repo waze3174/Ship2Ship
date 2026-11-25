@@ -112,10 +112,32 @@ void Anchor::RegisterHooks() {
         SendPacket_PlayerUpdate();
     });
 
+#ifdef COMBO_BUILD
+    // Co-op next (2026-11-13): registered ONCE and never re-registered. The launcher's receive thread
+    // no longer calls OnConnected/OnDisconnected; the pump below is where this (game) thread learns
+    // about a new or lost connection (ComboAnchor::SyncLinkOnGameThread), so it has to run while Anchor
+    // is enabled but not connected yet. It also must not be a COND_HOOK: OnConnected -> RegisterHooks
+    // is now reached from inside this very hook, and re-registering OnGameFrameUpdate there would
+    // insert into the unordered_map GameInteractor is iterating. The other hook types are fine.
+    static bool sComboFrameHookRegistered = false;
+    if (!sComboFrameHookRegistered) {
+        sComboFrameHookRegistered = true;
+        GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameFrameUpdate>([this]() {
+            if (!isEnabled && !isConnected) {
+                return;
+            }
+            if (isConnected) {
+                ProcessIncomingPacketQueue();
+            }
+            ComboPumpDormantTick(); // link sync + A6: drive dormant sibling's apply while OOT is foreground
+        });
+    }
+#else
     COND_HOOK(OnGameFrameUpdate, isConnected, [&]() {
         ProcessIncomingPacketQueue();
         ComboPumpDormantTick(); // A6: drive dormant sibling's apply while OOT is foreground (no-op non-combo)
     });
+#endif
 
     COND_HOOK(OnPlayerSfx, isConnected, [&](u16 sfxId) { SendPacket_PlayerSfx(sfxId); });
     COND_HOOK(OnOcarinaNote, isConnected,
@@ -129,7 +151,7 @@ void Anchor::RegisterHooks() {
         }
     });
 
-    COND_HOOK(OnFlagSet, isConnected, [&](s16 flagType, s16 flag) {
+    COND_HOOK(OnFlagSet, ProgressHooksActive(), [&](s16 flagType, s16 flag) {
         SendPacket_SetFlag(SCENE_ID_MAX, flagType, flag);
 
         // If we're not in rando, we have to sync some of the great fairy rewards manually
@@ -150,33 +172,34 @@ void Anchor::RegisterHooks() {
         }
     });
 
-    COND_HOOK(OnFlagUnset, isConnected,
+    COND_HOOK(OnFlagUnset, ProgressHooksActive(),
               [&](s16 flagType, s16 flag) { SendPacket_UnsetFlag(SCENE_ID_MAX, flagType, flag); });
 
-    COND_HOOK(OnSceneFlagSet, isConnected,
+    COND_HOOK(OnSceneFlagSet, ProgressHooksActive(),
               [&](s16 sceneNum, s16 flagType, s16 flag) { SendPacket_SetFlag(sceneNum, flagType, flag); });
 
-    COND_HOOK(OnSceneFlagUnset, isConnected,
+    COND_HOOK(OnSceneFlagUnset, ProgressHooksActive(),
               [&](s16 sceneNum, s16 flagType, s16 flag) { SendPacket_UnsetFlag(sceneNum, flagType, flag); });
 
-    COND_HOOK(OnRandoSetCheckStatus, isConnected, [&](RandomizerCheck rc, RandomizerCheckStatus status) {
+    COND_HOOK(OnRandoSetCheckStatus, ProgressHooksActive(), [&](RandomizerCheck rc, RandomizerCheckStatus status) {
         if (!isHandlingUpdateTeamState) {
             SendPacket_SetCheckStatus(rc);
         }
     });
 
-    COND_HOOK(OnRandoSetIsSkipped, isConnected, [&](RandomizerCheck rc, bool isSkipped) {
+    COND_HOOK(OnRandoSetIsSkipped, ProgressHooksActive(), [&](RandomizerCheck rc, bool isSkipped) {
         if (!isHandlingUpdateTeamState) {
             SendPacket_SetCheckStatus(rc);
         }
     });
 
-    COND_HOOK(OnRandoEntranceDiscovered, isConnected,
+    COND_HOOK(OnRandoEntranceDiscovered, ProgressHooksActive(),
               [&](u16 entranceIndex, u8 isReversedEntrance) { SendPacket_EntranceDiscovered(entranceIndex); });
 
-    COND_ID_HOOK(OnBossDefeat, ACTOR_BOSS_GANON2, isConnected, [&](void* refActor) { SendPacket_GameComplete(); });
+    COND_ID_HOOK(OnBossDefeat, ACTOR_BOSS_GANON2, ProgressHooksActive(),
+                 [&](void* refActor) { SendPacket_GameComplete(); });
 
-    COND_HOOK(OnItemReceive, isConnected, [&](GetItemEntry itemEntry) {
+    COND_HOOK(OnItemReceive, ProgressHooksActive(), [&](GetItemEntry itemEntry) {
         // Handle vanilla dungeon items a bit differently
         if (itemEntry.modIndex == MOD_NONE &&
             (itemEntry.itemId >= ITEM_KEY_BOSS && itemEntry.itemId <= ITEM_KEY_SMALL)) {
@@ -196,7 +219,7 @@ void Anchor::RegisterHooks() {
         SendPacket_GiveItem(itemEntry.tableId, itemEntry.getItemId);
     });
 
-    COND_HOOK(OnDungeonKeyUsed, isConnected, [&](uint16_t mapIndex) {
+    COND_HOOK(OnDungeonKeyUsed, ProgressHooksActive(), [&](uint16_t mapIndex) {
         // Handle vanilla dungeon items a bit differently
         SendPacket_UpdateDungeonItems();
     });

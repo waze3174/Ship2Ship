@@ -84,11 +84,16 @@ target_include_directories(comboui PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/../soh/soh/Extractor
 )
 target_link_libraries(comboui PRIVATE libultraship)
+# ComboMenu.cpp opens the co-op diagnostics folder via ShellExecuteW.
+if(WIN32)
+    target_link_libraries(comboui PRIVATE shell32)
+endif()
 add_dependencies(comboui libultraship)
 
 # Source files
 set(COMBO_SOURCES
     ComboShip.cpp
+    ComboNetKeepAlive.cpp # co-op hardening: TCP keepalive on the Anchor socket
 )
 
 # Create executable
@@ -118,6 +123,10 @@ if(TARGET SDL2_net::SDL2_net-static)
 else()
     target_link_libraries(Ship2Ship PRIVATE SDL2_net::SDL2_net SDL2::SDL2)
 endif()
+# ComboNetKeepAlive.cpp calls setsockopt/WSAIoctl directly (SDL2_net only links Winsock privately).
+if(WIN32)
+    target_link_libraries(Ship2Ship PRIVATE ws2_32)
+endif()
 
 # Add dependencies to ensure games are built first
 add_dependencies(Ship2Ship
@@ -144,6 +153,18 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
         RUNTIME_OUTPUT_DIRECTORY_RELEASE "${CMAKE_SOURCE_DIR}/x64/Release"
     )
 endif()
+
+# ComboShip co-op: unit tests for the launcher's pure Anchor logic (combo/net/, header-only). Needs
+# neither game DLL nor SDL, only nlohmann_json, so it builds in seconds. EXCLUDE_FROM_ALL like
+# comborando; the Linux CI job builds and runs it before the game targets (exit code = verdict).
+add_executable(combo_anchor_tests EXCLUDE_FROM_ALL
+    tests/ComboAnchorTestsMain.cpp
+    tests/ComboAnchorOutboxTest.cpp
+    tests/ComboAnchorDeliveryTest.cpp
+    tests/ComboAnchorMmFlagsTest.cpp
+)
+target_include_directories(combo_anchor_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(combo_anchor_tests PRIVATE nlohmann_json::nlohmann_json)
 
 # Windows-specific settings
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")

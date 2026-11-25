@@ -14,6 +14,37 @@ extern "C" {
 #include "include/macros.h" // ARRAY_COUNT
 }
 
+// Global flags are addressed as (save array word << kFlagWordShift) | bit; the arrays hold 16-bit words.
+constexpr s32 kFlagWordShift = 4;
+// Skulltula tokens: the area is bits 8-12 of the flag, and SET_GS_FLAGS packs four areas into each gsFlags word.
+constexpr s32 kGsTokenAreaShift = 8;
+constexpr s32 kGsTokenAreaMask = 0x1F00;
+constexpr s32 kGsTokenAreasPerWord = 4;
+
+static bool IsFlagWordInArray(s16 flag, s32 wordCount) {
+    return flag >= 0 && (flag >> kFlagWordShift) < wordCount;
+}
+
+bool Anchor_IsGlobalFlagInRange(s16 flagType, s16 flag) {
+    switch (flagType) {
+        case FLAG_EVENT_CHECK_INF:
+            return IsFlagWordInArray(flag, ARRAY_COUNT(gSaveContext.eventChkInf));
+        case FLAG_ITEM_GET_INF:
+            return IsFlagWordInArray(flag, ARRAY_COUNT(gSaveContext.itemGetInf));
+        case FLAG_INF_TABLE:
+            return IsFlagWordInArray(flag, ARRAY_COUNT(gSaveContext.infTable));
+        case FLAG_EVENT_INF:
+            return IsFlagWordInArray(flag, ARRAY_COUNT(gSaveContext.eventInf));
+        case FLAG_RANDOMIZER_INF:
+            return IsFlagWordInArray(flag, ARRAY_COUNT(gSaveContext.ship.randomizerInf));
+        case FLAG_GS_TOKEN:
+            return flag >= 0 && ((flag & kGsTokenAreaMask) >> kGsTokenAreaShift) <
+                                    ARRAY_COUNT(gSaveContext.gsFlags) * kGsTokenAreasPerWord;
+        default:
+            return false;
+    }
+}
+
 // ComboShip: background world sync (2026-11-07) — dormant-safe save writes, used by SET_FLAG/UNSET_FLAG
 // while OOT is backgrounded (declared in Anchor.h). Mirrors the save half of
 // GameInteractor::RawAction::SetSceneFlag/UnsetSceneFlag: switch flags >= 0x20 and collectible flag 0
@@ -116,6 +147,10 @@ void Anchor::HandlePacket_SetFlag(nlohmann::json payload) {
 
     if (sceneNum == SCENE_ID_MAX) {
 #ifdef COMBO_BUILD
+        if (!Anchor_IsGlobalFlagInRange(flagType, flag)) {
+            SPDLOG_ERROR("[Anchor] SET_FLAG: flag {} out of range for flagType {}", flag, flagType);
+            return;
+        }
         // ComboShip: background world sync — the effect refuses without gPlayState, so write the save
         // directly (RawAction::SetFlag touches only gSaveContext) and skip the HUD icon reload.
         if (isDormantApply) {

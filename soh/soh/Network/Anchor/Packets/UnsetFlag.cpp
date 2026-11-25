@@ -58,6 +58,10 @@ void Anchor::HandlePacket_UnsetFlag(nlohmann::json payload) {
 
     if (sceneNum == SCENE_ID_MAX) {
 #ifdef COMBO_BUILD
+        if (!Anchor_IsGlobalFlagInRange(flagType, flag)) {
+            SPDLOG_ERROR("[Anchor] UNSET_FLAG: flag {} out of range for flagType {}", flag, flagType);
+            return;
+        }
         // ComboShip: background world sync — direct save write while dormant (see SetFlag.cpp).
         if (isDormantApply) {
             GameInteractor::RawAction::UnsetFlag(flagType, flag);

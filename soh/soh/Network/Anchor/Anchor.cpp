@@ -1,4 +1,5 @@
 #include <nlohmann/json.hpp>
+#include <optional>
 
 #include "Anchor.h"
 #include "soh/Enhancements/nametag.h"
@@ -31,7 +32,9 @@ extern "C" void (*gComboMarkForeignObtained)(int srcGame, const char* checkName)
 // Broadcast a locally-collected foreign item to teammates (called from hook_handlers.cpp). No-op
 // when Anchor is disconnected or item sync is off.
 extern "C" void Anchor_BroadcastCrossItem(int targetGame, const char* itemName, const char* srcCheckName) {
-    if (!Anchor::Instance || !Anchor::Instance->isConnected || !itemName || !srcCheckName) {
+    // Co-op hardening (2026-11-13): ProgressHooksActive, not isConnected — a cross item found while the
+    // launcher is reconnecting is held in its outbox instead of being lost (see SendJsonToRemote).
+    if (!Anchor::Instance || !Anchor::Instance->ProgressHooksActive() || !itemName || !srcCheckName) {
         return;
     }
     if (!Anchor::Instance->roomState.syncItemsAndFlags) {
@@ -44,6 +47,9 @@ extern "C" void Anchor_BroadcastCrossItem(int targetGame, const char* itemName, 
     payload["srcGame"] = 0;             // collected in OOT
     payload["itemName"] = itemName;     // neutral CrossForeign name, in the target game's namespace
     payload["srcCheckName"] = srcCheckName;
+    // Co-op hardening (2026-11-13): server-queue it for a teammate who is offline right now, like GIVE_ITEM.
+    // Safe to replay: receivers dedup on srcCheckName and mark the source check obtained.
+    payload["addToQueue"] = true;
     Anchor::Instance->SendJsonToRemote(payload);
     // Live partner feed: a teammate currently in OOT gets this item silently into their dormant MM.
     // (Declared in Anchor.h.)
@@ -146,6 +152,13 @@ void Anchor::Enable() {
                     CVarGetInteger(CVAR_REMOTE_ANCHOR("Port"), 43383));
     ownClientId = CVarGetInteger(CVAR_REMOTE_ANCHOR("LastClientId"), 0);
     roomState.ownerClientId = 0;
+#ifdef COMBO_BUILD
+    // Co-op next (2026-11-13): register now, not only on the first successful connection. This installs
+    // the per-frame hook that learns about the launcher's link changes (see RegisterHooks), and the
+    // save-progress hooks (ProgressHooksActive), so a find made while the very first connection attempt
+    // is still pending is handed to the launcher's outbox instead of being lost.
+    RegisterHooks();
+#endif
 }
 
 void Anchor::Disable() {
@@ -153,6 +166,12 @@ void Anchor::Disable() {
 
     clients.clear();
     RefreshClientActors();
+#ifdef COMBO_BUILD
+    // Co-op next (2026-11-13): the launcher's receive thread no longer calls OnDisconnected for us (it
+    // must not touch the hook tables), so drop the hooks here. Unregistering is deferred by
+    // GameInteractor, which makes this safe even from inside a hook (DISABLE_ANCHOR packet).
+    RegisterHooks();
+#endif
 }
 
 void Anchor::OnConnected() {
@@ -192,10 +211,29 @@ void Anchor::ProcessOutgoingPackets() {
     }
 }
 
+bool Anchor::ProgressHooksActive() {
+#ifdef COMBO_BUILD
+    // Co-op hardening (2026-11-13): while Anchor is enabled but the launcher is reconnecting, keep the
+    // save-progress hooks live so their packets reach the launcher, which holds the save-affecting ones in
+    // its outbox and sends them after the next handshake (combo/ComboShip.cpp, ComboAnchor).
+    return isConnected || isEnabled;
+#else
+    return isConnected;
+#endif
+}
+
 void Anchor::SendJsonToRemote(nlohmann::json payload) {
+#ifdef COMBO_BUILD
+    // Co-op hardening (2026-11-13): hand packets to the launcher while it is reconnecting too; it keeps
+    // only the save-affecting ones (outbox) and drops live-only ones. Nothing goes out once disabled.
+    if (!isConnected && !isEnabled) {
+        return;
+    }
+#else
     if (!isConnected) {
         return;
     }
+#endif
 
     payload["clientId"] = ownClientId;
     if (!payload.contains("quiet")) {
@@ -246,19 +284,21 @@ void Anchor::OnIncomingJson(nlohmann::json payload) {
     }
 #endif
 
+#ifndef COMBO_BUILD
     // Ignore packets from mismatched clients, except for ALL_CLIENT_STATE, UPDATE_CLIENT_STATE, and PLAYER_UPDATE
     if (packetType != ALL_CLIENT_STATE && packetType != UPDATE_CLIENT_STATE && packetType != PLAYER_UPDATE) {
         if (payload.contains("clientId")) {
             uint32_t clientId = payload["clientId"].get<uint32_t>();
             if (clients.contains(clientId) && clients[clientId].clientVersion != clientVersion) {
-#ifdef COMBO_BUILD
-                SPDLOG_INFO("[Anchor] dropped {} from client {}: version '{}' != ours '{}'", packetType, clientId,
-                            clients[clientId].clientVersion, clientVersion);
-#endif
                 return;
             }
         }
     }
+#endif
+    // ComboShip (co-op next, 2026-11-13): this runs on the launcher's receive thread, and `clients` is
+    // owned by the game thread (the check above even inserts through operator[]). The same check is
+    // done when the queue is drained instead: ComboDropForVersionMismatch, called from
+    // ProcessIncomingPacketQueue and PumpDormant.
 
     // Queue all packets to be processed on the game thread
     std::lock_guard<std::mutex> lock(incomingPacketQueueMutex);
@@ -279,6 +319,12 @@ void Anchor::ProcessIncomingPacketQueue() {
         packetsToProcess.pop();
 
         std::string packetType = payload["type"].get<std::string>();
+
+#ifdef COMBO_BUILD
+        if (ComboDropForVersionMismatch(payload)) {
+            continue;
+        }
+#endif
 
         isProcessingIncomingPacket = true;
 
@@ -357,6 +403,9 @@ void Anchor::PumpDormant() {
         nlohmann::json payload = packetsToProcess.front();
         packetsToProcess.pop();
         std::string type = payload.value("type", std::string());
+        if (ComboDropForVersionMismatch(payload)) {
+            continue; // moved here from OnIncomingJson (receive thread), see there
+        }
         if (type == UPDATE_ROOM_STATE) {
             // Keep roomState current while dormant — syncItemsAndFlags gates the dormant apply,
             // and a client that boots straight into MM never handles it foreground.
@@ -443,6 +492,51 @@ void Anchor::PumpDormant() {
         SaveManager::Instance->SaveFile(gSaveContext.fileNum);
         SPDLOG_INFO("[Anchor] dormant OOT save persisted (file {})", gSaveContext.fileNum);
     }
+}
+
+// Co-op next (2026-11-13): upstream's "ignore packets from mismatched clients" check, moved off the
+// receive thread (Anchor::OnIncomingJson) because it reads `clients`. Game thread only. Same rule:
+// roster and pose packets always pass; anything else is dropped when the sender is a known client
+// whose build differs from ours. A clientId that is not a number is dropped too (upstream threw).
+bool Anchor::ComboDropForVersionMismatch(const nlohmann::json& payload) {
+    const std::string packetType = payload.value("type", std::string());
+    if (packetType == ALL_CLIENT_STATE || packetType == UPDATE_CLIENT_STATE || packetType == PLAYER_UPDATE) {
+        return false;
+    }
+    auto idIt = payload.find("clientId");
+    if (idIt == payload.end()) {
+        return false;
+    }
+    if (!idIt->is_number_integer()) {
+        return true;
+    }
+    auto clientIt = clients.find(idIt->get<uint32_t>());
+    if (clientIt == clients.end() || clientIt->second.clientVersion == clientVersion) {
+        return false;
+    }
+    SPDLOG_INFO("[Anchor] dropped {} from client {}: version '{}' != ours '{}'", packetType, clientIt->first,
+                clientIt->second.clientVersion, clientVersion);
+    return true;
+}
+
+size_t Anchor::DiscardDormantPackets() {
+    std::lock_guard<std::mutex> lock(incomingPacketQueueMutex);
+    size_t discarded = 0;
+    std::optional<nlohmann::json> newestRoomState;
+    while (!incomingPacketQueue.empty()) {
+        nlohmann::json packet = std::move(incomingPacketQueue.front());
+        incomingPacketQueue.pop();
+        if (packet.value("type", std::string()) == UPDATE_ROOM_STATE) {
+            discarded += newestRoomState.has_value() ? 1 : 0;
+            newestRoomState = std::move(packet);
+        } else {
+            discarded++;
+        }
+    }
+    if (newestRoomState.has_value()) {
+        incomingPacketQueue.push(std::move(*newestRoomState));
+    }
+    return discarded;
 }
 
 // Bug 2: launcher-orchestrated resync (auto on connect + the combo menu button). Forces
