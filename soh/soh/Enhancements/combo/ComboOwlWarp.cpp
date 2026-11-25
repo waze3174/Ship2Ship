@@ -1,5 +1,5 @@
 // ComboShip (teleport songs): MM's Song of Soaring in OOT. Opens a flat port of MM's owl map and warps
-// to the chosen activated statue.
+// to the chosen activated statue, or to any statue while MM's index warp is set up.
 #ifdef COMBO_BUILD
 #include <libultraship/bridge/consolevariablebridge.h>
 #include "soh/ShipInit.hpp"
@@ -73,6 +73,7 @@ COW_MM_ASSET(sCowNamePanelL, "__OTR__icon_item_static_yar/gNamePanelLeftTex");  
 COW_MM_ASSET(sCowNamePanelR, "__OTR__icon_item_static_yar/gNamePanelRightTex"); // IA8 72x24
 
 constexpr int COW_OWL_COUNT = 10; // OwlWarpId 0..9, bit i of MM's owlActivationFlags
+constexpr u16 COW_STATUE_MASK = (1 << COW_OWL_COUNT) - 1;
 constexpr int COW_OWL_CLOCK_TOWN = 4;
 // A pause state that freezes the world but draws no kaleido page.
 constexpr u16 COW_PAUSE_STATE = 0x14;
@@ -95,7 +96,7 @@ enum CowState { COW_OFF, COW_CLOSING, COW_REFUSED, COW_FADE_IN, COW_SELECT, COW_
 CowState sState = COW_OFF;
 int sAlpha = 0;       // map / icons / plate
 int sDim = 0;         // MM's R_PAUSE_OWL_WARP_ALPHA dimmer over the map
-u16 sFlags = 0;       // activated statues
+u16 sFlags = 0;       // statues on offer (CowWarpableOwls)
 int sCursor = 0;      // OwlWarpId under the cursor
 u16 sPendingText = 0; // refusal textbox to show once the ocarina session has closed (0 = open the chooser)
 bool sWarpOnClose = false;
@@ -154,6 +155,17 @@ void CowOnOcarinaNote(uint8_t pitch, float modulator, int8_t instrument) {
     }
     sSongMatched = true;
     sRingLen = 0;
+}
+
+// The statues the chooser offers, from MM's owl flags (-1 = unavailable). MM's Soaring opens its map for any
+// nonzero flags (z_message.c); when none of them is a statue (index warp, e.g. 2S2H's "15th owl" bit alone), MM
+// warps to whichever index its map cursor holds, so every statue is offered.
+u16 CowWarpableOwls(int mmFlags) {
+    if (mmFlags <= 0) {
+        return 0;
+    }
+    const u16 statues = (u16)(mmFlags & COW_STATUE_MASK);
+    return statues != 0 ? statues : COW_STATUE_MASK;
 }
 
 int CowFirstActivated(u16 flags) {
@@ -219,8 +231,7 @@ void CowOnSongPlayed(PlayState* play) {
     if (msgCtx->disableWarpSongs || Combo_GamesSolo()) {
         sPendingText = 0x88C; // "You can't warp here!"
     } else {
-        const int flags = gComboOwlFlagsProvider ? gComboOwlFlagsProvider() : -1;
-        sFlags = flags > 0 ? (u16)(flags & ((1 << COW_OWL_COUNT) - 1)) : 0;
+        sFlags = CowWarpableOwls(gComboOwlFlagsProvider ? gComboOwlFlagsProvider() : -1);
         sCursor = CowFirstActivated(sFlags);
         sPendingText = (sCursor < 0) ? TEXT_COMBO_SOARING_NO_MARK : 0;
     }
@@ -457,7 +468,7 @@ static void CowDraw() {
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 0, 0, 0, sDim);
     gDPFillRectangle(OVERLAY_DISP++, 51, 61, 271, 189);
 
-    // One owl face per activated statue.
+    // One owl face per statue on offer.
     gDPPipeSync(OVERLAY_DISP++);
     gDPSetCombineMode(OVERLAY_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, sAlpha);
