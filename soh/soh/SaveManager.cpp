@@ -44,6 +44,8 @@ using namespace std::string_literals;
 // the container instead of file{N}.sav; null => vendored file path. Set via SOH_SetComboSaveIO.
 static ComboRando::FnComboReadSave gComboReadGameSave = nullptr;
 static ComboRando::FnComboWriteSave gComboWriteGameSave = nullptr;
+// ComboShip: the launcher's share of the last container write on this thread, for the save-timing log line.
+static ComboSaveTiming::FnGetContainerIoStats gComboContainerIoStats = nullptr;
 // ComboShip: whole-slot copy (both games + rando) for file-select "copy file"; launcher owns it.
 static void (*gComboCopyContainer)(int from, int to) = nullptr;
 #endif
@@ -1405,9 +1407,14 @@ void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, 
         const std::string block = saveBlock.dump();
         const double dumpMs = timer.Lap();
         gComboWriteGameSave(ComboRando::GAME_OOT, fileNum, block.c_str());
-        if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
-            SPDLOG_INFO("[ComboShip] save timing: OOT slot {} section {} (save thread) dump {:.1f} ms, write {:.1f} ms",
-                        fileNum, sectionID, dumpMs, timer.Lap());
+        const double writeMs = timer.Lap();
+        const bool slow = writeMs >= ComboSaveTiming::kSlowWriteMs;
+        if (slow || CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+            SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), slow ? spdlog::level::warn : spdlog::level::info,
+                               "[ComboShip] save timing: OOT slot {} section {} (save thread) dump {:.1f} ms ({} KB), "
+                               "write {:.1f} ms ({})",
+                               fileNum, sectionID, dumpMs, block.size() / 1024, writeMs,
+                               ComboSaveTiming::DescribeWrite(ComboSaveTiming::Fetch(gComboContainerIoStats)));
         }
     } else
 #endif
@@ -3087,6 +3094,10 @@ extern "C" COMBO_EXPORT void SOH_DeleteSaveFile(int fileNum) {
 extern "C" COMBO_EXPORT void SOH_SetComboSaveIO(ComboRando::FnComboReadSave r, ComboRando::FnComboWriteSave w) {
     gComboReadGameSave = r;
     gComboWriteGameSave = w;
+}
+
+extern "C" COMBO_EXPORT void SOH_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStats get) {
+    gComboContainerIoStats = get;
 }
 
 // ComboShip: launcher registers its whole-container copy for file-select "copy file".

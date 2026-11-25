@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #if !defined(_WIN32)
@@ -123,6 +124,7 @@
 #include "soh/Network/CrowdControl/CrowdControl.h"
 #include "soh/Network/Sail/Sail.h"
 #include "soh/Network/Anchor/Anchor.h"
+#include "soh/Notification/Notification.h" // ComboShip: SOH_ComboToast (launcher co-op toasts)
 #include "soh/util.h" // ComboShip: SohUtils::GetSceneName (Anchor roster), AppendVector (entrance-shuffle pool)
 #include "soh/Enhancements/randomizer/SeedContext.h" // ComboShip: Rando::Context::GetSeed for roster seed-mismatch
 #include "Enhancements/game-interactor/GameInteractor.h"
@@ -1673,6 +1675,26 @@ extern "C" int (*gComboOutdatedSaveNotice)();
 // Shared Items pokes (defined with the rest of the Shared Items ABI further down).
 extern "C" void (*gComboSharedChanged)(int game, int fileNum);
 extern "C" void (*gComboSharedTick)(void);
+// ComboShip: the launcher writes the save containers on a thread of its own. Once a frame the game in play hands it the
+// kill switch and logs what the thread reports (combo/ComboContainerWriter.h). Set by SOH_SetContainerWriterFrame.
+static ComboSaveTiming::FnContainerWriterFrame gComboContainerWriterFrame = nullptr;
+static void Combo_PollSaveWriter() {
+    if (gComboContainerWriterFrame == nullptr) {
+        return;
+    }
+    ComboSaveTiming::ContainerWriterReport report;
+    gComboContainerWriterFrame(CVarGetInteger(ComboSaveTiming::kSyncWritesCVar, 0), &report);
+    const ComboSaveTiming::ReportLevel level =
+        ComboSaveTiming::WriterReportLevel(report, CVarGetInteger(ComboSaveTiming::kCVar, 0) != 0);
+    if (level == ComboSaveTiming::ReportLevel::kNone) {
+        return;
+    }
+    const spdlog::level::level_enum logLevel = (level == ComboSaveTiming::ReportLevel::kError)  ? spdlog::level::err
+                                               : (level == ComboSaveTiming::ReportLevel::kWarn) ? spdlog::level::warn
+                                                                                                : spdlog::level::info;
+    SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), logLevel, "[ComboShip] save timing: {}",
+                       ComboSaveTiming::DescribeWriterReport(report));
+}
 
 // ComboShip: InitOTR is split so the launcher can create the shared window (which needs only the
 // bundled soh.o2r, not a ROM) BEFORE the ROM archives exist, run its own unified extraction screen,
@@ -2215,6 +2237,7 @@ static void Combo_FinishInit() {
             }
         }
         ComboEquipShare_Tick(); // shared button layout pushed by the launcher (ComboEquipShare.cpp)
+        Combo_PollSaveWriter();
     });
 #endif
 
@@ -2243,6 +2266,7 @@ static void Combo_FinishInit() {
     }
     // Restores settings left over from a run that never exited cleanly, so it must come after other setup.
     Speedrun_Register();
+    Combo_FormSaveRegister();
     ShipInit::InitAll();
     Rando::StaticData::InitHashMaps();
     OTRGlobals::Instance->gRandoContext->AddExcludedOptions();
@@ -3330,6 +3354,16 @@ extern "C" COMBO_EXPORT void SOH_Anchor_PumpDormant(void) {
         Anchor::Instance->PumpDormant();
     }
 }
+// The launcher calls this when the dormant OOT save is not the loaded slot's (or the slot just changed): what is
+// queued for it must never reach a save it was not meant for.
+extern "C" COMBO_EXPORT void SOH_Anchor_DiscardDormant(void) {
+    if (!Anchor::Instance) {
+        return;
+    }
+    if (const size_t discarded = Anchor::Instance->DiscardDormantPackets(); discarded > 0) {
+        SPDLOG_INFO("[Anchor] discarded {} queued co-op packet(s) that had no save to apply to", discarded);
+    }
+}
 // Bug 2: launcher-orchestrated resync (auto on connect + combo menu button), dormant-safe.
 // Finding 3: never let an exception unwind across this extern "C" boundary.
 extern "C" COMBO_EXPORT void SOH_Anchor_RequestResync(void) {
@@ -3340,6 +3374,19 @@ extern "C" COMBO_EXPORT void SOH_Anchor_RequestResync(void) {
     } catch (const std::exception& e) { SPDLOG_ERROR("[SOH_Anchor_RequestResync] {}", e.what()); } catch (...) {
         SPDLOG_ERROR("[SOH_Anchor_RequestResync] unknown exception");
     }
+}
+
+// Co-op hardening (2026-11-13): launcher link/presence toasts. Callable from the launcher's Anchor
+// thread (EmitThreadSafe queues it for the UI frame). gateCvar: a default-on display toggle, or null; the UI frame
+// reads it, not this thread.
+extern "C" COMBO_EXPORT void SOH_ComboToast(const char* prefix, const char* message, const char* suffix,
+                                            const char* gateCvar) {
+    try {
+        Notification::EmitThreadSafe({ .prefix = prefix ? prefix : "",
+                                       .message = message ? message : "",
+                                       .suffix = suffix ? suffix : "",
+                                       .gateCvar = gateCvar ? gateCvar : "" });
+    } catch (...) {} // never unwind into the launcher
 }
 
 // ComboShip: combo-native Anchor connection panel drives Enable/Disable (soh's own menu is hidden in
@@ -3508,7 +3555,7 @@ void Combo_FlushDormantAccumulators(void) {
 bool Combo_OotIsForeground(void);
 
 // ComboShip: save-direct give of a resolved OOT item, without writing the save. The caller persists.
-static void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
+void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
     // ComboShip (#84): drop bottle CONTENTS when no bottle is free. Milk Bottle and Ruto's Letter are
     // excluded exactly as Item_Give excludes them — they create a new bottle, so gating them here
     // would permanently lose Ruto's Letter and softlock the seed.
@@ -3550,11 +3597,38 @@ static void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
     }
 }
 
-static void Combo_PersistOOT() {
+// Between SOH_ComboSaveBatchBegin and the matching End (the launcher wraps each shared-items reconcile pass in them),
+// Combo_PersistOOT only marks a save as owed, and the outermost End writes it once. Game thread only.
+static int sComboSaveBatchDepth = 0;
+static bool sComboSaveOwed = false;
+
+void Combo_PersistOOT() {
+    if (sComboSaveBatchDepth > 0) {
+        sComboSaveOwed = true;
+        return;
+    }
     if (SaveManager::Instance && gSaveContext.fileNum != 0xFF) {
         SaveManager::Instance->SaveFile(gSaveContext.fileNum);
     }
 }
+
+extern "C" COMBO_EXPORT void SOH_ComboSaveBatchBegin(void) {
+    ++sComboSaveBatchDepth;
+}
+
+extern "C" COMBO_EXPORT void SOH_ComboSaveBatchEnd(void) try {
+    if (sComboSaveBatchDepth <= 0) {
+        SPDLOG_ERROR("[ComboShip] SOH_ComboSaveBatchEnd without a matching Begin");
+        return;
+    }
+    if (--sComboSaveBatchDepth > 0 || !sComboSaveOwed) {
+        return;
+    }
+    sComboSaveOwed = false;
+    Combo_PersistOOT();
+} catch (const std::exception& e) {
+    SPDLOG_ERROR("[ComboShip] SOH_ComboSaveBatchEnd: the owed save threw: {}", e.what());
+} catch (...) { SPDLOG_ERROR("[ComboShip] SOH_ComboSaveBatchEnd: the owed save threw a non-std exception"); }
 
 // ComboShip: a cross-game grant is persisted at once, so it survives quitting before a switch into OOT.
 static void Combo_GrantResolvedOOT(const GetItemEntry& gie) {
@@ -4010,6 +4084,9 @@ extern "C" void (*gComboSharedTick)(void) = nullptr;
 extern "C" COMBO_EXPORT void SOH_SetSharedTickCb(void (*cb)(void)) {
     gComboSharedTick = cb;
 }
+extern "C" COMBO_EXPORT void SOH_SetContainerWriterFrame(ComboSaveTiming::FnContainerWriterFrame frame) {
+    gComboContainerWriterFrame = frame;
+}
 
 extern "C" COMBO_EXPORT int SOH_GetTriforcePieceCount(void) {
     return gSaveContext.ship.quest.data.randomizer.triforcePiecesCollected;
@@ -4305,10 +4382,10 @@ static int Combo_LiveLinkState() {
     return (LINK_IS_ADULT ? 1 : 0) | (tunic << 1) | (Combo_OotForm() << 3); // bits 3-5: MM form in Hyrule
 }
 
-// Launcher push before OOT resumes: the MM form Link had in Termina (ComboForms.h; human if OOT has no port yet).
+// Launcher push before OOT resumes: the MM form Link had in Termina, or -1 when nothing crossed (ComboForms.h).
 extern "C" COMBO_EXPORT void SOH_SetComboForm(int form) {
-    Combo_OotSetForm(form);
-    SPDLOG_INFO("[ComboShip] form from Termina: {} -> Hyrule form {}", form, Combo_OotForm());
+    Combo_OotSetCrossingForm(form);
+    SPDLOG_INFO("[ComboShip] form from Termina: {} (applied when the slot loads)", form);
 }
 extern "C" COMBO_EXPORT int SOH_GetComboLinkState(void) {
     if (sComboLinkStateAtSwitch >= 0) {
@@ -6156,6 +6233,20 @@ extern "C" COMBO_EXPORT void SOH_TriggerComboGenerate(void) {
 extern "C" void FileChoose_Main(GameState* thisx);
 extern "C" COMBO_EXPORT uint8_t SOH_IsOnFileSelect(void) {
     return (gPlayState == NULL && gGameState != NULL && gGameState->main == (GameStateFunc)FileChoose_Main) ? 1 : 0;
+}
+
+// ComboShip: lets OOT-side screens draw MM assets only when MM's archive is there.
+extern "C" COMBO_EXPORT uint8_t SOH_MMHasResource(const char* otrPath) {
+    static constexpr char kOtrPrefix[] = "__OTR__";
+    static constexpr size_t kOtrPrefixLen = sizeof(kOtrPrefix) - 1;
+    auto mmResourceManager = Ship::CrossRMRegistry::Get("mm");
+    if (mmResourceManager == nullptr || mmResourceManager->GetArchiveManager() == nullptr) {
+        return 0;
+    }
+    if (strncmp(otrPath, kOtrPrefix, kOtrPrefixLen) == 0) {
+        otrPath += kOtrPrefixLen;
+    }
+    return mmResourceManager->GetArchiveManager()->HasFile(otrPath) ? 1 : 0;
 }
 
 // ComboShip (#89): leave OOT's game loop before its first Play frame so the launcher can enter MM.

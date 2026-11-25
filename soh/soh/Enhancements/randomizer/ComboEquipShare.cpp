@@ -8,17 +8,24 @@
 // ("cx":[{g,s}...], "dx":{dir:{g,s}}: the game that owns the inventory slot + that slot). The receiver puts its own
 // item there when it has one (its own slot, or a shared item's native twin by key) and otherwise the other game's
 // item as a foreign id, so the SAME layout appears in both games. A button empty on the sender is emptied.
+//
+// In Hyrule, OOT's age rule holds on every item button (owner 2026-11-25, playtest #21): an item Link's age can't use
+// there (the bow, hookshot or magic arrows for child; the slingshot, boomerang or sticks for adult) doesn't stay on a
+// button after a crossing, a save load or an age swap. See KeepAgeRule.
 
-#include <cstdio>
+#include <cstring>
 #include <string>
 #include <utility>
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include "ComboExport.h"
 #include "ComboPauseABI.h"
 #include "ComboPause.h"
 #include "soh/cvar_prefixes.h"
+#include "soh/Enhancements/game-interactor/GameInteractor.h"
+#include "soh/ShipInit.hpp"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 extern "C" {
@@ -114,6 +121,10 @@ bool Resolve(const std::string& key, u8* itemOut, u8* slotOut) {
 }
 
 std::string sPending, sCaptured, sCache;
+bool sAgeRulePending = false; // a save was loaded: hold its buttons to the age rule once Link is in play
+
+constexpr int kFirstItemButton = 1; // buttonItems: 0 B, 1-3 C left/down/right, 4-7 D up/down/left/right
+constexpr int kButtonCount = ARRAY_COUNT(gSaveContext.equips.buttonItems);
 
 bool DpadOn() {
     return CVarGetInteger("gEnhancements.DpadEquips", 0) != 0;
@@ -209,18 +220,72 @@ void Assign(int b, u8 item, u8 slot) {
     gSaveContext.equips.cButtonSlots[b - 1] = slot;
 }
 
-} // namespace
+bool SlotOnAButton(u8 slot) {
+    for (int b = kFirstItemButton; b < kButtonCount; ++b) {
+        if (gSaveContext.equips.cButtonSlots[b - 1] == slot)
+            return true;
+    }
+    return false;
+}
 
-// Per frame (OTRGlobals' combo frame hook): apply a pushed layout once Link is in play.
-void ComboEquipShare_Tick() {
-    if (sPending.empty() || gPlayState == nullptr || GET_PLAYER(gPlayState) == nullptr || gSaveContext.fileNum > 2)
-        return;
+// What a button that held `item` from `slot` would hold now: a bottle as its slot holds it now (OOT's age swap re-reads
+// bottles the same way), an OOT item its slot still holds, a tunic or boots OOT still owns, an MM item MM still holds.
+// ITEM_NONE when it's gone.
+u8 StillHeld(u8 item, u8 slot) {
+    if ((item == ITEM_NONE) || (slot == SLOT_NONE))
+        return ITEM_NONE;
+    const int mmSlot = ComboPause_OotDecode(item);
+    if (mmSlot >= 0)
+        return (Combo_PauseSlotItemAny(mmSlot) != ITEM_NONE) ? item : ITEM_NONE;
+    const u8 held = (slot < COMBO_PAUSE_OOT_SLOTS) ? gSaveContext.inventory.items[slot] : ITEM_NONE;
+    if ((slot >= SLOT_BOTTLE_1) && (slot <= SLOT_BOTTLE_4))
+        return IsBottleContent(held) ? held : ITEM_NONE;
+    if (slot < COMBO_PAUSE_OOT_SLOTS)
+        return (held == item) ? item : ITEM_NONE;
+    return (GearButtonOk(slot) && (item == ITEM_TUNIC_KOKIRI + (slot - SLOT_TUNIC_KOKIRI))) ? item : ITEM_NONE;
+}
+
+// OOT's age rule on the C buttons and the D-pad for Link at `age` (Combo_PauseItemAgeOk; nothing is refused while
+// Combo_AgeRulesLifted). Vanilla OOT never lets such an item onto a button: its pause menu refuses it, and its age swap
+// trades whole button sets. A refused button goes back to what `fallback` had there (what that age had before) if
+// Link can use that, still has it and has it on no other button, else it's emptied. true = a button changed.
+bool KeepAgeRule(int age, const u8* fallbackItems, const u8* fallbackSlots) {
+    auto& equips = gSaveContext.equips;
+    bool refused[kButtonCount] = {};
+    bool changed = false;
+    for (int b = kFirstItemButton; b < kButtonCount; ++b) {
+        if (Combo_PauseItemAgeOk(equips.buttonItems[b], age))
+            continue;
+        SPDLOG_INFO("[ComboPause] OOT's age rule takes item {:02X} off button {} ({} Link)", equips.buttonItems[b], b,
+                    (age == LINK_AGE_CHILD) ? "child" : "adult");
+        refused[b] = true;
+        changed = true;
+        equips.buttonItems[b] = ITEM_NONE;
+        equips.cButtonSlots[b - 1] = SLOT_NONE;
+    }
+    for (int b = kFirstItemButton; b < kButtonCount; ++b) {
+        if (!refused[b])
+            continue;
+        const u8 slot = fallbackSlots[b - 1];
+        const u8 item = StillHeld(fallbackItems[b], slot);
+        if ((item == ITEM_NONE) || !Combo_PauseItemAgeOk(item, age) || SlotOnAButton(slot))
+            continue;
+        equips.buttonItems[b] = item;
+        equips.cButtonSlots[b - 1] = slot;
+    }
+    return changed;
+}
+
+// A layout pushed by the launcher, onto Link's buttons. false = nothing pushed (or unreadable).
+bool ApplyPendingLayout() {
+    if (sPending.empty())
+        return false;
     nlohmann::json j;
     try {
         j = nlohmann::json::parse(sPending);
     } catch (...) {
         sPending.clear();
-        return;
+        return false;
     }
     sPending.clear();
     const auto c = j.value("c", nlohmann::json::array());
@@ -246,12 +311,48 @@ void ComboEquipShare_Tick() {
             apply(b, key, dx.is_object() && dx.contains(name) ? &dx[name] : nullptr);
         }
     }
-    fprintf(stderr, "[ComboPause] shared layout applied in Hyrule: C %02X/%02X/%02X D %02X/%02X/%02X/%02X\n",
-            gSaveContext.equips.buttonItems[1], gSaveContext.equips.buttonItems[2], gSaveContext.equips.buttonItems[3],
-            gSaveContext.equips.buttonItems[4], gSaveContext.equips.buttonItems[5], gSaveContext.equips.buttonItems[6],
-            gSaveContext.equips.buttonItems[7]);
-    for (int b = 1; b <= 7; ++b)
+    return true;
+}
+
+void RegisterComboEquipShare() {
+    COND_HOOK(OnLoadGame, true, [](int32_t) { sAgeRulePending = true; });
+}
+
+RegisterShipInitFunc sInit(RegisterComboEquipShare, {});
+
+} // namespace
+
+// Per frame (OTRGlobals' combo frame hook), once Link is in play: apply a pushed layout, then (randomizer saves) hold
+// the buttons to OOT's age rule. A button the layout filled with an item Link's age can't use gets back what OOT's
+// save had there; a save loaded with such an item on a button (from an older build) loses it.
+void ComboEquipShare_Tick() {
+    if ((sPending.empty() && !sAgeRulePending) || gPlayState == nullptr || GET_PLAYER(gPlayState) == nullptr ||
+        gSaveContext.fileNum > 2)
+        return;
+    sAgeRulePending = false;
+    u8 savedItems[kButtonCount];
+    u8 savedSlots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
+    memcpy(savedItems, gSaveContext.equips.buttonItems, sizeof(savedItems));
+    memcpy(savedSlots, gSaveContext.equips.cButtonSlots, sizeof(savedSlots));
+    const bool applied = ApplyPendingLayout();
+    const bool aged = IS_RANDO && KeepAgeRule(gSaveContext.linkAge, savedItems, savedSlots);
+    if (applied) {
+        const u8* items = gSaveContext.equips.buttonItems;
+        SPDLOG_INFO(
+            "[ComboPause] shared layout applied in Hyrule: C {:02X}/{:02X}/{:02X} D {:02X}/{:02X}/{:02X}/{:02X}",
+            items[1], items[2], items[3], items[4], items[5], items[6], items[7]);
+    }
+    if (!applied && !aged)
+        return;
+    for (int b = kFirstItemButton; b < kButtonCount; ++b)
         Interface_LoadItemIcon1(gPlayState, b);
+}
+
+// OOT's age swap in a randomizer save keeps one C-button and D-pad layout for both ages (z_parameter.c,
+// Inventory_SwapAgeEquipment). `own` is the new age's own set, what vanilla's swap puts on the buttons: it takes back a
+// button the new age can't use.
+extern "C" void ComboEquipShare_KeepAgeRuleAtSwap(int newAge, const u8* ownItems, const u8* ownSlots) {
+    KeepAgeRule(newAge, ownItems, ownSlots);
 }
 
 void ComboEquipShare_CaptureAtSwitch() {

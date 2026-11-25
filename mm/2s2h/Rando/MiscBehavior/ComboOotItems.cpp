@@ -13,6 +13,7 @@
 // Only damage / puzzle credit maps to MM (e.g. the Boomerang's damage bit is MM's Zora-boomerang bit).
 #ifdef COMBO_BUILD
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -139,6 +140,90 @@ extern "C" int Combo_MmIronFloorItemOk(int item) {
     return (oot == 0x0A) || (oot == 0x0B); // OOT ITEM_HOOKSHOT / ITEM_LONGSHOT
 }
 
+namespace {
+
+bool IsOotHookshotAction(int heldItemAction) {
+    return (heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) || (heldItemAction == PLAYER_IA_COMBO_OOT_LONGSHOT);
+}
+
+} // namespace
+
+extern "C" float Combo_MmOotHookshotReachMultiplier(int heldItemAction) {
+    if (!IsOotHookshotAction(heldItemAction)) {
+        return 1.0f;
+    }
+    return CVarGetFloat(COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER, 1.0f);
+}
+
+extern "C" int Combo_MmOotHookshotEverything(int heldItemAction) {
+    return IsOotHookshotAction(heldItemAction) && CVarGetInteger(COMBO_SOH_CVAR_HOOKSHOT_EVERYTHING, 0);
+}
+
+namespace {
+
+const Color_RGBA8 kHookshotReticleTargetColor = { 0, 255, 0, 255 };
+const Color_RGBA8 kHookshotReticleNonTargetColor = { 255, 0, 0, 255 };
+
+// OOT's reticle triangle (soh object_link_boy), from OOT's ResourceManager. The texture is looked up by name at draw
+// time inside the "oot" bracket; the vertices are MM's gSPVertex's to resolve, which cannot see OOT's archive, so they
+// are handed over as OOT's resident data (Combo_MmOotRawResource, which adds the "__OTR__" prefix).
+const char kOotHookshotReticleTex[] = "__OTR__objects/object_link_boy/gLinkAdultHookshotReticleTex";
+const char kOotHookshotReticleVtx[] = "objects/object_link_boy/gLinkAdultHookshotReticleVtx";
+const char kOotRm[] = "oot";
+
+constexpr int kReticleTexSize = 64;
+constexpr int kReticleTexMaskBits = 6;
+constexpr int kReticleVertexCount = 3;
+
+bool SameColor(const Color_RGBA8& a, const Color_RGBA8& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+// SoH HookshotReticle.cpp: the triangle with the texture, in the colour for the surface.
+void DrawColoredHookshotReticle(PlayState* play, const Color_RGBA8& color, void* vertices) {
+    GraphicsContext* __gfxCtx = play->state.gfxCtx;
+
+    gSPComboRMPush(OVERLAY_DISP++, kOotRm);
+    gSPMatrix(OVERLAY_DISP++, play->billboardMtx, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_MODELVIEW);
+    gSPTexture(OVERLAY_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
+    gDPLoadTextureBlock(OVERLAY_DISP++, kOotHookshotReticleTex, G_IM_FMT_I, G_IM_SIZ_8b, kReticleTexSize,
+                        kReticleTexSize, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, kReticleTexMaskBits,
+                        kReticleTexMaskBits, G_TX_NOLOD, G_TX_NOLOD);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, color.r, color.g, color.b, color.a);
+    gSPVertex(OVERLAY_DISP++, (uintptr_t)vertices, kReticleVertexCount, 0);
+    gSP1Triangle(OVERLAY_DISP++, 0, 1, 2, 0);
+    gSPComboRMPop(OVERLAY_DISP++);
+}
+
+} // namespace
+
+extern "C" int Combo_MmOotDrawHookshotReticle(PlayState* play, Player* player, CollisionPoly* poly, int bgId) {
+    if (!IsOotHookshotAction(player->heldItemAction)) {
+        return 0;
+    }
+
+    const bool showsHookshotable = CVarGetInteger(COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE, 0) != 0;
+    const Color_RGBA8 nonTargetColor =
+        CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR, kHookshotReticleNonTargetColor);
+    if (!showsHookshotable && SameColor(nonTargetColor, kHookshotReticleNonTargetColor)) {
+        return 0;
+    }
+
+    void* vertices = Combo_MmOotRawResource(kOotHookshotReticleVtx);
+    if (vertices == nullptr) {
+        return 0; // OOT's archive isn't there: MM's own reticle draws
+    }
+
+    if (showsHookshotable && (SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId) ||
+                              Combo_MmOotHookshotEverything(player->heldItemAction))) {
+        DrawColoredHookshotReticle(
+            play, CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR, kHookshotReticleTargetColor), vertices);
+    } else {
+        DrawColoredHookshotReticle(play, nonTargetColor, vertices);
+    }
+    return 1;
+}
+
 extern "C" int Combo_MmOotLinkAdult(void) {
     return LinkAdult() ? 1 : 0;
 }
@@ -156,13 +241,16 @@ extern "C" int Combo_MmOotItemAgeOk(int foreignItem) {
 // (ComboSharedHealth.cpp) answers for it; with sharing off it hands back OOT's own count.
 extern "C" int Combo_SharedOotAmmo(int kind, int ootCount, int ootCap);
 extern "C" int Combo_SharedOotAmmoSpend(int kind, int change, int ootCount);
+// Ship of Harkinian's Infinite Upgrades on OOT's bag (OOT keeps it full every frame in Hyrule).
+extern "C" int Combo_OotAmmoInfinite(int kind);
 
 namespace {
 struct OotBag {
-    int count = -1; // what a use spends (and what OOT will show on arrival), -1 = not an ammo item OOT holds
-    int cap = 0;    // OOT's bag
-    int kind = -1;  // the shared consumable
-    int own = -1;   // OOT's save's own count
+    int count = -1;        // what a use spends (and what OOT will show on arrival), -1 = not an ammo item OOT holds
+    int cap = 0;           // OOT's bag
+    int kind = -1;         // the shared consumable
+    int own = -1;          // OOT's save's own count
+    bool infinite = false; // full whatever is spent, and its count hidden, as in Hyrule
 };
 
 OotBag BagOf(int ootItem) {
@@ -173,7 +261,8 @@ OotBag BagOf(int ootItem) {
         b.own = sBag(ootItem, &b.cap, &b.kind);
     }
     if (b.own >= 0) {
-        b.count = Combo_SharedOotAmmo(b.kind, b.own, b.cap);
+        b.infinite = Combo_OotAmmoInfinite(b.kind) != 0;
+        b.count = b.infinite ? std::max(b.cap, b.own) : Combo_SharedOotAmmo(b.kind, b.own, b.cap);
     }
     return b;
 }
@@ -186,7 +275,7 @@ extern "C" int Combo_MmOotAmmo(int ootItem) {
 extern "C" void Combo_MmOotChangeAmmo(int ootItem, int delta) {
     static FnVoidIntInt sChange = Sym<FnVoidIntInt>("SOH_ComboTermina_ChangeAmmo");
     const OotBag b = BagOf(ootItem);
-    if (b.count < 0) {
+    if ((b.count < 0) || b.infinite) {
         return;
     }
     // OOT's Inventory_ChangeAmmo: never below 0, never above OOT's bag.
@@ -198,19 +287,34 @@ extern "C" void Combo_MmOotChangeAmmo(int ootItem, int delta) {
     }
 }
 
+extern "C" int Combo_MmOotAmmoDigits(int ootItem, int* full) {
+    const OotBag b = BagOf(ootItem);
+    const int digits = b.infinite ? -1 : b.count;
+    if (full != nullptr) {
+        *full = (digits >= 0) && (digits >= b.cap);
+    }
+    return digits;
+}
+
 extern "C" int Combo_MmForeignAmmo(int foreignItem, int* full) {
     const int oot = Combo_MmOotItemOf(foreignItem);
-    const OotBag b = (oot >= 0) ? BagOf(oot) : OotBag{};
-    if (full != nullptr) {
-        *full = (b.count >= 0) && (b.count >= b.cap);
+    if (oot < 0) {
+        if (full != nullptr) {
+            *full = 0;
+        }
+        return -1;
     }
-    return b.count;
+    return Combo_MmOotAmmoDigits(oot, full);
 }
 
 // OOT's hand models (soh z_player_lib.c sPlayerDListGroups) for the OOT items Link holds in Termina. OOT has each
 // model for one age only; the other age (SoH's Timeless Equipment) borrows it, as SoH's "Equipment Always Visible"
 // does.
 extern "C" const void* Combo_MmOotHeldDL(Player* player, int limbIndex) {
+    if (player->stateFlags3 & PLAYER_STATE3_20000000) {
+        // The Bremen march keeps the held item but draws MM's ocarina hands (MM func_80839978).
+        return nullptr;
+    }
     const bool adult = Combo_MM_AdultBodyActive(&player->actor);
     switch (player->heldItemAction) {
         case PLAYER_IA_COMBO_OOT_BOOMERANG:
@@ -324,6 +428,13 @@ extern "C" const void* Combo_MmOotWornMaskDL(void) {
         default:
             return nullptr;
     }
+}
+
+static int sExplosiveOriginPending = 0;
+extern "C" int Combo_MmOotExplosiveOriginPending(int set) {
+    if (set >= 0)
+        sExplosiveOriginPending = set;
+    return sExplosiveOriginPending;
 }
 
 static int sFwArrivalPending = 0;

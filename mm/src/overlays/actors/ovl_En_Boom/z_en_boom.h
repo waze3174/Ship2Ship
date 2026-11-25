@@ -12,6 +12,8 @@ typedef enum {
 // ComboShip (OOT items in Termina): OOT's own Boomerang, thrown by human Link (z_en_boom_combo_oot.c).
 #define COMBO_OOT_BOOMERANG 0x10
 struct EnBoom;
+// SoH's Fast Boomerang: the item button pressed while OOT's Boomerang is out calls it back at once.
+void EnBoom_ComboOotRequestQuickRecall(void);
 void EnBoom_ComboOotInit(struct EnBoom* boom, PlayState* play);
 void EnBoom_ComboOotDestroy(struct EnBoom* boom, PlayState* play);
 void EnBoom_ComboOotUpdate(struct EnBoom* boom, PlayState* play);

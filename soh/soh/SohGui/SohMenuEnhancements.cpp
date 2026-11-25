@@ -3,6 +3,7 @@
 #include "soh/Enhancements/SwitchAge.h"
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/BunnyHood.h"
+#include "soh/Enhancements/DashAfterRoll.h"
 #include "soh/Enhancements/FileSelectEnhancements.h"
 #include <soh/Enhancements/game-interactor/GameInteractor.h>
 #include <soh/OTRGlobals.h>
@@ -47,6 +48,12 @@ static std::map<int32_t, const char*> bunnyHoodEffectMap = {
     { BUNNY_HOOD_VANILLA, "Vanilla" },
     { BUNNY_HOOD_FAST, "Faster Run" },
     { BUNNY_HOOD_FAST_AND_JUMP, "Faster + Longer Jump" },
+};
+
+static const std::map<int32_t, const char*> dashAfterRollOptions = {
+    { DASH_AFTER_ROLL_OFF, "Off" },
+    { DASH_AFTER_ROLL_ON, "On" },
+    { DASH_AFTER_ROLL_STACK, "Stack with Bunny Hood" },
 };
 
 static const std::map<int32_t, const char*> dekuStickCheat = {
@@ -339,6 +346,15 @@ void SohMenu::AddMenuEnhancements() {
         })
         .CVar(CVAR_ENHANCEMENT("ReworkedTargeting.Btn"))
         .Options(BtnSelectorOptions().Tooltip("Buttons to activate target switching."));
+    AddWidget(path, "Dash After Roll", WIDGET_CVAR_COMBOBOX)
+        .CVar(CVAR_DASH_AFTER_ROLL_NAME)
+        .Options(ComboboxOptions()
+                     .ComboMap(dashAfterRollOptions)
+                     .DefaultIndex(DASH_AFTER_ROLL_OFF)
+                     .Tooltip("Keep holding A after a roll to dash.\n\n"
+                              "- On: Dashing runs at Bunny Hood speed, wearing the bunny hood adds nothing extra.\n"
+                              "- Stack with Bunny Hood: Dashing while wearing the Bunny Hood combines both boosts to "
+                              "run even faster."));
 
     AddWidget(path, "Item Count Messages", WIDGET_SEPARATOR_TEXT);
     AddWidget(path, "Gold Skulltula Tokens", WIDGET_CVAR_CHECKBOX)

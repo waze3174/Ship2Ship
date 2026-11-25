@@ -33,6 +33,8 @@
 #include "ComboResolve.h"
 #include "ComboForms.h" // Combo_GuestPlaySfx, Combo_DebugEnv, Combo_DebugLog
 #include "ComboPicto.h"
+#include "ComboPause.h" // Combo_PauseSlotItemAny: MM's inventory
+#include <libultraship/bridge/consolevariablebridge.h>
 #include "soh/frame_interpolation.h" // OPEN_DISPS
 
 extern "C" {
@@ -53,6 +55,9 @@ constexpr s32 PICTO_PHOTO_TOPLEFT_X = (SCREEN_WIDTH - PICTO_PHOTO_WIDTH) / 2;
 constexpr s32 PICTO_PHOTO_TOPLEFT_Y = (SCREEN_HEIGHT - PICTO_PHOTO_HEIGHT) / 2;
 constexpr s32 PICTO_PHOTO_SIZE = PICTO_PHOTO_WIDTH * PICTO_PHOTO_HEIGHT;
 constexpr s32 PICTO_PHOTO_COMPRESSED_SIZE = PICTO_PHOTO_SIZE * 5 / 8;
+
+// mm/include/z64item.h SLOT_PICTOGRAPH_BOX
+constexpr s32 MM_SLOT_PICTOGRAPH_BOX = 0x0D;
 
 // mm/src/code/z_parameter.c
 enum PictoBoxState {
@@ -358,6 +363,13 @@ void Combo_PictoEnd(PlayState* play) {
 
 int Combo_PictoActive(void) {
     return sPictoBoxOn ? 1 : 0;
+}
+
+// 2S2H's "Pictograph Box on C-Up" (mm/2s2h/Enhancements/Items/PictoBoxOnCUp.cpp, MM's own CVar): C-Up opens the Box
+// while MM's inventory holds it and no photo is kept.
+int Combo_PictoOnCUpWanted(void) {
+    return CVarGetInteger("gEnhancements.Items.PictoBoxOnCUp", 0) &&
+           (Combo_PauseSlotItemAny(MM_SLOT_PICTOGRAPH_BOX) == COMBO_MM_ITEM_PICTOGRAPH_BOX) && !HasPhoto();
 }
 
 int Combo_PictoOwnsInput(void) {

@@ -19,6 +19,7 @@
 #include "overlays/actors/ovl_Door_Shutter/z_door_shutter.h"
 #include "overlays/actors/ovl_En_Arrow/z_en_arrow.h"
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
+#include "overlays/actors/ovl_En_Bom_Chu/z_en_bom_chu.h"
 #include "overlays/actors/ovl_En_Boom/z_en_boom.h"
 #include "overlays/actors/ovl_En_Box/z_en_box.h"
 #include "overlays/actors/ovl_En_Dnp/z_en_dnp.h"
@@ -74,6 +75,8 @@ s32 ComboOot_UseSpell(struct PlayState* play, struct Player* this, s32 itemActio
 s32 ComboOot_ActionHandlerSpell(struct Player* this, struct PlayState* play);
 void ComboOot_StartMode_FaroresWind(struct PlayState* play, struct Player* this);
 void ComboOot_PlayerInit(struct PlayState* play, struct Player* this);
+void ComboOot_UseRocsFeather(struct PlayState* play, struct Player* this);
+void ComboOot_UpdateRocsFeather(struct Player* this);
 void ComboOot_DebugTrace(struct Player* this, struct PlayState* play);
 s32 ComboOot_HammerSelectMwa(struct Player* this, s32* outMwa);
 struct AttackAnimInfo* ComboOot_MeleeInfo(struct Player* this, s32 mwa);
@@ -85,10 +88,31 @@ static s32 Combo_PlayerAmmo(s32 item);
 static void Combo_PlayerChangeAmmo(s32 item, s16 n);
 #define COMBO_PLAYER_AMMO(item) Combo_PlayerAmmo(item)
 #define COMBO_PLAYER_CHANGE_AMMO(item, n) Combo_PlayerChangeAmmo(item, n)
+// The explosive spawned next came from an OOT item (a bomb or bombchu taken out on OOT's bag): see
+// Combo_MmOotExplosiveOriginPending.
+static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
+#define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) \
+    Combo_MmOotExplosiveOriginPending(Combo_PlayerExplosiveFromOot(explosiveType))
+#define COMBO_EXPLOSIVE_SPAWN_END() Combo_MmOotExplosiveOriginPending(0)
+// SoH's Remove Explosive Limit, for a bomb or bombchu taken out on OOT's bag (MM's own has 2S2H's switch).
+#define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) \
+    (Combo_PlayerExplosiveFromOot(explosiveType) && CVarGetInteger(COMBO_SOH_CVAR_REMOVE_EXPLOSIVE_LIMIT, 0))
+// SoH's Prevent Bombchus Forcing First-Person, for a bombchu taken out on OOT's bag.
+#define COMBO_OOT_CHU_SKIPS_FIRST_PERSON(chu) \
+    (((EnBomChu*)(chu))->comboIsOotOrigin && CVarGetInteger(COMBO_SOH_CVAR_DISABLE_FIRST_PERSON_CHUS, 0))
+// SoH's Crouch Stab Hammer Fix: OOT's Megaton Hammer's crouch stab carries the swing's damage.
+#define COMBO_OOT_HAMMER_CROUCH_STAB_FIXED(player)               \
+    (((player)->heldItemAction == PLAYER_IA_COMBO_OOT_HAMMER) && \
+     CVarGetInteger(COMBO_SOH_CVAR_CROUCH_STAB_HAMMER_FIX, 0))
 #else
 #define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
 #define COMBO_PLAYER_AMMO(item) AMMO(item)
 #define COMBO_PLAYER_CHANGE_AMMO(item, n) Inventory_ChangeAmmo(item, n)
+#define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) ((void)0)
+#define COMBO_EXPLOSIVE_SPAWN_END() ((void)0)
+#define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) false
+#define COMBO_OOT_CHU_SKIPS_FIRST_PERSON(chu) false
+#define COMBO_OOT_HAMMER_CROUCH_STAB_FIXED(player) false
 #endif
 
 void Player_Init(Actor* thisx, PlayState* play);
@@ -3559,11 +3583,13 @@ void Player_InitExplosiveIA(PlayState* play, Player* this) {
         gSaveContext.powderKegTimer = 200;
     }
 
+    COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType);
     explosiveActor = Actor_SpawnAsChild(&play->actorCtx, &this->actor, play, explosiveInfo->actorId,
                                         this->actor.world.pos.x, this->actor.world.pos.y, this->actor.world.pos.z,
                                         (explosiveType == PLAYER_EXPLOSIVE_POWDER_KEG) ? BOMB_EXPLOSIVE_TYPE_POWDER_KEG
                                                                                        : BOMB_EXPLOSIVE_TYPE_BOMB,
                                         this->actor.shape.rot.y, 0, BOMB_TYPE_BODY);
+    COMBO_EXPLOSIVE_SPAWN_END();
     if (explosiveActor != NULL) {
         if ((explosiveType == PLAYER_EXPLOSIVE_BOMB) && (play->unk_1887E != 0)) {
             play->unk_1887E--;
@@ -4116,6 +4142,11 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             if (Message_GetState(&play->msgCtx) == TEXT_STATE_NONE) {
                 Message_StartTextbox(play, 0xF7, NULL);
             }
+#ifdef COMBO_BUILD
+        } else if (Combo_MmOotItemOf(item) == COMBO_OOT_ITEM_ROCS_FEATHER) {
+            // ComboShip: OOT's Roc's Feather jumps instead of being taken out (SoH VB_CHANGE_HELD_ITEM_AND_USE_ITEM).
+            ComboOot_UseRocsFeather(play, this);
+#endif
         } else {
             this->heldItemButton = i;
             Player_UseItem(play, this, item);
@@ -4846,6 +4877,17 @@ static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction item
     *bag = (Combo_MmPauseForeignHostItem(item) != ITEM_NONE) ? Combo_MmOotItemOf(item) : -1;
 }
 
+static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType) {
+    switch (explosiveType) {
+        case PLAYER_EXPLOSIVE_BOMB:
+            return sComboBombBag >= 0;
+        case PLAYER_EXPLOSIVE_BOMBCHU:
+            return sComboBombchuBag >= 0;
+        default:
+            return false;
+    }
+}
+
 static s32 Combo_PlayerAmmo(s32 item) {
     const s32* bag = Combo_AmmoBag(item);
     s32 ammo;
@@ -4946,7 +4988,8 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
                     ((explosiveType = Player_ExplosiveFromIA(this, itemAction)) > PLAYER_EXPLOSIVE_NONE) &&
                     ((COMBO_PLAYER_AMMO(sPlayerExplosiveInfo[explosiveType].itemId) == 0) ||
                      GameInteractor_Should(VB_LIMIT_EXPLOSIVES,
-                                           play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 3)))) {
+                                           (play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 3) &&
+                                               !COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType))))) {
             // Prevent some items from being used if player is out of ammo.
             // Also prevent explosives from being used if too many are active
             Audio_PlaySfx(NA_SE_SY_ERROR);
@@ -10890,7 +10933,7 @@ s32 func_8083FD80(Player* this, PlayState* play) {
     if (!Player_IsGoronOrDeku(this) && (Player_GetMeleeWeaponHeld(this) != PLAYER_MELEEWEAPON_NONE) &&
         (this->transformation != PLAYER_FORM_ZORA) && sPlayerUseHeldItem) {
         //! Calling this function sets the meleeWeaponQuads' damage properties correctly, patching "Power Crouch Stab".
-        if (GameInteractor_Should(VB_PATCH_POWER_CROUCH_STAB, true)) {
+        if (GameInteractor_Should(VB_PATCH_POWER_CROUCH_STAB, true) || COMBO_OOT_HAMMER_CROUCH_STAB_FIXED(this)) {
             func_8083375C(this, PLAYER_MWA_STAB_1H);
         }
         Player_Anim_PlayOnce(play, this, &gPlayerAnim_link_normal_defense_kiru);
@@ -13631,6 +13674,9 @@ void Player_Update(Actor* thisx, PlayState* play) {
 
     Player_UpdateCommon(this, play, &input);
 #ifdef COMBO_BUILD
+    if (this == GET_PLAYER(play)) {
+        ComboOot_UpdateRocsFeather(this); // SoH runs this on OnPlayerUpdate, at the end of Player_Update
+    }
     if (getenv("COMBO_DEBUG_FINS") != NULL) { // ComboShip debug: MM's Zora fins (upper action, boomerang, B)
         fprintf(stderr, "[ComboShip/MM] fins B %d upper %p act %p held %d mwa %d adc %d boom %p\n",
                 CHECK_BTN_ALL(input.cur.button, BTN_B), (void*)this->upperActionFunc, (void*)this->actionFunc,
@@ -16909,7 +16955,7 @@ void Player_Action_41(Player* this, PlayState* play) {
             heldActor->velocity.y = 0.0f;
             heldActor->speed = 0.0f;
             func_808309CC(play, this);
-            if (heldActor->id == ACTOR_EN_BOM_CHU) {
+            if ((heldActor->id == ACTOR_EN_BOM_CHU) && !COMBO_OOT_CHU_SKIPS_FIRST_PERSON(heldActor)) {
                 func_80831814(this, play, PLAYER_UNKAA5_0);
             }
         }
@@ -18731,6 +18777,16 @@ void Player_Action_67(Player* this, PlayState* play) {
 
 #define BOTTLE_CATCH_PARAMS_ANY -1
 
+#ifdef COMBO_BUILD
+// ComboShip: OOT's empty bottle on the button catches as MM's does (into OOT's slot, Player_UpdateBottleHeld), but
+// only what OOT's save can hold, as OOT's catch leaves Blue Fire out of an MM bottle (soh Player_Action_SwingBottle).
+#define COMBO_CATCH_BOTTLE(item) Combo_MmPauseRunsAs(item)
+#define COMBO_CATCH_HOLDS(this, itemId) Combo_MmPauseBottleCanHold((this)->heldItemButton, itemId)
+#else
+#define COMBO_CATCH_BOTTLE(item) (item)
+#define COMBO_CATCH_HOLDS(this, itemId) true
+#endif
+
 struct_8085D798 D_8085D798[] = {
     { ACTOR_EN_ELF, FAIRY_PARAMS(FAIRY_TYPE_2, false, 0), ITEM_FAIRY, PLAYER_IA_BOTTLE_FAIRY, 0x5E },
     { ACTOR_EN_FISH, BOTTLE_CATCH_PARAMS_ANY, ITEM_FISH, PLAYER_IA_BOTTLE_FISH, 0x62 },
@@ -18786,7 +18842,7 @@ void Player_Action_68(Player* this, PlayState* play) {
                     Player_PlaySfx(this, NA_SE_IT_SCOOP_UP_WATER);
                 }
 
-                if (Player_GetItemOnButton(play, this, this->heldItemButton) == ITEM_BOTTLE) {
+                if (COMBO_CATCH_BOTTLE(Player_GetItemOnButton(play, this, this->heldItemButton)) == ITEM_BOTTLE) {
                     Actor* interactRangeActor = this->interactRangeActor;
 
                     if (interactRangeActor != NULL) {
@@ -18800,6 +18856,9 @@ void Player_Action_68(Player* this, PlayState* play) {
                                 break;
                             }
                             entry++;
+                        }
+                        if ((i < ARRAY_COUNT(D_8085D798)) && !COMBO_CATCH_HOLDS(this, entry->itemId)) {
+                            i = ARRAY_COUNT(D_8085D798);
                         }
 
                         if (GameInteractor_Should(VB_PLAY_BOTTLE_CATCH_TEXT, i < ARRAY_COUNT(D_8085D798), this,
@@ -18815,8 +18874,8 @@ void Player_Action_68(Player* this, PlayState* play) {
                 }
                 // #region 2S2H [Dpad]
                 else if (CVarGetInteger("gEnhancements.Dpad.DpadEquips", 0)) {
-                    if (Player_Dpad_GetItemOnButton(play, this, HELD_ITEM_TO_DPAD(this->heldItemButton)) ==
-                        ITEM_BOTTLE) {
+                    if (COMBO_CATCH_BOTTLE(Player_Dpad_GetItemOnButton(
+                            play, this, HELD_ITEM_TO_DPAD(this->heldItemButton))) == ITEM_BOTTLE) {
                         Actor* interactRangeActor = this->interactRangeActor;
 
                         if (interactRangeActor != NULL) {
@@ -18830,6 +18889,9 @@ void Player_Action_68(Player* this, PlayState* play) {
                                     break;
                                 }
                                 entry++;
+                            }
+                            if ((i < ARRAY_COUNT(D_8085D798)) && !COMBO_CATCH_HOLDS(this, entry->itemId)) {
+                                i = ARRAY_COUNT(D_8085D798);
                             }
 
                             if (GameInteractor_Should(VB_PLAY_BOTTLE_CATCH_TEXT, i < ARRAY_COUNT(D_8085D798), this,

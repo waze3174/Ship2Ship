@@ -18,6 +18,7 @@ struct Options {
     ImVec4 suffixColor = ImVec4(1.0f, 0.5f, 0.5f, 1.0f);
     float remainingTime = 0.0f; // Seconds
     bool mute = false;          // whether notification should make a noise
+    std::string gateCvar = "";  // EmitThreadSafe: a default-on CVar that turns this toast off, read on the UI thread
 };
 
 class Window final : public Ship::GuiWindow {
@@ -31,6 +32,12 @@ class Window final : public Ship::GuiWindow {
 };
 
 void Emit(Options notification);
+
+#ifdef COMBO_BUILD
+// ComboShip (2026-11-13): Emit from any thread (e.g. the launcher's Anchor receive thread). Queued and
+// shown on the next UI frame; Emit itself is main-thread only (unsynchronized vector + audio).
+void EmitThreadSafe(Options notification);
+#endif
 
 } // namespace Notification
 

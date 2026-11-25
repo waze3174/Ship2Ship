@@ -2356,6 +2356,68 @@ moved, so a raise of N tiers wrote N times; it now writes once at the end, and o
 `gCombo.Debug.BottleSaveEveryReconcile` (off by default) brings back the old write, so one build
 can time both with `gCombo.Debug.SaveTiming` (see boot-shutdown.md, "Save timing").
 
+**One write per pickup (2026-11-25, "still some lag when collecting checks while playing mm"):** some pickups still
+asked for several MM saves in a row. An OOT heart item found in Termina with shared health on is counted in MM
+(`DeliverCrossItem` → `MM_GrantCrossItem`, which saves), and `SendForeignCheck` then saved again for the check
+itself. A reconcile pass saved each game once per family it raised. Both are now batches
+(`SaveManager_ComboSaveBatchBegin`/`End` and the `ComboSaveBatch` guard in MM; `Combo_PersistOOT` in
+`soh/soh/OTRGlobals.cpp`). Inside a batch a save request only marks a save as owed, and the end of the outermost batch
+writes it once, with the state as it is then. `SendForeignCheck` is one batch. The launcher brackets each
+`Combo_SharedReconcileNow` pass with `MM_`/`SOH_ComboSaveBatchBegin`/`End` (optional symbols), and MM's batch ends
+first. MM writes on the calling thread, and OOT's save runs on OOT's save thread and holds the container meanwhile.
+Each batch ends within the same call, so no write moves to a later frame or another thread. The reconcile itself still
+runs at the end of the frame, never from inside a give.
+
+What the owner's v0.1.2 Deck log shows (2026-11-25; measured from log timestamps):
+- Back-to-back pickups in Termina are 2 game frames apart (100 ms) when nothing stalls.
+- After an MM item, the next pickup landed on the 50 ms frame grid 64 times out of 69.
+- After an OOT item found in Termina, it was off the grid 58 times out of 63. The stall was 74-171 ms (median 111,
+  n=14 back-to-back pairs). The only code between that log line ("MM delivered foreign item") and the end of the
+  pickup is `SaveManager_SaveCurrentForCombo`.
+- In v0.1.0, MM items stalled too (110 of 119 off the grid), from the bottle-reconcile save fixed above.
+
+**Smaller read for the live MM save (2026-11-25):** `SaveManager_SaveCurrentForCombo` read the whole stored section
+(the launcher dumped it, MM parsed it), and then overwrote the two big parts of it:
+- `newCycleSave.save` with the live save
+- `owlSave` with the live state, or dropped it
+
+The owner's slot loads from an owl save, so the section holds two whole saves.
+
+The live save now reads through `Combo_ReadGameSaveForLiveWrite` (pushed by the optional `MM_SetComboLiveWriteRead`).
+The launcher leaves both parts out and keeps only the three owl-blob fields the write carries over
+(`isOwlSave`, `shipSaveInfo.pauseSaveEntrance`, `shipSaveInfo.respawn`), and only when `gComboOwlBlobSlot` says
+gSaveContext descends from the blob. The write builds the same document from that as from the whole section:
+- A blob shaped differently is handed over whole, so it fails the same way.
+- A section of another version is read whole, for its migrations.
+- The bottle-shelf and shared-health side effects of the read are unchanged.
+
+`gCombo.Debug.MmSaveFullRead` (off by default) brings back the whole read, so one build can time both with
+`gCombo.Debug.SaveTiming`.
+
+**Saves that freeze the game for seconds on the Steam Deck (2026-11-25, "it froze for a considerable amount of time
+at 1:44 am"):** the owner's v0.1.2 SaveTiming capture (one 50-minute MM session, saves on the microSD card) has
+86 MM live saves and 51 OOT container writes. Measured:
+- 81 MM saves took 48-130 ms in the write phase (median 88). Five took 0.6-3.1 s, in two runs: 01:10:20-27 (1.2 and
+  2.6 s, with one OOT write of 0.9 s between them) and 01:43:42-01:44:06 (0.6, 1.1 and 3.1 s).
+- Read and serialize were normal in those five saves (22-27 and 18-31 ms). Only the write phase was slow, and it is
+  the only part of the save that touches the disk.
+- Two of the five had no OOT write within 30 s, so they were not waiting behind OOT's save.
+- The slow saves did not come after more writes than usual.
+
+So the container's file write and rename stalled. That fits the card being slow for a while (inferred). Nothing here
+changes the format or when saves happen. `FlushContainer` has no fsync; it writes a temp file and renames it over the
+container. The capture could not tell which system call blocked. The timing now also covers the temp file's open, and
+after a write of `kSlowWriteMs` (250 ms) or more the launcher samples the kernel's dirty and under-writeback page cache
+(Linux, `/proc/meminfo`). Each game logs such a write as a warning even with `gCombo.Debug.SaveTiming` off. MM's
+frame line also reports frames over 2 s when saves took most of the frame.
+
+**The fix (v0.1.3, owner-approved 2026-11-25):** container files are now written on a save writer thread of their
+own, so a stalled card holds back only the file, never the game. The game that saves still updates the launcher's
+in-memory container and serializes it, so its cost per pickup is the read, serialize, parse and dump measured above,
+and the disk part is gone from it. A crash now loses whatever has not reached the disk yet; how that is bounded, and
+how erases, copies and quit are ordered behind the writes, is in boot-shutdown.md, "Save writer thread".
+`gCombo.Debug.SyncSaveWrites=1` brings back the old write on the thread that saved, so one build can A/B both.
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.
@@ -2521,6 +2583,44 @@ Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and gra
   owns that item, and otherwise keeps what that button had. OOT captures its layout at the switch door (its
   save context is gone when the launcher asks). Verified headless: OOT bombs on C-left show on MM's C-left after
   crossing; an OOT-only item (Ruto's Letter) on D-up is left out.
+- **Only a crossing carries it (2026-11-25, playtest #19):** a save loaded from file select keeps the buttons it
+  was saved with. Before, `Combo_HandOffToMM` pushed OOT's layout on every MM entry, file loads included: loading
+  a slot last saved in MM read OOT's just-loaded save (`SOH_GetComboButtons` falls back to the live save when no
+  door capture is pending) and MM applied it on its first frame, so MM's C buttons and D-pad always came back as
+  OOT's. Now the launcher marks a file-select resume (`g_PendingMMEntryIsSaveLoad`) and sends MM no layout then.
+  A reset or owl-save quit ends on OOT's file select, so `Combo_HandOffToOot` sends OOT no layout either; before,
+  MM's layout waited there and landed on the next slot to start in OOT.
+- **The form and the worn mask follow the same rule (2026-11-25):** MM saves both (`playerForm`, `equippedMask`), so a
+  file-select resume sends MM neither and MM keeps what it saved. Before, OOT's form (`Combo_OotForm`, which is per
+  process and in no save) and OOT's live mask (none, since OOT parks before its first Play frame) were pushed: an MM
+  save made as a Goron or with a mask on came back human or unmasked. MM also drops an OOT mask worn in Termina on
+  every `OnSaveLoad`, since no save records it; a crossing puts the door's mask back on its first frame. After a
+  reset or owl-save quit, OOT gets the human form and no mask instead of MM's. Age and tunic still come from OOT on
+  every entry. OOT's own save now keeps the form too (see "Form travels with Link" below), so a reset or owl-save
+  quit no longer leaves MM's form on the next OOT slot.
+- **OOT's age rule holds on Hyrule's buttons (2026-11-25, playtest #21):** the owner equipped MM's bow in Termina and
+  child Link could use it back in Hyrule. The layout's `bow` key resolved to OOT's own `ITEM_BOW`, and OOT checks an
+  item's age only in its pause menu, not on use, so nothing stopped him. Vanilla OOT never puts such an item on a
+  button: its pause menu refuses it, and its age swap trades whole button sets.
+  - **Rule:** `Combo_PauseItemAgeOk` (ComboPause.cpp) is OOT's `CHECK_AGE_REQ_ITEM` for what a button holds. An MM item
+    is judged as the OOT item that runs it (`Combo_PauseForeignHostItem`: bow, hookshot as Longshot, sticks, beans...).
+    MM items with no Hyrule twin (MM's magic arrows, masks, the Pictograph Box) have no age rule.
+  - **Where it runs** (`KeepAgeRule`, ComboEquipShare.cpp; randomizer saves only): on the C buttons and the D-pad
+    after a crossing's layout is applied, on the first Play frame after every save load (a save made by an older
+    build loses an item it can't use), and at OOT's age swap (`Inventory_SwapAgeEquipment`, z_parameter.c).
+  - **A refused button** goes back to what that age had there: OOT's save before the crossing, or the new age's own
+    set at an age swap, as vanilla's swap would. That needs Link to be able to use it, still hold it, and not have it
+    on another button; otherwise the button is emptied. The log line is "OOT's age rule takes item XX off button N".
+  - **Lifted** (`Combo_AgeRulesLifted`, read on every call; owner 2026-11-25: "all these rules ... should not apply
+    with the 'both links use every item' or unrestricted items cheat"): the seed's "Both Links use every item"
+    (Unified Inventory: menu CVar `gCombo.Rando.UnifiedInventory`, seed key `unifiedInventory`, live flag
+    `gComboUnifiedInventory`), SoH's Timeless Equipment (`gCheats.TimelessEquipment`), and the Unrestricted Items
+    cheat of either game (`gCheats.NoRestrictItems` for OOT, `gCheats.UnrestrictedItems` for 2S2H; linked in Both
+    games). Masks as Adult lifts it for OOT's masks. The same switches lift the use-time refusal of MM items in
+    Hyrule (`Combo_PauseForeignAgeOk`) and OOT's age rule for OOT items in Termina (`SOH_ComboTermina_ItemAgeOk`,
+    which ignored Unified Inventory before).
+  - **Not changed:** Termina still greys and refuses an OOT item Link's age can't use rather than taking it off the
+    button (MM's own rule for restricted items).
 
 ## MM transformations in Hyrule, Goron body (B-M6a, 2026-11-12)
 
@@ -2542,7 +2642,24 @@ So a form in Hyrule is OOT's player and movement with:
   mask while transformed changes back. Setting `gCombo.Forms.InHyrule` (on by default).
 - **Form travels with Link:** OOT puts the form in the link state it captures at the switch door (bits 3-5). The
   launcher pushes it into MM, which sets `playerForm` on its `OnSaveLoad` (before Link spawns), and brings MM's
-  form back into OOT on the return (`SOH_SetComboForm`). The container keeps it too (`combo.link.form`).
+  form back into OOT on the return (`SOH_SetComboForm`). The container keeps it too (`combo.link.form`). Only a
+  crossing carries it; a save loaded from file select keeps MM's saved form (see "D-pad slots + shared button layout").
+- **OOT's save keeps the form (2026-11-25, owner: "whatever form the save was made in was saved"):** an extra,
+  optional SoH save section `comboForm` (version 1, `{"form": 0..4}`, `ComboForms.cpp`, registered by
+  `Combo_FormSaveRegister`) is written with every OOT save, so the next load of that slot gets Link back in the form
+  he was saved in. No existing section, save version or `COMBO_RELEASE_VERSION` changed. A save without the section
+  loads human, and a build that doesn't know the section logs "unloadable section comboForm" and skips it (its own
+  saves then drop it, so the slot loads human again).
+  - **Load order:** `SaveManager::LoadFile` runs the init functions (the form goes human, so nothing of the previous
+    slot stays), then the section (`LoadFormSection`, through `Combo_OotSetForm`, which falls back to human when the
+    form's MM skeleton is unavailable), then the `OnLoadFile` hook. `OnLoadGame` follows and its "IS_RANDO" init
+    (`ResetFormOfPreviousSlot`) sets human when `Combo_FormsAllowed` is off (forms switched off, or a vanilla slot).
+    All of this runs before Play, so Link spawns in the form without a visible switch. A new save starts human too.
+  - **Crossings win over the save:** `SOH_SetComboForm` now only stores the form (`Combo_OotSetCrossingForm`). The
+    `OnLoadFile` hook applies it after the slot has loaded, so MM's form beats the one the slot was saved with.
+    Later OOT saves keep it. A reset or owl-save quit sends -1 (nothing), so the next slot loads its own saved form.
+  - **Not saved:** the worn mask (OOT never saved masks). The save thread reads the live form, so a form changed
+    while a save is queued may be stored a few frames early.
 - **Logic credits nothing for a form in Hyrule** until its moves are real (§B4 Tier C rule).
 
 **Verified (headless, Xvfb):** Goron Link standing and walking in Link's house; becoming a Goron in Hyrule and
@@ -2692,6 +2809,15 @@ Features that change the rules of play are off until the player turns them on in
   as that game will show it on arrival, `ComboHealth::DormantAmmo`; OOT's Slingshot fired in Termina spends from the
   shared seeds (`SpendDormantAmmo`). With it off they show, and the Slingshot spends, OOT's own save, written at the
   switch back before OOT reloads it (`Combo_TerminaPersistDormantSave`).
+  Ship of Harkinian's Infinite Upgrades (owner 2026-11-25: "having the infinite stick bag in OoT doesnt carry over to
+  termina with shared items"): OOT's `RAND_INF_HAS_INFINITE_*` flags are read live from OOT's resident save
+  (`SOH_ComboInfiniteMask`); nothing is stored in MM's save. MM's own bag, meter or wallet is infinite when OOT's is
+  and the two games hold one of it (`ComboHealth::MmShareInfinite`): with this switch on for the ammo and the meter,
+  or through the Shared Items family (bow → quiver, bomb bag, bombchu bag, magic, wallet → rupees). MM then refills
+  it every frame as SoH does in Hyrule and hides its count on the C buttons, the D-pad and the pause menu (the B
+  button keeps it for minigames). OOT's own items used in Termina (OOT's bag) are infinite whenever OOT's bag is.
+  Sticks and nuts have no Shared Items family, so without this switch MM's own sticks and nuts stay MM's. 2S2H has
+  no Infinite Upgrades of its own yet (its menu entry is a "Coming Soon" placeholder), so nothing goes the other way.
 - `gCombo.Rando.FormLogicCredit` (seed-bound, stored as `formLogicCredit`): logic may credit MM's Zora and Goron
   Masks as Hyrule abilities (`ComboFormCredit` in `logic.cpp`). Off: no seed ever requires a form's ability.
   The launcher pushes the setting with `SOH_SetComboFormLogicCredit` before each oracle pass; a seed without the
@@ -2861,7 +2987,7 @@ portal region at either age (`OTRGlobals.cpp`). `Rando::ComboPortalRegion()` (`l
 The route:
 - OoT Lost Woods, room 0, the north wrong turn (scene collision polygon 48, floor triangle (-60,0,-400) (60,0,-400)
   (0,0,-800); the surface type is shared with a second polygon, so the index is the key) -> MM `Z2_LOST_WOODS` spawn 0.
-  A stump (MM's `gKeikokuDemoTallTreeCutDL`, scale 0.05, about 21 units of radius) marks the tunnel while the link is
+  A stump (MM's `gKeikokuDemoTallTreeCutDL`, scale 0.05, solid: a 13 by 110 collision cylinder) marks the tunnel while the link is
   on. It stands on the hub floor at (-120,0,-110), in front of the mouth (the opening in the wall at z -200), left of
   the walk from the Kokiri Forest arrival: 80 units from the nearest wall (collision polygon 151, the x -200 side; 90
   from the wall at z -200), floor y 0 (polygon 195). The old spot (-90,0,-380) was inside the tunnel's wall (polygon 64).
@@ -2902,3 +3028,157 @@ Hooks:
 - `OTRGlobals.cpp` (OoT) `OnSceneInit`: the Mask Shop switch asks `Combo_OOT_LostWoodsLinkKeepsMaskShop` first.
 - `mm/2s2h/Rando/MiscBehavior/ComboLostWoodsLink.cpp`: the `OnSceneInit` and `OnActorInit` (stone doors) hooks. `soh/soh/Enhancements/randomizer/ComboLostWoodsLink.cpp`: the
   marker actor (registered in ActorDB like `Obj_Aqua`) and its `OnSceneSpawnActors` spawn.
+
+## Release checks on boss kill (Ship2Ship, v0.1.3)
+
+Owner, 2026-11-25: "during a rando, if a game (MM or OoT)'s boss is beaten (majora's or Ganon) that game's checks are
+released and given to the player (and later, the AP)."
+
+**The setting.** `gCombo.ReleaseOnBossKill`, off by default, a checkbox in the combo menu's Randomizer panel, under
+Goal. It is a play-time CVar, not a seed setting: no seed field, no format change, no `COMBO_RELEASE_VERSION` change,
+so a seed already in play has it. It sits outside `gCombo.Rando.*` on purpose (that prefix is seed-bound, applied only
+at the file select); `combo/ComboPresetScope.h` already carries it as a preset key through the `gCombo.` prefix.
+
+**The trigger.** `Combo_OnFinalBossDefeated` (`combo/ComboShip.cpp`) already runs when Ganon or Majora dies. With the
+setting on and the game not yet released, it queues a release (`g_releasePending[game]`); the boss reports from inside
+its own death cutscene, and items given there would land mid-frame. `Combo_SharedTick` (the per-frame seam both games
+call) drains the queue through `Combo_DrainBossRelease` on the played game's thread, once the other game's save is
+resident for the items that go to it (a one-game seed needs no other save). The setting is read at the kill, so turning
+it on after the kill does nothing.
+
+**The entry point.** `Combo_ReleaseGameChecks(game, reason)` in the launcher: the one function a kill calls today and
+Archipelago can call later. Each game exports the giver: `SOH_ReleaseRemainingChecks`
+(`soh/soh/Enhancements/randomizer/ComboReleaseChecks.cpp`) and `MM_ReleaseRemainingChecks`
+(`mm/2s2h/Rando/MiscBehavior/ComboReleaseChecks.cpp`). Both return the count, or `ComboRelease::kCannotRelease` (-1)
+when no rando save is loaded. The names, the CVar and the container key are in `combo/ComboRelease.h`.
+
+**The collecting half.** Owner, 2026-11-25: "when releasing all the checks after beating one of the games, all of that
+games checks from the other game should count as collected like an AP game". As Archipelago collects a finished world's
+items out of the other worlds, a release of one game also collects that game's items still lying in the other game's
+checks, so no check anywhere holds an item of a finished game and both trackers count those checks collected.
+- A release arms `g_collectPending[game]`. On the next tick `Combo_DrainReleaseCollect` (in `Combo_SharedTick`, after
+  the release drain) runs `Combo_CollectReleasedGame`, which calls the other game's collector (`Combo_ReleaseCollector`)
+  inside both save batches: `MM_ReleaseForeignChecks(slot)` for an OoT release, `SOH_ReleaseForeignChecks(slot)` for an
+  MM release. It waits, as the release drain does, for MM's save to be the slot's. A one-game seed has no other game
+  and drops it.
+- `LoadComboCompletion` arms it again for every game the container marks released, on every file load. So a game
+  released by v0.1.3 (which had no collecting half) is collected the first time the file is loaded, and a collect that
+  could not run is retried at the next load. Run again, it finds nothing left and writes nothing.
+- Each takes the remaining checks (the same test as the giver's) whose item is the sentinel for the other game's item
+  (`RI_COMBO_FOREIGN` / `RG_COMBO_FOREIGN`) and releases them exactly as the giver releases a foreign check: marked
+  collected (OoT: unskipped, and the world pickup spent), the item sent home through `DeliverCrossItem` and the Anchor
+  cross-item broadcast, a trap sent nowhere. No notification: the release's one message stays the only one.
+- The collector runs on the played game's thread. After a kill its game is dormant: MM's on OoT's thread after Ganon,
+  OoT's on MM's thread after Majora. That is the
+  dormant cross-grant situation (`MM_GrantCrossItem`, `SOH_GrantCrossItem`): MM's resident save is written through its
+  batch (`SaveManager_SaveCurrentForCombo`), OoT's through `Combo_PersistOOT` (a full save, so the tracker writes
+  `RCSHOW_SAVED`; OoT reloads its save from disk when Link comes back). With no OoT play state, only the saved scene
+  flags are set. The drain already waits for MM's save to be resident; OoT's save is resident from the file select on.
+- The flag setters still fire OoT's flag hooks. One of them needs the play state: with adult trade shuffle on, spending
+  the Broken Sword or Eyedrops trade consumes that trade item through `Inventory_ReplaceItem`, which reloads a C-button
+  icon through `play` (`RandomizerOnFlagSetHandler`, `hook_handlers.cpp`). With no play state it now replaces the item
+  through Anchor's dormant helper `Anchor_DormantReplaceItem` (the icons reload with the next scene).
+- Each collector checks that its resident save is the launcher's slot and returns `kCannotRelease` otherwise; the
+  launcher logs that, and the next file load tries again.
+- The items the collect gives are save-direct gives, which poke no Shared Items reconcile on OoT's side, so the launcher
+  arms one (`g_sharedReconcilePending`).
+
+**Archipelago.** A release has to tell the AP server too: whoever wires AP in must send the released locations (the
+same set the game just marked collected) to the server from `Combo_ReleaseGameChecks`. Nothing here talks to a server.
+
+**Idempotence.** The container holds `combo.released = {"oot": bool, "mm": bool}`, set after a release and read back
+with the completion on every file load (`LoadComboCompletion`). A new key in the existing `combo` section: no save
+version, no seed field. A game releases at most once per file. Running it again would find every check collected and
+give nothing, but the marker also stops the notification and the scan. A vanilla slot (`g_activeMode.IsVanilla()`)
+releases nothing.
+
+**What counts as a remaining check**, in the same terms the game's own tracker uses:
+- OoT: `CheckTracker::IsCheckShuffled(rc)` (shuffled, and shown in the tracker for this seed's settings: shops, scrubs,
+  Skulltulas, cows... only when shuffled), not excluded, a placed item (`!= RG_NONE`), and `!HasObtained()`
+  (`RCSHOW_COLLECTED` or `RCSHOW_SAVED`). The check the item queue is giving this frame (`OOT_GetQueuedDrawCheck`) is
+  left to it.
+- MM: `RANDO_SAVE_CHECKS[rc].shuffled && !obtained`, minus a check already flagged `eligible` (the `CheckQueue` is about
+  to give it).
+
+**Giving the items.** No get-item cutscene, no textbox, no per-item toast.
+- OoT: the check is set `RCSHOW_COLLECTED`, then its item is resolved right then (`Context::GetFinalGIEntry`, so
+  progressive items come out in order against the live save) and given by `Combo_GiveResolvedOOT`, the save-direct give
+  that cross-game grants and Anchor use (`OTRGlobals.cpp`, no longer `static`).
+- MM: the check is marked `obtained`, `cycleObtained`, not `eligible`; the item is resolved with `Rando::ConvertItem`
+  and `CurrentJunkItem` and given by `Combo_MM_GiveDormantResolved`, the same save-direct give.
+- An item of the other game (OoT's `RG_COMBO_FOREIGN`, MM's `RI_COMBO_FOREIGN`) goes through the existing foreign-check
+  path without its toast: `gComboCrossDeliver` / `gMMComboCrossDeliver` (the launcher's `DeliverCrossItem`, which
+  handles shared vitals and de-duplicates by check name) and the Anchor cross-item broadcast.
+- Shared Items: MM's give pokes `gMMComboSharedChanged` itself; the OoT release pokes `gComboSharedChanged` once at the
+  end, so the launcher's next tick reconciles the tiers. The Triforce counters poke as for any grant.
+- Traps (`RG_ICE_TRAP`, `RI_TRAP`, and a foreign item with `trap` set) are marked collected and never given, sprung or
+  sent.
+
+**The world pickup is spent too (OoT).** After marking a check collected, `SpendWorldPickup` sets the flag the check's own
+pickup tests (its `SpoilerCollectionCheck`, the same one the tracker reads back in `ComboCheckFlagObtained`), so the chest,
+Skulltula, collectible, NPC gift, scrub, cow or shop slot in the world gives nothing again:
+- chest and collectible: `gSaveContext.sceneFlags[scene].chest` / `.collect`. If that scene is the one being played the live
+  flag is set too, through the game's `Flags_SetTreasure` / `Flags_SetCollectible` (the game writes the live flags back on
+  leaving the scene). Collectible flags from 0x20 up are the game's one-visit `tempCollect`: only the live flag, and only
+  in the current scene.
+- Skulltula: `SET_GS_FLAGS(scene, flag)`.
+- `eventChkInf`, `itemGetInf`, `infTable`: `Flags_SetEventChkInf` / `Flags_SetItemGetInf` / `Flags_SetInfTable`.
+- `randomizerInf` (shops, cows, scrubs' and others' randomizer flags, beehives, pots...): `Flags_SetRandomizerInf` on
+  `Randomizer::GetRandomizerInfFromCheck(rc)`.
+- Traps and foreign checks are spent the same way; only their item is never given.
+The flag setters fire the game's flag hooks, so Anchor teammates get the flags as well. A check whose kind is not mapped
+(`SPOILER_CHK_NONE`, the gravedigger type, or a `randomizerInf` check with no flag) is logged by name at release time and
+its pickup may still give once more. A pickup already spawned in the scene being played stays as it is until the scene
+reloads.
+
+**The world pickup (MM)** needed no flag writes: 2S2H treats an `obtained` check as spent when the item is given. A second
+collection of a released check goes through `Rando::ConvertItem(item, rc)` (`mm/2s2h/Rando/ConvertItem.cpp:729`, via
+`IsItemObtainable`, `:232`), which turns it into junk when the check is `obtained` for heart pieces and containers
+(`:387`), progressive items, wallets, swords, small keys, stray fairies, Skulltula tokens, songs,
+clock items and Triforce pieces, and when the item is already owned for masks and the rest. The `CheckQueue` give lambda
+(`CheckQueue.cpp` `.giveItem`) calls it, and the foreign branch only delivers the first time (`wasObtained`). After a Song of
+Time, `OnCycleSave.cpp` clears `cycleObtained` and the cycle flags for every check but keeps `obtained`, so a released check
+is re-collectible for junk like any check collected normally; actors that test `cycleObtained` (ObjGrass, ObjTsubo and the
+rest of `ActorBehavior/`) see it spent this cycle, as set by the release. A released MM trap re-collected in the world
+springs once more, as any collected trap does.
+
+**The tracker.** Every row of the released game's tracker counts as collected afterwards, traps and checks with no world
+flag included.
+- OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
+  `RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. The area and total counts count
+  `HasObtained()` (`RCSHOW_COLLECTED` or `RCSHOW_SAVED`) or skipped, and the release's own save turns `RCSHOW_COLLECTED`
+  into `RCSHOW_SAVED` on disk (`SaveTrackerData` with `fullSave`), so the counts hold after a reload whether or not the
+  check has a world flag. A released check the player had skipped is unskipped, as `SetCheckCollected` does for a pickup.
+- OoT rows the tracker shows and counts that are no check to release, the unshuffled shop slots under shopsanity
+  (`IsVisibleInCheckTracker` shows them, `IsCheckShuffled` does not), are marked `RCSHOW_COLLECTED` too, status only
+  (`MarkShownRowsCollected`). The check the item queue is giving is left to it.
+- MM's tracker reads `RANDO_SAVE_CHECKS` live and counts `obtained || skipped` over the shuffled checks.
+
+**Saves.** Each game opens its save batch for the loop (`SOH_ComboSaveBatchBegin/End` through `SaveBatch`, MM's
+`ComboSaveBatch`), and the launcher holds both games' batches open around the call (`SaveBatchGuard`, now shared with
+the shared-items pass), so the cross-game deliveries write each save once as well: one container write per game for
+100+ checks. The OoT area spoils of released maps are folded into that save. MM's batch writes only a save something
+asked for, and a released trap or Ocarina of Time item asks for none, so `MM_ReleaseRemainingChecks` asks for one itself
+whenever it released anything.
+
+**Notification.** One, from the released game: "Released 143 checks from Ocarina of Time" (or "Majora's Mask"), through
+the existing `Notification::Emit` both games have.
+
+**Anchor co-op.** Released checks sync through the same paths as pickups. OoT: each `SetCheckStatus` fires the
+`OnRandoSetCheckStatus` Anchor hook, and each item is sent with `SendPacket_GiveItem`. MM: `BroadcastCheckObtainedIfFirst`.
+Foreign items use the cross-item broadcast. A trap is sent to nobody. Teammates therefore get one packet per check; a
+large release is a burst, and teammates' partner feeds list the non-junk finds.
+
+**Edge cases.**
+- The other game's pending queue is not touched: the cross-game items land in its resident save as any cross-grant
+  does, and the collector leaves a check that game is already giving (MM `eligible`, OoT's queued check) to it.
+- A check the item queue is already giving is skipped (above), so nothing is given twice.
+- A bottle refill with no free bottle is dropped, as for every cross-grant (`Combo_MM_GiveDormant`,
+  `Combo_GiveResolvedOOT`).
+
+**Preserve on future merges.** `OTRGlobals.cpp` (`Combo_GiveResolvedOOT` and `Combo_PersistOOT` non-static),
+`randomizer_check_tracker.cpp/.h` (`SpoilAreasFromChecks`), `combo/ComboShip.cpp` (the release block before
+`Combo_OnFinalBossDefeated`, the queue in it, the collect after it, both drains in `Combo_SharedTick`, the
+`LoadComboCompletion` read, the five `GetSym` lines), `combo/gui/ComboMenu.cpp` (the checkbox),
+`soh/soh/Enhancements/randomizer/hook_handlers.cpp` (`ReplaceAdultTradeItem` in `RandomizerOnFlagSetHandler`). The two
+`ComboReleaseChecks.cpp` files and `combo/ComboRelease.h` are combo-owned.

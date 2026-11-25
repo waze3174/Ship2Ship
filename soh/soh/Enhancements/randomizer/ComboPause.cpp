@@ -28,8 +28,10 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"
+#include "soh/cvar_prefixes.h"
 
 extern "C" {
+#include <soh_assets.h>
 #include "z64.h"
 #include "macros.h"
 #include "variables.h"
@@ -43,9 +45,12 @@ const char* KaleidoScope_ComboItemNameTex(int item);       // z_kaleido_scope_PA
 extern void* gItemIcons[];
 void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
 int Combo_GamesSolo(void);                     // OTRGlobals.cpp
+uint8_t SOH_IsOnFileSelect(void);              // OTRGlobals.cpp: the active gamestate is the file-select screen
+void Combo_PlayerDropPendingMask(void);        // z_player.c: the MM mask waiting for Link to be human again
 extern s16 gComboBlastMaskTimer;               // z_player_lib.c: MM blastMaskTimer for the Blast Mask in Hyrule
 int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap); // ComboSharedHealth.cpp: MM's bag with shared consumables
 int Combo_SharedMmAmmoSpend(int kind, int change, int mmCount); // ComboSharedHealth.cpp: spend it, 0 = sharing off
+extern int gComboUnifiedInventory; // ComboUnifiedInventory.cpp: the loaded seed's "Both Links use every item"
 }
 
 namespace {
@@ -207,8 +212,24 @@ int CurTab() {
         return sDrawTab;
     return sFace <= COMBO_PAUSE_FACE_MASKS ? sFace : COMBO_PAUSE_TAB_HYRULE;
 }
-int sWornMmMask = -1;   // MM item id of the MM mask Link wears in Hyrule (-1 = none)
-int sWornForeignId = 0; // its foreign id (the button it was used from must still hold it)
+int sWornMmMask = -1;            // MM item id of the MM mask Link wears in Hyrule (-1 = none)
+int sWornForeignId = 0;          // its foreign id (the button it was used from must still hold it)
+bool sWornWithoutButton = false; // 2S2H Easy Mask Equip: worn from the pause menu, on no button
+int sEasyEquipItem = ITEM_NONE;  // 2S2H Easy Mask Equip: the foreign id picked in the pause menu, used once it closes
+constexpr const char* kEasyMaskEquipCVar = "gEnhancements.Masks.EasyMaskEquip";
+constexpr const char* kPersistentBunnyHoodCVar = "gEnhancements.Masks.PersistentBunnyHood.Enabled";
+bool sPersistentBunnyHood = false;       // 2S2H Persistent Bunny Hood: the hood's state, kept for the session
+constexpr int kMmMaskPageFirstSlot = 24; // MM items[]: the mask page, slots 24-47
+constexpr int kMmMaskPageSlotCount = 24;
+
+bool MmMaskPageHolds(int mmItem) {
+    for (int slot = kMmMaskPageFirstSlot; slot < kMmMaskPageFirstSlot + kMmMaskPageSlotCount; slot++) {
+        if (Combo_PauseSlotItemAny(slot) == mmItem) {
+            return true;
+        }
+    }
+    return false;
+}
 
 int LiveMmItem(int foreignId) {
     const int s = ComboPause_OotDecode(foreignId);
@@ -216,6 +237,8 @@ int LiveMmItem(int foreignId) {
         return -1;
     return sMmItems[s] == 0xFF ? -1 : sMmItems[s];
 }
+
+constexpr int kMmExtraPowderKegs = 3; // ExtraPowderKegs.cpp MAX_POWDER_KEGS
 
 // MM's bag for an MM ammo item, as Hyrule sees it (after a Snapshot, so MM's save is resident).
 struct MmBag {
@@ -232,6 +255,10 @@ MmBag BagOf(int mmItem) {
     MmBag b;
     if (sBag != nullptr) {
         b.own = sBag(mmItem, &b.cap, &b.kind);
+    }
+    // 2S2H's "Extra Powder Kegs" (mm/2s2h/Enhancements/Items/ExtraPowderKegs.cpp, MM's own CVar): the bag holds three.
+    if ((mmItem == COMBO_MM_ITEM_POWDER_KEG) && CVarGetInteger("gEnhancements.Items.ExtraPowderKegs", 0)) {
+        b.cap = kMmExtraPowderKegs;
     }
     if (b.own >= 0) {
         b.count = Combo_SharedMmAmmo(b.kind, b.own, b.cap);
@@ -434,16 +461,42 @@ extern "C" int Combo_PauseIsForeignMask(int item) {
     return mm >= MM_ITEM_MASK_DEKU && mm <= MM_ITEM_MASK_GIANT;
 }
 
+// 2S2H's "Underwater Ocarina" (mm/2s2h/Enhancements/Player/UnderwaterOcarina.cpp, MM's own CVar): on the bottom the
+// ocarina stays usable. In Hyrule that covers MM's Ocarina of Time and a transformed Link's ocarina; human Link's own
+// OOT ocarina keeps OOT's rule.
+extern "C" int Combo_PauseOcarinaUsableOnBottom(int item) {
+    if (!CVarGetInteger("gEnhancements.Player.UnderwaterOcarina", 0)) {
+        return 0;
+    }
+    if (Combo_PauseForeignHostItem(item) == ITEM_OCARINA_TIME) {
+        return 1;
+    }
+    return (Combo_OotForm() != COMBO_FORM_HUMAN) && ((item == ITEM_OCARINA_FAIRY) || (item == ITEM_OCARINA_TIME));
+}
+
+// MM's wearable masks: worn on the head, so not the forms' masks and not the Giant's.
+extern "C" int Combo_PauseIsForeignWearableMask(int item) {
+    const int mm = LiveMmItem(item);
+    return (mm > MM_ITEM_MASK_FIERCE_DEITY) && (mm < MM_ITEM_MASK_GIANT);
+}
+
+// 2S2H's "Equip Masks While Swimming" (mm/2s2h/Enhancements/Masks/EquipWhileSwimming.cpp, MM's own CVar): MM's wearable
+// masks keep their buttons while human Link swims or dives.
+extern "C" int Combo_PauseMaskUsableWhileSwimming(int item) {
+    return CVarGetInteger("gEnhancements.Masks.EquipWhileSwimming", 0) && (Combo_OotForm() == COMBO_FORM_HUMAN) &&
+           Combo_PauseIsForeignWearableMask(item);
+}
+
 extern "C" void Combo_PauseToggleMmMask(int item) {
     const int mm = LiveMmItem(item);
     if (mm < 0 || mm == sWornMmMask) {
         Log("MM mask 0x%02X off", sWornMmMask);
-        sWornMmMask = -1;
-        sWornForeignId = 0;
+        Combo_PauseClearMmMask();
         return;
     }
     sWornMmMask = mm;
     sWornForeignId = item;
+    sWornWithoutButton = CVarGetInteger(kEasyMaskEquipCVar, 0) && !Combo_PauseOnButton(item);
     Log("wearing MM mask 0x%02X (MM's model on Link's head)", mm);
 }
 
@@ -476,8 +529,38 @@ extern "C" int Combo_ChateauActive(void) {
     return sChateau;
 }
 
+// 2S2H's "Persistent Bunny Hood" (mm/2s2h/Enhancements/Masks/PersistentMasks.cpp, MM's own CVar): using the hood flips
+// a state instead of wearing it. The state outlives buttons, forms and scenes, and keeps the hood's speed.
+extern "C" int Combo_PauseBunnyHoodPersistent(void) {
+    return sPersistentBunnyHood && CVarGetInteger(kPersistentBunnyHoodCVar, 0) && MmMaskPageHolds(MM_ITEM_MASK_BUNNY);
+}
+
+// What a loaded save must not inherit: the picked-but-unused mask, the persistent hood, and the mask waiting for Link
+// to be human again.
+extern "C" void Combo_PauseResetSession(void) {
+    sPersistentBunnyHood = false;
+    sEasyEquipItem = ITEM_NONE;
+    Combo_PlayerDropPendingMask();
+}
+
+extern "C" int Combo_PauseUsePersistentBunnyHood(int item) {
+    if (!CVarGetInteger(kPersistentBunnyHoodCVar, 0) || (LiveMmItem(item) != MM_ITEM_MASK_BUNNY)) {
+        return 0;
+    }
+    sPersistentBunnyHood = !sPersistentBunnyHood;
+    return 1;
+}
+
+// The MM mask drawn and sped up on Link's head: the one worn, else the persistent hood.
+extern "C" int Combo_PauseHeadMmMaskItem(void) {
+    if (sWornMmMask >= 0) {
+        return sWornMmMask;
+    }
+    return Combo_PauseBunnyHoodPersistent() ? MM_ITEM_MASK_BUNNY : -1;
+}
+
 extern "C" int Combo_MmMaskIs(int mmItem) {
-    return (sWornMmMask == mmItem) && (Combo_OotForm() == COMBO_FORM_HUMAN);
+    return (Combo_PauseHeadMmMaskItem() == mmItem) && (Combo_OotForm() == COMBO_FORM_HUMAN);
 }
 
 // ---- MM's B-button masks in Hyrule ------------------------------------------------------------------------------
@@ -528,6 +611,53 @@ extern "C" int Combo_BlastMaskCooldown(void) {
     return (seconds < kMmBlastMaskCooldownMax) ? (int)(seconds * kMmFramesPerSecond) : kMmBlastMaskCooldownFrames;
 }
 
+// 2S2H's "Easy Mask Equip" (mm/2s2h/Enhancements/Masks/EasyMaskEquip.cpp HandleMaskPageSelection, MM's own CVar): A on
+// an MM mask in the pause menu picks it to go on, or come off, without a button; the pick is used once the menu closes
+// (Combo_PauseTakeEasyEquip), by the rules of any use. A second A on the same mask cancels. Returns 1 when A was taken.
+extern "C" int Combo_PauseMaskAPress(int item) {
+    if (Combo_PauseUsePersistentBunnyHood(item)) {
+        Sfx_PlaySfxCentered(Combo_PauseBunnyHoodPersistent() ? NA_SE_SY_CAMERA_ZOOM_DOWN : NA_SE_SY_CAMERA_ZOOM_UP);
+        return 1;
+    }
+    if (!CVarGetInteger(kEasyMaskEquipCVar, 0) || !Combo_PauseIsForeignMask(item)) {
+        return 0;
+    }
+    if (LiveMmItem(item) == MM_ITEM_MASK_GIANT) {
+        Sfx_PlaySfxCentered(NA_SE_SY_ERROR); // MM: only in Twinmold's arena, which Hyrule lacks
+    } else if (sEasyEquipItem == item) {
+        sEasyEquipItem = ITEM_NONE;
+        Sfx_PlaySfxCentered(NA_SE_SY_MESSAGE_PASS);
+    } else {
+        sEasyEquipItem = item;
+        Sfx_PlaySfxCentered(NA_SE_SY_DECIDE);
+    }
+    return 1;
+}
+
+extern "C" int Combo_PauseWornWithoutButtonItem(void) {
+    return (sWornMmMask >= 0) && sWornWithoutButton ? sWornForeignId : ITEM_NONE;
+}
+
+extern "C" int Combo_PausePersistentBunnyHoodItem(void) {
+    for (int slot = 0; slot < 24; slot++) {
+        const int item = Combo_PauseSlotItem(slot);
+        if (Combo_PauseBunnyHoodPersistent() && (item != ITEM_NONE) && (LiveMmItem(item) == MM_ITEM_MASK_BUNNY)) {
+            return item;
+        }
+    }
+    return ITEM_NONE;
+}
+
+extern "C" int Combo_PauseTakeEasyEquip(void) {
+    const int item = sEasyEquipItem;
+    sEasyEquipItem = ITEM_NONE;
+    return item;
+}
+
+extern "C" int Combo_PauseEasyEquipPending(void) {
+    return sEasyEquipItem;
+}
+
 extern "C" int Combo_PauseLiveMmItem(int item) {
     return LiveMmItem(item);
 }
@@ -567,18 +697,32 @@ extern "C" int Combo_PauseForeignHostItem(int item) {
     }
 }
 
-// OOT's age rule for the OOT item that runs an MM item (z_kaleido_scope.h CHECK_AGE_REQ_ITEM, so Timeless Equipment and
-// Unified Inventory lift it as they do for OOT's own). OOT's pause greys its own items out by it; an MM item comes from
-// the Termina face, which knows no ages, so Player_UseItem refuses it there instead.
-extern "C" int Combo_PauseForeignAgeOk(int item) {
-    constexpr u8 kAgeReqNone = 9; // z_kaleido_scope.h AGE_REQ_NONE
-    const int oot = Combo_PauseForeignHostItem(item);
-    if (oot == ITEM_NONE) {
+namespace {
+constexpr const char* kMmUnrestrictedItemsCVar = "gCheats.UnrestrictedItems"; // 2S2H's, linked to OOT's in Both games
+} // namespace
+
+// Owner 2026-11-25: with these on, no age rule keeps an item from either Link. Read on every call.
+extern "C" int Combo_AgeRulesLifted(void) {
+    return gComboUnifiedInventory || CVarGetInteger(CVAR_CHEAT("TimelessEquipment"), 0) ||
+           CVarGetInteger(CVAR_CHEAT("NoRestrictItems"), 0) || CVarGetInteger(kMmUnrestrictedItemsCVar, 0);
+}
+
+// OOT's age rule (z_kaleido_scope.h CHECK_AGE_REQ_ITEM, so Masks as Adult lifts it for masks as it does for OOT's own)
+// for an item on a button, for Link at `age`: an MM item is judged as the OOT item that runs it. OOT's pause greys its
+// own items out by it; an MM item comes from the Termina face, which knows no ages, so Player_UseItem refuses it.
+extern "C" int Combo_PauseItemAgeOk(int item, int age) {
+    constexpr u8 kAgeReqNone = 9;                       // z_kaleido_scope.h AGE_REQ_NONE
+    constexpr int kLastAgeRuledItem = ITEM_SWORD_KNIFE; // gItemAgeReqs lists up to here; later entries read adult-only
+    const int oot = Combo_PauseIsForeign(item) ? Combo_PauseForeignHostItem(item) : item;
+    if ((oot < 0) || (oot > kLastAgeRuledItem) || Combo_AgeRulesLifted()) {
         return 1;
     }
     const u8 req = gItemAgeReqs[oot];
-    return GameInteractor_Should(VB_ITEM_MEETS_AGE_REQ, (req == kAgeReqNone) || (req == gSaveContext.linkAge), oot) ? 1
-                                                                                                                    : 0;
+    return GameInteractor_Should(VB_ITEM_MEETS_AGE_REQ, (req == kAgeReqNone) || (req == age), oot) ? 1 : 0;
+}
+
+extern "C" int Combo_PauseForeignAgeOk(int item) {
+    return Combo_PauseItemAgeOk(item, gSaveContext.linkAge);
 }
 
 // ---- MM bottles in Hyrule ---------------------------------------------------------------------------------------
@@ -615,6 +759,11 @@ extern "C" int Combo_PauseForeignBottleAction(int item) {
         default:
             return -1;
     }
+}
+
+extern "C" int Combo_PauseIsForeignBottle(int item) {
+    const int mm = LiveMmItem(item);
+    return (mm >= MM_ITEM_BOTTLE) && (mm <= 0x27); // MM ITEM_BOTTLE .. ITEM_OBABA_DRINK, show-only contents too
 }
 
 namespace {
@@ -759,17 +908,25 @@ extern "C" int Combo_PauseWearMmMaskFromButtons(int mm) {
 extern "C" void Combo_PauseClearMmMask(void) {
     sWornMmMask = -1;
     sWornForeignId = 0;
+    sWornWithoutButton = false;
 }
 
 extern "C" const void* Combo_PauseWornMmMaskDL(void) {
-    if (sWornMmMask < 0 || !MmResolved())
+    if (!MmResolved())
         return nullptr;
-    // OOT's rule for its own masks: a mask comes off once it is on no button.
-    if (!Combo_PauseOnButton(sWornForeignId) || LiveMmItem(sWornForeignId) != sWornMmMask) {
-        Combo_PauseClearMmMask();
-        return nullptr;
+    if (sWornMmMask >= 0) {
+        // OOT's rule for its own masks: a mask comes off once it is on no button. 2S2H's Easy Mask Equip wears one on
+        // none.
+        const bool held =
+            sWornWithoutButton ? CVarGetInteger(kEasyMaskEquipCVar, 0) : Combo_PauseOnButton(sWornForeignId);
+        if (!held || LiveMmItem(sWornForeignId) != sWornMmMask) {
+            Combo_PauseClearMmMask();
+        }
     }
-    const char* dl = sMmMaskDL(sWornMmMask);
+    const int head = Combo_PauseHeadMmMaskItem();
+    if (head < 0)
+        return nullptr;
+    const char* dl = sMmMaskDL(head);
     if (dl == nullptr || strncmp(dl, "__OTR__", 7) != 0)
         return nullptr;
     return Combo_MmDL(dl + 7);
@@ -820,6 +977,8 @@ extern "C" COMBO_EXPORT const char* SOH_ComboPause_IconTex(int ootItem) {
 }
 
 extern "C" COMBO_EXPORT const char* SOH_ComboPause_NameTex(int ootItem) {
+    if (ootItem == ITEM_ROCS_FEATHER) // SoH's own plate (RocsFeather.cpp VB_DRAW_CUSTOM_ITEM_NAME)
+        return gRocsFeatherItemNameENGTex;
     if (ootItem < 0 || ootItem > ITEM_SWORD_KNIFE) // the item page and the equipment page's names
         return nullptr;
     return KaleidoScope_ComboItemNameTex(ootItem);
@@ -968,6 +1127,17 @@ void RegisterComboPauseHarness() {
     });
 }
 RegisterShipInitFunc sHarnessInit(RegisterComboPauseHarness, {});
+
+// OnLoadGame also fires on the return from MM and on in-game reloads, where the session's picks stay; only a load from
+// the file-select screen starts a new session.
+void RegisterComboPauseSession() {
+    COND_HOOK(OnLoadGame, true, [](int32_t) {
+        if (SOH_IsOnFileSelect()) {
+            Combo_PauseResetSession();
+        }
+    });
+}
+RegisterShipInitFunc sSessionInit(RegisterComboPauseSession, {});
 } // namespace
 
 // Debug (test harness only, COMBO_DEBUG_MM_PAUSE "give=XX"): put an OOT item into OOT's resident save at its home slot.

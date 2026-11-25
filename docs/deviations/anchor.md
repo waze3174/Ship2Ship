@@ -441,3 +441,66 @@ both DLLs as parse errors at connect). `Combo_OnReloadRequest` is split into fil
 
 The room-seed sharing, world-CVar overlay, `state.combo` identity stamp, SessionGuard and the co-op
 enemy/boss sync that came with WomboComboShip were removed from this build; they are planned for a later pass.
+
+## Co-op hardening port from junkx420/ComboShip (2026-11-25)
+
+**Source:** junkx420/ComboShip, branches `feature/coop-split-sync` and `feature/coop-next` (tag `v0.3.0-coop`).
+The first three commits of `coop-split-sync` (`78085060d`, `1a96c7f44`, `a6abbb067`) were already here from the
+Wombo import. Ported with `git cherry-pick -x`, in this order: `bef5ea8ff` (offline outbox, TCP keepalive, link
+panel, backups, diagnostics), `2d6dca37f` (link changes applied on the game thread), `b37ce901e` (outbox rules
+and `combo_anchor_tests`; its workflow hunk is not taken), `a8d2accf6` (MM honours the room's item sync),
+`7d090d123` (packet ids, receive dedup, ack marker), `09fd04654` (team-state queue replay), `93d46ec12`
+(`COMBO_MM_FLAG`). The authors say the last three and `b37ce901e` were verified by CI only.
+
+**Every player in a room needs the same build.** Mixed builds already drop each other's packets on the git hash,
+and the packets below are not understood by older builds.
+
+**Ship2Ship's own changes on top of the port**
+- **Dormant-pump gate** (`PumpDormant`, `DormantSiblingHoldsLoadedSlot` in `combo/ComboShip.cpp`). The link sync
+  (`SyncLinkOnGameThread`) always runs. The sibling game's `*_Anchor_PumpDormant` runs only when the loaded slot is
+  a rando slot (`!g_activeMode.IsVanilla()`) of both games (`!ComboGamesSolo`), and the MM save in memory is that
+  slot's (`g_MmSaveInMemorySlot == g_comboCompletionSlot`). Anywhere else the sibling's resident save belongs to
+  another slot, and a teammate's state must not be written into it. While the gate is closed the pump calls the
+  sibling's `*_Anchor_DiscardDormant` instead, which drops what is queued for it (all but the newest
+  `UPDATE_ROOM_STATE`, which only keeps its room settings current). `LoadComboCompletion` discards both games'
+  queues on every slot load, so nothing from the previous slot is applied to the next.
+- `LoadComboCompletion` resets the loaded master seed (the outbox scope) and the seen packet ids first, so a
+  vanilla slot keeps nothing of the previous slot. It also drops the held packets that have no seed
+  (`DropSeedlessOutbox`, `OutboxDropSeedless` in `combo/net/ComboAnchorOutbox.h`): a vanilla slot holds its packets
+  with seed 0, which the outbox sends into any playthrough, so they would otherwise reach the next rando slot's room.
+- **Out-of-range peer flags are rejected.** `SET_FLAG` / `UNSET_FLAG` with `sceneNum == SCENE_ID_MAX` go through
+  `Anchor_IsGlobalFlagInRange` (`soh/soh/Network/Anchor/Packets/SetFlag.cpp`) before `RawAction::SetFlag` /
+  `UnsetFlag`, live and dormant. The bounds come from the save arrays (`eventChkInf`, `itemGetInf`, `infTable`,
+  `eventInf`, `ship.randomizerInf`, `gsFlags`); an unknown `flagType` is rejected too.
+- `ReceiveLoop` drops the link, with a log line, when an unterminated frame passes `kMaxFrameBytes` (16 MiB: an `UPDATE_TEAM_STATE` carries the whole save and the server's queue, which a boss release makes large; a legitimate frame over the cap would drop the link, and the resync would bring the same frame back).
+- **Receive loop robustness.** `ReceiveLoop` catches every exception of a connection, logs it and goes back to
+  reconnecting (an exception on that thread would end the program). After a connection that lasted under 5 s the wait
+  before the next attempt doubles, 1, 2, 4 ... 30 s (`ReconnectWaitSeconds` in `combo/net/ComboAnchorDelivery.h`); a
+  stable connection starts it over. "Connection lost" is toasted once, and "reconnected" only after that and once
+  the link has held 5 s, so a server that accepts and closes does not flood the screen.
+- **Toast gate on the game's UI thread.** The launcher's toasts carry their display CVar name (`Notification::Options::gateCvar`,
+  both games); `DrainPending` reads it on the UI frame, no longer on the receive thread.
+- **Own acks only.** `AckMarkNumber` accepts a marker only when its `clientId` is this connection's own id
+  (`sOwnIdThisConn`), so another client's marker, or one before our id is known, never confirms our packets.
+- The launcher keeps its 64 KiB receive buffer and skips empty frames; the packet-id filter (`AcceptInbound`) runs
+  after that skip.
+- Diagnostics button (Network panel): copies logs, the roster snapshot and the outbox into `diagnostics/<time>/`.
+  Windows opens the folder (`ShellExecuteW`); on Linux and macOS the panel shows the path.
+- CI: `build-linux.yml` builds and runs `combo_anchor_tests` before the game build.
+
+**Side files** (never part of a save or seed; deleting them loses only held co-op updates or copies)
+- `Save/coop-outbox.json`: save-affecting packets that could not be sent (link down, or sent but not confirmed).
+  Written through a temp file and a rename. Each entry carries the seed (`masterSeed`) and the room it was made for
+  and is delivered only into that playthrough and room. Entries expire after 48 h, the file holds at most 4096.
+- `Save/backups/<yyyy-mm-dd_hh-mm-ss>/`: a copy of every `file*.combosav` and `file*.combosav.temp`, made at launch
+  before any container is read. The newest 10 folders are kept; only folders named like that are ever pruned.
+- `diagnostics/<time>/`: the bundle above, made by the button only.
+
+**New packet types and fields**
+- `comboPid` on every save-affecting packet: a unique id, remembered by the receiver (8192 ids) so a re-sent
+  packet applies once. Also looked at inside the queue of an `UPDATE_TEAM_STATE`.
+- `COMBO_ACK_MARK`: a marker the launcher addresses to itself after a batch. When it comes back, everything written
+  before it reached the server; up to `kOutboxMaxEntries` (4096) unconfirmed packets are held again on a drop, as many as the outbox holds (a boss release sends over a thousand).
+- `COMBO_MM_FLAG` (`kind`: `chest`, `switch`, `collectible`, `weekEventReg`, `owl`): the MM flags that survive a
+  cycle reset. Set-only and masked, so a replay changes nothing.
+- `addToQueue` on MM sends, so the server replays them to late joiners.

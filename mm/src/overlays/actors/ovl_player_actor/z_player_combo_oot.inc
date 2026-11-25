@@ -160,6 +160,10 @@ s32 ComboOot_Boomerang_Out(Player* this, PlayState* play) {
         return true;
     }
 
+    if (sPlayerUseHeldItem && CVarGetInteger(COMBO_SOH_CVAR_FAST_BOOMERANG, 0)) {
+        EnBoom_ComboOotRequestQuickRecall();
+    }
+
     return false;
 }
 
@@ -323,6 +327,10 @@ static PlayerAnimationHeader* sComboOotSpellAnims3[] = {
 };
 static u8 sComboOotSpellHold[] = { 70, 10, 10 }; // OOT D_80854A7C
 
+#define COMBO_OOT_SPELL_ANIM_SPEED 0.83f
+#define COMBO_OOT_FAST_FARORES_ANIM_SPEED_FACTOR 2
+#define COMBO_OOT_FAST_FARORES_HOLD 10
+
 // OOT D_80854A80 / D_80854A8C (OOT ANIMSFX_TYPE_RUNNING / _WALKING = MM ANIMSFX_TYPE_6 / _8)
 static AnimSfxEntry sComboOotSpellSfxStart[] = {
     ANIMSFX(ANIMSFX_TYPE_GENERAL, 20, NA_SE_PL_SKIP, CONTINUE),
@@ -419,12 +427,29 @@ s32 ComboOot_UseSpell(PlayState* play, Player* this, s32 itemAction) {
     return true;
 }
 
+// SoH's Fast Farore's Wind (gEnhancements.FastFarores): the cast animations run at double speed, the hold before the
+// ending animation is 10 frames, and the cast doesn't wait for the magic meter to settle.
+static s32 ComboOot_IsFastFaroresWind(Player* this) {
+    return CVarGetInteger(COMBO_SOH_CVAR_FAST_FARORES, 0) && (this->itemAction == PLAYER_IA_COMBO_OOT_FARORES_WIND);
+}
+
+static f32 ComboOot_SpellAnimSpeed(Player* this) {
+    f32 speedFactor = ComboOot_IsFastFaroresWind(this) ? COMBO_OOT_FAST_FARORES_ANIM_SPEED_FACTOR : 1;
+
+    return COMBO_OOT_SPELL_ANIM_SPEED * speedFactor;
+}
+
+static s32 ComboOot_SpellHold(Player* this) {
+    return ComboOot_IsFastFaroresWind(this) ? COMBO_OOT_FAST_FARORES_HOLD : sComboOotSpellHold[this->av1.actionVar1];
+}
+
 // OOT func_8083AF44
 static void ComboOot_StartCast(PlayState* play, Player* this, s32 spell) {
     Player_SetAction_PreserveItemAction(play, this, ComboOot_Action_Spell, 0);
     this->av1.actionVar1 = spell - 3;
     Magic_Consume(play, sComboOotSpellCosts[spell], MAGIC_CONSUME_WAIT_PREVIEW);
-    PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, COMBO_OOT_ANIM("gPlayerAnim_link_magic_tame"), 0.83f);
+    PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, COMBO_OOT_ANIM("gPlayerAnim_link_magic_tame"),
+                                     ComboOot_SpellAnimSpeed(this));
     Combo_MmOotLog("cast %s (cost %d, magic %d)",
                    (spell == 3) ? "Farore's Wind" : (spell == 4) ? "Nayru's Love" : "Din's Fire",
                    sComboOotSpellCosts[spell], gSaveContext.save.saveInfo.playerData.magic);
@@ -450,7 +475,7 @@ s32 ComboOot_ActionHandlerSpell(Player* this, PlayState* play) {
 void ComboOot_Action_Spell(Player* this, PlayState* play) {
     if (PlayerAnimation_Update(play, &this->skelAnime)) {
         if (this->av1.actionVar1 < 0) {
-            if ((this->itemAction == PLAYER_IA_COMBO_OOT_NAYRUS_LOVE) ||
+            if ((this->itemAction == PLAYER_IA_COMBO_OOT_NAYRUS_LOVE) || ComboOot_IsFastFaroresWind(this) ||
                 (gSaveContext.magicState == MAGIC_STATE_IDLE)) {
                 this->stateFlags1 &= ~(PLAYER_STATE1_10000000 | PLAYER_STATE1_20000000);
                 func_80836988(this, play);                                 // OOT func_80839FFC
@@ -459,7 +484,7 @@ void ComboOot_Action_Spell(Player* this, PlayState* play) {
         } else {
             if (this->av2.actionVar2 == 0) {
                 PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, sComboOotSpellAnims1[this->av1.actionVar1],
-                                                 0.83f);
+                                                 ComboOot_SpellAnimSpeed(this));
 
                 if (ComboOot_SpawnMagicSpell(play, this, this->av1.actionVar1) != NULL) {
                     this->stateFlags1 |= PLAYER_STATE1_10000000 | PLAYER_STATE1_20000000;
@@ -471,7 +496,7 @@ void ComboOot_Action_Spell(Player* this, PlayState* play) {
                 }
             } else {
                 PlayerAnimation_PlayLoopSetSpeed(play, &this->skelAnime, sComboOotSpellAnims2[this->av1.actionVar1],
-                                                 0.83f);
+                                                 ComboOot_SpellAnimSpeed(this));
 
                 if (this->av1.actionVar1 == 0) {
                     this->av2.actionVar2 = -10;
@@ -496,9 +521,9 @@ void ComboOot_Action_Spell(Player* this, PlayState* play) {
                 if ((this->av1.actionVar1 == 2) && PlayerAnimation_OnFrame(&this->skelAnime, 30.0f)) {
                     this->stateFlags1 &= ~(PLAYER_STATE1_10000000 | PLAYER_STATE1_20000000);
                 }
-            } else if (sComboOotSpellHold[this->av1.actionVar1] < this->av2.actionVar2++) {
+            } else if (ComboOot_SpellHold(this) < this->av2.actionVar2++) {
                 PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, sComboOotSpellAnims3[this->av1.actionVar1],
-                                                 0.83f);
+                                                 ComboOot_SpellAnimSpeed(this));
                 this->yaw = this->actor.shape.rot.y;
                 this->av1.actionVar1 = -1;
             }
@@ -569,6 +594,72 @@ void ComboOot_StartMode_FaroresWind(PlayState* play, Player* this) {
     Player_SetAction(play, this, ComboOot_Action_FaroresWindArrive, 0);
     this->stateFlags1 |= PLAYER_STATE1_20000000;
     Combo_MmOotLog("Farore's Wind: arrived at the warp point");
+}
+
+// =====================================================================================================================
+// Roc's Feather (SoH's randomizer item: soh/soh/Enhancements/randomizer/RocsFeather.cpp; the same port as Varuuna/
+// ComboShip PR #246's CrossRocsFeather.cpp, 3f9e2d16c): one jump per time in the air, back once Link has stood on the
+// ground for 3 frames. SoH's jump animation comes from OOT's archive.
+// =====================================================================================================================
+#define COMBO_ROCS_MAX_USES 1
+
+static u8 sComboRocsUseCount = 0;
+static u8 sComboRocsGroundTimer = 0;
+
+// SoH's OnPlayerUpdate hook.
+void ComboOot_UpdateRocsFeather(Player* this) {
+    if (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) {
+        if (sComboRocsGroundTimer <= 3) {
+            sComboRocsGroundTimer++;
+        }
+    } else {
+        sComboRocsGroundTimer = 0;
+    }
+    if (sComboRocsGroundTimer >= 3) {
+        sComboRocsUseCount = 0;
+    }
+}
+
+// SoH's VB_CHANGE_HELD_ITEM_AND_USE_ITEM hook. Two differences between OOT's func_80838940 and MM's twin
+// func_80834D50 are undone here: OOT always plays the floor-jump sound (MM only along with a voice, and SoH passes
+// none), and OOT keeps the fall's start height, so a jump in mid-air doesn't cancel fall damage.
+void ComboOot_UseRocsFeather(PlayState* play, Player* this) {
+    f32 effectsScale;
+    Vec3f effectsPos;
+    s16 fallStartHeight = this->fallStartHeight;
+
+    if (sComboRocsUseCount >= COMBO_ROCS_MAX_USES) {
+        return;
+    }
+    sComboRocsUseCount++;
+
+    func_80834D50(play, this, COMBO_OOT_ANIM("gPlayerAnim_link_rocs_feather_jump"), 5.8f, NA_SE_NONE);
+    Player_AnimSfx_PlayFloorJump(this);
+    this->fallStartHeight = fallStartHeight;
+
+    // SoH: stops a landing animation morph.
+    this->av2.actionVar2 = 1;
+
+    this->speedXZ = 5.0f;
+    this->actor.world.rot.y = this->yaw = this->actor.shape.rot.y;
+
+    if (Combo_MM_AdultBodyActive(&this->actor)) {
+        this->actor.velocity.y = 7.5f;
+        effectsScale = 1.5f;
+    } else {
+        this->actor.velocity.y = 7.0f;
+        effectsScale = 1.0f;
+    }
+
+    effectsPos = this->actor.home.pos;
+    effectsPos.y += 3;
+    EffectSsGRipple_Spawn(play, &effectsPos, (s16)(200 * effectsScale), (s16)(300 * effectsScale), 1);
+    EffectSsGSplash_Spawn(play, &effectsPos, NULL, NULL, 0, (s16)(150 * effectsScale));
+
+    // SoH: a sidehop or backflip's hop no longer blocks grabbing a ledge.
+    this->stateFlags2 &= ~PLAYER_STATE2_80000;
+
+    Player_PlaySfx(this, NA_SE_PL_SKIP);
 }
 
 // OOT Player_Init: Nayru's Love still running carries into the new scene (MAGIC_STATE_METER_FLASH_1 + the diamond).

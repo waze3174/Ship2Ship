@@ -1,8 +1,10 @@
 // combo/gui/ComboMenu.cpp
 #include "ComboMenu.h"
-#include "ComboSettingsLink.h" // one control for a preference both games own separately
+#include "ComboBothGames.h"    // Settings > Both games: one control that sets both games
+#include "ComboSettingsLink.h" // first-time merge of the two games' values
 #include "ComboPresetPanels.h" // Settings > Presets and Import from Ship2Ship or ComboShip panels
 #include "ComboExport.h"
+#include "ComboRelease.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
 #include "ComboWidgetStyle.h"
@@ -30,6 +32,13 @@
 #include <cstdio>
 #include <unordered_set>
 #include "ComboResolve.h"
+#include <nlohmann/json.hpp>
+#include <filesystem>
+#include <fstream>
+#include <ctime>
+#ifdef _WIN32
+#include <shellapi.h> // ShellExecuteW: open the diagnostics folder (windows.h comes via ComboResolve.h)
+#endif
 
 namespace ComboRando {
 void RegisterBottleShelfWindow(); // ComboBottleShelfWindow.cpp
@@ -107,6 +116,9 @@ constexpr const char* ShowOnMinimap = "gRemote.Anchor.ShowOtherPlayersOnMinimap"
 // Live partner feed toggles (read by soh's Anchor and MMAnchor; both default on).
 constexpr const char* PartnerFeedFinds = "gRemote.Anchor.PartnerFeed.Finds";
 constexpr const char* PartnerFeedGameSwitch = "gRemote.Anchor.PartnerFeed.GameSwitch";
+// Co-op hardening (2026-11-13), read by the games' SOH_/MM_ComboToast (launcher toasts), default on.
+constexpr const char* PartnerFeedConnection = "gRemote.Anchor.PartnerFeed.Connection";
+constexpr const char* PartnerFeedPresence = "gRemote.Anchor.PartnerFeed.Presence";
 // Room-admin settings: shared store both games read; changes broadcast via SendRoomState.
 constexpr const char* PvpMode = "gRemote.Anchor.RoomSettings.PvpMode";
 constexpr const char* ShowLocationsMode = "gRemote.Anchor.RoomSettings.ShowLocationsMode";
@@ -203,10 +215,8 @@ void ComboMenu::Draw() {
         return;
     }
     DrawElement();
-    // One control for the settings both games keep their own copy of (camera speed, invert, ocarina
-    // stick...): mirror whichever side the player just moved onto the other. Cheap, and only while
-    // the menu is on screen, which is the only place these can change.
-    ComboUI_SettingsLinkPoll();
+    // Settings both games keep a copy of are merged once, the first time the menu is open with both games loaded.
+    LinkSeedIfNeeded();
     SyncVisibilityConsoleVariable();
 }
 
@@ -344,22 +354,6 @@ void ComboMenu::DrawElement() {
             DrawGamePanel("mm");
         } else {
             if (mScope != "randomizer") {
-                bool linked = ComboUI_SettingsLinkEnabled() != 0;
-                if (ImGui::Checkbox("Use one setting for both games", &linked)) {
-                    CVarSetInteger("gCombo.LinkSettings", linked);
-                    if (linked) {
-                        // Switching it on adopts what is set here (the Shared tab shows OOT's side).
-                        ComboUI_SettingsLinkPushOotToMm();
-                    }
-                    Ship::Context::GetRawInstance()->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
-                }
-                if (ImGui::IsItemHovered()) {
-                    ImGui::SetTooltip("Hyrule and Termina each store their own copy of %d preferences —\n"
-                                      "camera speed and inversion, free-look distance, first-person aim,\n"
-                                      "the ocarina stick, D-pad item slots. With this on, setting one\n"
-                                      "sets the other; you never hunt for the second slider.",
-                                      ComboUI_SettingsLinkCount());
-                }
                 bool ootHud = CVarGetInteger("gCombo.MmHud.OotStyle", 1) != 0;
                 if (ImGui::Checkbox("Majora's Mask HUD looks like Ocarina of Time's", &ootHud)) {
                     CVarSetInteger("gCombo.MmHud.OotStyle", ootHud);
@@ -424,6 +418,23 @@ void ComboMenu::DrawSearchResults(const std::string& query) {
     int matches = 0;
     const ImGuiTableFlags flags = ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoSavedSettings;
     if (ImGui::BeginTable("##searchresults", cols, flags)) {
+        // The Both games control comes first and is not deduped: each game's own control is listed after it.
+        for (const BothGamesItem& item : BothGamesItems()) {
+            const CwWidget& wd = *item.widget;
+            if (wd.hideInSearch)
+                continue;
+            const std::string hay =
+                NormalizeSearch(std::string(wd.name ? wd.name : "") + (wd.tooltip ? wd.tooltip : ""));
+            if (hay.find(query) == std::string::npos)
+                continue;
+            ImGui::TableNextColumn();
+            ImGui::PushID("bothgames");
+            DrawBothGamesItem(item, 90 / cols);
+            ImGui::TextColored(kBreadcrumbColor, "[Both games] %s", item.tab);
+            ImGui::PopID();
+            ImGui::Spacing();
+            ++matches;
+        }
         for (const auto& src : sources) {
             const GameMenu& game = *src.game;
             if (!game.loaded || !game.menu)
@@ -496,7 +507,8 @@ struct HubEntry {
         COMBO_TIMERS,
         COMBO_PRESETS,
         COMBO_CONFIG_IMPORT,
-        COMBO_NETWORK
+        COMBO_NETWORK,
+        COMBO_BOTH_GAMES
     } kind;
     const ComboRando::GameMenu* game = nullptr; // ENGINE/OOT_RANDO/MM_RANDO
     int sectionIndex = -1;
@@ -759,6 +771,86 @@ static void AnchorSaveCVars() {
     }
 }
 
+// Co-op hardening (2026-11-13): launcher link health ({connected, enabled, outboxPending}) from the
+// roster snapshot, polled twice a second (the snapshot is JSON built under the launcher's roster lock).
+static nlohmann::json AnchorLinkState() {
+    static double sLastPoll = -1.0;
+    static nlohmann::json sLink = nlohmann::json::object();
+    const double now = ImGui::GetTime();
+    if (sLastPoll < 0.0 || now - sLastPoll >= 0.5) {
+        sLastPoll = now;
+        try {
+            sLink = nlohmann::json::parse(ComboRando::AnchorRosterJson()).value("link", nlohmann::json::object());
+        } catch (...) { sLink = nlohmann::json::object(); }
+    }
+    return sLink;
+}
+
+// Co-op hardening (2026-11-13): one-click bundle for bug reports. Copies the game logs, the launcher's
+// roster/link snapshot, any held co-op packets and the (non-secret) connection settings into
+// diagnostics/<time>/ beside the saves, then opens that folder (Windows; elsewhere the panel shows its path).
+// Never touches the saves.
+static std::string sDiagnosticsResult;
+static void SaveCoopDiagnostics() {
+    namespace fs = std::filesystem;
+    try {
+        std::error_code ec;
+        const fs::path base = ComboRando::DataDir();
+        const std::time_t now = std::time(nullptr);
+        std::tm local{};
+#ifdef _WIN32
+        localtime_s(&local, &now);
+#else
+        localtime_r(&now, &local);
+#endif
+        char stamp[32];
+        std::strftime(stamp, sizeof(stamp), "%Y-%m-%d_%H-%M-%S", &local);
+        const fs::path dest = base / "diagnostics" / stamp;
+        fs::create_directories(dest, ec);
+        if (ec) {
+            sDiagnosticsResult = "Could not create " + dest.string() + ": " + ec.message();
+            return;
+        }
+        int copied = 0;
+        const fs::path logs = base / "logs";
+        if (fs::is_directory(logs, ec)) {
+            for (const auto& e : fs::directory_iterator(logs, ec)) {
+                if (e.is_regular_file(ec) && e.path().filename().string().find(".log") != std::string::npos &&
+                    fs::copy_file(e.path(), dest / e.path().filename(), fs::copy_options::overwrite_existing, ec)) {
+                    copied++;
+                }
+            }
+        }
+        const fs::path outbox = ComboRando::SaveDir() / "coop-outbox.json";
+        if (fs::exists(outbox, ec))
+            fs::copy_file(outbox, dest / outbox.filename(), fs::copy_options::overwrite_existing, ec);
+        {
+            std::ofstream roster(dest / "anchor-roster.json", std::ios::trunc);
+            try {
+                roster << nlohmann::json::parse(ComboRando::AnchorRosterJson()).dump(2);
+            } catch (...) { roster << ComboRando::AnchorRosterJson(); }
+        }
+        {
+            std::ofstream info(dest / "README.txt", std::ios::trunc);
+            info << "Ship2Ship co-op diagnostics\n"
+                 << "Created: " << stamp << "\n"
+                 << "Anchor host: " << CVarGetString(AnchorCVar::Host, "") << ":"
+                 << CVarGetInteger(AnchorCVar::Port, 43383) << "\n"
+                 << "Room: " << CVarGetString(AnchorCVar::RoomId, "") << "\n"
+                 << "Team: " << CVarGetString(AnchorCVar::TeamId, "default") << "\n"
+                 << "Name: " << CVarGetString(AnchorCVar::Name, "") << "\n"
+                 << "Log files copied: " << copied << "\n\n"
+                 << "Attach this whole folder to the bug report, together with what you did and roughly when.\n";
+        }
+        sDiagnosticsResult = "Saved to " + dest.string();
+#ifdef _WIN32
+        ShellExecuteW(nullptr, L"open", dest.wstring().c_str(), nullptr, nullptr, SW_SHOWNORMAL);
+#endif
+    } catch (const std::exception& e) { sDiagnosticsResult = std::string("Failed: ") + e.what(); } catch (...) {
+        sDiagnosticsResult = "Failed.";
+    }
+}
+
 // Combo Anchor panel: connection settings, owner-only room admin, and a toggle for the room window.
 // Writes the shared gRemote.Anchor.* CVars and drives the games via the SOH_/MM_Anchor_* exports.
 void DrawNetworkSharedPanel() {
@@ -885,6 +977,15 @@ void DrawNetworkSharedPanel() {
         } else {
             ImGui::TextDisabled("Connecting...");
         }
+        // Co-op hardening (2026-11-13): save-affecting updates the launcher is holding (offline outbox).
+        const int held = AnchorLinkState().value("outboxPending", 0);
+        if (held > 0) {
+            ImGui::TextColored(ImVec4(0.95f, 0.75f, 0.3f, 1.0f), "%d update%s held for teammates", held,
+                               held == 1 ? "" : "s");
+            ImGui::SetItemTooltip("%s", connected ? "Sent once their save slot is loaded in their room."
+                                                  : "Sent automatically once the connection is back. Nothing is "
+                                                    "lost if you quit: they are kept on disk.");
+        }
     }
 
     // --- Team sync + minimap (only once Anchor is enabled) ---
@@ -927,6 +1028,35 @@ void DrawNetworkSharedPanel() {
         }
         ComboRando::ComboMenu_PopCheckbox();
         ImGui::TextDisabled("Toast when a teammate moves between Ocarina of Time and Majora's Mask.");
+        bool feedPresence = CVarGetInteger(AnchorCVar::PartnerFeedPresence, 1) != 0;
+        ComboRando::ComboMenu_PushCheckbox(theme);
+        if (ImGui::Checkbox("Announce teammates online/offline", &feedPresence)) {
+            CVarSetInteger(AnchorCVar::PartnerFeedPresence, feedPresence ? 1 : 0);
+            AnchorSaveCVars();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::TextDisabled("Toast when a teammate in your team connects or drops.");
+        bool feedConnection = CVarGetInteger(AnchorCVar::PartnerFeedConnection, 1) != 0;
+        ComboRando::ComboMenu_PushCheckbox(theme);
+        if (ImGui::Checkbox("Announce your connection status", &feedConnection)) {
+            CVarSetInteger(AnchorCVar::PartnerFeedConnection, feedConnection ? 1 : 0);
+            AnchorSaveCVars();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::TextDisabled("Toast when your connection drops, comes back, and when held updates are sent.");
+    }
+
+    // --- Diagnostics (co-op hardening 2026-11-13): always available, also when Anchor is off ---
+    ImGui::SeparatorText("Diagnostics");
+    ComboRando::ComboMenu_PushButton(theme);
+    if (ImGui::Button("Save diagnostics bundle", ImVec2(-1.0f, 0.0f))) {
+        SaveCoopDiagnostics();
+    }
+    ComboRando::ComboMenu_PopButton();
+    if (sDiagnosticsResult.empty()) {
+        ImGui::TextDisabled("Copies logs + co-op state into a folder to attach to a bug report.");
+    } else {
+        ImGui::TextWrapped("%s", sDiagnosticsResult.c_str());
     }
 
     // --- Room window: toggle the combo-native floating roster window (only once Anchor is enabled) ---
@@ -1386,6 +1516,20 @@ void ComboMenu::DrawSharedPanel() {
         e.push_back(std::move(imp));
         if (!e.empty())
             groups.push_back({ "Settings", std::move(e) });
+        // Both games: controls that set a setting in both games at once (ComboBothGames.cpp). The entry label is the
+        // tab.
+        {
+            std::vector<HubEntry> bothE;
+            for (const char* tab : BothGamesTabs()) {
+                HubEntry entry;
+                entry.label = tab;
+                entry.group = "Both games";
+                entry.kind = HubEntry::COMBO_BOTH_GAMES;
+                bothE.push_back(std::move(entry));
+            }
+            if (!bothE.empty())
+                groups.push_back({ "Both games", std::move(bothE) });
+        }
         // Network group: the Anchor team-sync control (covers BOTH games) plus the Ship of Harkinian
         // Network settings (Sail, Crowd Control) surfaced from the OOT menu model — moved here from the
         // OOT tab so all network settings live in one shared place.
@@ -1524,6 +1668,8 @@ void ComboMenu::DrawSharedPanel() {
         DrawConfigImportSharedPanel();
     } else if (active->kind == HubEntry::COMBO_NETWORK) {
         DrawNetworkSharedPanel();
+    } else if (active->kind == HubEntry::COMBO_BOTH_GAMES) {
+        DrawBothGamesTab(active->label.c_str());
     } else {
         const CwSidebar& side = active->game->menu->sections[active->sectionIndex].sidebars[active->sidebarIndex];
         RenderSidebarWidgets(side, *active->game);
@@ -1780,6 +1926,22 @@ void ComboMenu::DrawComboPanel() {
         ImGui::TextDisabled(games == ComboRando::COMBO_GAMES_OOT  ? "Beat Ganon to finish."
                             : games == ComboRando::COMBO_GAMES_MM ? "Beat Majora to finish."
                                                                   : "Beat Ganon and Majora to finish.");
+    }
+    {
+        // Play-time, not seed-bound: it works on a seed already in play, and applies from the next boss kill.
+        bool releaseOnBoss = CVarGetInteger(ComboRelease::kSettingCVar, 0) != 0;
+        ComboRando::ComboMenu_PushCheckbox(goalTheme);
+        if (ImGui::Checkbox("Release a game's checks when its boss falls", &releaseOnBoss)) {
+            CVarSetInteger(ComboRelease::kSettingCVar, releaseOnBoss ? 1 : 0);
+            if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::SameLine();
+        ImGui::TextDisabled("Beating Ganon gives you every Ocarina of Time check you have not collected; beating\n"
+                            "Majora does the same for Majora's Mask. All at once, no cutscenes: the tracker marks\n"
+                            "them collected and one notification counts them. Items for the other game are sent\n"
+                            "over, traps are skipped. Works on any seed; once per game and file.");
     }
     ImGui::Separator();
 

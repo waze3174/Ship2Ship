@@ -7,6 +7,7 @@
 #ifdef COMBO_BUILD
 #include "2s2h/Rando/MiscBehavior/ComboAdultBody.h" // ComboShip: adult Link in Termina
 #include "2s2h/Rando/MiscBehavior/ComboOotItems.h"  // ComboShip: OOT items in Termina
+#include "2s2h/Rando/MiscBehavior/ComboPause.h"     // ComboShip: OOT's bottles on MM's buttons
 #endif
 #include "2s2h/GameInteractor/GameInteractor.h"
 
@@ -1655,7 +1656,14 @@ void Player_SetEquipmentData(PlayState* play, Player* player) {
 
 void Player_UpdateBottleHeld(PlayState* play, Player* player, ItemId itemId, PlayerItemAction itemAction) {
     // #region 2S2H [Dpad]
+#ifdef COMBO_BUILD
+    // ComboShip: an OOT bottle on the button keeps its content in OOT's save, never in an MM slot (the button's slot
+    // byte is its foreign id); the button keeps that id, which then names the new content.
+    if (Combo_MmPauseSetForeignBottle(play, player->heldItemButton, itemId)) {
+    } else if (IS_HELD_DPAD(player->heldItemButton)) {
+#else
     if (IS_HELD_DPAD(player->heldItemButton)) {
+#endif
         Inventory_Dpad_UpdateBottleItem(play, itemId, HELD_ITEM_TO_DPAD(player->heldItemButton));
     } else {
         Inventory_UpdateBottleItem(play, itemId, player->heldItemButton);
@@ -2423,8 +2431,14 @@ void Player_DrawHookshotReticle(PlayState* play, Player* player, f32 hookshotDis
 
             MATRIX_FINALIZE_AND_LOAD(OVERLAY_DISP++, play->state.gfxCtx);
 
-            gSPSegment(OVERLAY_DISP++, 0x06, play->objectCtx.slots[player->actor.objectSlot].segment);
-            gSPDisplayList(OVERLAY_DISP++, gHookshotReticleDL);
+#ifdef COMBO_BUILD
+            // ComboShip: SoH's coloured reticle for OOT's Hookshot and Longshot.
+            if (!Combo_MmOotDrawHookshotReticle(play, player, poly, bgId))
+#endif
+            {
+                gSPSegment(OVERLAY_DISP++, 0x06, play->objectCtx.slots[player->actor.objectSlot].segment);
+                gSPDisplayList(OVERLAY_DISP++, gHookshotReticleDL);
+            }
 
             CLOSE_DISPS(play->state.gfxCtx);
         }
@@ -3977,6 +3991,53 @@ void Player_SetFeetPos(PlayState* play, Player* player, s32 limbIndex) {
     Actor_SetFeetPos(&player->actor, limbIndex, PLAYER_LIMB_LEFT_FOOT, footPos, PLAYER_LIMB_RIGHT_FOOT, footPos);
 }
 
+#ifdef COMBO_BUILD
+// SoH's Boomerang Reticle (gEnhancements.BoomerangReticle, AdditionalReticles.cpp) for OOT's Boomerang in Termina:
+// while Link aims it, the hookshot reticle at the first thing in line, with no range limit.
+#define COMBO_OOT_RETICLE_MAX 3.402823466e+12f
+#define COMBO_OOT_BOOMERANG_VIEW_ADULT_X (-31200)
+#define COMBO_OOT_BOOMERANG_VIEW_ADULT_Y (-9200)
+#define COMBO_OOT_BOOMERANG_VIEW_CHILD_X (-31200)
+#define COMBO_OOT_BOOMERANG_VIEW_CHILD_Y (-8700)
+#define COMBO_OOT_BOOMERANG_VIEW_Z 17000
+
+// SoH's Aiming Reticle for the Bow/Slingshot (gEnhancements.BowReticle, AdditionalReticles.cpp), for OOT's Slingshot in
+// Termina (MM's own bow has 2S2H's Bow Reticle): the hookshot reticle with no range limit while it is ready to fire.
+#define COMBO_OOT_SLINGSHOT_VIEW_Y (-15216)
+#define COMBO_OOT_SLINGSHOT_VIEW_Z (-17496)
+
+static void Player_ComboDrawOotSlingshotReticle(PlayState* play, Player* player) {
+    if ((player->heldItemAction != PLAYER_IA_COMBO_OOT_SLINGSHOT) || !CVarGetInteger(COMBO_SOH_CVAR_BOW_RETICLE, 0) ||
+        (player->heldActor == NULL)) {
+        return;
+    }
+
+    Matrix_RotateZYX(0, COMBO_OOT_SLINGSHOT_VIEW_Y, COMBO_OOT_SLINGSHOT_VIEW_Z, MTXMODE_APPLY);
+    if (func_800B7128(player)) {
+        Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
+        Player_DrawHookshotReticle(play, player, COMBO_OOT_RETICLE_MAX);
+    }
+}
+
+static void Player_ComboDrawOotBoomerangReticle(PlayState* play, Player* player) {
+    if ((player->heldItemAction != PLAYER_IA_COMBO_OOT_BOOMERANG) ||
+        !CVarGetInteger(COMBO_SOH_CVAR_BOOMERANG_RETICLE, 0) ||
+        !(player->stateFlags1 & PLAYER_STATE1_USING_ZORA_BOOMERANG) || (player->unk_ACC == 0)) {
+        return;
+    }
+
+    if (Combo_MM_AdultBodyActive(&player->actor)) {
+        Matrix_RotateZYX(COMBO_OOT_BOOMERANG_VIEW_ADULT_X, COMBO_OOT_BOOMERANG_VIEW_ADULT_Y, COMBO_OOT_BOOMERANG_VIEW_Z,
+                         MTXMODE_APPLY);
+    } else {
+        Matrix_RotateZYX(COMBO_OOT_BOOMERANG_VIEW_CHILD_X, COMBO_OOT_BOOMERANG_VIEW_CHILD_Y, COMBO_OOT_BOOMERANG_VIEW_Z,
+                         MTXMODE_APPLY);
+    }
+    Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
+    Player_DrawHookshotReticle(play, player, COMBO_OOT_RETICLE_MAX);
+}
+#endif
+
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, Gfx** dList2, Vec3s* rot, Actor* actor) {
     Player* player = (Player*)actor;
 
@@ -4152,10 +4213,12 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     if (func_800B7128(player)) {
                         Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
 #ifdef COMBO_BUILD
-                        // ComboShip: OOT's reticle reach (OOT: Hookshot 38600, Longshot 77600).
-                        Player_DrawHookshotReticle(play, player,
-                                                   (player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f
-                                                                                                            : 77600.0f);
+                        // ComboShip: OOT's reticle reach (OOT: Hookshot 38600, Longshot 77600), times SoH's Hookshot
+                        // Reach Multiplier for OOT's two.
+                        Player_DrawHookshotReticle(
+                            play, player,
+                            ((player->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) ? 38600.0f : 77600.0f) *
+                                Combo_MmOotHookshotReachMultiplier(player->heldItemAction));
 #else
                         Player_DrawHookshotReticle(play, player, 77600.0f);
 #endif
@@ -4166,6 +4229,10 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     func_80126B8C(play, player);
                 }
             }
+#ifdef COMBO_BUILD
+            Player_ComboDrawOotBoomerangReticle(play, player);
+            Player_ComboDrawOotSlingshotReticle(play, player);
+#endif
             if ((player->getItemDrawIdPlusOne != (GID_NONE + 1)) ||
                 ((func_800B7118(player) == 0) && (heldActor != NULL))) {
                 if (!(player->stateFlags1 & PLAYER_STATE1_400) && (player->getItemDrawIdPlusOne != (GID_NONE + 1)) &&

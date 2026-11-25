@@ -218,6 +218,9 @@ void EnBom_Explode(EnBom* this, PlayState* play) {
     } else {
         this->explosionCollider.elements[0].dim.worldSphere.radius += this->actor.shape.rot.z + 8;
     }
+#ifdef COMBO_BUILD
+    EnBom_ComboBlastMaskSphere(this); // ComboShip: MM's Blast Mask blast (z_en_bom_combo_keg.c)
+#endif
 
     if (this->actor.params == BOMB_EXPLOSION) {
         CollisionCheck_SetAT(play, &play->colChkCtx, &this->explosionCollider.base);

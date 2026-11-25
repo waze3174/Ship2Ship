@@ -499,6 +499,18 @@ void SpoilAreaFromCheck(RandomizerCheck rc) {
     }
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: SpoilAreaFromCheck for checks collected in bulk (a boss release). It saves nothing: the caller's own save
+// writes the tracker section with the rest.
+void SpoilAreasFromChecks(const std::vector<RandomizerCheck>& checks) {
+    sSuppressSpoilSave = true;
+    for (const RandomizerCheck rc : checks) {
+        SpoilAreaFromCheck(rc);
+    }
+    sSuppressSpoilSave = false;
+}
+#endif
+
 void SpoilAreaFromCantObtain(RandomizerGet rg) {
     // only spoil if it wouldn't transform anyway, in case someone manages to glitch this value
     switch (rg) {

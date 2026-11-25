@@ -7,7 +7,8 @@
 //   Mask Shop: while the link is on, the Market's Mask Shop door leads into OoT's own shop; ComboShip's switch to MM
 //           there (OTRGlobals.cpp) asks Combo_OOT_LostWoodsLinkKeepsMaskShop first.
 //   Marker: a stump (MM's cut tree) in front of that tunnel's mouth while the link is on. A small combo actor,
-//           registered in ActorDB like MM's Obj_Aqua (ComboMmItems.cpp); it only draws.
+//           registered in ActorDB like MM's Obj_Aqua (ComboMmItems.cpp); it draws, and its trunk is solid like
+//           OoT's trees.
 #ifdef COMBO_BUILD
 
 // C++ headers first: z64.h pulls <memory> under the extern "C" below
@@ -46,16 +47,58 @@ constexpr f32 kMarkerZ = -110.0f;
 constexpr f32 kMarkerScale = 0.05f;
 constexpr const char* kMarkerDL = "objects/object_keikoku_demo/gKeikokuDemoTallTreeCutDL";
 
+// The trunk's collision cylinder, in world units. The model's trunk is an octagon about 260 units across the flats
+// (13 here) and 2200 units tall (110 here); the roots flare wider, but only below about 25 units.
+constexpr s16 kTrunkRadius = 13;
+constexpr s16 kTrunkHeight = 110;
+
+// The same collider settings as OoT's trees (EnWood02)
+ColliderCylinderInit kTrunkCollider = {
+    {
+        COLTYPE_TREE,
+        AT_NONE,
+        AC_ON | AC_HARD | AC_TYPE_PLAYER,
+        OC1_ON | OC1_TYPE_ALL,
+        OC2_TYPE_1,
+        COLSHAPE_CYLINDER,
+    },
+    {
+        ELEMTYPE_UNK5,
+        { 0x00000000, 0x00, 0x00 },
+        { 0x0FC0074A, 0x00, 0x00 },
+        TOUCH_NONE,
+        BUMP_ON,
+        OCELEM_ON,
+    },
+    { kTrunkRadius, kTrunkHeight, 0, { 0, 0, 0 } },
+};
+
+struct LostWoodsMarker {
+    Actor actor;
+    ColliderCylinder collider;
+};
+
 static_assert(Link::kOotLostWoodsFromTermina == ENTR_LOST_WOODS_3, "OoT arrival from Termina is Lost Woods spawn 3");
 
 void LostWoodsMarker_Init(Actor* thisx, PlayState* play) {
+    LostWoodsMarker* marker = (LostWoodsMarker*)thisx;
+
     Actor_SetScale(thisx, kMarkerScale);
+    thisx->colChkInfo.mass = MASS_IMMOVABLE;
+    Collider_InitCylinder(play, &marker->collider);
+    Collider_SetCylinder(play, &marker->collider, thisx, &kTrunkCollider);
 }
 
 void LostWoodsMarker_Destroy(Actor* thisx, PlayState* play) {
+    Collider_DestroyCylinder(play, &((LostWoodsMarker*)thisx)->collider);
 }
 
 void LostWoodsMarker_Update(Actor* thisx, PlayState* play) {
+    LostWoodsMarker* marker = (LostWoodsMarker*)thisx;
+
+    Collider_UpdateCylinder(thisx, &marker->collider);
+    CollisionCheck_SetAC(play, &play->colChkCtx, &marker->collider.base);
+    CollisionCheck_SetOC(play, &play->colChkCtx, &marker->collider.base);
 }
 
 void LostWoodsMarker_Draw(Actor* thisx, PlayState* play) {
@@ -88,7 +131,7 @@ short MarkerActorId() {
             ACTORCAT_PROP,
             0,
             OBJECT_GAMEPLAY_KEEP,
-            sizeof(Actor),
+            sizeof(LostWoodsMarker),
             (ActorFunc)LostWoodsMarker_Init,
             (ActorFunc)LostWoodsMarker_Destroy,
             (ActorFunc)LostWoodsMarker_Update,

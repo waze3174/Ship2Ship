@@ -11,6 +11,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #include "ComboExport.h"
+#include "ComboPause.h"
 #include "soh/cvar_prefixes.h"
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/AdultMasks.h"
@@ -31,12 +32,17 @@ bool SaveResident() {
 bool sDormantSaveChanged = false; // OOT's dormant save was changed from Termina and not yet written
 } // namespace
 
-// OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), with SoH's Timeless
-// Equipment cheat honoured exactly as OOT honours it (VB_ITEM_MEETS_AGE_REQ). adult: Link's age in Termina.
+// OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), lifted by the same
+// switches as in Hyrule (Combo_AgeRulesLifted: Unified Inventory, Timeless Equipment, Unrestricted Items) and by
+// Masks as Adult for masks. adult: Link's age in Termina.
 extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     if (ootItem < 0 || ootItem >= ITEM_NONE)
         return 0;
-    if (CVarGetInteger(CVAR_CHEAT("TimelessEquipment"), 0))
+    // Any age. SoH writes this rule into gItemAgeReqs in Play_Init (z_play.c), which hasn't run yet when the file is
+    // played in Termina first; until then the table's unset entry reads adult-only.
+    if (ootItem == ITEM_ROCS_FEATHER)
+        return 1;
+    if (Combo_AgeRulesLifted())
         return 1;
     // OOT's masks as adult (SoH enhancement / rando "Masks as Adult"): the same switch OOT's own pause honours.
     if ((ootItem >= ITEM_MASK_KEATON) && (ootItem <= ITEM_MASK_TRUTH) && Ship_MasksEquippableAsAdult())
@@ -51,6 +57,28 @@ extern "C" COMBO_EXPORT void SOH_ComboTermina_ChangeAmmo(int ootItem, int delta)
         return;
     Inventory_ChangeAmmo((s16)ootItem, (s16)delta);
     sDormantSaveChanged = true;
+}
+
+// An OOT bottle used in Termina (MM's bottle code, mm ComboPause.cpp Combo_MmPauseSetForeignBottle) takes new content:
+// OOT's Inventory_UpdateBottleItem on OOT's save, for every OOT button on that slot (OOT is dormant: no icon to load).
+// 0 = not a bottle slot holding a bottle, or not a bottle content.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_SetBottle(int ootSlot, int ootItem) {
+    if (!SaveResident() || (ootSlot < SLOT_BOTTLE_1) || (ootSlot > SLOT_BOTTLE_4) || (ootItem < ITEM_BOTTLE) ||
+        (ootItem > ITEM_POE) || (ootItem == ITEM_LETTER_RUTO)) {
+        return 0;
+    }
+    const u8 cur = gSaveContext.inventory.items[ootSlot];
+    if ((cur < ITEM_BOTTLE) || (cur > ITEM_POE)) {
+        return 0;
+    }
+    gSaveContext.inventory.items[ootSlot] = (u8)ootItem;
+    for (int b = 1; b < ARRAY_COUNT(gSaveContext.equips.buttonItems); b++) {
+        if (gSaveContext.equips.cButtonSlots[b - 1] == ootSlot) {
+            gSaveContext.equips.buttonItems[b] = (u8)ootItem;
+        }
+    }
+    sDormantSaveChanged = true;
+    return 1;
 }
 
 // OOT loads its save again from the slot when Link comes back from Termina, so a change made to the dormant save from

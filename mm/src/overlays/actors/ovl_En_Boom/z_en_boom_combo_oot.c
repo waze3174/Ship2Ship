@@ -48,10 +48,18 @@ static InitChainEntry sComboOotInitChain[] = {
 
 static void EnBoom_ComboOotFly(EnBoom* this, PlayState* play);
 
+// OOT's Player.boomerangQuickRecall (SoH Fast Boomerang), which MM's Player has no field for.
+static s32 sQuickRecall;
+
+void EnBoom_ComboOotRequestQuickRecall(void) {
+    sQuickRecall = true;
+}
+
 void EnBoom_ComboOotInit(EnBoom* this, PlayState* play) {
     EffectBlureInit1 blure;
     s32 i;
 
+    sQuickRecall = false;
     this->actor.room = -1;
     Actor_ProcessInitChain(&this->actor, sComboOotInitChain);
 
@@ -134,11 +142,11 @@ static void EnBoom_ComboOotFly(EnBoom* this, PlayState* play) {
         }
     }
 
-    if (DECR(this->unk_1CC) == 0) {
+    if ((DECR(this->unk_1CC) == 0) || sQuickRecall) {
         distFromLink = Math_Vec3f_DistXYZ(&this->actor.world.pos, &player->actor.focus.pos);
         this->moveTo = &player->actor;
 
-        if (distFromLink < 40.0f) {
+        if ((distFromLink < 40.0f) || sQuickRecall) {
             target = this->unk_1C8;
             if (target != NULL) {
                 Math_Vec3f_Copy(&target->world.pos, &player->actor.world.pos);
@@ -151,6 +159,7 @@ static void EnBoom_ComboOotFly(EnBoom* this, PlayState* play) {
                 }
             }
             player->stateFlags1 &= ~PLAYER_STATE1_ZORA_BOOMERANG_THROWN;
+            sQuickRecall = false;
             Actor_Kill(&this->actor);
         }
     } else {

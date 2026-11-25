@@ -56,7 +56,22 @@ int Combo_PauseOnButton(int item); // 1 = that foreign item sits on a C button /
 // Using a foreign item (Player_UseItem). Masks: transformation -> form, others -> worn with MM's model.
 int Combo_PauseForeignForm(int item); // COMBO_FORM_* for a transformation mask, -1 otherwise
 int Combo_PauseIsForeignMask(int item);
-int Combo_PauseIsForeignGfs(int item); // MM Great Fairy's Sword on an OOT button
+// 2S2H's Easy Mask Equip: A on an MM mask in the pause menu (1 = taken); the pick comes back, once the menu has closed,
+// from Combo_PauseTakeEasyEquip (ITEM_NONE for none). Combo_PauseEasyEquipPending only looks.
+int Combo_PauseMaskAPress(int item);
+int Combo_PauseTakeEasyEquip(void);
+// 2S2H's Persistent Bunny Hood: Combo_PauseUsePersistentBunnyHood flips the state when `item` is the hood (1 = it was),
+// the state is Combo_PauseBunnyHoodPersistent, and Combo_PausePersistentBunnyHoodItem is the hood's foreign id here.
+int Combo_PauseUsePersistentBunnyHood(int item);
+int Combo_PauseBunnyHoodPersistent(void);
+int Combo_PausePersistentBunnyHoodItem(void);
+int Combo_PauseHeadMmMaskItem(void); // the MM mask on Link's head: the one worn, else the persistent hood, -1 for none
+int Combo_PauseWornWithoutButtonItem(void); // the foreign id of the MM mask worn on no button, ITEM_NONE for none
+int Combo_PauseEasyEquipPending(void);
+int Combo_PauseIsForeignWearableMask(int item);   // an MM mask worn on the head (not a form's, not the Giant's)
+int Combo_PauseMaskUsableWhileSwimming(int item); // 2S2H's Equip Masks While Swimming, for a wearable MM mask
+int Combo_PauseOcarinaUsableOnBottom(int item); // 2S2H's Underwater Ocarina, for an MM or a transformed Link's ocarina
+int Combo_PauseIsForeignGfs(int item);          // MM Great Fairy's Sword on an OOT button
 void Combo_PauseToggleMmMask(int item);
 void Combo_PauseClearMmMask(void);
 const void* Combo_PauseWornMmMaskDL(void);               // routed "@mm:" DL of the worn MM mask, NULL = none
@@ -108,8 +123,15 @@ int Combo_BlastMaskCooldown(void);
 int Combo_PauseForeignHostItem(int item);
 // 1 when OOT's age rule for that OOT item lets Link use the MM item now (1 for an item OOT's code doesn't run).
 int Combo_PauseForeignAgeOk(int item);
+// 1 when OOT's age rule lets Link at `age` (LINK_AGE_*) use what a button holds: an OOT item by its own rule, an MM
+// item by the rule of the OOT item that runs it, and 1 for anything the rule doesn't cover.
+int Combo_PauseItemAgeOk(int item, int age);
+// 1 while no age rule applies to either Link's items: the seed's "Both Links use every item" (Unified Inventory),
+// SoH's Timeless Equipment, or the Unrestricted Items cheat (gCheats.NoRestrictItems / gCheats.UnrestrictedItems).
+int Combo_AgeRulesLifted(void);
 int Combo_PauseLiveMmItem(int item);                         // the MM item id a foreign id names right now, -1 = none
 int Combo_PauseForeignBottleAction(int item);                // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
+int Combo_PauseIsForeignBottle(int item);                    // any MM bottle (OOT's bottle button rules apply)
 int Combo_PauseSetForeignBottle(int foreignId, int ootItem); // write the new content into MM's slot; 1 = done
 int Combo_PauseMmBottleColor(int foreignId, unsigned char* rgb); // MM's bottle content colour; 1 = an MM bottle
 void Combo_ChateauDrink(void); // MM Chateau Romani drunk in Hyrule: infinite magic until next dawn

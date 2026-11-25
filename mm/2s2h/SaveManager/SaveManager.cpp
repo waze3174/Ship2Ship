@@ -49,6 +49,22 @@ void SaveManager_SetComboSaveIO(ComboRando::FnComboReadSave r, ComboRando::FnCom
     gComboWriteGameSave = w;
 }
 
+// ComboShip: for the opt-in save-timing line only — the launcher's share of a container read or write, and MM's own
+// dump of its section in the last write.
+static ComboSaveTiming::FnGetContainerIoStats gComboContainerIoStats = nullptr;
+static double sComboLastSectionDumpMs = 0.0;
+void SaveManager_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStats get) {
+    gComboContainerIoStats = get;
+}
+
+// ComboShip: the smaller read for the live save (see SaveManager_ReadForLiveCurrentSave); unset -> the whole section.
+static ComboRando::FnComboReadSaveForLiveWrite gComboReadGameSaveForLiveWrite = nullptr;
+void SaveManager_SetComboLiveWriteRead(ComboRando::FnComboReadSaveForLiveWrite read) {
+    gComboReadGameSaveForLiveWrite = read;
+}
+// A/B switch: 1 makes the live save read its whole stored section again, so one build can time both reads.
+static constexpr const char* kComboDebugMmSaveFullRead = "gCombo.Debug.MmSaveFullRead";
+
 // ComboShip: classify a save filename. Returns the 1-based slot N for a "file{N}.json" (main or
 // backup), 0 otherwise; isBackup/isGlobal flag the non-main forms that stay on disk.
 static int SaveManager_ClassifySaveFile(const std::filesystem::path& fileName, bool& isBackup, bool& isGlobal) {
@@ -160,7 +176,10 @@ void SaveManager_WriteSaveFile(const std::filesystem::path& fileName, nlohmann::
         if (isBackup)
             return; // container's atomic write makes MM's per-slot backup redundant
         if (n > 0 && !isGlobal) {
-            gComboWriteGameSave(ComboRando::GAME_MM, n - 1, j.dump().c_str());
+            ComboSaveTiming::Stopwatch timer;
+            const std::string text = j.dump();
+            sComboLastSectionDumpMs = timer.Lap();
+            gComboWriteGameSave(ComboRando::GAME_MM, n - 1, text.c_str());
             return;
         }
         // global.json falls through to disk (per-game globals stay separate).
@@ -231,6 +250,34 @@ static int SaveManager_ReadSaveFileForLiveWrite(const std::filesystem::path& fil
 // ComboShip (#182): the slot whose owlSave blob populated gSaveContext, so the writers below know
 // whether the blob is still current (refresh it) or has been overtaken by live state (drop it).
 extern "C" int gComboOwlBlobSlot = -1;
+
+// ComboShip: the live save's read. It overwrites newCycleSave.save and the owl blob, so the launcher leaves both out
+// (Combo_ReadGameSaveForLiveWrite) and keeps only the blob fields carried over, when gSaveContext descends from the
+// blob: the document built from it is the one the whole section gives. A section of an older version is read whole,
+// since its migrations work on the whole saves. Same return codes as SaveManager_ReadSaveFile.
+static int SaveManager_ReadForLiveCurrentSave(const std::filesystem::path& fileName, int mmFileNum, nlohmann::json& j) {
+    if (gComboReadGameSaveForLiveWrite != nullptr && !CVarGetInteger(kComboDebugMmSaveFullRead, 0)) {
+        {
+            LiveBottleShelfGuard liveShelf;
+            const char* section = gComboReadGameSaveForLiveWrite(ComboRando::GAME_MM, mmFileNum - 1,
+                                                                 (gComboOwlBlobSlot == mmFileNum) ? 1 : 0);
+            if (section == nullptr || section[0] == '\0') {
+                return -1;
+            }
+            try {
+                j = nlohmann::json::parse(section);
+            } catch (...) {
+                SPDLOG_ERROR("[ComboShip] Failed to parse MM container section for slot {}", mmFileNum);
+                return -2;
+            }
+        }
+        auto version = j.find("version");
+        if (version != j.end() && version->is_number_unsigned() && version->get<uint32_t>() == CURRENT_SAVE_VERSION) {
+            return 0;
+        }
+    }
+    return SaveManager_ReadSaveFileForLiveWrite(fileName, j);
+}
 
 // ComboShip: carry the OOT-entered file name over (same font codes in both games; anything
 // outside the shared 0x00-0x3F range, e.g. JP glyphs, becomes a space).
@@ -316,7 +363,15 @@ void SaveManager_InitVanillaNewSaveForSlot(int mmFileNum, const unsigned char* o
 }
 #endif
 
-void SaveManager_SaveCurrentForCombo() {
+#ifdef COMBO_BUILD
+// ComboShip: see SaveManager_ComboSaveBatchBegin (SaveManager.h). Game thread only.
+static int sComboSaveBatchDepth = 0;
+static int sComboSaveHeldCalls = 0; // live saves the open batch held back; non-zero means one write is owed
+static ComboFrameSaves sComboFrameSaves;
+#endif
+
+// The live save itself; SaveManager_SaveCurrentForCombo decides when it runs.
+static void SaveManager_WriteCurrentSave() {
 #ifdef COMBO_BUILD
     // Guard the write itself, not each caller's own gate. 0xFF (no save) reaches here on real,
     // non-buggy paths (play proceeding after a failed load), so refuse and return — don't assert.
@@ -334,10 +389,11 @@ void SaveManager_SaveCurrentForCombo() {
     ComboSaveTiming::Stopwatch timer;
     // ComboShip (#182): read-modify-write so an owl blob is either kept in step or dropped — never
     // left behind to shadow newer state. A read/migrate failure just starts from an empty document.
-    if (SaveManager_ReadSaveFileForLiveWrite(fileName, j) != 0 || SaveManager_MigrateSave(j) != 0) {
+    if (SaveManager_ReadForLiveCurrentSave(fileName, mmFileNum, j) != 0 || SaveManager_MigrateSave(j) != 0) {
         j = nlohmann::json{};
     }
     const double readMs = timer.Lap();
+    const ComboSaveTiming::ContainerIoStats readIo = ComboSaveTiming::Fetch(gComboContainerIoStats);
 #endif
     j["newCycleSave"]["save"] = gSaveContext.save;
 #ifdef COMBO_BUILD
@@ -386,13 +442,65 @@ void SaveManager_SaveCurrentForCombo() {
 #endif
     SaveManager_WriteSaveFile(fileName, std::move(j));
 #ifdef COMBO_BUILD
-    if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
-        SPDLOG_INFO("[ComboShip] save timing: MM slot {} read {:.1f} ms, serialize {:.1f} ms, write {:.1f} ms, "
-                    "total {:.1f} ms",
-                    (int)gSaveContext.fileNum, readMs, serializeMs, timer.Lap(), timer.TotalMs());
+    const double writeMs = timer.Lap();
+    const double totalMs = timer.TotalMs();
+    ++sComboFrameSaves.written;
+    sComboFrameSaves.ms += totalMs;
+    const bool slow = writeMs >= ComboSaveTiming::kSlowWriteMs;
+    if (slow || CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+        SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), slow ? spdlog::level::warn : spdlog::level::info,
+                           "[ComboShip] save timing: MM slot {} read {:.1f} ms ({}), serialize {:.1f} ms, write {:.1f} "
+                           "ms (MM dump {:.1f}; {}), total {:.1f} ms",
+                           (int)gSaveContext.fileNum, readMs, ComboSaveTiming::DescribeRead(readIo), serializeMs,
+                           writeMs, sComboLastSectionDumpMs,
+                           ComboSaveTiming::DescribeWrite(ComboSaveTiming::Fetch(gComboContainerIoStats)), totalMs);
     }
 #endif
 }
+
+void SaveManager_SaveCurrentForCombo() {
+#ifdef COMBO_BUILD
+    ++sComboFrameSaves.asked;
+    if (sComboSaveBatchDepth > 0) {
+        ++sComboSaveHeldCalls;
+        return;
+    }
+#endif
+    SaveManager_WriteCurrentSave();
+}
+
+#ifdef COMBO_BUILD
+void SaveManager_ComboSaveBatchBegin() {
+    ++sComboSaveBatchDepth;
+}
+
+void SaveManager_ComboSaveBatchEnd() {
+    if (sComboSaveBatchDepth <= 0) {
+        SPDLOG_ERROR("[ComboShip] SaveManager_ComboSaveBatchEnd without a matching Begin");
+        return;
+    }
+    if (--sComboSaveBatchDepth > 0 || sComboSaveHeldCalls == 0) {
+        return;
+    }
+    const int heldCalls = sComboSaveHeldCalls;
+    sComboSaveHeldCalls = 0;
+    if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+        SPDLOG_INFO("[ComboShip] save timing: MM writes one save for {} save requests", heldCalls);
+    }
+    // Runs from destructors too, so nothing may escape.
+    try {
+        SaveManager_WriteCurrentSave();
+    } catch (const std::exception& e) {
+        SPDLOG_ERROR("[ComboShip] the batched MM save threw: {}", e.what());
+    } catch (...) { SPDLOG_ERROR("[ComboShip] the batched MM save threw a non-std exception"); }
+}
+
+ComboFrameSaves SaveManager_ComboTakeFrameSaves() {
+    const ComboFrameSaves saves = sComboFrameSaves;
+    sComboFrameSaves = {};
+    return saves;
+}
+#endif
 
 #ifdef COMBO_BUILD
 // ComboShip (#182): vanilla consumes the owl save on continue (func_80147314), but that needs

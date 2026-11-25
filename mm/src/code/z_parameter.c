@@ -16,8 +16,12 @@
 // button rules: the ocarina is a trade item, exempt from restrictions.all; the lens stays usable in first person and
 // keeps the Lens of Truth's magic drain going.
 #define COMBO_BTN_RULE_ITEM(item) (Combo_MmPauseIsForeign(item) ? Combo_MmPauseUseItem(item) : (item))
+// ...and an OOT bottle follows MM's bottle rules (exempt from restrictions.all, a trade item, usable on the sunk Zora's
+// floor and by the moon's Fierce Deity).
+#define COMBO_BTN_IS_BOTTLE(item) Combo_MmPauseIsBottle(item)
 #else
 #define COMBO_BTN_RULE_ITEM(item) (item)
+#define COMBO_BTN_IS_BOTTLE(item) (((item) >= ITEM_BOTTLE) && ((item) <= ITEM_OBABA_DRINK))
 #endif
 #include "misc/story_static/story_static.h"
 
@@ -2996,7 +3000,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
         if (player->currentMask == PLAYER_MASK_FIERCE_DEITY) {
             for (i = EQUIP_SLOT_C_LEFT; i <= EQUIP_SLOT_C_RIGHT; i++) {
                 if ((GET_CUR_FORM_BTN_ITEM(i) == ITEM_MASK_FIERCE_DEITY) ||
-                    ((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) && (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK))) {
+                    COMBO_BTN_IS_BOTTLE(GET_CUR_FORM_BTN_ITEM(i))) {
                     if (gSaveContext.buttonStatus[i] == BTN_DISABLED) {
                         restoreHudVisibility = true;
                         gSaveContext.buttonStatus[i] = BTN_ENABLED;
@@ -3011,8 +3015,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
             // #region 2S2H [Dpad]
             for (s16 j = EQUIP_SLOT_D_RIGHT; j <= EQUIP_SLOT_D_UP; j++) {
                 if ((DPAD_GET_CUR_FORM_BTN_ITEM(j) == ITEM_MASK_FIERCE_DEITY) ||
-                    ((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
-                     (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK))) {
+                    COMBO_BTN_IS_BOTTLE(DPAD_GET_CUR_FORM_BTN_ITEM(j))) {
                     if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_DISABLED) {
                         restoreHudVisibility = true;
                         gSaveContext.shipSaveContext.dpad.status[j] = BTN_ENABLED;
@@ -3178,8 +3181,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     extern int Combo_MmIronFloorItemOk(int item);
                     if ((player->currentBoots == PLAYER_BOOTS_COMBO_IRON)
                             ? !Combo_MmIronFloorItemOk(GET_CUR_FORM_BTN_ITEM(i))
-                            : !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
-                                (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK))) {
+                            : !COMBO_BTN_IS_BOTTLE(GET_CUR_FORM_BTN_ITEM(i))) {
 #else
                     if (!((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
                           (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK))) {
@@ -3216,8 +3218,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     extern int Combo_MmIronFloorItemOk(int item);
                     if ((player->currentBoots == PLAYER_BOOTS_COMBO_IRON)
                             ? !Combo_MmIronFloorItemOk(DPAD_GET_CUR_FORM_BTN_ITEM(j))
-                            : !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
-                                (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK))) {
+                            : !COMBO_BTN_IS_BOTTLE(DPAD_GET_CUR_FORM_BTN_ITEM(j))) {
 #else
                     if (!((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
                           (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK))) {
@@ -3452,8 +3453,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     if (interfaceCtx->restrictions.tradeItems != 0) {
                         if (((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MOONS_TEAR) &&
                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) ||
-                            ((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
-                             (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) ||
+                            COMBO_BTN_IS_BOTTLE(GET_CUR_FORM_BTN_ITEM(i)) ||
                             (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.buttonStatus[i] == BTN_ENABLED) {
                                 restoreHudVisibility = true;
@@ -3463,8 +3463,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     } else if (interfaceCtx->restrictions.tradeItems == 0) {
                         if (((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MOONS_TEAR) &&
                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) ||
-                            ((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
-                             (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) ||
+                            COMBO_BTN_IS_BOTTLE(GET_CUR_FORM_BTN_ITEM(i)) ||
                             (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.buttonStatus[i] == BTN_DISABLED) {
                                 restoreHudVisibility = true;
@@ -3510,8 +3509,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     if (interfaceCtx->restrictions.all != 0) {
                         if (!((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MOONS_TEAR) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) &&
-                            !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
-                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) &&
+                            !COMBO_BTN_IS_BOTTLE(GET_CUR_FORM_BTN_ITEM(i)) &&
                             (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) != ITEM_OCARINA_OF_TIME) &&
                             !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MASK_DEKU) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_MASK_GIANT)) &&
@@ -3525,8 +3523,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     } else if (interfaceCtx->restrictions.all == 0) {
                         if (!((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MOONS_TEAR) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_PENDANT_OF_MEMORIES)) &&
-                            !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_BOTTLE) &&
-                              (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_OBABA_DRINK)) &&
+                            !COMBO_BTN_IS_BOTTLE(GET_CUR_FORM_BTN_ITEM(i)) &&
                             (COMBO_BTN_RULE_ITEM(GET_CUR_FORM_BTN_ITEM(i)) != ITEM_OCARINA_OF_TIME) &&
                             !((GET_CUR_FORM_BTN_ITEM(i) >= ITEM_MASK_DEKU) &&
                               (GET_CUR_FORM_BTN_ITEM(i) <= ITEM_MASK_GIANT)) &&
@@ -3599,8 +3596,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     if (interfaceCtx->restrictions.tradeItems != 0) {
                         if (((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MOONS_TEAR) &&
                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) ||
-                            ((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
-                             (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) ||
+                            COMBO_BTN_IS_BOTTLE(DPAD_GET_CUR_FORM_BTN_ITEM(j)) ||
                             (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_ENABLED) {
                                 restoreHudVisibility = true;
@@ -3610,8 +3606,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     } else if (interfaceCtx->restrictions.tradeItems == 0) {
                         if (((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MOONS_TEAR) &&
                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) ||
-                            ((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
-                             (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) ||
+                            COMBO_BTN_IS_BOTTLE(DPAD_GET_CUR_FORM_BTN_ITEM(j)) ||
                             (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) == ITEM_OCARINA_OF_TIME)) {
                             if (gSaveContext.shipSaveContext.dpad.status[j] == BTN_DISABLED) {
                                 restoreHudVisibility = true;
@@ -3657,8 +3652,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     if (interfaceCtx->restrictions.all != 0) {
                         if (!((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MOONS_TEAR) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) &&
-                            !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
-                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) &&
+                            !COMBO_BTN_IS_BOTTLE(DPAD_GET_CUR_FORM_BTN_ITEM(j)) &&
                             (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) != ITEM_OCARINA_OF_TIME) &&
                             !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MASK_DEKU) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_MASK_GIANT)) &&
@@ -3672,8 +3666,7 @@ void Interface_UpdateButtonsPart2(PlayState* play) {
                     } else if (interfaceCtx->restrictions.all == 0) {
                         if (!((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MOONS_TEAR) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_PENDANT_OF_MEMORIES)) &&
-                            !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_BOTTLE) &&
-                              (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_OBABA_DRINK)) &&
+                            !COMBO_BTN_IS_BOTTLE(DPAD_GET_CUR_FORM_BTN_ITEM(j)) &&
                             (COMBO_BTN_RULE_ITEM(DPAD_GET_CUR_FORM_BTN_ITEM(j)) != ITEM_OCARINA_OF_TIME) &&
                             !((DPAD_GET_CUR_FORM_BTN_ITEM(j) >= ITEM_MASK_DEKU) &&
                               (DPAD_GET_CUR_FORM_BTN_ITEM(j) <= ITEM_MASK_GIANT)) &&

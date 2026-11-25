@@ -18,6 +18,8 @@
 // scenes that restrict trade items grey them out; an MM mask (foreign id) gets the same treatment.
 #define COMBO_TRADE_LIKE(item) \
     ((((item) >= ITEM_WEIRD_EGG) && ((item) <= ITEM_CLAIM_CHECK)) || Combo_PauseIsForeignMask(item))
+// ...and an MM bottle follows OOT's bottle rules (restrictions.bottles, exempt from restrictions.all).
+#define COMBO_BOTTLE_LIKE(item) ((((item) >= ITEM_BOTTLE) && ((item) <= ITEM_POE)) || Combo_PauseIsForeignBottle(item))
 #define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
 // ...and a Zora breathes underwater like the Zora Tunic.
 #define COMBO_WATER_PROOF() (Combo_OotForm() == COMBO_FORM_ZORA)
@@ -32,6 +34,7 @@
 #define COMBO_HEAT_PROOF() 0
 #define COMBO_TUNIC_COUNTS() 1
 #define COMBO_TRADE_LIKE(item) (((item) >= ITEM_WEIRD_EGG) && ((item) <= ITEM_CLAIM_CHECK))
+#define COMBO_BOTTLE_LIKE(item) (((item) >= ITEM_BOTTLE) && ((item) <= ITEM_POE))
 #define COMBO_BTN_ICON(btn) gItemIcons[gSaveContext.equips.buttonItems[btn]]
 #endif
 
@@ -1012,6 +1015,21 @@ void func_80083108(PlayState* play) {
                             sp28 = 1;
                         }
                         gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    } else if ((Player_GetEnvironmentalHazard(play) > 2) &&
+                               Combo_PauseMaskUsableWhileSwimming(gSaveContext.equips.buttonItems[i])) {
+                        // 2S2H's Equip Masks While Swimming (VB_DISABLE_ITEM_UNDERWATER): off the bottom, human Link's
+                        // wearable MM masks stay enabled. Player_UseItem puts them on or off in the water as is.
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    } else if ((Player_GetEnvironmentalHazard(play) == 2) &&
+                               Combo_PauseOcarinaUsableOnBottom(gSaveContext.equips.buttonItems[i])) {
+                        // 2S2H's Underwater Ocarina (VB_DISABLE_ITEM_UNDERWATER): on the bottom the ocarina stays on.
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
                     } else if ((Player_GetEnvironmentalHazard(play) == 2) &&
                                (Combo_PauseForeignHostItem(gSaveContext.equips.buttonItems[i]) == ITEM_LONGSHOT)) {
                         // MM's Hookshot runs as OOT's Longshot: on the bottom it works, as OOT's own does below.
@@ -1197,8 +1215,7 @@ void func_80083108(PlayState* play) {
 
                 if (interfaceCtx->restrictions.bottles != 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
-                        if ((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                            (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) {
+                        if (COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_ENABLED) {
                                 sp28 = 1;
                             }
@@ -1208,8 +1225,7 @@ void func_80083108(PlayState* play) {
                     }
                 } else if (interfaceCtx->restrictions.bottles == 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
-                        if ((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                            (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) {
+                        if (COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;
                             }
@@ -1346,8 +1362,7 @@ void func_80083108(PlayState* play) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
                         if ((gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_FAIRY) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_TIME) &&
-                            !((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                              (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) &&
+                            !COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i]) &&
                             !((gSaveContext.equips.buttonItems[i] >= ITEM_SHIELD_DEKU) && // Never disable equipment
                               (gSaveContext.equips.buttonItems[i] <=
                                ITEM_BOOTS_HOVER)) && // (tunics/boots) on C-buttons
@@ -1377,8 +1392,7 @@ void func_80083108(PlayState* play) {
                             (gSaveContext.equips.buttonItems[i] != ITEM_NAYRUS_LOVE) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_FAIRY) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_TIME) &&
-                            !((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                              (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) &&
+                            !COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i]) &&
                             !COMBO_TRADE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;
@@ -1688,12 +1702,19 @@ void Rando_Inventory_SwapAgeEquipment(void) {
 
 #ifdef COMBO_BUILD
 static void Inventory_SwapAgeEquipmentImpl(void);
+void ComboEquipShare_KeepAgeRuleAtSwap(int newAge, const u8* ownItems, const u8* ownSlots); // ComboEquipShare.cpp
 // ComboShip: one button layout for both ages (owner 2026-11-13: "the equips match up, but not between ages"; one item
 // pool, both Links use everything). The age swap still trades the B sword and the worn equipment per age as vanilla
-// does; C-left/down/right and the D-pad keep what they had. Randomizer saves only: a vanilla save swaps like SoH.
+// does; C-left/down/right and the D-pad keep what they had, except an item the new age can't use (owner 2026-11-25,
+// #21), which gives way to that age's own button as vanilla's swap would. Randomizer saves only: a vanilla save swaps
+// like SoH.
 void Inventory_SwapAgeEquipment(void) {
     u8 items[ARRAY_COUNT(gSaveContext.equips.buttonItems)];
     u8 slots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
+    u8 ownItems[ARRAY_COUNT(gSaveContext.equips.buttonItems)];
+    u8 ownSlots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
+    // Play_Destroy swaps before Player_Destroy commits play->linkAgeOnLoad: linkAge is still the age being left.
+    const s32 newAge = LINK_IS_ADULT ? LINK_AGE_CHILD : LINK_AGE_ADULT;
     s32 i;
 
     if (!IS_RANDO) {
@@ -1709,11 +1730,15 @@ void Inventory_SwapAgeEquipment(void) {
     }
     Inventory_SwapAgeEquipmentImpl();
     for (i = 1; i < ARRAY_COUNT(items); i++) {
+        ownItems[i] = gSaveContext.equips.buttonItems[i];
         gSaveContext.equips.buttonItems[i] = items[i];
     }
     for (i = 0; i < ARRAY_COUNT(slots); i++) {
+        ownSlots[i] = gSaveContext.equips.cButtonSlots[i];
         gSaveContext.equips.cButtonSlots[i] = slots[i];
     }
+    ownItems[0] = ITEM_NONE; // B is the sword's, not part of the layout
+    ComboEquipShare_KeepAgeRuleAtSwap(newAge, ownItems, ownSlots);
 }
 
 static void Inventory_SwapAgeEquipmentImpl(void) {
