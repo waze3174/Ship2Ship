@@ -67,6 +67,7 @@ CrowdControl* CrowdControl::Instance;
 #ifdef COMBO_BUILD
 #include "ComboMenuSharedContext.h"               // ComboShip: shared per-DLL ImGui context helper (combo-owned)
 #include "rando/SharedItems.h"                    // ComboShip: Shared Items family table
+#include "rando/ComboBackToBackLocks.h"           // ComboShip: what back-to-back slots keep out of Termina
 #include "rando/ComboCrossGate.h"                 // ComboShip: back-to-back slots' cross gate
 #include "rando/ComboGames.h"                     // ComboShip: Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h"             // ComboShip: the Lost Woods link seed setting
@@ -4512,6 +4513,26 @@ extern "C" COMBO_EXPORT void MM_SetComboCrossGate(int mask) {
 // Any way into Hyrule (the Clock Tower corridor, the portal, the warp songs, the entrances shuffled across).
 extern "C" int Combo_CrossToHyruleOpen(void) {
     return ComboRando::CrossGate::ToHyruleOpen(gMMComboCrossGate) ? 1 : 0;
+}
+// The Back to back page's choices for the loaded slot (combo/rando/ComboBackToBackSettings.h), pushed by the launcher;
+// 0 outside a back-to-back slot.
+extern "C" int gMMComboBackToBackOptions = 0;
+extern "C" COMBO_EXPORT void MM_SetComboBackToBackOptions(int options) {
+    gMMComboBackToBackOptions = options;
+}
+extern "C" int Combo_MM_BackToBackOptions(void) {
+    return gMMComboBackToBackOptions;
+}
+// The loaded slot is a back-to-back one that has not beaten both games: Ocarina of Time's items are locked in Termina
+// (combo/rando/ComboBackToBackLocks.h).
+extern "C" int Combo_MM_BackToBackLocksActive(void) {
+    return ComboRando::BackToBack::LocksActive(gMMComboCrossGate) ? 1 : 0;
+}
+// A back-to-back slot that has not yet played Majora's Mask's opening. isFirstCycle is set when Link first enters
+// South Clock Town and is never cleared, so until then the opening (Skull Kid, the stolen Ocarina, the Deku curse) is
+// still to be played, or being played, and the slot's own story owns the scenes the Lost Woods link would redirect.
+extern "C" int Combo_MM_BackToBackOpeningPending(void) {
+    return (ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) && !gSaveContext.save.isFirstCycle) ? 1 : 0;
 }
 // MM's credits have ended (Play_Init reached the invalid entrance that returns to MM's own title). In a back-to-back
 // slot MM's title and file select are unreachable inside the launcher, so the slot goes back to OoT's title, as an owl

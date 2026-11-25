@@ -220,6 +220,14 @@ void Combo_RequestCrossSwitch(int ootEntrance);
 void Combo_RequestPortalReturn(void);
 // MM's credits have ended: a back-to-back slot returns to OOT's title (see BenPort.cpp).
 void Combo_MM_CreditsEnded(void);
+// A back-to-back slot that has not yet played MM's opening (see BenPort.cpp).
+int Combo_MM_BackToBackOpeningPending(void);
+// The loaded back-to-back slot's page choices, and whether its Ocarina of Time item locks are in force (see
+// BenPort.cpp).
+int Combo_MM_BackToBackOptions(void);
+int Combo_MM_BackToBackLocksActive(void);
+// What a back-to-back slot carries into MM as its opening starts (see ComboBackToBack.cpp).
+void Combo_MM_ApplyBackToBackStart(void);
 COMBO_EXPORT void MM_PrepareForTransition(void);
 COMBO_EXPORT void MM_ResumeGame(int fileNum);
 #endif

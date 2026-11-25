@@ -23,6 +23,7 @@ extern "C" {
 #include "variables.h"
 #include "functions.h"
 extern u8 gItemAgeReqs[];
+int Combo_BackToBackGearLocked(int equipType); // OTRGlobals.cpp: a back-to-back slot keeps this gear out of Termina
 }
 
 namespace {
@@ -120,10 +121,13 @@ extern "C" COMBO_EXPORT void SOH_ComboTermina_SpendNayrusLove(void) {
     sDormantSaveChanged = true;
 }
 
-// OOT's equipped value of an equipment row (CUR_EQUIP_VALUE: 0 sword, 1 shield, 2 tunic, 3 boots), 0 = none.
+// OOT's equipped value of an equipment row (CUR_EQUIP_VALUE: 0 sword, 1 shield, 2 tunic, 3 boots), 0 = none. Tunics and
+// boots a back-to-back slot keeps out of Termina read as the Kokiri pieces, whatever Link wears in Hyrule.
 extern "C" COMBO_EXPORT int SOH_ComboTermina_EquipValue(int equipType) {
     if (!SaveResident() || equipType < 0 || equipType > EQUIP_TYPE_BOOTS)
         return 0;
+    if (Combo_BackToBackGearLocked(equipType))
+        return (equipType == EQUIP_TYPE_TUNIC) ? EQUIP_VALUE_TUNIC_KOKIRI : EQUIP_VALUE_BOOTS_KOKIRI;
     return CUR_EQUIP_VALUE(equipType);
 }
 
@@ -134,7 +138,7 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_EquipValue(int equipType) {
 // it would refuse.
 extern "C" COMBO_EXPORT int SOH_ComboTermina_SetEquipValue(int equipType, int value, int adult) {
     if (!SaveResident() || ((equipType != EQUIP_TYPE_TUNIC) && (equipType != EQUIP_TYPE_BOOTS)) || (value < 1) ||
-        (value > 3)) {
+        (value > 3) || Combo_BackToBackGearLocked(equipType)) {
         return 0;
     }
     const int item = ((equipType == EQUIP_TYPE_TUNIC) ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + (value - 1);
@@ -159,7 +163,7 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_SetEquipValue(int equipType, int va
 // Returns the value now worn, 0 when OOT does not own the piece or Link's age may not wear it.
 extern "C" COMBO_EXPORT int SOH_ComboTermina_ToggleEquipValue(int equipType, int value, int adult) {
     if (!SaveResident() || ((equipType != EQUIP_TYPE_TUNIC) && (equipType != EQUIP_TYPE_BOOTS)) || (value < 1) ||
-        (value > 3) || !CHECK_OWNED_EQUIP(equipType, value - 1)) {
+        (value > 3) || Combo_BackToBackGearLocked(equipType) || !CHECK_OWNED_EQUIP(equipType, value - 1)) {
         return 0;
     }
     const int item = ((equipType == EQUIP_TYPE_TUNIC) ? ITEM_TUNIC_KOKIRI : ITEM_BOOTS_KOKIRI) + (value - 1);
