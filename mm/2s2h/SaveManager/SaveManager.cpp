@@ -446,12 +446,14 @@ static void SaveManager_WriteCurrentSave() {
     const double totalMs = timer.TotalMs();
     ++sComboFrameSaves.written;
     sComboFrameSaves.ms += totalMs;
-    if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
-        SPDLOG_INFO("[ComboShip] save timing: MM slot {} read {:.1f} ms ({}), serialize {:.1f} ms, write {:.1f} ms "
-                    "(MM dump {:.1f}; {}), total {:.1f} ms",
-                    (int)gSaveContext.fileNum, readMs, ComboSaveTiming::DescribeRead(readIo), serializeMs, writeMs,
-                    sComboLastSectionDumpMs,
-                    ComboSaveTiming::DescribeWrite(ComboSaveTiming::Fetch(gComboContainerIoStats)), totalMs);
+    const bool slow = writeMs >= ComboSaveTiming::kSlowWriteMs;
+    if (slow || CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+        SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), slow ? spdlog::level::warn : spdlog::level::info,
+                           "[ComboShip] save timing: MM slot {} read {:.1f} ms ({}), serialize {:.1f} ms, write {:.1f} "
+                           "ms (MM dump {:.1f}; {}), total {:.1f} ms",
+                           (int)gSaveContext.fileNum, readMs, ComboSaveTiming::DescribeRead(readIo), serializeMs,
+                           writeMs, sComboLastSectionDumpMs,
+                           ComboSaveTiming::DescribeWrite(ComboSaveTiming::Fetch(gComboContainerIoStats)), totalMs);
     }
 #endif
 }

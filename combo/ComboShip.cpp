@@ -681,11 +681,13 @@ static void FlushContainer(int fileNum) {
         return;
     std::error_code ec;
     auto path = ComboContainerPath(fileNum);
+    ComboSaveTiming::Stopwatch timer;
     std::filesystem::create_directories(path.parent_path(), ec);
     auto tmp = path;
     tmp += ".temp";
     {
         std::ofstream out(tmp, std::ios::trunc | std::ios::binary);
+        tl_containerIoStats.openMs = timer.Lap();
         // A failure here USED TO BE a bare `return`. With the path CWD-relative and a Finder-launched
         // .app starting at "/" (read-only on macOS), that silently discarded every save while the
         // game logged "Save File Finish" — a whole playthrough lost with no on-disk trace. The path
@@ -696,7 +698,6 @@ static void FlushContainer(int fileNum) {
             return;
         }
         it->second["comboRelease"] = COMBO_RELEASE_VERSION; // every write carries the current release
-        ComboSaveTiming::Stopwatch timer;
         const std::string text = it->second.dump();
         tl_containerIoStats.containerDumpMs = timer.Lap();
         tl_containerIoStats.containerBytes = text.size();
@@ -704,13 +705,12 @@ static void FlushContainer(int fileNum) {
         out.close();
         tl_containerIoStats.fileWriteMs = timer.Lap();
     }
-    ComboSaveTiming::Stopwatch renameTimer;
     std::filesystem::rename(tmp, path, ec);
     if (ec) { // some filesystems won't replace-on-rename — remove then retry
         std::filesystem::remove(path, ec);
         std::filesystem::rename(tmp, path, ec);
     }
-    tl_containerIoStats.renameMs = renameTimer.Lap();
+    tl_containerIoStats.renameMs = timer.Lap();
     if (ec) {
         std::cerr << "[ComboShip] ERROR: cannot commit save container " << path << " (" << ec.message()
                   << ") — THIS SLOT IS NOT BEING SAVED." << std::endl;
@@ -1036,6 +1036,8 @@ static void Combo_WriteGameSave(int game, int fileNum, const char* json) {
     tl_containerIoStats.parseMs = timer.Lap();
     tl_containerIoStats.sectionBytes = std::strlen(json);
     FlushContainer(fileNum);
+    if (timer.TotalMs() >= ComboSaveTiming::kSlowWriteMs)
+        ComboSaveTiming::SampleKernelWriteback(tl_containerIoStats);
 }
 
 // Record which game the player is now in, so a quit-and-reload resumes there. Set at the two

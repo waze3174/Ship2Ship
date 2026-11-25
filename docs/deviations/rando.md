@@ -2394,6 +2394,23 @@ gSaveContext descends from the blob. The write builds the same document from tha
 `gCombo.Debug.MmSaveFullRead` (off by default) brings back the whole read, so one build can time both with
 `gCombo.Debug.SaveTiming`.
 
+**Saves that freeze the game for seconds on the Steam Deck (2026-11-25, "it froze for a considerable amount of time
+at 1:44 am"):** the owner's v0.1.2 SaveTiming capture (one 50-minute MM session, saves on the microSD card) has
+86 MM live saves and 51 OOT container writes. Measured:
+- 81 MM saves took 48-130 ms in the write phase (median 88). Five took 0.6-3.1 s, in two runs: 01:10:20-27 (1.2 and
+  2.6 s, with one OOT write of 0.9 s between them) and 01:43:42-01:44:06 (0.6, 1.1 and 3.1 s).
+- Read and serialize were normal in those five saves (22-27 and 18-31 ms). Only the write phase was slow, and it is
+  the only part of the save that touches the disk.
+- Two of the five had no OOT write within 30 s, so they were not waiting behind OOT's save.
+- The slow saves did not come after more writes than usual.
+
+So the container's file write and rename stalled. That fits the card being slow for a while (inferred). Nothing here
+changes the format or when saves happen. `FlushContainer` has no fsync; it writes a temp file and renames it over the
+container. The capture could not tell which system call blocked. The timing now also covers the temp file's open, and
+after a write of `kSlowWriteMs` (250 ms) or more the launcher samples the kernel's dirty and under-writeback page cache
+(Linux, `/proc/meminfo`). Each game logs such a write as a warning even with `gCombo.Debug.SaveTiming` off. MM's
+frame line also reports frames over 2 s when saves took most of the frame.
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.

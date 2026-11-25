@@ -1397,12 +1397,14 @@ void SaveManager::SaveFileThreaded(int fileNum, const SaveContext& saveContext, 
         const std::string block = saveBlock.dump();
         const double dumpMs = timer.Lap();
         gComboWriteGameSave(ComboRando::GAME_OOT, fileNum, block.c_str());
-        if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
-            const double writeMs = timer.Lap();
-            SPDLOG_INFO("[ComboShip] save timing: OOT slot {} section {} (save thread) dump {:.1f} ms ({} KB), write "
-                        "{:.1f} ms ({})",
-                        fileNum, sectionID, dumpMs, block.size() / 1024, writeMs,
-                        ComboSaveTiming::DescribeWrite(ComboSaveTiming::Fetch(gComboContainerIoStats)));
+        const double writeMs = timer.Lap();
+        const bool slow = writeMs >= ComboSaveTiming::kSlowWriteMs;
+        if (slow || CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+            SPDLOG_LOGGER_CALL(spdlog::default_logger_raw(), slow ? spdlog::level::warn : spdlog::level::info,
+                               "[ComboShip] save timing: OOT slot {} section {} (save thread) dump {:.1f} ms ({} KB), "
+                               "write {:.1f} ms ({})",
+                               fileNum, sectionID, dumpMs, block.size() / 1024, writeMs,
+                               ComboSaveTiming::DescribeWrite(ComboSaveTiming::Fetch(gComboContainerIoStats)));
         }
     } else
 #endif
