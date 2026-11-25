@@ -1577,9 +1577,9 @@ static std::mutex sSeenMutex;
 static Core::SeenIds sSeenIds;
 // Receive thread only. Save-affecting packets written to the socket and not yet confirmed by an
 // echoed marker; re-held when the connection dies (see ReceiveLoop).
-static Core::InFlight sInFlight;
+static Core::InFlight sInFlight{ Core::kOutboxMaxEntries }; // as many as the outbox holds: a boss release is a burst
 // True once a marker has come back from this server (since Connect()). Until then nothing is re-held:
-// a relay that does not loop markers back would make every drop re-send the last 512 packets.
+// a relay that does not loop markers back would make every drop re-send the last kOutboxMaxEntries packets.
 static std::atomic<bool> sMarkerProven{ false };
 // Guarded by sOutMutex. Lets one REQUEST_TEAM_STATE out at a time (see the header for why).
 static Core::TeamStateRequestGate sTeamReqGate;

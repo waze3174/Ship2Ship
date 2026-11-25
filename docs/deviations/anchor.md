@@ -491,7 +491,7 @@ and the packets below are not understood by older builds.
 - `comboPid` on every save-affecting packet: a unique id, remembered by the receiver (8192 ids) so a re-sent
   packet applies once. Also looked at inside the queue of an `UPDATE_TEAM_STATE`.
 - `COMBO_ACK_MARK`: a marker the launcher addresses to itself after a batch. When it comes back, everything written
-  before it reached the server; up to 512 unconfirmed packets are held again on a drop.
+  before it reached the server; up to `kOutboxMaxEntries` (4096) unconfirmed packets are held again on a drop, as many as the outbox holds (a boss release sends over a thousand).
 - `COMBO_MM_FLAG` (`kind`: `chest`, `switch`, `collectible`, `weekEventReg`, `owl`): the MM flags that survive a
   cycle reset. Set-only and masked, so a replay changes nothing.
 - `addToQueue` on MM sends, so the server replays them to late joiners.
