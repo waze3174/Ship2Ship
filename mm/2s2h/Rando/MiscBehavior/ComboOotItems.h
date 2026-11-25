@@ -58,6 +58,11 @@ int Combo_MmOotItemAgeOk(int foreignItem);
 // OOT's Inventory_ChangeAmmo on it. With shared consumables on, that is the shared count, not OOT's dormant save. A bag
 // Ship of Harkinian's Infinite Upgrades keeps full in Hyrule is full in Termina too: a use spends nothing.
 int Combo_MmOotAmmo(int ootItem);
+
+// Nayru's Love Uses (SoH setting) as OOT's save holds them: -1 = no limit (the rule is off, or no OOT save). `maxUses`
+// (may be NULL): the setting's value. A cast that starts spends one use, as OOT's MagicDark does with no timer running.
+int Combo_MmOotNayrusLoveUses(int* maxUses);
+void Combo_MmOotSpendNayrusLove(void);
 void Combo_MmOotChangeAmmo(int ootItem, int delta);
 
 // The ammo digits for an OOT item / a foreign (OOT) item on an MM button: that count, -1 = none (also for an infinite

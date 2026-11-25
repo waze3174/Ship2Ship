@@ -480,7 +480,8 @@ extern "C" int Combo_MmPauseSlotAmmo(int ootSlot) {
         return -1;
     // The count a use spends (with shared consumables, what Hyrule will show), not only what OOT's dormant save holds;
     // none for an infinite bag, as OOT's own pause shows it.
-    return (sOotAmmo[ootSlot] < 0) ? -1 : Combo_MmOotAmmoDigits(sOotItems[ootSlot], nullptr);
+    const bool holdsCount = (sOotAmmo[ootSlot] >= 0) || (sOotItems[ootSlot] == COMBO_OOT_ITEM_NAYRUS_LOVE);
+    return holdsCount ? Combo_MmOotAmmoDigits(sOotItems[ootSlot], nullptr) : -1;
 }
 
 extern "C" const char* Combo_MmPauseIconTex(int item) {

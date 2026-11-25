@@ -15,6 +15,7 @@
 #include "soh/cvar_prefixes.h"
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/AdultMasks.h"
+#include "soh/Enhancements/randomizer/SeedContext.h"
 
 extern "C" {
 #include "z64.h"
@@ -30,6 +31,15 @@ bool SaveResident() {
 }
 
 bool sDormantSaveChanged = false; // OOT's dormant save was changed from Termina and not yet written
+
+u8& NayrusLoveUses() {
+    return gSaveContext.ship.quest.data.randomizer.nayrusLoveUses;
+}
+
+// The Nayru's Love Uses rule (ConsumableNayrusLove.cpp) applies to a randomizer save with the setting above 0.
+bool NayrusLoveRuleOn() {
+    return SaveResident() && IS_RANDO && RAND_GET_OPTION(RSK_NAYRUS_LOVE_USES).Get() > 0;
+}
 } // namespace
 
 // OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), lifted by the same
@@ -90,6 +100,24 @@ extern "C" void Combo_TerminaPersistDormantSave(void) {
     sDormantSaveChanged = false;
     SaveManager::Instance->SaveFile(gSaveContext.fileNum);
     SaveManager::Instance->ThreadPoolWait();
+}
+
+// Nayru's Love Uses (ConsumableNayrusLove.cpp) for a cast in Termina: the uses OOT's save holds, -1 when the rule is
+// off (no limit). maxUses (may be NULL): the setting's value, the count OOT draws green at.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_NayrusLoveUses(int* maxUses) {
+    if (!NayrusLoveRuleOn())
+        return -1;
+    if (maxUses != nullptr)
+        *maxUses = RAND_GET_OPTION(RSK_NAYRUS_LOVE_USES).Get();
+    return NayrusLoveUses();
+}
+
+// OOT's OnActorInit(ACTOR_MAGIC_DARK) spend, for a cast that starts in Termina: one use, never below 0.
+extern "C" COMBO_EXPORT void SOH_ComboTermina_SpendNayrusLove(void) {
+    if (!NayrusLoveRuleOn() || (NayrusLoveUses() == 0))
+        return;
+    NayrusLoveUses()--;
+    sDormantSaveChanged = true;
 }
 
 // OOT's equipped value of an equipment row (CUR_EQUIP_VALUE: 0 sword, 1 shield, 2 tunic, 3 boots), 0 = none.

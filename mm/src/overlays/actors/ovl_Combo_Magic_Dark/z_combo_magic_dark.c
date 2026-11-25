@@ -64,6 +64,7 @@ void ComboMagicDark_Init(Actor* thisx, PlayState* play) {
     } else {
         this->timer = 0;
         gSaveContext.nayrusLoveTimer = 0;
+        Combo_MmOotSpendNayrusLove(); // SoH's Nayru's Love Uses: a new cast, not one still running, costs a use
     }
 }
 

@@ -407,6 +407,11 @@ static void ComboOot_FaroresWindPrompt(PlayState* play, Player* this) {
     Player_Anim_PlayOnce(play, this, Player_GetIdleAnim(this));
 }
 
+// SoH's Nayru's Love Uses (ConsumableNayrusLove.cpp): the cast is refused at 0 uses. -1 uses = the rule is off.
+static s32 ComboOot_SpellOutOfUses(s32 spell) {
+    return (spell == 4) && (Combo_MmOotNayrusLoveUses(NULL) == 0);
+}
+
 // OOT Player_UseItem, the magic-spell branch: a returned true means the item was handled (cast queued or refused).
 s32 ComboOot_UseSpell(PlayState* play, Player* this, s32 itemAction) {
     s32 spell = ComboOot_SpellOf(itemAction);
@@ -414,9 +419,10 @@ s32 ComboOot_UseSpell(PlayState* play, Player* this, s32 itemAction) {
     if (spell < 0) {
         return false;
     }
-    if (((spell == 3) && ComboOot_FaroresWindSet()) ||
-        ((gSaveContext.magicCapacity != 0) && (gSaveContext.magicState == MAGIC_STATE_IDLE) &&
-         (gSaveContext.save.saveInfo.playerData.magic >= sComboOotSpellCosts[spell]))) {
+    if (!ComboOot_SpellOutOfUses(spell) &&
+        (((spell == 3) && ComboOot_FaroresWindSet()) ||
+         ((gSaveContext.magicCapacity != 0) && (gSaveContext.magicState == MAGIC_STATE_IDLE) &&
+          (gSaveContext.save.saveInfo.playerData.magic >= sComboOotSpellCosts[spell])))) {
         this->itemAction = itemAction;
         this->unk_AA5 = PLAYER_UNKAA5_5; // OOT unk_6AD = 4 ("use the item in place")
     } else {

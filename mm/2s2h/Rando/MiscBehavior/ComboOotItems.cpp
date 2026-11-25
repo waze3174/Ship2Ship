@@ -44,6 +44,8 @@ extern PlayState* gPlayState;
 
 namespace {
 
+typedef int (*FnIntPtr)(int*);
+typedef void (*FnVoid)(void);
 typedef int (*FnIntInt)(int);
 typedef int (*FnIntIntInt)(int, int);
 typedef void (*FnVoidIntInt)(int, int);
@@ -123,6 +125,21 @@ extern "C" int Combo_MmOotItemAction(int foreignItem) {
 extern "C" int Combo_MmOotBootsValue(void) {
     static FnIntInt sEquip = Sym<FnIntInt>("SOH_ComboTermina_EquipValue");
     return sEquip ? sEquip(3) : 0;
+}
+
+// Nayru's Love Uses (SoH setting) as OOT's save holds them: -1 = no limit (the rule is off, or no OOT save). `maxUses`
+// (may be NULL): the setting's value.
+extern "C" int Combo_MmOotNayrusLoveUses(int* maxUses) {
+    static FnIntPtr sUses = Sym<FnIntPtr>("SOH_ComboTermina_NayrusLoveUses");
+    return sUses ? sUses(maxUses) : -1;
+}
+
+// One Nayru's Love use spent, as OOT's MagicDark does when a cast starts and no timer runs.
+extern "C" void Combo_MmOotSpendNayrusLove(void) {
+    static FnVoid sSpend = Sym<FnVoid>("SOH_ComboTermina_SpendNayrusLove");
+    if (sSpend != nullptr) {
+        sSpend();
+    }
 }
 
 // OOT's tunic on Link in Termina (CUR_EQUIP_VALUE(EQUIP_TYPE_TUNIC): 1 Kokiri, 2 Goron, 3 Zora), 0 without OOT's save.
@@ -288,6 +305,14 @@ extern "C" void Combo_MmOotChangeAmmo(int ootItem, int delta) {
 }
 
 extern "C" int Combo_MmOotAmmoDigits(int ootItem, int* full) {
+    if (ootItem == COMBO_OOT_ITEM_NAYRUS_LOVE) {
+        int maxUses = 0;
+        const int uses = Combo_MmOotNayrusLoveUses(&maxUses);
+        if (full != nullptr) {
+            *full = (uses >= 0) && (uses >= maxUses);
+        }
+        return uses;
+    }
     const OotBag b = BagOf(ootItem);
     const int digits = b.infinite ? -1 : b.count;
     if (full != nullptr) {
