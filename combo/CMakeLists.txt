@@ -49,6 +49,7 @@ set(COMBOUI_SOURCES
     gui/ComboConfigImport.cpp
     gui/ComboConfigImportPanel.cpp
     gui/ComboBottleShelfWindow.cpp
+    gui/ComboDiscordPanel.cpp
 )
 add_library(comboui SHARED ${COMBOUI_SOURCES})
 set_target_properties(comboui PROPERTIES PREFIX "")
