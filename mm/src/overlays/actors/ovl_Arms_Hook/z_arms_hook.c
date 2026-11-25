@@ -76,6 +76,16 @@ void ArmsHook_Destroy(Actor* thisx, PlayState* play) {
     Collider_DestroyQuad(play, &this->collider);
 }
 
+static s32 ArmsHook_IsHookshotSurface(PlayState* play, CollisionPoly* poly, s32 bgId) {
+    s32 isHookshotSurface = SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId);
+
+#ifdef COMBO_BUILD
+    // ComboShip: SoH's Hookshot Everything cheat for OOT's Hookshot and Longshot.
+    isHookshotSurface = isHookshotSurface || Combo_MmOotHookshotEverything(GET_PLAYER(play)->heldItemAction);
+#endif
+    return isHookshotSurface;
+}
+
 void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
     if (this->actor.parent == NULL) {
         ArmsHook_SetupAction(this, ArmsHook_Shoot);
@@ -279,7 +289,7 @@ void ArmsHook_Shoot(ArmsHook* this, PlayState* play) {
             this->actor.world.pos.x += 10.0f * nx;
             this->actor.world.pos.z += 10.0f * nz;
             this->timer = 1;
-            if (SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId)) {
+            if (ArmsHook_IsHookshotSurface(play, poly, bgId)) {
                 DynaPolyActor* dynaPolyActor;
 
                 if (bgId != BGCHECK_SCENE) {

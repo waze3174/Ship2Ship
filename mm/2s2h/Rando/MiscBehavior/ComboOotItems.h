@@ -32,6 +32,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER "gCheats.HookshotReachMultiplier"
 #define COMBO_SOH_CVAR_BOOMERANG_RETICLE "gEnhancements.BoomerangReticle"
 #define COMBO_SOH_CVAR_FAST_BOOMERANG "gEnhancements.FastBoomerang"
+#define COMBO_SOH_CVAR_HOOKSHOT_EVERYTHING "gCheats.HookshotEverything"
 #define COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE "gEnhancements.HookshotableReticle"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR "gCosmetics.HookshotReticle.Target.Value"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR "gCosmetics.HookshotReticle.NonTarget.Value"
@@ -67,6 +68,10 @@ void* Combo_MmOotRawResource(const char* path);
 // SoH's Hookshot Reach Multiplier for the item action in Link's hand: its CVar for OOT's Hookshot and Longshot, 1 for
 // anything else (MM's own Hookshot keeps its reach).
 float Combo_MmOotHookshotReachMultiplier(int heldItemAction);
+
+// SoH's Hookshot Everything cheat, for the item action in Link's hand: 1 for OOT's Hookshot and Longshot with the cheat
+// on (every surface takes the hook), else 0 (MM's own Hookshot has MM's Hookshot Anywhere).
+int Combo_MmOotHookshotEverything(int heldItemAction);
 
 // SoH's coloured Hookshot reticle (the Hookshotable Reticle setting and the reticle colours) for OOT's Hookshot and
 // Longshot, drawn in place of MM's reticle at the hit point `poly` / `bgId` of Player_DrawHookshotReticle's line test.

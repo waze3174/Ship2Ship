@@ -140,11 +140,23 @@ extern "C" int Combo_MmIronFloorItemOk(int item) {
     return (oot == 0x0A) || (oot == 0x0B); // OOT ITEM_HOOKSHOT / ITEM_LONGSHOT
 }
 
+namespace {
+
+bool IsOotHookshotAction(int heldItemAction) {
+    return (heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) || (heldItemAction == PLAYER_IA_COMBO_OOT_LONGSHOT);
+}
+
+} // namespace
+
 extern "C" float Combo_MmOotHookshotReachMultiplier(int heldItemAction) {
-    if ((heldItemAction != PLAYER_IA_COMBO_OOT_HOOKSHOT) && (heldItemAction != PLAYER_IA_COMBO_OOT_LONGSHOT)) {
+    if (!IsOotHookshotAction(heldItemAction)) {
         return 1.0f;
     }
     return CVarGetFloat(COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER, 1.0f);
+}
+
+extern "C" int Combo_MmOotHookshotEverything(int heldItemAction) {
+    return IsOotHookshotAction(heldItemAction) && CVarGetInteger(COMBO_SOH_CVAR_HOOKSHOT_EVERYTHING, 0);
 }
 
 namespace {
@@ -184,8 +196,7 @@ void DrawColoredHookshotReticle(PlayState* play, const Color_RGBA8& color) {
 } // namespace
 
 extern "C" int Combo_MmOotDrawHookshotReticle(PlayState* play, Player* player, CollisionPoly* poly, int bgId) {
-    if ((player->heldItemAction != PLAYER_IA_COMBO_OOT_HOOKSHOT) &&
-        (player->heldItemAction != PLAYER_IA_COMBO_OOT_LONGSHOT)) {
+    if (!IsOotHookshotAction(player->heldItemAction)) {
         return 0;
     }
 
@@ -196,7 +207,8 @@ extern "C" int Combo_MmOotDrawHookshotReticle(PlayState* play, Player* player, C
         return 0;
     }
 
-    if (showsHookshotable && SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId)) {
+    if (showsHookshotable && (SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId) ||
+                              Combo_MmOotHookshotEverything(player->heldItemAction))) {
         DrawColoredHookshotReticle(
             play, CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR, kHookshotReticleTargetColor));
     } else {
