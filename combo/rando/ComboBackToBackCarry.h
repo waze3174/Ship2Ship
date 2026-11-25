@@ -13,6 +13,10 @@ enum CarryField : int {
     kCarryRupees,
     kCarryMagicLevel, // 0 none, 1 magic, 2 double magic
     kCarrySongs,      // the CarrySong bits OoT has learned
+    kCarryQuiverTier, // OoT's upgrade levels, 0-3: what each is worth is the same in both games
+    kCarryBombBagTier,
+    kCarryStickTier,
+    kCarryNutTier,
 };
 
 enum CarrySong : int {

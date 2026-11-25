@@ -1,6 +1,6 @@
 // ComboShip: what OoT's half of a back-to-back slot hands to Majora's Mask (combo/rando/ComboBackToBackCarry.h).
 // Combo-owned file (soh GLOB_RECURSE). OoT's save stays resident while MM runs, so MM reads these when it applies a
-// carried hearts, wallet, magic meter or song. See docs/deviations/back2back.md.
+// carried hearts, wallet, magic meter, song or upgrade level. See docs/deviations/back2back.md.
 #ifdef COMBO_BUILD
 
 #include "ComboExport.h"
@@ -56,6 +56,14 @@ extern "C" COMBO_EXPORT int SOH_ComboCarry_Get(int field) {
             return MagicLevel();
         case Carry::kCarrySongs:
             return Songs();
+        case Carry::kCarryQuiverTier:
+            return CUR_UPG_VALUE(UPG_QUIVER);
+        case Carry::kCarryBombBagTier:
+            return CUR_UPG_VALUE(UPG_BOMB_BAG);
+        case Carry::kCarryStickTier:
+            return CUR_UPG_VALUE(UPG_STICKS);
+        case Carry::kCarryNutTier:
+            return CUR_UPG_VALUE(UPG_NUTS);
         default:
             return 0;
     }

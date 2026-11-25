@@ -4,8 +4,9 @@
 //   At the opening   The hearts and the wallet with its rupees go into MM's save as the opening starts (title_setup.c),
 //                    whenever the slot has not yet played the opening, so what MM saves from then on holds them.
 //   Once found       The rest waits for the MM item it belongs to, because MM's own give code reads some of these as
-//                    ownership. The magic meter carries once MM's Great Fairy has given magic, and the songs once Link
-//                    has MM's Ocarina. The tick below applies each the frame it can.
+//                    ownership. The magic meter carries once MM's Great Fairy has given magic, the songs once Link has
+//                    MM's Ocarina, and the quiver, bomb bag, Deku stick and Deku nut levels once Link has the bow, the
+//                    bombs, the sticks or the nuts. The tick below applies each the frame it can.
 // Ocarina of Time's numbers come from its resident save (SOH_ComboCarry_Get).
 #ifdef COMBO_BUILD
 
@@ -85,6 +86,35 @@ void CarryMagic() {
     SPDLOG_INFO("[ComboBackToBack] double magic carried into Termina");
 }
 
+// An upgrade level carried over, once MM has the item it enlarges. MM's own give code treats a nonzero level as "the
+// item is already here" (Item_Give: the first bow only adds an arrow when the quiver level is not 0), so a level
+// written before Link finds the item would leave MM's bow, bombs, sticks or nuts ungiven. MM's own upgrades set the
+// level outright, so a lower one is raised again here.
+struct CapacityCarry {
+    B2B::CarryField field;
+    int upgrade;
+    int baseItem;
+};
+
+constexpr CapacityCarry kCapacityCarries[] = {
+    { B2B::kCarryQuiverTier, UPG_QUIVER, ITEM_BOW },
+    { B2B::kCarryBombBagTier, UPG_BOMB_BAG, ITEM_BOMB },
+    { B2B::kCarryStickTier, UPG_DEKU_STICKS, ITEM_DEKU_STICK },
+    { B2B::kCarryNutTier, UPG_DEKU_NUTS, ITEM_DEKU_NUT },
+};
+
+void CarryCapacities() {
+    for (const CapacityCarry& carry : kCapacityCarries) {
+        if (INV_CONTENT(carry.baseItem) != carry.baseItem)
+            continue;
+        const int carried = CarriedFromOot(carry.field);
+        if (carried > CUR_UPG_VALUE(carry.upgrade)) {
+            Inventory_ChangeUpgrade(carry.upgrade, carried);
+            SPDLOG_INFO("[ComboBackToBack] upgrade {} carried into Termina: level {}", carry.upgrade, carried);
+        }
+    }
+}
+
 // The songs OoT has learned, once Link has MM's Ocarina to play them on.
 void CarrySongs() {
     if (!OptionOn(B2B::kSongsMasksShared) || INV_CONTENT(ITEM_OCARINA_OF_TIME) != ITEM_OCARINA_OF_TIME)
@@ -103,6 +133,7 @@ void TickCarryOnceFound() {
         return;
     CarryMagic();
     CarrySongs();
+    CarryCapacities();
 }
 
 void RegisterComboBackToBack() {

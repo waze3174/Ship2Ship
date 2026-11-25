@@ -25,7 +25,8 @@ constexpr const char* kMasterQuestUnavailable =
 
 constexpr const char* kCarryNote =
     "Every other item Ocarina of Time and Majora's Mask both have stays locked in Termina until Link finds "
-    "Majora's Mask's own.";
+    "Majora's Mask's own. The quiver, bomb bag, Deku stick and Deku nut upgrades carry over once Link has that "
+    "item in Majora's Mask.";
 constexpr const char* kOotOnlyItemsNote =
     "Items only Ocarina of Time has. Off, each stays in Hyrule until both games are beaten.";
 
