@@ -571,6 +571,72 @@ void ComboOot_StartMode_FaroresWind(PlayState* play, Player* this) {
     Combo_MmOotLog("Farore's Wind: arrived at the warp point");
 }
 
+// =====================================================================================================================
+// Roc's Feather (SoH's randomizer item: soh/soh/Enhancements/randomizer/RocsFeather.cpp; the same port as Varuuna/
+// ComboShip PR #246's CrossRocsFeather.cpp, 3f9e2d16c): one jump per time in the air, back once Link has stood on the
+// ground for 3 frames. SoH's jump animation comes from OOT's archive.
+// =====================================================================================================================
+#define COMBO_ROCS_MAX_USES 1
+
+static u8 sComboRocsUseCount = 0;
+static u8 sComboRocsGroundTimer = 0;
+
+// SoH's OnPlayerUpdate hook.
+void ComboOot_UpdateRocsFeather(Player* this) {
+    if (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) {
+        if (sComboRocsGroundTimer <= 3) {
+            sComboRocsGroundTimer++;
+        }
+    } else {
+        sComboRocsGroundTimer = 0;
+    }
+    if (sComboRocsGroundTimer >= 3) {
+        sComboRocsUseCount = 0;
+    }
+}
+
+// SoH's VB_CHANGE_HELD_ITEM_AND_USE_ITEM hook. Two differences between OOT's func_80838940 and MM's twin
+// func_80834D50 are undone here: OOT always plays the floor-jump sound (MM only along with a voice, and SoH passes
+// none), and OOT keeps the fall's start height, so a jump in mid-air doesn't cancel fall damage.
+void ComboOot_UseRocsFeather(PlayState* play, Player* this) {
+    f32 effectsScale;
+    Vec3f effectsPos;
+    s16 fallStartHeight = this->fallStartHeight;
+
+    if (sComboRocsUseCount >= COMBO_ROCS_MAX_USES) {
+        return;
+    }
+    sComboRocsUseCount++;
+
+    func_80834D50(play, this, COMBO_OOT_ANIM("gPlayerAnim_link_rocs_feather_jump"), 5.8f, NA_SE_NONE);
+    Player_AnimSfx_PlayFloorJump(this);
+    this->fallStartHeight = fallStartHeight;
+
+    // SoH: stops a landing animation morph.
+    this->av2.actionVar2 = 1;
+
+    this->speedXZ = 5.0f;
+    this->actor.world.rot.y = this->yaw = this->actor.shape.rot.y;
+
+    if (Combo_MM_AdultBodyActive(&this->actor)) {
+        this->actor.velocity.y = 7.5f;
+        effectsScale = 1.5f;
+    } else {
+        this->actor.velocity.y = 7.0f;
+        effectsScale = 1.0f;
+    }
+
+    effectsPos = this->actor.home.pos;
+    effectsPos.y += 3;
+    EffectSsGRipple_Spawn(play, &effectsPos, (s16)(200 * effectsScale), (s16)(300 * effectsScale), 1);
+    EffectSsGSplash_Spawn(play, &effectsPos, NULL, NULL, 0, (s16)(150 * effectsScale));
+
+    // SoH: a sidehop or backflip's hop no longer blocks grabbing a ledge.
+    this->stateFlags2 &= ~PLAYER_STATE2_80000;
+
+    Player_PlaySfx(this, NA_SE_PL_SKIP);
+}
+
 // OOT Player_Init: Nayru's Love still running carries into the new scene (MAGIC_STATE_METER_FLASH_1 + the diamond).
 void ComboOot_PlayerInit(PlayState* play, Player* this) {
     if (gSaveContext.nayrusLoveTimer != 0) {

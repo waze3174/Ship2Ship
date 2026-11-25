@@ -36,6 +36,10 @@ bool sDormantSaveChanged = false; // OOT's dormant save was changed from Termina
 extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     if (ootItem < 0 || ootItem >= ITEM_NONE)
         return 0;
+    // Any age. SoH writes this rule into gItemAgeReqs in Play_Init (z_play.c), which hasn't run yet when the file is
+    // played in Termina first; until then the table's unset entry reads adult-only.
+    if (ootItem == ITEM_ROCS_FEATHER)
+        return 1;
     if (CVarGetInteger(CVAR_CHEAT("TimelessEquipment"), 0))
         return 1;
     // OOT's masks as adult (SoH enhancement / rando "Masks as Adult"): the same switch OOT's own pause honours.
