@@ -17,7 +17,6 @@ constexpr const char* kPageNote = "These choices apply to new back-to-back files
                                   "the choices it was created with.";
 constexpr const char* kShowTooltip =
     "Offers Back to back as a choice when you make a new file. Files you already made keep working either way.";
-constexpr const char* kUnfinishedNote = "This mode is unfinished. A file made now may not match the finished mode.";
 constexpr const char* kMasterQuestTooltip =
     "Ocarina of Time's half of a new back-to-back file plays Master Quest. Fixed when the file is created.";
 constexpr const char* kMasterQuestUnavailable =
@@ -48,9 +47,9 @@ void SaveSettingsNextFrame() {
 }
 
 void DrawShowSetting() {
-    bool show = CVarGetInteger(kBackToBackShowCVar, 0) != 0;
+    bool show = CVarGetInteger(kBackToBackShowCVar, kBackToBackShowDefault) != 0;
     ComboMenu_PushCheckbox(ComboMenu_ThemeColor());
-    if (ImGui::Checkbox("Show Back to back on the file select (unfinished)", &show)) {
+    if (ImGui::Checkbox("Show Back to back on the file select", &show)) {
         CVarSetInteger(kBackToBackShowCVar, show ? 1 : 0);
         SaveSettingsNextFrame();
     }
@@ -58,7 +57,6 @@ void DrawShowSetting() {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", kShowTooltip);
     }
-    DrawHintText(kUnfinishedNote);
 }
 
 // The setting is only offered when the archive is there; with it missing the box shows unchecked and the stored value

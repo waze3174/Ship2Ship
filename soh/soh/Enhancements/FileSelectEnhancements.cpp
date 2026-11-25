@@ -85,10 +85,10 @@ std::array<std::string, LANGUAGE_MAX> RandomizerSettingsMenuText[RSM_MAX] = {
 // Quests are hidden when their O2R is missing or their File Select "Hide" option is on
 bool SohFileSelect_IsQuestHidden(u8 quest) {
 #ifdef COMBO_BUILD
-    // ComboShip: Randomizer and Majora's Mask are always offered, both games back to back only while its switch is on
-    // (the mode is unfinished), Boss Rush and Speedrun never, Normal and Master Quest as vanilla.
+    // ComboShip: Randomizer and Majora's Mask are always offered, both games back to back unless its switch is off,
+    // Boss Rush and Speedrun never, Normal and Master Quest as vanilla.
     if (quest == QUEST_COMBO_BACK2BACK) {
-        return CVarGetInteger(ComboRando::kBackToBackShowCVar, 0) == 0;
+        return CVarGetInteger(ComboRando::kBackToBackShowCVar, ComboRando::kBackToBackShowDefault) == 0;
     }
     if (quest == QUEST_RANDOMIZER || quest == QUEST_COMBO_MM) {
         return false;

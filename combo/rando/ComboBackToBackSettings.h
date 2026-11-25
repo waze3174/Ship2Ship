@@ -11,9 +11,10 @@ namespace ComboRando {
 // 1: a new back-to-back file plays Ocarina of Time's Master Quest, when oot-mq.o2r is loaded. 0 or unset: Normal Quest.
 inline constexpr const char* kBackToBackMasterQuestCVar = "gCombo.BackToBack.MasterQuest";
 
-// 1: the file select offers the back-to-back entry for new files. 0 or unset: it is hidden (the mode is unfinished).
-// Slots that already exist load and show their badge either way; only the new-file choice is hidden.
+// 1 or unset: the file select offers the back-to-back entry for new files. 0: it is hidden. Slots that already exist
+// load and show their badge either way; only the new-file choice is hidden.
 inline constexpr const char* kBackToBackShowCVar = "gCombo.BackToBack.Show";
+inline constexpr int kBackToBackShowDefault = 1;
 
 namespace BackToBack {
 
