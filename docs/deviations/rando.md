@@ -2576,6 +2576,13 @@ Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and gra
   owns that item, and otherwise keeps what that button had. OOT captures its layout at the switch door (its
   save context is gone when the launcher asks). Verified headless: OOT bombs on C-left show on MM's C-left after
   crossing; an OOT-only item (Ruto's Letter) on D-up is left out.
+- **Only a crossing carries it (2026-11-25, playtest #19):** a save loaded from file select keeps the buttons it
+  was saved with. Before, `Combo_HandOffToMM` pushed OOT's layout on every MM entry, file loads included: loading
+  a slot last saved in MM read OOT's just-loaded save (`SOH_GetComboButtons` falls back to the live save when no
+  door capture is pending) and MM applied it on its first frame, so MM's C buttons and D-pad always came back as
+  OOT's. Now the launcher marks a file-select resume (`g_PendingMMEntryIsSaveLoad`) and sends MM no layout then.
+  A reset or owl-save quit ends on OOT's file select, so `Combo_HandOffToOot` sends OOT no layout either; before,
+  MM's layout waited there and landed on the next slot to start in OOT.
 
 ## MM transformations in Hyrule, Goron body (B-M6a, 2026-11-12)
 

@@ -2288,6 +2288,8 @@ static int ComboRandRange(int minV, int maxV) {
 }
 
 static int g_PendingMMFileNum = -1;
+// The pending MM entry is a save loaded from file select, not Link crossing from Hyrule.
+static bool g_PendingMMEntryIsSaveLoad = false;
 
 // ComboShip: write a seed's spoiler under its own hash-icon name. Returns the path (empty on failure).
 // Worker-safe: pointing the CVar at it is a separate main-thread step (RememberComboSpoiler).
@@ -3795,6 +3797,7 @@ static void Combo_ResumeMMIfLastSavedThere(int fileNum) {
     if (MM_SetComboEntryIsResume)
         MM_SetComboEntryIsResume(1); // a real save load: honors MM's Remember Save Location
     g_PendingMMFileNum = fileNum;
+    g_PendingMMEntryIsSaveLoad = true;
     SOH_ParkForComboMMResume(); // drops out of OOT's game loop; the launcher then enters MM
 }
 
@@ -3803,6 +3806,7 @@ static void Combo_OnOOTSceneSwitch(int fileNum) {
     if (MM_SetComboEntryIsResume)
         MM_SetComboEntryIsResume(0); // portal entry: always arrives in South Clock Town
     g_PendingMMFileNum = fileNum;
+    g_PendingMMEntryIsSaveLoad = false;
     // OOT game loop is already exiting (gGameState->running = false set by the hook).
 }
 
@@ -3825,24 +3829,27 @@ static void Combo_HandOffToMM(int fileNum) {
     Combo_HandoffSharedHealth(ComboRando::GAME_OOT, ComboRando::GAME_MM, fileNum);
     if (SOH_GetComboMask && MM_SetComboMask)
         MM_SetComboMask(SOH_GetComboMask()); // the mask Link wore through the door stays on
-    if (SOH_GetComboButtons && MM_SetComboButtons)
-        MM_SetComboButtons(SOH_GetComboButtons());
+    // The button layout travels only with Link. A save loaded from file select keeps the buttons MM saved: OOT's
+    // layout, applied on MM's first frame, would replace them.
+    if (MM_SetComboButtons)
+        MM_SetComboButtons((SOH_GetComboButtons && !g_PendingMMEntryIsSaveLoad) ? SOH_GetComboButtons() : "");
 }
+
+// Why MM handed control back: 0 = portal, 1 = Ctrl+R reset, 2 = owl-save quit (see BenPort.cpp).
+static int g_mmReturnKind = 0;
 
 static void Combo_HandOffToOot() {
     if (g_activeMode.IsVanillaMm())
         return;
-    if (MM_GetComboButtons && SOH_SetComboButtons)
-        SOH_SetComboButtons(MM_GetComboButtons()); // shared button layout back into Hyrule
+    // A reset or owl-save quit ends on OOT's file select: a layout pushed then would land on the next slot loaded.
+    if (SOH_SetComboButtons)
+        SOH_SetComboButtons((MM_GetComboButtons && (g_mmReturnKind == 0)) ? MM_GetComboButtons() : "");
     if (MM_GetComboForm && SOH_SetComboForm)
         SOH_SetComboForm(MM_GetComboForm()); // the form Link had in Termina comes back with him
     Combo_HandoffSharedHealth(ComboRando::GAME_MM, ComboRando::GAME_OOT, g_comboCompletionSlot);
     if (MM_GetComboMask && SOH_SetComboMask)
         SOH_SetComboMask(MM_GetComboMask()); // the mask Link wore in Termina stays on
 }
-
-// Why MM handed control back: 0 = portal, 1 = Ctrl+R reset, 2 = owl-save quit (see BenPort.cpp).
-static int g_mmReturnKind = 0;
 
 static void Combo_OnMMReturn(int kind) {
     g_mmReturnKind = kind;
