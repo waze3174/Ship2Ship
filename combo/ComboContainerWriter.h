@@ -257,7 +257,9 @@ class Writer {
             try {
                 result = WriteContainerFile(snapshot.path, snapshot.text);
             } catch (const std::exception& e) {
-                result.error = std::string("writing save container ") + snapshot.path.string() + " threw: " + e.what();
+                // Named by its slot: path.string() throws on Windows for a folder name outside the code page, and an
+                // exception that leaves this thread ends the process.
+                result.error = "writing the save container of slot " + std::to_string(slot) + " threw: " + e.what();
                 std::cerr << "[ComboShip] ERROR: " << result.error << " — THIS SLOT IS NOT BEING SAVED." << std::endl;
             }
             const auto done = Clock::now();
