@@ -108,6 +108,12 @@ int Combo_BlastMaskCooldown(void);
 int Combo_PauseForeignHostItem(int item);
 // 1 when OOT's age rule for that OOT item lets Link use the MM item now (1 for an item OOT's code doesn't run).
 int Combo_PauseForeignAgeOk(int item);
+// 1 when OOT's age rule lets Link at `age` (LINK_AGE_*) use what a button holds: an OOT item by its own rule, an MM
+// item by the rule of the OOT item that runs it, and 1 for anything the rule doesn't cover.
+int Combo_PauseItemAgeOk(int item, int age);
+// 1 while no age rule applies to either Link's items: the seed's "Both Links use every item" (Unified Inventory),
+// SoH's Timeless Equipment, or the Unrestricted Items cheat (gCheats.NoRestrictItems / gCheats.UnrestrictedItems).
+int Combo_AgeRulesLifted(void);
 int Combo_PauseLiveMmItem(int item);                         // the MM item id a foreign id names right now, -1 = none
 int Combo_PauseForeignBottleAction(int item);                // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
 int Combo_PauseIsForeignBottle(int item);                    // any MM bottle (OOT's bottle button rules apply)

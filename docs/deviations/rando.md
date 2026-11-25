@@ -2598,6 +2598,29 @@ Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and gra
   reset or owl-save quit, OOT gets the human form and no mask instead of MM's. Age and tunic still come from OOT on
   every entry. OOT's own save now keeps the form too (see "Form travels with Link" below), so a reset or owl-save
   quit no longer leaves MM's form on the next OOT slot.
+- **OOT's age rule holds on Hyrule's buttons (2026-11-25, playtest #21):** the owner equipped MM's bow in Termina and
+  child Link could use it back in Hyrule. The layout's `bow` key resolved to OOT's own `ITEM_BOW`, and OOT checks an
+  item's age only in its pause menu, not on use, so nothing stopped him. Vanilla OOT never puts such an item on a
+  button: its pause menu refuses it, and its age swap trades whole button sets.
+  - **Rule:** `Combo_PauseItemAgeOk` (ComboPause.cpp) is OOT's `CHECK_AGE_REQ_ITEM` for what a button holds. An MM item
+    is judged as the OOT item that runs it (`Combo_PauseForeignHostItem`: bow, hookshot as Longshot, sticks, beans...).
+    MM items with no Hyrule twin (MM's magic arrows, masks, the Pictograph Box) have no age rule.
+  - **Where it runs** (`KeepAgeRule`, ComboEquipShare.cpp; randomizer saves only): on the C buttons and the D-pad
+    after a crossing's layout is applied, and on the first Play frame after every save load (a save made by an older
+    build loses an item it can't use).
+  - **A refused button** goes back to what OOT's save had there before the crossing. That needs Link to be able to
+    use it, still hold it, and not have it on another button; otherwise the button is emptied. The log line is
+    "OOT's age rule takes item XX off button N".
+  - **Lifted** (`Combo_AgeRulesLifted`, read on every call; owner 2026-11-25: "all these rules ... should not apply
+    with the 'both links use every item' or unrestricted items cheat"): the seed's "Both Links use every item"
+    (Unified Inventory: menu CVar `gCombo.Rando.UnifiedInventory`, seed key `unifiedInventory`, live flag
+    `gComboUnifiedInventory`), SoH's Timeless Equipment (`gCheats.TimelessEquipment`), and the Unrestricted Items
+    cheat of either game (`gCheats.NoRestrictItems` for OOT, `gCheats.UnrestrictedItems` for 2S2H; linked in Both
+    games). Masks as Adult lifts it for OOT's masks. The same switches lift the use-time refusal of MM items in
+    Hyrule (`Combo_PauseForeignAgeOk`) and OOT's age rule for OOT items in Termina (`SOH_ComboTermina_ItemAgeOk`,
+    which ignored Unified Inventory before).
+  - **Not changed:** Termina still greys and refuses an OOT item Link's age can't use rather than taking it off the
+    button (MM's own rule for restricted items).
 
 ## MM transformations in Hyrule, Goron body (B-M6a, 2026-11-12)
 

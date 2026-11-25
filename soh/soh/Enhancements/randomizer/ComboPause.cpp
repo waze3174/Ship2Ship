@@ -28,6 +28,7 @@
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include "soh/ShipInit.hpp"
+#include "soh/cvar_prefixes.h"
 
 extern "C" {
 #include <soh_assets.h>
@@ -47,6 +48,7 @@ int Combo_GamesSolo(void);                     // OTRGlobals.cpp
 extern s16 gComboBlastMaskTimer;               // z_player_lib.c: MM blastMaskTimer for the Blast Mask in Hyrule
 int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap); // ComboSharedHealth.cpp: MM's bag with shared consumables
 int Combo_SharedMmAmmoSpend(int kind, int change, int mmCount); // ComboSharedHealth.cpp: spend it, 0 = sharing off
+extern int gComboUnifiedInventory; // ComboUnifiedInventory.cpp: the loaded seed's "Both Links use every item"
 }
 
 namespace {
@@ -568,18 +570,32 @@ extern "C" int Combo_PauseForeignHostItem(int item) {
     }
 }
 
-// OOT's age rule for the OOT item that runs an MM item (z_kaleido_scope.h CHECK_AGE_REQ_ITEM, so Timeless Equipment and
-// Unified Inventory lift it as they do for OOT's own). OOT's pause greys its own items out by it; an MM item comes from
-// the Termina face, which knows no ages, so Player_UseItem refuses it there instead.
-extern "C" int Combo_PauseForeignAgeOk(int item) {
-    constexpr u8 kAgeReqNone = 9; // z_kaleido_scope.h AGE_REQ_NONE
-    const int oot = Combo_PauseForeignHostItem(item);
-    if (oot == ITEM_NONE) {
+namespace {
+constexpr const char* kMmUnrestrictedItemsCVar = "gCheats.UnrestrictedItems"; // 2S2H's, linked to OOT's in Both games
+} // namespace
+
+// Owner 2026-11-25: with these on, no age rule keeps an item from either Link. Read on every call.
+extern "C" int Combo_AgeRulesLifted(void) {
+    return gComboUnifiedInventory || CVarGetInteger(CVAR_CHEAT("TimelessEquipment"), 0) ||
+           CVarGetInteger(CVAR_CHEAT("NoRestrictItems"), 0) || CVarGetInteger(kMmUnrestrictedItemsCVar, 0);
+}
+
+// OOT's age rule (z_kaleido_scope.h CHECK_AGE_REQ_ITEM, so Masks as Adult lifts it for masks as it does for OOT's own)
+// for an item on a button, for Link at `age`: an MM item is judged as the OOT item that runs it. OOT's pause greys its
+// own items out by it; an MM item comes from the Termina face, which knows no ages, so Player_UseItem refuses it.
+extern "C" int Combo_PauseItemAgeOk(int item, int age) {
+    constexpr u8 kAgeReqNone = 9;                       // z_kaleido_scope.h AGE_REQ_NONE
+    constexpr int kLastAgeRuledItem = ITEM_SWORD_KNIFE; // gItemAgeReqs lists up to here; later entries read adult-only
+    const int oot = Combo_PauseIsForeign(item) ? Combo_PauseForeignHostItem(item) : item;
+    if ((oot < 0) || (oot > kLastAgeRuledItem) || Combo_AgeRulesLifted()) {
         return 1;
     }
     const u8 req = gItemAgeReqs[oot];
-    return GameInteractor_Should(VB_ITEM_MEETS_AGE_REQ, (req == kAgeReqNone) || (req == gSaveContext.linkAge), oot) ? 1
-                                                                                                                    : 0;
+    return GameInteractor_Should(VB_ITEM_MEETS_AGE_REQ, (req == kAgeReqNone) || (req == age), oot) ? 1 : 0;
+}
+
+extern "C" int Combo_PauseForeignAgeOk(int item) {
+    return Combo_PauseItemAgeOk(item, gSaveContext.linkAge);
 }
 
 // ---- MM bottles in Hyrule ---------------------------------------------------------------------------------------

@@ -11,6 +11,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #include "ComboExport.h"
+#include "ComboPause.h"
 #include "soh/cvar_prefixes.h"
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/AdultMasks.h"
@@ -31,8 +32,9 @@ bool SaveResident() {
 bool sDormantSaveChanged = false; // OOT's dormant save was changed from Termina and not yet written
 } // namespace
 
-// OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), with SoH's Timeless
-// Equipment cheat honoured exactly as OOT honours it (VB_ITEM_MEETS_AGE_REQ). adult: Link's age in Termina.
+// OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), lifted by the same
+// switches as in Hyrule (Combo_AgeRulesLifted: Unified Inventory, Timeless Equipment, Unrestricted Items) and by
+// Masks as Adult for masks. adult: Link's age in Termina.
 extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     if (ootItem < 0 || ootItem >= ITEM_NONE)
         return 0;
@@ -40,7 +42,7 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     // played in Termina first; until then the table's unset entry reads adult-only.
     if (ootItem == ITEM_ROCS_FEATHER)
         return 1;
-    if (CVarGetInteger(CVAR_CHEAT("TimelessEquipment"), 0))
+    if (Combo_AgeRulesLifted())
         return 1;
     // OOT's masks as adult (SoH enhancement / rando "Masks as Adult"): the same switch OOT's own pause honours.
     if ((ootItem >= ITEM_MASK_KEATON) && (ootItem <= ITEM_MASK_TRUTH) && Ship_MasksEquippableAsAdult())
