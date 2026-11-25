@@ -182,12 +182,21 @@ void GiveCheckItem(RandomizerCheck rc, RandomizerGet placed) {
     ReleaseNative(rc);
 }
 
+// Collected the way the tracker marks a pickup (CheckTracker::SetCheckCollected): a row the player had skipped is no
+// longer skipped, or it would keep its un-skip button.
+void MarkCollected(Rando::ItemLocation* location) {
+    location->SetCheckStatus(RCSHOW_COLLECTED);
+    if (location->GetIsSkipped()) {
+        location->SetIsSkipped(false);
+    }
+}
+
 // The check is marked first, so nothing can queue it again, and its world pickup is spent whatever it held. A trap is
 // collected and never sprung. Returns whether the world pickup could be spent.
 bool ReleaseCheck(RandomizerCheck rc) {
     Rando::ItemLocation* location = Rando::Context::GetInstance()->GetItemLocation(rc);
     const RandomizerGet placed = location->GetPlacedRandomizerGet();
-    location->SetCheckStatus(RCSHOW_COLLECTED);
+    MarkCollected(location);
     const bool worldPickupSpent = SpendWorldPickup(rc);
     GiveCheckItem(rc, placed);
     return worldPickupSpent;
@@ -209,6 +218,26 @@ std::vector<RandomizerCheck> ReleaseAll() {
     return released;
 }
 
+// A row the tracker shows and counts without it being a check to release, such as a shop's unshuffled slots under
+// shopsanity, is marked collected as well, so the released game's totals come out full. It has no item and no flag.
+int MarkShownRowsCollected() {
+    int marked = 0;
+    for (const Rando::Location& location : Rando::StaticData::GetLocationTable()) {
+        const RandomizerCheck rc = location.GetRandomizerCheck();
+        if (rc == RC_UNKNOWN_CHECK || rc == RC_MAX || rc == OOT_GetQueuedDrawCheck() ||
+            !CheckTracker::IsVisibleInCheckTracker(rc)) {
+            continue;
+        }
+        Rando::ItemLocation* itemLocation = Rando::Context::GetInstance()->GetItemLocation(rc);
+        if (itemLocation->HasObtained()) {
+            continue;
+        }
+        MarkCollected(itemLocation);
+        ++marked;
+    }
+    return marked;
+}
+
 } // namespace
 
 extern "C" COMBO_EXPORT int SOH_ComboReleaseOnBossKillEnabled(void) {
@@ -222,9 +251,11 @@ extern "C" COMBO_EXPORT int SOH_ReleaseRemainingChecks(void) try {
         return ComboRelease::kCannotRelease;
     }
     std::vector<RandomizerCheck> released;
+    int shownRows = 0;
     {
         SaveBatch saveBatch;
         released = ReleaseAll();
+        shownRows = MarkShownRowsCollected();
         CheckTracker::SpoilAreasFromChecks(released);
         CheckTracker::RecalculateAllAreaTotals();
         CheckTracker::RecalculateAvailableChecks();
@@ -235,7 +266,8 @@ extern "C" COMBO_EXPORT int SOH_ReleaseRemainingChecks(void) try {
     }
     const int count = static_cast<int>(released.size());
     Notification::Emit({ .message = ComboRelease::ReleasedMessage(count), .suffix = ComboRelease::kOotName });
-    SPDLOG_INFO("[ComboShip] SOH_ReleaseRemainingChecks: released {} checks", count);
+    SPDLOG_INFO("[ComboShip] SOH_ReleaseRemainingChecks: released {} checks, marked {} more tracker rows collected",
+                count, shownRows);
     return count;
 } catch (const std::exception& e) {
     SPDLOG_ERROR("[ComboShip] SOH_ReleaseRemainingChecks threw: {}", e.what());

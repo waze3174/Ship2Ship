@@ -101,6 +101,10 @@ extern "C" COMBO_EXPORT int MM_ReleaseRemainingChecks(void) try {
             ReleaseCheck(rc);
             ++released;
         }
+        // The batch writes only a save something asked for, and a trap or an Ocarina of Time item asks for none.
+        if (released > 0) {
+            SaveManager_SaveCurrentForCombo();
+        }
     }
     Notification::Emit({ .message = ComboRelease::ReleasedMessage(released), .suffix = ComboRelease::kMmName });
     SPDLOG_INFO("[ComboShip] MM_ReleaseRemainingChecks: released {} checks", released);

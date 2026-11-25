@@ -3111,13 +3111,24 @@ is re-collectible for junk like any check collected normally; actors that test `
 rest of `ActorBehavior/`) see it spent this cycle, as set by the release. A released MM trap re-collected in the world
 springs once more, as any collected trap does.
 
-**The tracker.** OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
-`RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. MM's tracker reads `RANDO_SAVE_CHECKS` live.
+**The tracker.** Every row of the released game's tracker counts as collected afterwards, traps and checks with no world
+flag included.
+- OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
+  `RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. The area and total counts count
+  `HasObtained()` (`RCSHOW_COLLECTED` or `RCSHOW_SAVED`) or skipped, and the release's own save turns `RCSHOW_COLLECTED`
+  into `RCSHOW_SAVED` on disk (`SaveTrackerData` with `fullSave`), so the counts hold after a reload whether or not the
+  check has a world flag. A released check the player had skipped is unskipped, as `SetCheckCollected` does for a pickup.
+- OoT rows the tracker shows and counts that are no check to release, the unshuffled shop slots under shopsanity
+  (`IsVisibleInCheckTracker` shows them, `IsCheckShuffled` does not), are marked `RCSHOW_COLLECTED` too, status only
+  (`MarkShownRowsCollected`). The check the item queue is giving is left to it.
+- MM's tracker reads `RANDO_SAVE_CHECKS` live and counts `obtained || skipped` over the shuffled checks.
 
 **Saves.** Each game opens its save batch for the loop (`SOH_ComboSaveBatchBegin/End` through `SaveBatch`, MM's
 `ComboSaveBatch`), and the launcher holds both games' batches open around the call (`SaveBatchGuard`, now shared with
 the shared-items pass), so the cross-game deliveries write each save once as well: one container write per game for
-100+ checks. The OoT area spoils of released maps are folded into that save.
+100+ checks. The OoT area spoils of released maps are folded into that save. MM's batch writes only a save something
+asked for, and a released trap or Ocarina of Time item asks for none, so `MM_ReleaseRemainingChecks` asks for one itself
+whenever it released anything.
 
 **Notification.** One, from the released game: "Released 143 checks from Ocarina of Time" (or "Majora's Mask"), through
 the existing `Notification::Emit` both games have.
