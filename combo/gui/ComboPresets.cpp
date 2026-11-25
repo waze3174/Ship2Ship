@@ -52,6 +52,17 @@ constexpr const char* kReservedPortPrefixes[] = {
 constexpr size_t kPortPrefixLength = 3;
 constexpr size_t kReservedPortNameLength = kPortPrefixLength + 1;
 
+// Settings the 0.2.0 merge renamed; a preset saved before it still holds the old key.
+struct RenamedKey {
+    const char* oldKey;
+    const char* newKey;
+};
+constexpr RenamedKey kRenamedKeys[] = {
+    { "gRandoSettings.SleepingWaterfall", "gRandoSettings.SleeplessWaterfall" },
+    { "gEnhancements.TimeSavers.SleepingWaterfall", "gEnhancements.TimeSavers.SleeplessWaterfall" },
+    { "gEnhancements.Equipment.GreatFairySwordBButton", "gEnhancements.Equipment.ActiveItemOnB" },
+};
+
 // ASCII only on purpose: std::filesystem::path from a narrow string is the ANSI code page on Windows.
 bool IsAllowedNameChar(char c) {
     const unsigned char u = static_cast<unsigned char>(c);
@@ -79,6 +90,13 @@ bool IsReservedDeviceName(const std::string& name) {
     const bool isDevice = std::find(std::begin(kReservedDeviceNames), std::end(kReservedDeviceNames), stem) !=
                           std::end(kReservedDeviceNames);
     return isDevice || IsReservedPortName(stem);
+}
+
+// The key a preset entry is applied under: the new name for a renamed setting, the key itself otherwise.
+std::string CurrentKey(const std::string& key) {
+    const auto renamed = std::find_if(std::begin(kRenamedKeys), std::end(kRenamedKeys),
+                                      [&](const RenamedKey& entry) { return key == entry.oldKey; });
+    return renamed != std::end(kRenamedKeys) ? renamed->newKey : key;
 }
 
 std::filesystem::path PresetPath(const std::string& name) {
@@ -162,9 +180,12 @@ std::string Load(const std::string& name, Leaves& out) {
         return kMsgPresetNewer;
     }
     out.clear();
-    for (auto& [key, value] : doc[kSettingsKey].items()) {
-        if (ComboPresetScope::IsPresetKey(key)) {
-            out[key] = value;
+    const nlohmann::json& settings = doc[kSettingsKey];
+    for (auto& [key, value] : settings.items()) {
+        const std::string current = CurrentKey(key);
+        const bool newKeyPresent = current != key && settings.contains(current);
+        if (!newKeyPresent && ComboPresetScope::IsPresetKey(current)) {
+            out[current] = value;
         }
     }
     return "";
