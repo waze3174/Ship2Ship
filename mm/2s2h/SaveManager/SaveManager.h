@@ -7,9 +7,34 @@
 #include <filesystem>
 #include <nlohmann/json.hpp>
 #ifdef COMBO_BUILD
+#include "ComboSaveTiming.h"    // ComboShip: launcher IO stats for the opt-in save-timing log
 #include "rando/CrossForeign.h" // ComboShip: merged-save IO callback typedefs
 // ComboShip: register the launcher's .combosav IO callbacks (routes file{N}.json IO into the container).
 void SaveManager_SetComboSaveIO(ComboRando::FnComboReadSave r, ComboRando::FnComboWriteSave w);
+void SaveManager_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStats get);
+// ComboShip: one write for the live saves that one pickup or one shared-items pass asks for. Between Begin and the
+// matching End, SaveManager_SaveCurrentForCombo only marks a save as owed, and the outermost End writes it with the
+// state as it is then. Batches nest. Game thread only.
+void SaveManager_ComboSaveBatchBegin();
+void SaveManager_ComboSaveBatchEnd();
+class ComboSaveBatch {
+  public:
+    ComboSaveBatch() {
+        SaveManager_ComboSaveBatchBegin();
+    }
+    ~ComboSaveBatch() {
+        SaveManager_ComboSaveBatchEnd();
+    }
+    ComboSaveBatch(const ComboSaveBatch&) = delete;
+    ComboSaveBatch& operator=(const ComboSaveBatch&) = delete;
+};
+// The live saves asked for and written since the previous call, for the opt-in frame-hitch log line.
+struct ComboFrameSaves {
+    int asked = 0;
+    int written = 0;
+    double ms = 0.0;
+};
+ComboFrameSaves SaveManager_ComboTakeFrameSaves();
 #endif
 std::string SaveManager_GetFileName(int fileNum, bool isBackup = false);
 bool SaveManager_HandleFileDropped(char* filePath);

@@ -1161,6 +1161,24 @@ bool VerifyArchiveVersion(ArchiveVersion version) {
     return version.major != INT16_MAX && version.major != gBuildVersionMajor;
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: opt-in (ComboSaveTiming::kCVar). Logs an MM game frame that ran long, with the live saves made since the
+// previous frame, so one capture shows whether a hitch came from a save or from something else.
+static void Combo_MM_ReportFrameHitch(double reconcileMs) {
+    static ComboSaveTiming::Stopwatch sSinceLastFrame;
+    const double frameMs = sSinceLastFrame.Lap();
+    const ComboFrameSaves saves = SaveManager_ComboTakeFrameSaves();
+    if (frameMs < ComboSaveTiming::kFrameHitchMs || frameMs >= ComboSaveTiming::kFrameHitchMaxMs ||
+        !CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+        return;
+    }
+    SPDLOG_INFO("[ComboShip] save timing: MM frame took {:.0f} ms (scene {}); live saves asked {}, written {} "
+                "({:.1f} ms); shared reconcile {:.1f} ms",
+                frameMs, (gPlayState != nullptr) ? (int)gPlayState->sceneId : -1, saves.asked, saves.written, saves.ms,
+                reconcileMs);
+}
+#endif
+
 extern "C" void InitOTR(int argc, char* argv[]) {
     OTRGlobals::Instance = new OTRGlobals();
     OTRGlobals::Instance->RunExtract(argc, argv);
@@ -1230,14 +1248,16 @@ extern "C" void InitOTR(int argc, char* argv[]) {
     });
     // Shared Items: per-frame drain seam. Always-on (not Anchor-gated) so it also runs solo.
     GameInteractor::Instance->RegisterGameHook<GameInteractor::OnGameStateUpdate>([]() {
+        double reconcileMs = 0.0;
         if (gMMComboSharedTick) {
             ComboSaveTiming::Stopwatch timer;
             gMMComboSharedTick();
-            const double ms = timer.TotalMs();
-            if (ms >= ComboSaveTiming::kSlowCallMs && CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
-                SPDLOG_INFO("[ComboShip] save timing: shared reconcile in MM took {:.1f} ms", ms);
+            reconcileMs = timer.TotalMs();
+            if (reconcileMs >= ComboSaveTiming::kSlowCallMs && CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+                SPDLOG_INFO("[ComboShip] save timing: shared reconcile in MM took {:.1f} ms", reconcileMs);
             }
         }
+        Combo_MM_ReportFrameHitch(reconcileMs);
     });
 #endif
     Rando::Init();
@@ -3127,6 +3147,10 @@ extern "C" COMBO_EXPORT void MM_SetComboSaveIO(ComboRando::FnComboReadSave r, Co
     SaveManager_SetComboSaveIO(r, w);
 }
 
+extern "C" COMBO_EXPORT void MM_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStats get) {
+    SaveManager_SetContainerIoStatsGetter(get);
+}
+
 // ComboShip: receive the consolidated combo spoiler (foreign map + cross-hints), pushed once per
 // save-load; store the blob and invalidate MM's lookup caches so they rebuild from it. Idempotent.
 namespace Rando::Entrances {
@@ -4629,6 +4653,13 @@ extern "C" COMBO_EXPORT void MM_SetSharedChangedCb(void (*cb)(int, int)) {
 extern "C" void (*gMMComboSharedTick)(void) = nullptr;
 extern "C" COMBO_EXPORT void MM_SetSharedTickCb(void (*cb)(void)) {
     gMMComboSharedTick = cb;
+}
+// The launcher brackets each reconcile pass with these, so the saves its raises ask for become one write.
+extern "C" COMBO_EXPORT void MM_ComboSaveBatchBegin(void) {
+    SaveManager_ComboSaveBatchBegin();
+}
+extern "C" COMBO_EXPORT void MM_ComboSaveBatchEnd(void) {
+    SaveManager_ComboSaveBatchEnd(); // catches the write's own failure, so nothing crosses the C ABI
 }
 
 extern "C" COMBO_EXPORT int MM_GetTriforcePieceCount(void) {

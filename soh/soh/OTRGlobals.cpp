@@ -3517,11 +3517,38 @@ static void Combo_GiveResolvedOOT(const GetItemEntry& gie) {
     }
 }
 
+// Between SOH_ComboSaveBatchBegin and the matching End (the launcher wraps each shared-items reconcile pass in them),
+// Combo_PersistOOT only marks a save as owed, and the outermost End writes it once. Game thread only.
+static int sComboSaveBatchDepth = 0;
+static bool sComboSaveOwed = false;
+
 static void Combo_PersistOOT() {
+    if (sComboSaveBatchDepth > 0) {
+        sComboSaveOwed = true;
+        return;
+    }
     if (SaveManager::Instance && gSaveContext.fileNum != 0xFF) {
         SaveManager::Instance->SaveFile(gSaveContext.fileNum);
     }
 }
+
+extern "C" COMBO_EXPORT void SOH_ComboSaveBatchBegin(void) {
+    ++sComboSaveBatchDepth;
+}
+
+extern "C" COMBO_EXPORT void SOH_ComboSaveBatchEnd(void) try {
+    if (sComboSaveBatchDepth <= 0) {
+        SPDLOG_ERROR("[ComboShip] SOH_ComboSaveBatchEnd without a matching Begin");
+        return;
+    }
+    if (--sComboSaveBatchDepth > 0 || !sComboSaveOwed) {
+        return;
+    }
+    sComboSaveOwed = false;
+    Combo_PersistOOT();
+} catch (const std::exception& e) {
+    SPDLOG_ERROR("[ComboShip] SOH_ComboSaveBatchEnd: the owed save threw: {}", e.what());
+} catch (...) { SPDLOG_ERROR("[ComboShip] SOH_ComboSaveBatchEnd: the owed save threw a non-std exception"); }
 
 // ComboShip: a cross-game grant is persisted at once, so it survives quitting before a switch into OOT.
 static void Combo_GrantResolvedOOT(const GetItemEntry& gie) {
