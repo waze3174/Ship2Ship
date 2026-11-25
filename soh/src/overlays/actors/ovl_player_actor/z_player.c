@@ -10971,6 +10971,27 @@ typedef struct {
 } ComboGoronRoll;
 static ComboGoronRoll sRoll;
 
+// 2S2H's Goron rolling option "Spikes Require Shield" (mm/2s2h/Enhancements/Masks/GoronRollingIgnoresMagic.cpp,
+// gEnhancements.Masks.GoronRollingSpikesRequireShield, MM's own setting, read in Hyrule too).
+static s32 Combo_GoronSpikesRequireR(void) {
+    return CVarGetInteger("gEnhancements.Masks.GoronRollingSpikesRequireShield", 0);
+}
+
+// MM VB_GORON_ROLL_DISABLE_SPIKE_MODE: the spikes retract.
+static s32 Combo_GoronSpikesRetract(void) {
+    s32 retract = !CHECK_BTN_ALL(sControlInput->cur.button, BTN_A) || (gSaveContext.magic == 0) ||
+                  ((sRoll.av1 == 4) && (sRoll.b08 < 12.0f));
+
+    return retract || (Combo_GoronSpikesRequireR() && !CHECK_BTN_ALL(sControlInput->cur.button, BTN_R));
+}
+
+// MM VB_GORON_ROLL_INCREASE_SPIKE_LEVEL: the spike charge keeps winding up.
+static s32 Combo_GoronSpikesCharge(void) {
+    s32 charge = (gSaveContext.magicState == MAGIC_STATE_IDLE) && (gSaveContext.magic >= 2) && (sRoll.av2 >= 0x36B0);
+
+    return charge && (!Combo_GoronSpikesRequireR() || CHECK_BTN_ALL(sControlInput->cur.button, BTN_R));
+}
+
 s32 gComboGoronBall = 0;           // 1 = draw the curled ball (z_player_lib.c / ComboForms.cpp), MM PLAYER_STATE3_1000
 s16 gComboGoronBallSpin = 0;       // MM shape.rot.x: the ball's roll
 s16 gComboGoronBallTilt = 0;       // MM shape.rot.z: banking into turns / slopes
@@ -11281,8 +11302,7 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
             } else if (sRoll.av1 > 4) {
                 sRoll.av1--;
             }
-            if (!CHECK_BTN_ALL(sControlInput->cur.button, BTN_A) || (gSaveContext.magic == 0) ||
-                ((sRoll.av1 == 4) && (sRoll.b08 < 12.0f))) {
+            if (Combo_GoronSpikesRetract()) {
                 if (Math_StepToS(&sRoll.b86[1], 0, 1)) {
                     Combo_FormSfx(this, COMBO_MM_SE_PL_GORON_BALL_CHARGE_FAILED, COMBO_SE_NONE);
                 }
@@ -11384,8 +11404,7 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                         yTgt = this->yaw;
                     }
                     if (sRoll.b86[1] == 0) {
-                        if ((gSaveContext.magicState == MAGIC_STATE_IDLE) && (gSaveContext.magic >= 2) &&
-                            (sRoll.av2 >= 0x36B0)) {
+                        if (Combo_GoronSpikesCharge()) {
                             sRoll.av1++;
                             Combo_FormSfx(this, COMBO_MM_SFX_CONTINUOUS(COMBO_MM_SE_PL_GORON_BALL_CHARGE),
                                           COMBO_SE_NONE);
