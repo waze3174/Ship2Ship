@@ -9,6 +9,9 @@
 
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboBombArrows.h" // ComboShip: 2S2H's bomb arrows on OOT's bow
+#endif
 
 u8 gAmmoItems[] = {
     ITEM_STICK,   ITEM_NUT,  ITEM_BOMB, ITEM_BOW,  ITEM_NONE, ITEM_NONE, ITEM_SLINGSHOT, ITEM_NONE,
@@ -51,6 +54,15 @@ void KaleidoScope_DrawAmmoCount(PauseContext* pauseCtx, GraphicsContext* gfxCtx,
         ammo = AMMO(item);
     }
 
+#ifdef COMBO_BUILD
+    // ComboShip: the bomb slot showing bomb arrows counts what a shot spends both of.
+    s32 comboBombArrowFull = false;
+    const s32 comboBombArrows = (slot == SLOT_BOMB) && (item == ITEM_BOW) && Combo_BombArrowsSlotShowsBow();
+    if (comboBombArrows) {
+        Combo_BombArrowsCount(false, &ammo, &comboBombArrowFull);
+    }
+#endif
+
     gDPPipeSync(POLY_OPA_DISP++);
 
     if (!CHECK_AGE_REQ_SLOT(SLOT(item))) {
@@ -60,12 +72,17 @@ void KaleidoScope_DrawAmmoCount(PauseContext* pauseCtx, GraphicsContext* gfxCtx,
 
         if (ammo == 0) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 130, 130, 130, pauseCtx->alpha);
-        } else if ((item == ITEM_BOMB && AMMO(item) == CUR_CAPACITY(UPG_BOMB_BAG)) ||
-                   (item == ITEM_BOW && AMMO(item) == CUR_CAPACITY(UPG_QUIVER)) ||
-                   (item == ITEM_SLINGSHOT && AMMO(item) == CUR_CAPACITY(UPG_BULLET_BAG)) ||
-                   (item == ITEM_STICK && AMMO(item) == CUR_CAPACITY(UPG_STICKS)) ||
-                   (item == ITEM_NUT && AMMO(item) == CUR_CAPACITY(UPG_NUTS)) || (item == ITEM_BOMBCHU && ammo == 50) ||
-                   (item == ITEM_BEAN && ammo == 15) || GameInteractor_Should(VB_COLOR_AMMO_GREEN, false, item)) {
+        } else if (
+#ifdef COMBO_BUILD
+            comboBombArrows ? comboBombArrowFull :
+#endif
+                            ((item == ITEM_BOMB && AMMO(item) == CUR_CAPACITY(UPG_BOMB_BAG)) ||
+                             (item == ITEM_BOW && AMMO(item) == CUR_CAPACITY(UPG_QUIVER)) ||
+                             (item == ITEM_SLINGSHOT && AMMO(item) == CUR_CAPACITY(UPG_BULLET_BAG)) ||
+                             (item == ITEM_STICK && AMMO(item) == CUR_CAPACITY(UPG_STICKS)) ||
+                             (item == ITEM_NUT && AMMO(item) == CUR_CAPACITY(UPG_NUTS)) ||
+                             (item == ITEM_BOMBCHU && ammo == 50) || (item == ITEM_BEAN && ammo == 15) ||
+                             GameInteractor_Should(VB_COLOR_AMMO_GREEN, false, item))) {
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 120, 255, 0, pauseCtx->alpha);
         }
     }
@@ -143,6 +160,16 @@ static Vtx sCycleExtraItemVtx[] = {
     VTX(16, -16, 0, 0 << 5, 32 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
     VTX(48, -16, 0, 32 << 5, 32 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
 };
+
+#ifdef COMBO_BUILD
+// ComboShip: the bomb badge over the bow (2S2H sBombOverlayVtx): 14 units, the half of a slot's 28-unit quad.
+static Vtx sBombArrowBadgeVtx[] = {
+    VTX(-7, 7, 0, 0 << 5, 0 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
+    VTX(7, 7, 0, 32 << 5, 0 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
+    VTX(-7, -7, 0, 0 << 5, 32 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
+    VTX(7, -7, 0, 32 << 5, 32 << 5, 0xFF, 0xFF, 0xFF, 0xFF),
+};
+#endif
 
 // Vertices for the circle behind the items
 static Vtx sCycleCircleVtx[] = {
@@ -333,6 +360,67 @@ void KaleidoScope_HandleItemCycleExtras(PlayState* play, u8 slot, bool canCycle,
     }
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: 2S2H's bomb arrows (ComboBombArrows.cpp). With the bow and the bombs both owned, A on the bomb slot flips
+// it between the bombs and the bow with a bomb badge; a C button or D-pad press then equips what it shows.
+static void KaleidoScope_ComboHandleBombArrowCycle(PlayState* play) {
+    if (Combo_BombArrowsCanCycle() && (play->pauseCtx.cursorSlot[PAUSE_ITEM] == SLOT_BOMB) &&
+        CHECK_BTN_ALL(play->state.input[0].press.button, BTN_A)) {
+        Audio_PlaySfxGeneral(NA_SE_SY_DECIDE, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
+                             &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+        Combo_BombArrowsToggleSlot();
+    }
+}
+
+// The badge on the middle of the bomb slot's icon while it shows the bow (MM DrawBombArrowSlotIcon), or on the preview
+// of the bow under the slot while it shows the bombs (MM DrawBombArrowCycleExtras: the preview rests 15 units below, at
+// 0.325 scale, with its icon 32 to the right of the slot's middle).
+static void KaleidoScope_ComboDrawBombArrowBadge(PlayState* play, u8 onPreview) {
+    PauseContext* pauseCtx = &play->pauseCtx;
+    Vtx* itemTopLeft = &pauseCtx->itemVtx[SLOT_BOMB * 4];
+    Vtx* itemBottomRight = &itemTopLeft[3];
+    const s16 halfX = (itemBottomRight->v.ob[0] - itemTopLeft->v.ob[0]) / 2;
+    const s16 halfY = (itemBottomRight->v.ob[1] - itemTopLeft->v.ob[1]) / 2;
+    const u8 hovered = (pauseCtx->cursorSlot[PAUSE_ITEM] == SLOT_BOMB) && (pauseCtx->pageIndex == PAUSE_ITEM) &&
+                       (pauseCtx->unk_1E4 == 0) && (pauseCtx->cursorSpecialPos == 0);
+
+    OPEN_DISPS(play->state.gfxCtx);
+
+    Matrix_Push();
+    Matrix_Translate(itemTopLeft->v.ob[0] + halfX, itemTopLeft->v.ob[1] + halfY, 0, MTXMODE_APPLY);
+    if (onPreview) {
+        Matrix_Translate(0.0f, -15.0f, 0.0f, MTXMODE_APPLY);
+        Matrix_Scale(0.325f, 0.325f, 1.0f, MTXMODE_APPLY);
+        Matrix_Translate(35.0f, 3.0f, 0.0f, MTXMODE_APPLY);
+        Matrix_Scale(16.0f / 14.0f, 16.0f / 14.0f, 1.0f, MTXMODE_APPLY);
+    } else {
+        Matrix_Translate(2.0f, 2.0f, 1.0f, MTXMODE_APPLY);
+        if (hovered) {
+            Matrix_Scale(1.1f, 1.1f, 1.0f, MTXMODE_APPLY);
+        }
+    }
+    gSPMatrix(POLY_OPA_DISP++, MATRIX_NEWMTX(play->state.gfxCtx), G_MTX_NOPUSH | G_MTX_LOAD | G_MTX_MODELVIEW);
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
+    gSPVertex(POLY_OPA_DISP++, sBombArrowBadgeVtx, 4, 0);
+    KaleidoScope_DrawQuadTextureRGBA32(play->state.gfxCtx, gItemIcons[ITEM_BOMB], 32, 32, 0);
+    Matrix_Pop();
+
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+
+// The bomb slot's cycle extras: the other face of the slot as a small preview with the A prompt (the bomb slot holds
+// the bow for this draw while it shows bomb arrows, see Combo_BombArrowsBeginSlotDraw).
+static void KaleidoScope_ComboDrawBombArrowCycle(PlayState* play) {
+    const u8 canCycle = Combo_BombArrowsCanCycle();
+    const u8 showsBow = Combo_BombArrowsSlotShowsBow();
+
+    KaleidoScope_DrawItemCycleExtras(play, SLOT_BOMB, canCycle, ITEM_NONE, showsBow ? ITEM_BOMB : ITEM_BOW);
+    if (canCycle) {
+        KaleidoScope_ComboDrawBombArrowBadge(play, !showsBow);
+    }
+}
+#endif
+
 bool CanMaskSelect() {
     if (IS_RANDO) {
         return true;
@@ -373,6 +461,7 @@ void KaleidoScope_HandleItemCycles(PlayState* play) {
 #ifdef COMBO_BUILD
     // ComboShip (shared bottles): each bottle slot cycles through the Bottle Shelf.
     Combo_HandleBottleCycles(play);
+    KaleidoScope_ComboHandleBombArrowCycle(play);
 #endif
 }
 
@@ -399,6 +488,7 @@ void KaleidoScope_DrawItemCycles(PlayState* play) {
                                      Enhancement_GetPrevNayrusItem(), Enhancement_GetNextNayrusItem());
 #ifdef COMBO_BUILD
     Combo_DrawBottleCycles(play);
+    KaleidoScope_ComboDrawBombArrowCycle(play);
 #endif
 }
 
@@ -687,6 +777,12 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
             }
 
             pauseCtx->cursorItem[PAUSE_ITEM] = cursorItem;
+#ifdef COMBO_BUILD
+            // ComboShip: the bomb slot showing bomb arrows is named for the bow.
+            if ((cursorSlot == SLOT_BOMB) && Combo_BombArrowsSlotShowsBow()) {
+                pauseCtx->cursorItem[PAUSE_ITEM] = ITEM_BOW;
+            }
+#endif
             pauseCtx->cursorSlot[PAUSE_ITEM] = cursorSlot;
 
             if (!CHECK_AGE_REQ_SLOT(cursorSlot)) {
@@ -709,9 +805,18 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
                         if (CHECK_AGE_REQ_SLOT(cursorSlot) && (cursorItem != ITEM_SOLD_OUT) &&
                             (cursorItem != ITEM_NONE)) {
                             if (GameInteractor_Should(VB_EQUIP_ITEM_TO_C_BUTTON, true, play, cursorSlot, cursorItem)) {
-                                KaleidoScope_SetupItemEquip(play, cursorItem, cursorSlot,
+                                u16 equipItem = cursorItem;
+                                u16 equipSlot = cursorSlot;
+#ifdef COMBO_BUILD
+                                // ComboShip: the bomb slot showing bomb arrows equips the bow, flagged.
+                                const s32 bombArrow = Combo_BombArrowsPickEquip(cursorSlot, &equipItem, &equipSlot);
+#endif
+                                KaleidoScope_SetupItemEquip(play, equipItem, equipSlot,
                                                             pauseCtx->itemVtx[index].v.ob[0] * 10,
                                                             pauseCtx->itemVtx[index].v.ob[1] * 10);
+#ifdef COMBO_BUILD
+                                Combo_BombArrowsEquipQueued(bombArrow);
+#endif
                             }
                         } else {
                             Audio_PlaySfxGeneral(NA_SE_SY_ERROR, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
@@ -739,6 +844,11 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
         pauseCtx->cursorColorSet = 4;
     }
 
+#ifdef COMBO_BUILD
+    // ComboShip: with the bomb slot showing bomb arrows, the bow is drawn in it (undone before the function returns).
+    Combo_BombArrowsBeginSlotDraw();
+#endif
+
     gDPSetCombineLERP(OVERLAY_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0, PRIMITIVE,
                       ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
@@ -749,7 +859,7 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 #ifdef COMBO_BUILD
             // ComboShip (merged pause menus): a foreign item's outline is on its own (MM) tab.
             !Combo_PauseIsForeign(gSaveContext.equips.buttonItems[i + 1]) &&
-            (gSaveContext.equips.cButtonSlots[i] < 24) &&
+            (gSaveContext.equips.cButtonSlots[i] < 24) && Combo_BombArrowsOutlineShown(i) &&
 #endif
             !((gSaveContext.equips.buttonItems[i + 1] >= ITEM_SHIELD_DEKU) &&
               (gSaveContext.equips.buttonItems[i + 1] <= ITEM_BOOTS_HOVER))) {
@@ -830,6 +940,10 @@ void KaleidoScope_DrawItemSelect(PlayState* play) {
 
     KaleidoScope_DrawItemCycles(play);
 
+#ifdef COMBO_BUILD
+    Combo_BombArrowsEndSlotDraw();
+#endif
+
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
@@ -837,6 +951,9 @@ void KaleidoScope_SetupItemEquip(PlayState* play, u16 item, u16 slot, s16 animX,
     Input* input = &play->state.input[0];
     PauseContext* pauseCtx = &play->pauseCtx;
     KaleidoScope_ResetItemCycling();
+#ifdef COMBO_BUILD
+    Combo_BombArrowsEquipReset(); // ComboShip: the page that queues a bomb-arrow equip says so after this call
+#endif
 
     if (CHECK_BTN_ALL(input->press.button, BTN_CLEFT)) {
         pauseCtx->equipTargetCBtn = 0;
@@ -1217,6 +1334,10 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
 
             // If the item is on another button already, swap the two
             uint16_t targetButtonIndex = pauseCtx->equipTargetCBtn + 1;
+#ifdef COMBO_BUILD
+            // ComboShip: a bomb-arrow flag travels with its bow when the swap moves it.
+            const s32 comboTargetBombArrow = Combo_BombArrowsFlag(pauseCtx->equipTargetCBtn);
+#endif
             for (uint16_t otherSlotIndex = 0; otherSlotIndex < ARRAY_COUNT(gSaveContext.equips.cButtonSlots);
                  otherSlotIndex++) {
                 uint16_t otherButtonIndex = otherSlotIndex + 1;
@@ -1232,9 +1353,15 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
                         gSaveContext.equips.cButtonSlots[otherSlotIndex] =
                             gSaveContext.equips.cButtonSlots[pauseCtx->equipTargetCBtn];
                         Interface_LoadItemIcon2(play, otherButtonIndex);
+#ifdef COMBO_BUILD
+                        Combo_BombArrowsSetFlag(otherSlotIndex, comboTargetBombArrow);
+#endif
                     } else {
                         gSaveContext.equips.buttonItems[otherButtonIndex] = ITEM_NONE;
                         gSaveContext.equips.cButtonSlots[otherSlotIndex] = SLOT_NONE;
+#ifdef COMBO_BUILD
+                        Combo_BombArrowsSetFlag(otherSlotIndex, false);
+#endif
                     }
                     // break; // 'Assume there is only one possible pre-existing equip'
                 }
@@ -1249,6 +1376,9 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
                         gSaveContext.equips.cButtonSlots[otherSlotIndex] =
                             gSaveContext.equips.cButtonSlots[pauseCtx->equipTargetCBtn];
                         Interface_LoadItemIcon2(play, otherButtonIndex);
+#ifdef COMBO_BUILD
+                        Combo_BombArrowsSetFlag(otherSlotIndex, comboTargetBombArrow);
+#endif
                     }
                 }
             }
@@ -1256,6 +1386,10 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
             gSaveContext.equips.buttonItems[targetButtonIndex] = pauseCtx->equipTargetItem;
             gSaveContext.equips.cButtonSlots[pauseCtx->equipTargetCBtn] = pauseCtx->equipTargetSlot;
             Interface_LoadItemIcon1(play, targetButtonIndex);
+#ifdef COMBO_BUILD
+            Combo_BombArrowsSetFlag(pauseCtx->equipTargetCBtn,
+                                    Combo_BombArrowsEquipPending() && (pauseCtx->equipTargetItem == ITEM_BOW));
+#endif
 
             pauseCtx->unk_1E4 = 0;
             sEquipMoveTimer = 10;

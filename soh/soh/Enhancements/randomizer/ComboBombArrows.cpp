@@ -15,6 +15,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #include "ComboBombArrows.h"
+#include "ComboPause.h"
 #include "soh/Enhancements/game-interactor/GameInteractor.h"
 #include "soh/ShipInit.hpp"
 
@@ -31,6 +32,11 @@ namespace {
 constexpr const char* kBombArrowsCVar = "gEnhancements.Equipment.BombArrows";
 constexpr int kButtonCount = 7;      // equips.cButtonSlots: three C buttons and four D-pad directions
 constexpr int kBButtonItemCount = 1; // equips.buttonItems[0] is B; button n is at n + 1
+
+bool sSlotShowsBombArrows =
+    false;                      // the bomb slot of the item page shows bow + bomb badge (2S2H sBombSlotIsBombArrowMode)
+bool sEquipIsBombArrow = false; // the equip animation in progress puts the bow on its button as bomb arrows
+bool sSlotDrawSwapped = false;  // between Begin / EndSlotDraw: the bomb slot holds the bow for the draw
 
 bool ValidButton(int button) {
     return (button >= 0) && (button < kButtonCount);
@@ -81,6 +87,82 @@ extern "C" void Combo_BombArrowsSetFlag(int button, int on) {
 extern "C" int Combo_BombArrowsButtonActive(int button) {
     return Combo_BombArrowsEnabled() && Combo_BombArrowsFlag(button) &&
            (gSaveContext.equips.buttonItems[button + kBButtonItemCount] == ITEM_BOW);
+}
+
+extern "C" int Combo_BombArrowsCanCycle(void) {
+    const bool ownsBombs = sSlotDrawSwapped || (INV_CONTENT(ITEM_BOMB) == ITEM_BOMB);
+
+    return Combo_BombArrowsEnabled() && (INV_CONTENT(ITEM_BOW) == ITEM_BOW) && ownsBombs &&
+           Combo_PauseItemAgeOk(ITEM_BOW, gSaveContext.linkAge);
+}
+
+extern "C" int Combo_BombArrowsSlotShowsBow(void) {
+    return sSlotShowsBombArrows && Combo_BombArrowsCanCycle();
+}
+
+extern "C" void Combo_BombArrowsToggleSlot(void) {
+    sSlotShowsBombArrows = !sSlotShowsBombArrows;
+}
+
+extern "C" int Combo_BombArrowsBeginSlotDraw(void) {
+    if (!Combo_BombArrowsSlotShowsBow()) {
+        return false;
+    }
+    INV_CONTENT(ITEM_BOMB) = ITEM_BOW;
+    sSlotDrawSwapped = true;
+    return true;
+}
+
+extern "C" void Combo_BombArrowsEndSlotDraw(void) {
+    if (sSlotDrawSwapped) {
+        INV_CONTENT(ITEM_BOMB) = ITEM_BOMB;
+        sSlotDrawSwapped = false;
+    }
+}
+
+extern "C" int Combo_BombArrowsPickEquip(unsigned short cursorSlot, unsigned short* item, unsigned short* slot) {
+    const bool bombArrow = (cursorSlot == SLOT_BOMB) && Combo_BombArrowsSlotShowsBow();
+
+    if (bombArrow) {
+        *item = ITEM_BOW;
+        *slot = SLOT_BOW;
+    }
+    return bombArrow;
+}
+
+extern "C" void Combo_BombArrowsEquipReset(void) {
+    sEquipIsBombArrow = false;
+}
+
+extern "C" void Combo_BombArrowsEquipQueued(int bombArrow) {
+    sEquipIsBombArrow = bombArrow != 0;
+}
+
+extern "C" int Combo_BombArrowsEquipPending(void) {
+    return sEquipIsBombArrow;
+}
+
+extern "C" int Combo_BombArrowsOutlineSlot(int button, int slot) {
+    return (Combo_BombArrowsButtonActive(button) && Combo_BombArrowsSlotShowsBow()) ? SLOT_BOMB : slot;
+}
+
+extern "C" int Combo_BombArrowsOutlineShown(int button) {
+    return !Combo_BombArrowsButtonActive(button) || Combo_BombArrowsSlotShowsBow();
+}
+
+extern "C" void Combo_BombArrowsCount(int hudFallback, short* ammo, int* full) {
+    const short arrows = AMMO(ITEM_BOW);
+    const short bombs = AMMO(ITEM_BOMB);
+    const short arrowCapacity = CUR_CAPACITY(UPG_QUIVER);
+    const short bombCapacity = CUR_CAPACITY(UPG_BOMB_BAG);
+
+    if (hudFallback && (bombs <= 0)) {
+        *ammo = arrows;
+        *full = (arrows == arrowCapacity);
+        return;
+    }
+    *ammo = MIN(arrows, bombs);
+    *full = (*ammo == MIN(arrowCapacity, bombCapacity));
 }
 
 #endif // COMBO_BUILD

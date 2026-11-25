@@ -8,6 +8,8 @@
 #include "soh/Enhancements/randomizer/ComboForms.h"
 #include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus (foreign items on buttons)
 #include "soh/Enhancements/randomizer/ComboPicto.h" // ComboShip: MM's Pictograph Box in Hyrule
+// ComboShip: 2S2H's bomb arrows on OOT's bow
+#include "soh/Enhancements/randomizer/ComboBombArrows.h"
 // A button's icon: OOT's own, or NULL for a foreign (MM) item, which Interface_DrawItemIconTexture draws from MM.
 #define COMBO_BTN_ICON(btn)                                            \
     (Combo_PauseIsForeign(gSaveContext.equips.buttonItems[btn]) ? NULL \
@@ -5189,6 +5191,38 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
     CLOSE_DISPS(play->state.gfxCtx);
 }
 
+#ifdef COMBO_BUILD
+// ComboShip: the bow flying from the item page to its button as bomb arrows wears a bomb badge, half its size, over its
+// middle (2S2H OnKaleidoDrawEquipAnimIcon). `iconVtx` is the flying icon's quad.
+static void Interface_ComboDrawBombArrowEquipBadge(PlayState* play, Vtx* iconVtx) {
+    const s16 size = iconVtx[1].v.ob[0] - iconVtx[0].v.ob[0];
+    const s16 badge = size / 2;
+    const s16 left = iconVtx[0].v.ob[0] + (size - badge) / 2;
+    const s16 top = iconVtx[0].v.ob[1] - (size - badge) / 2;
+    Vtx* badgeVtx = Graph_Alloc(play->state.gfxCtx, 4 * sizeof(Vtx));
+    s16 i;
+
+    for (i = 0; i < 4; i++) {
+        badgeVtx[i].v.ob[0] = (i & 1) ? (left + badge) : left;
+        badgeVtx[i].v.ob[1] = (i & 2) ? (top - badge) : top;
+        badgeVtx[i].v.ob[2] = 0;
+        badgeVtx[i].v.flag = 0;
+        badgeVtx[i].v.tc[0] = (i & 1) ? 0x400 : 0;
+        badgeVtx[i].v.tc[1] = (i & 2) ? 0x400 : 0;
+        badgeVtx[i].v.cn[0] = badgeVtx[i].v.cn[1] = badgeVtx[i].v.cn[2] = badgeVtx[i].v.cn[3] = 255;
+    }
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, play->pauseCtx.equipAnimAlpha);
+    gSPVertex(OVERLAY_DISP++, badgeVtx, 4, 0);
+    gDPLoadTextureBlock(OVERLAY_DISP++, gItemIcons[ITEM_BOMB], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
+                        G_TX_NOLOD);
+    gSP1Quadrangle(OVERLAY_DISP++, 0, 2, 3, 1, 0);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+#endif
+
 void Interface_DrawActionButton(PlayState* play, f32 x, f32 y) {
     InterfaceContext* interfaceCtx = &play->interfaceCtx;
 
@@ -6070,6 +6104,12 @@ void Interface_Draw(PlayState* play) {
             }
 
             gSP1Quadrangle(OVERLAY_DISP++, 0, 2, 3, 1, 0);
+
+#ifdef COMBO_BUILD
+            if (Combo_BombArrowsEquipPending() && (pauseCtx->equipTargetItem == ITEM_BOW)) {
+                Interface_ComboDrawBombArrowEquipBadge(play, &pauseCtx->cursorVtx[16]);
+            }
+#endif
         }
 
         Gfx_SetupDL_39Overlay(play->state.gfxCtx);

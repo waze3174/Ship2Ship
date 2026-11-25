@@ -2,6 +2,8 @@
 #ifdef COMBO_BUILD
 #include "soh/Enhancements/randomizer/ComboPause.h" // ComboShip: merged pause menus
 #include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: Combo_DebugEnv / Combo_DebugLog
+// ComboShip: the outline of bomb arrows
+#include "soh/Enhancements/randomizer/ComboBombArrows.h"
 #endif
 #include <stdlib.h>
 #include <string.h>
@@ -3430,7 +3432,12 @@ void KaleidoScope_InitVertices(PlayState* play, GraphicsContext* gfxCtx) {
             (gSaveContext.equips.cButtonSlots[phi_t3 - 1] < 24) &&
 #endif
             ((phi_t3 < 4) || CVarGetInteger(CVAR_ENHANCEMENT("DpadEquips"), 0))) {
+#ifdef COMBO_BUILD
+            // ComboShip: bomb arrows are outlined on the bomb slot while it shows them.
+            phi_t4 = Combo_BombArrowsOutlineSlot(phi_t3 - 1, gSaveContext.equips.cButtonSlots[phi_t3 - 1]) * 4;
+#else
             phi_t4 = gSaveContext.equips.cButtonSlots[phi_t3 - 1] * 4;
+#endif
 
             pauseCtx->itemVtx[phi_t2 + 0].v.ob[0] = pauseCtx->itemVtx[phi_t2 + 2].v.ob[0] =
                 pauseCtx->itemVtx[phi_t4].v.ob[0] - 2;
