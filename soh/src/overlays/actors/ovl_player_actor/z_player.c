@@ -1390,6 +1390,8 @@ static ComboMmUse sComboMmUseKind = COMBO_MMUSE_NONE;
 static s32 sComboMmUseItem = -1;           // MM item id of the MM item being used
 static s32 sComboKegItem = ITEM_NONE;      // foreign id of the MM Powder Keg being taken out (MM: Goron only)
 static s32 sComboPicto = false;            // MM unk_AA5 == PLAYER_UNKAA5_2: the first-person view is the Pictograph Box
+static s32 sComboDekuWaterHop = false;     // MM PLAYER_STATE3_200000: in the air after a Deku's hop off the water
+static s32 sComboPendingMask = ITEM_NONE;  // foreign id of the MM mask to wear once Link is human again
 int Combo_PauseForeignAmmo(int foreignId); // ComboPause.cpp: MM's ammo for that MM item
 int Combo_PauseForeignAmmoChange(int foreignId, int n); // ComboPause.cpp: MM Inventory_ChangeAmmo
 // MM's B-button mask actions (MM Player_GetItemOnButton ITEM_F0/F1/F2): Blast Mask explode, Bremen march, Kamaro dance
@@ -4154,6 +4156,7 @@ s32 Player_SetupAction(PlayState* play, Player* this, PlayerActionFunc actionFun
     // ComboShip: MM Player_SetAction: func_800AEF44(meleeWeaponEffectIndex[2]) -- every new action ends the ground
     // trail, so the next Deku spin / Goron roll starts its own instead of joining the last one (owner 2026-11-15).
     Combo_TireMark_Break();
+    sComboDekuWaterHop = false; // MM clears PLAYER_STATE3_200000 with every action change
     if (sComboMaskAct != COMBO_MASKACT_NONE) {
         // ComboShip: MM func_80831454: leaving the march / dance stops its fanfare (SEQCMD_STOP_SEQUENCE FANFARE)
         Combo_MmStopFanfare();
@@ -4363,6 +4366,66 @@ static void Combo_PlayerChangeAmmo(s32 ootItem, s32 n) {
 }
 #endif
 
+#ifdef COMBO_BUILD
+// MM Player_UseItem -> func_80831814(PLAYER_UNKAA5_2): not falling / carrying / on a ledge, a first-person camera
+// allowed here, on the ground or swimming at the surface. Then the first-person view (Player_ActionHandler_13) is MM's
+// picto lens; the HUD (ComboPicto.cpp) runs the shutter and the photo. Returns 0 when refused.
+static s32 Combo_PictoTryStart(PlayState* play, Player* this) {
+    if ((this->stateFlags1 & (PLAYER_STATE1_HOOKSHOT_FALLING | PLAYER_STATE1_CARRYING_ACTOR |
+                              PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE)) ||
+        !Camera_CheckValidMode(Play_GetCamera(play, CAM_ID_MAIN), CAM_MODE_FIRST_PERSON) ||
+        !((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
+          ((this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->currentBoots != PLAYER_BOOTS_IRON) &&
+           (this->actor.yDistToWater < this->ageProperties->unk_2C)))) {
+        return false;
+    }
+    this->unk_6AD = 1;
+    sComboPicto = true;
+    return true;
+}
+
+// MM's sounds for a mask going on (CHANGE_ARMS) or off (TAKE_OUT_SHIELD), through MM's sfx player.
+static void Combo_PlayMaskSfx(Player* this, s32 on) {
+    const u16 maskSfx = on ? NA_SE_PL_CHANGE_ARMS : NA_SE_PL_TAKE_OUT_SHIELD;
+
+    if (!Combo_GuestPlaySfx(maskSfx)) {
+        func_808328EC(this, maskSfx);
+    }
+}
+
+// MM's mask branch of Player_UseItem for a wearable MM mask: on, or off when it is the one worn. Sound is the caller's.
+static void Combo_WearMmMask(Player* this, s32 item) {
+    Combo_PauseToggleMmMask(item);
+    this->currentMask = PLAYER_MASK_NONE;
+    gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
+}
+
+// 2S2H 3DSMaskEquipping.cpp OnTransform (mm/2s2h/Enhancements/Masks): once Link is human again the mask used while
+// transformed goes on, unless it is the one already worn.
+static void Combo_WearPendingMask(Player* this) {
+    if ((sComboPendingMask == ITEM_NONE) || (Combo_OotForm() != COMBO_FORM_HUMAN)) {
+        return;
+    }
+    if (Combo_PauseWornMmMaskItem() != Combo_PauseLiveMmItem(sComboPendingMask)) {
+        Combo_WearMmMask(this, sComboPendingMask);
+    }
+    sComboPendingMask = ITEM_NONE;
+}
+
+// 2S2H Easy Mask Equip: the mask picked in the pause menu is used once the menu has closed (ProcessPendingMaskEquip).
+static void Combo_UseEasyEquipMask(PlayState* play, Player* this) {
+    if ((Combo_PauseEasyEquipPending() == ITEM_NONE) || (play->pauseCtx.state != 0) || Player_InCsMode(play)) {
+        return;
+    }
+    const s32 item = Combo_PauseTakeEasyEquip();
+
+    if ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignWearableMask(item)) {
+        sComboPendingMask = item; // MM QueueReturnToHumanThenRegular: back to human first, then the mask
+    }
+    Player_UseItem(play, this, item);
+}
+#endif
+
 void Player_UseItem(PlayState* play, Player* this, s32 item) {
     s8 itemAction;
     s32 temp;
@@ -4415,29 +4478,29 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         Combo_PauseLogUse(item, "-> OOT's action for the same item, on MM's bag");
     } else if (Combo_PauseIsForeign(item)) {
         const s32 comboForm = Combo_PauseForeignForm(item);
-        if (((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) &&
-            !Combo_WaterAllowsUse(this, comboForm == COMBO_FORM_ZORA)) {
+        if (Combo_PauseUsePersistentBunnyHood(item)) {
+            // 2S2H PersistentMasks.cpp VB_USE_ITEM_EQUIP_MASK: the hood's state flips, in any form; it is never worn
+            Combo_PlayMaskSfx(this, Combo_PauseBunnyHoodPersistent());
+            Combo_PauseLogUse(item, "Bunny Hood -> persistent state flipped");
+        } else if (((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) &&
+                   !Combo_WaterAllowsUse(this, comboForm == COMBO_FORM_ZORA)) {
             Sfx_PlaySfxCentered(NA_SE_SY_ERROR); // MM: only the Zora Mask works while swimming
             Combo_PauseLogUse(item, "mask refused in water (MM: Zora Mask only)");
             return;
         } else if ((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) {
             const s32 target = Combo_TransformTarget(comboForm);
+            if ((comboForm < 0) && Combo_PauseIsForeignWearableMask(item) &&
+                CVarGetInteger("gEnhancements.Masks.3DSMaskEquip", 0)) {
+                sComboPendingMask = item; // 2S2H 3DSMaskEquipping.cpp VB_USE_ITEM_CONSIDER_LINK_HUMAN
+            }
             Combo_PauseLogUse(item, target != COMBO_FORM_HUMAN ? "transformation mask -> form"
                                                                : "mask while transformed -> human");
             Combo_TransformBegin(play, this, target); // MM's transformation (or 2S2H's fast one)
         } else if (Combo_PauseIsForeignMask(item)) {
             // MM Player_UseItem "Handle wearable masks": on at once with CHANGE_ARMS, off with TAKE_OUT_SHIELD (MM's
             // samples through MM's sfx player).
-            Combo_PauseToggleMmMask(item);
-            this->currentMask = PLAYER_MASK_NONE;
-            gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
-            {
-                const u16 maskSfx =
-                    (Combo_PauseWornMmMaskItem() >= 0) ? NA_SE_PL_CHANGE_ARMS : NA_SE_PL_TAKE_OUT_SHIELD;
-                if (!Combo_GuestPlaySfx(maskSfx)) {
-                    func_808328EC(this, maskSfx);
-                }
-            }
+            Combo_WearMmMask(this, item);
+            Combo_PlayMaskSfx(this, Combo_PauseWornMmMaskItem() >= 0);
             Combo_PauseLogUse(item, (Combo_PauseWornMmMaskItem() >= 0) ? "MM mask -> worn (MM model)"
                                                                        : "MM mask -> taken off");
         } else if ((Combo_OotForm() == COMBO_FORM_HUMAN) &&
@@ -4460,17 +4523,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
                                             : "MM item -> shown (MM's no-taker reply)");
             }
         } else if ((sComboMmUseItem == COMBO_MM_ITEM_PICTOGRAPH_BOX) && (Combo_OotForm() == COMBO_FORM_HUMAN)) {
-            // MM Player_UseItem -> func_80831814(PLAYER_UNKAA5_2): not falling / carrying / on a ledge, a first-person
-            // camera allowed here, on the ground or swimming at the surface. Then the first-person view below
-            // (Player_ActionHandler_13) is MM's picto lens; the HUD (ComboPicto.cpp) runs the shutter and the photo.
-            if (!(this->stateFlags1 & (PLAYER_STATE1_HOOKSHOT_FALLING | PLAYER_STATE1_CARRYING_ACTOR |
-                                       PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE)) &&
-                Camera_CheckValidMode(Play_GetCamera(play, CAM_ID_MAIN), CAM_MODE_FIRST_PERSON) &&
-                ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
-                 ((this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->currentBoots != PLAYER_BOOTS_IRON) &&
-                  (this->actor.yDistToWater < this->ageProperties->unk_2C)))) {
-                this->unk_6AD = 1;
-                sComboPicto = true;
+            if (Combo_PictoTryStart(play, this)) {
                 Combo_PauseLogUse(item, "Pictograph Box -> MM picto lens");
             } else {
                 Combo_PictoErrorSfx();
@@ -4511,7 +4564,10 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
 #ifdef COMBO_BUILD
             // MM's gate: the Zora Mask while swimming (either way), anything for a sunk Zora on the bottom
             || ((itemAction >= PLAYER_IA_MASK_KEATON) && (Combo_OotFormForMask(itemAction) == COMBO_FORM_ZORA)) ||
-            Combo_WaterAllowsUse(this, false)
+            Combo_WaterAllowsUse(this, false) ||
+            // 2S2H's Underwater Ocarina: on the bottom (iron boots, or the sunk Zora) the ocarina still plays
+            (Combo_PauseOcarinaUsableOnBottom(item) && (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) &&
+             (Player_GetEnvironmentalHazard(play) == PLAYER_ENV_HAZARD_UNDERWATER_FLOOR))
 #endif
         ) {
 
@@ -6874,8 +6930,9 @@ s32 func_8083A4A8(Player* this, PlayState* play) {
 // a Deku's jump is a HOP: its speed grows with the hops used (0.3 + 0.18 per hop), on water it pops onto the surface
 // with a rising DEKUNUTS_JUMP sound, spends one of its five hops, and the last ends in a spin (func_808373A4). Hops
 // refill on solid ground (func_8083827C's else-branch, here func_8083AA10's).
-s32 sComboDekuHops = 5;       // MM remainingHopsCounter
-static f32 sComboDekuSpin[2]; // MM unk_B10[0] (spin speed), unk_B10[1] (spin left)
+#define COMBO_DEKU_HOPS_MAX 5
+s32 sComboDekuHops = COMBO_DEKU_HOPS_MAX; // MM remainingHopsCounter
+static f32 sComboDekuSpin[2];             // MM unk_B10[0] (spin speed), unk_B10[1] (spin left)
 
 // MM func_8083CBC4: air (and spin) steering. MM brakes 4x harder above 1.5x the run limit (unk_B50) where OOT clamps.
 static s32 Combo_FormAirControl(Player* this, f32 speedTarget, s16 yawTarget, f32 brake, f32 incr, f32 decr, s16 turn) {
@@ -6898,6 +6955,15 @@ static s32 Combo_FormAirControl(Player* this, f32 speedTarget, s16 yawTarget, f3
 }
 #define COMBO_MM_SE_PL_DEKUNUTS_JUMP5 0x9B4
 
+// 2S2H InfiniteDekuHopping.cpp (mm/2s2h/Enhancements/Player, MM's own CVar gEnhancements.Player.InfiniteDekuHopping),
+// VB_APPLY_AIR_CONTROL: a Deku's air steering takes half the speed target; after a hop off the water, all of it.
+static f32 Combo_DekuAirSpeedTarget(f32 speedTarget) {
+    if (sComboDekuWaterHop && CVarGetInteger("gEnhancements.Player.InfiniteDekuHopping", 0)) {
+        return speedTarget * 2.0f;
+    }
+    return speedTarget;
+}
+
 static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
     s16 yawDiff = this->yaw - this->actor.shape.rot.y;
     const s32 deku = Combo_OotForm() == COMBO_FORM_DEKU;
@@ -6917,7 +6983,7 @@ static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
     anim = ((ABS(yawDiff) >= 0x1000) || (this->linearVelocity <= 4.0f)) ? &gPlayerAnim_link_normal_jump
                                                                         : &gPlayerAnim_link_normal_run_jump;
     if (deku) {
-        speed *= 0.3f + ((5 - sComboDekuHops) * 0.18f);
+        speed *= 0.3f + ((COMBO_DEKU_HOPS_MAX - sComboDekuHops) * 0.18f);
         if (speed < 4.0f) {
             speed = 4.0f;
         }
@@ -6931,6 +6997,7 @@ static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
             this->av2.actionVar2 = 1;
             Combo_FormSfx(this, COMBO_MM_SE_PL_DEKUNUTS_JUMP5 + 1 - sComboDekuHops, NA_SE_PL_JUMP);
             Player_PlayVoiceSfx(this, voice);
+            sComboDekuWaterHop = true;
             sComboDekuHops--;
             if (sComboDekuHops == 0) { // MM: the last hop spins (func_808373A4: pn_attack + the spin sound)
                 this->stateFlags2 |= PLAYER_STATE2_HOPPING;
@@ -6938,6 +7005,10 @@ static s32 Combo_FormJump(PlayState* play, Player* this, u16 voice) {
                 sComboDekuSpin[0] = 20000.0f;
                 sComboDekuSpin[1] = 0x30000;
                 Combo_FormSfx(this, COMBO_MM_SE_PL_DEKUNUTS_ATTACK, NA_SE_IT_SWORD_SWING);
+                // 2S2H InfiniteDekuHopping.cpp VB_DEKU_LINK_SPIN_ON_LAST_HOP: the spin still plays, the hops refill
+                if (CVarGetInteger("gEnhancements.Player.InfiniteDekuHopping", 0) && (gSaveContext.health != 0)) {
+                    sComboDekuHops = COMBO_DEKU_HOPS_MAX;
+                }
             }
             return true;
         }
@@ -7216,7 +7287,7 @@ void func_8083AA10(Player* this, PlayState* play) {
     } else {
         this->fallStartHeight = this->actor.world.pos.y;
 #ifdef COMBO_BUILD
-        sComboDekuHops = 5; // MM: hops refill on solid ground
+        sComboDekuHops = COMBO_DEKU_HOPS_MAX; // MM: hops refill on solid ground
 #endif
     }
 }
@@ -7672,6 +7743,14 @@ s32 Player_ActionHandler_0(Player* this, PlayState* play) {
         (CHECK_FLAG_ALL(this->focusActor->flags, ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_TALK_WITH_C_UP) ||
          (this->focusActor->naviEnemyId != 0xFF))) {
         this->stateFlags2 |= PLAYER_STATE2_NAVI_ALERT;
+#ifdef COMBO_BUILD
+    } else if ((this->naviTextId == 0) && (Combo_OotForm() == COMBO_FORM_HUMAN) && Combo_PictoOnCUpWanted() &&
+               !Player_CheckHostileLockOn(this) && CHECK_BTN_ALL(sControlInput->press.button, BTN_CUP)) {
+        // 2S2H PictoBoxOnCUp.cpp VB_FIRST_PERSON_CAMERA: C-Up opens the Pictograph Box (MM's Tatl-text test is Navi's)
+        if (!Combo_PictoTryStart(play, this)) {
+            Combo_PictoErrorSfx();
+        }
+#endif
     } else if ((this->naviTextId == 0 || CVarGetInteger(CVAR_ENHANCEMENT("NaviOnL"), 0)) &&
                !Player_CheckHostileLockOn(this) && CHECK_BTN_ALL(sControlInput->press.button, BTN_CUP) &&
                (YREG(15) != 0x10) && (YREG(15) != 0x20) && !func_8083B8F4(this, play)) {
@@ -10487,7 +10566,7 @@ void Player_Action_80842180(Player* this, PlayState* play) {
 
         if (!func_8083C484(this, &speedTarget, &yawTarget)) {
 #ifdef COMBO_BUILD
-            if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BUNNY)) {
+            if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BUNNY) || Combo_PauseBunnyHoodPersistent()) {
                 speedTarget *=
                     1.5f; // ComboShip: MM's Bunny Hood (MM Player_Action_13, VB_CONSIDER_BUNNY_HOOD_EQUIPPED)
             }
@@ -10971,6 +11050,39 @@ typedef struct {
 } ComboGoronRoll;
 static ComboGoronRoll sRoll;
 
+// 2S2H GoronRollingFastSpikes.cpp: the extra charge per frame (mm/2s2h/Enhancements/Masks, MM's own CVar
+// gEnhancements.Masks.GoronRollingFastSpikes). Stepping back to 4 when the charge stalls is vanilla's.
+#define COMBO_GORON_FAST_SPIKES_STEP 8
+
+// 2S2H's Goron rolling option "Ignores Magic" (mm/2s2h/Enhancements/Masks/GoronRollingIgnoresMagic.cpp,
+// gEnhancements.Masks.GoronRollingIgnoresMagic, MM's own setting): the spikes cost no magic and need none.
+static s32 Combo_GoronIgnoresMagic(void) {
+    return CVarGetInteger("gEnhancements.Masks.GoronRollingIgnoresMagic", 0);
+}
+
+// 2S2H's Goron rolling option "Spikes Require Shield" (mm/2s2h/Enhancements/Masks/GoronRollingIgnoresMagic.cpp,
+// gEnhancements.Masks.GoronRollingSpikesRequireShield, MM's own setting, read in Hyrule too).
+static s32 Combo_GoronSpikesRequireR(void) {
+    return CVarGetInteger("gEnhancements.Masks.GoronRollingSpikesRequireShield", 0);
+}
+
+// MM VB_GORON_ROLL_DISABLE_SPIKE_MODE: the spikes retract.
+static s32 Combo_GoronSpikesRetract(void) {
+    s32 retract = !CHECK_BTN_ALL(sControlInput->cur.button, BTN_A) ||
+                  (!Combo_GoronIgnoresMagic() && (gSaveContext.magic == 0)) ||
+                  ((sRoll.av1 == 4) && (sRoll.b08 < 12.0f));
+
+    return retract || (Combo_GoronSpikesRequireR() && !CHECK_BTN_ALL(sControlInput->cur.button, BTN_R));
+}
+
+// MM VB_GORON_ROLL_INCREASE_SPIKE_LEVEL: the spike charge keeps winding up.
+static s32 Combo_GoronSpikesCharge(void) {
+    s32 hasMagic = (gSaveContext.magicState == MAGIC_STATE_IDLE) && (gSaveContext.magic >= 2);
+    s32 charge = (Combo_GoronIgnoresMagic() || hasMagic) && (sRoll.av2 >= 0x36B0);
+
+    return charge && (!Combo_GoronSpikesRequireR() || CHECK_BTN_ALL(sControlInput->cur.button, BTN_R));
+}
+
 s32 gComboGoronBall = 0;           // 1 = draw the curled ball (z_player_lib.c / ComboForms.cpp), MM PLAYER_STATE3_1000
 s16 gComboGoronBallSpin = 0;       // MM shape.rot.x: the ball's roll
 s16 gComboGoronBallTilt = 0;       // MM shape.rot.z: banking into turns / slopes
@@ -11281,8 +11393,7 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
             } else if (sRoll.av1 > 4) {
                 sRoll.av1--;
             }
-            if (!CHECK_BTN_ALL(sControlInput->cur.button, BTN_A) || (gSaveContext.magic == 0) ||
-                ((sRoll.av1 == 4) && (sRoll.b08 < 12.0f))) {
+            if (Combo_GoronSpikesRetract()) {
                 if (Math_StepToS(&sRoll.b86[1], 0, 1)) {
                     Combo_FormSfx(this, COMBO_MM_SE_PL_GORON_BALL_CHARGE_FAILED, COMBO_SE_NONE);
                 }
@@ -11291,7 +11402,7 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                 sRoll.b86[1]++;
             }
             // MM MAGIC_STATE_CONSUME_GORON_ZORA: one point every 10 frames while the spikes are out.
-            if (++sRoll.spikeTimer >= 10) {
+            if (!Combo_GoronIgnoresMagic() && (++sRoll.spikeTimer >= 10)) {
                 sRoll.spikeTimer = 0;
                 if (gSaveContext.magic > 0) {
                     gSaveContext.magic--;
@@ -11332,7 +11443,9 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                     }
                     if (sRoll.av1 >= 0x36) {
                         // the spikes come out: 2 magic up front, then the drain above
-                        gSaveContext.magic = (gSaveContext.magic >= 2) ? (gSaveContext.magic - 2) : 0;
+                        if (!Combo_GoronIgnoresMagic()) {
+                            gSaveContext.magic = (gSaveContext.magic >= 2) ? (gSaveContext.magic - 2) : 0;
+                        }
                         sRoll.spikeTimer = 0;
                         sRoll.b08 = 18.0f;
                         sRoll.b86[1] = 1;
@@ -11384,8 +11497,10 @@ void Player_Action_ComboGoronRoll(Player* this, PlayState* play) {
                         yTgt = this->yaw;
                     }
                     if (sRoll.b86[1] == 0) {
-                        if ((gSaveContext.magicState == MAGIC_STATE_IDLE) && (gSaveContext.magic >= 2) &&
-                            (sRoll.av2 >= 0x36B0)) {
+                        if (CVarGetInteger("gEnhancements.Masks.GoronRollingFastSpikes", 0)) {
+                            sRoll.av1 += COMBO_GORON_FAST_SPIKES_STEP;
+                        }
+                        if (Combo_GoronSpikesCharge()) {
                             sRoll.av1++;
                             Combo_FormSfx(this, COMBO_MM_SFX_CONTINUOUS(COMBO_MM_SE_PL_GORON_BALL_CHARGE),
                                           COMBO_SE_NONE);
@@ -13130,9 +13245,10 @@ void Player_Action_ComboZoraSwim(Player* this, PlayState* play) {
     f32 speedTarget = 0.0f;
     s16 yawTarget;
     s8 stickX = sControlInput->rel.stick_x;
-    // MM stickY *= -GameInteractor_InvertControl(GI_INVERT_ZORA_SWIM_Y); 2ship's default (InvertZoraSwimY on) makes
-    // that +stick_y: pull back to climb
-    s8 stickY = sControlInput->rel.stick_y;
+    // MM stickY *= -GameInteractor_InvertControl(GI_INVERT_ZORA_SWIM_Y), 2S2H's own setting (GameInteractor.cpp:368,
+    // default on): on is +stick_y (pull back to climb), off is the raw stick flipped.
+    s8 stickY = CVarGetInteger("gEnhancements.Player.InvertZoraSwimY", 1) ? sControlInput->rel.stick_y
+                                                                          : -sControlInput->rel.stick_y;
     const s32 aHeld = CHECK_BTN_ALL(sControlInput->cur.button, BTN_A);
 
     this->stateFlags2 |= PLAYER_STATE2_DISABLE_ROTATION_Z_TARGET;
@@ -13909,7 +14025,7 @@ void Player_Action_8084411C(Player* this, PlayState* play) {
             if (Combo_OotForm() == COMBO_FORM_DEKU) {
                 s16 prevYaw = this->yaw;
 
-                Combo_FormAirControl(this, sp4C * 0.5f, sp4A, 2.0f, 0.2f, 0.1f, 0x190);
+                Combo_FormAirControl(this, Combo_DekuAirSpeedTarget(sp4C) * 0.5f, sp4A, 2.0f, 0.2f, 0.1f, 0x190);
                 if ((this->skelAnime.animation != NULL) &&
                     (strcmp((const char*)this->skelAnime.animation,
                             (const char*)COMBO_MM_ANIM("gPlayerAnim_pn_attack")) == 0)) {
@@ -16776,6 +16892,8 @@ void Player_Update(Actor* thisx, PlayState* play) {
     Input input;
 
 #ifdef COMBO_BUILD
+    Combo_UseEasyEquipMask(play, this);
+    Combo_WearPendingMask(this);
     Combo_TestEnemyUpdate(play, this);
     {
         // Test hook (launch env only): COMBO_DEBUG_SHOCK=<frame> electrifies Link once at that frame, as a Biri / Bari

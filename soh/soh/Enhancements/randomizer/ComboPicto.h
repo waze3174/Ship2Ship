@@ -22,6 +22,8 @@ void Combo_PictoBegin(struct PlayState* play);
 void Combo_PictoEnd(struct PlayState* play);
 // MM: (play->actorCtx.flags & ACTORCTX_FLAG_PICTO_BOX_ON) != 0. The picto first-person action exits when this is 0.
 int Combo_PictoActive(void);
+// 2S2H's Pictograph Box on C-Up: 1 when the option is on, MM's inventory holds the Box and no photo is kept.
+int Combo_PictoOnCUpWanted(void);
 // 1 while the pictograph HUD owns A/B (lens with the shutter armed, the photo + keep/discard prompt). The player's
 // first-person action must not react to A/B/R/C while this is 1 (MM's Player_Action_43 for unk_AA5 == 2 only
 // watches the flag).
