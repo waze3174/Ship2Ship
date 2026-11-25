@@ -618,6 +618,15 @@ port is needed; those ids need a targeted carry of OOT's script + font entry + s
 | Hyrule Equipment face: tunics and boots | A puts them on (OOT's save); with SoH's "Assignable Tunics and Boots" a C button / D-pad direction takes them, and a press puts the piece on or back to Kokiri (SoH's `UseTunicBoots`) | `ComboPause.cpp` `UseGearOnPress`, `SOH_ComboTermina_ToggleEquipValue`; Goron Tunic heat and Zora Tunic water (`Interface_Update` hazard), Iron / Hover Boots (`Player_SetEquipmentData`) read OOT's save | — | Deck check owed (2026-11-24); human form only; MM's scene restrictions still grey the button (SoH keeps equipment enabled); no heavy-boots sound in MM |
 | Hyrule Equipment face: swords, shields, strength, scale | no (MM's own in Termina) | — | — | OOT shields on a button don't carry to Termina |
 
+## Dash After Roll in Hyrule (2026-11-25, branch `ultimate/dashroll`)
+
+SoH gets 2S2H's "Dash After Roll" (Enhancements -> QoL -> Controls): keep holding A after a roll and Link keeps dashing. It uses 2S2H's CVar string `gEnhancements.Player.DashAfterRoll` with the same values (0 Off, 1 On, 2 Stack with Bunny Hood), so both games share one setting.
+
+- Ported from `mm/2s2h/Enhancements/Player/DashAfterRoll.cpp` into `soh/soh/Enhancements/DashAfterRoll.cpp`: the latch is set while rolling with A held and not bonked (`av2.bonked`), kept for the one idle update after the roll, and cleared when A is released or the action leaves the plain run action (Z-targeting, anything else).
+- The speed is applied in `SpeedModifiers.cpp` (`VB_PLAYER_MODIFY_RUN_SPEED`) through `Ship_GetDashAfterRollRunFactor`: 1.5x, but in "On" only when neither SoH's Bunny Hood effect nor the MM Bunny Hood already gives it. Jumps and dives out of a dash stay at the vanilla run limit, as with the "Faster Run" Bunny Hood.
+- Forms: no check on the form, as in 2S2H (it tests the action, never the form). A form that rolls with OOT's roll (Zora, Fierce Deity, human) dashes; Goron and Deku have no OOT roll action, so the latch never starts for them.
+- Not in-game tested (2026-11-25).
+
 ## Named presets and the ComboShip settings import (combo-owned)
 
 **Why:** neither port has a settings preset that is safe here. OOT's preset apply replaces whole CVar blocks with
