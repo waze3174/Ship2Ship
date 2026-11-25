@@ -29,7 +29,9 @@
 
 #include "ComboForms.h"
 #include "ComboPause.h"
+#include "soh/SaveManager.h"
 #include "soh/ShipInit.hpp"
+#include "soh/Enhancements/game-interactor/GameInteractor.h"
 
 extern "C" {
 #include "z64.h"
@@ -366,6 +368,56 @@ static void ResetFormOfPreviousSlot() {
     }
 }
 static RegisterShipInitFunc resetFormInitFunc(ResetFormOfPreviousSlot, { "IS_RANDO" });
+
+// ---- the form in OOT's save --------------------------------------------------------------------------------------
+// An optional extra save section: a save without it (or an older build, which skips the section it doesn't know) is
+// human. The launcher's crossing form (SOH_SetComboForm) is held until the slot has loaded, then wins over the saved
+// one, so a form carried through the Lost Woods link survives the reload that follows it.
+namespace {
+
+constexpr const char* kFormSection = "comboForm";
+constexpr int kFormSectionVersion = 1;
+constexpr const char* kFormKey = "form";
+constexpr int kNoCrossingForm = -1;
+
+int sCrossingForm = kNoCrossingForm;
+
+void SaveFormSection(const SaveContext& saveContext, int sectionID, bool fullSave) {
+    SaveManager::Instance->SaveData(kFormKey, sForm);
+}
+
+void LoadFormSection() {
+    int form = COMBO_FORM_HUMAN;
+    SaveManager::Instance->LoadData(kFormKey, form, (int)COMBO_FORM_HUMAN);
+    Combo_OotSetForm(form);
+}
+
+// Runs at the start of every save load and on every new save, so nothing of the previous slot is left over.
+void InitFormForFile(bool isDebug) {
+    sForm = COMBO_FORM_HUMAN;
+}
+
+void ApplyCrossingForm() {
+    if (sCrossingForm == kNoCrossingForm) {
+        return;
+    }
+    Combo_OotSetForm(sCrossingForm);
+    sCrossingForm = kNoCrossingForm;
+}
+
+} // namespace
+
+extern "C" void Combo_OotSetCrossingForm(int form) {
+    sCrossingForm = form;
+}
+
+extern "C" void Combo_FormSaveRegister(void) {
+    SaveManager::Instance->AddInitFunction(InitFormForFile);
+    SaveManager::Instance->AddLoadFunction(kFormSection, kFormSectionVersion, LoadFormSection);
+    SaveManager::Instance->AddSaveFunction(kFormSection, kFormSectionVersion, SaveFormSection, true,
+                                           SECTION_PARENT_NONE);
+    GameInteractor::Instance->RegisterGameHook<GameInteractor::OnLoadFile>([](int32_t) { ApplyCrossingForm(); });
+}
 
 // The transformation masks. OOT's own Goron Mask IS MM's Goron Mask (Shared Items), so wearing it makes the Goron.
 extern "C" int Combo_OotFormForMask(s32 itemAction) {

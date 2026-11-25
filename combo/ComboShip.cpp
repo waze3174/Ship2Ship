@@ -947,7 +947,6 @@ static void (*SOH_SetComboForm)(int) = nullptr;
 constexpr int kComboNoPendingForm = -1;
 constexpr int kComboNoPendingMask = -2;
 constexpr int kComboNoMask = -1;
-constexpr int kComboFormHuman = 0;
 
 // carryForm: Link crossed a door, so his form goes with him. A save loaded from file select keeps the form MM saved.
 static void Combo_PushLinkStateToMM(int fileNum, bool carryForm) {
@@ -3851,12 +3850,12 @@ static void Combo_HandOffToOot() {
     if (g_activeMode.IsVanillaMm())
         return;
     // A reset or owl-save quit ends on OOT's file select, so nothing crosses: what MM had would land on the next slot
-    // loaded. OOT's save keeps no form or worn mask, so that slot starts human and unmasked, with its own buttons.
+    // loaded. That slot takes the form OOT's save holds (human if none), starts unmasked, with its own buttons.
     const bool crossing = (g_mmReturnKind == 0);
     if (SOH_SetComboButtons)
         SOH_SetComboButtons((MM_GetComboButtons && crossing) ? MM_GetComboButtons() : "");
     if (SOH_SetComboForm)
-        SOH_SetComboForm((MM_GetComboForm && crossing) ? MM_GetComboForm() : kComboFormHuman);
+        SOH_SetComboForm((MM_GetComboForm && crossing) ? MM_GetComboForm() : kComboNoPendingForm);
     Combo_HandoffSharedHealth(ComboRando::GAME_MM, ComboRando::GAME_OOT, g_comboCompletionSlot);
     if (SOH_SetComboMask)
         SOH_SetComboMask((MM_GetComboMask && crossing) ? MM_GetComboMask() : kComboNoMask);

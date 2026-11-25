@@ -2589,8 +2589,8 @@ Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and gra
   save made as a Goron or with a mask on came back human or unmasked. MM also drops an OOT mask worn in Termina on
   every `OnSaveLoad`, since no save records it; a crossing puts the door's mask back on its first frame. After a
   reset or owl-save quit, OOT gets the human form and no mask instead of MM's. Age and tunic still come from OOT on
-  every entry. Not changed: OOT's own save keeps no form, so a load that starts in Hyrule gets whatever form this
-  process last had (human after a launch).
+  every entry. OOT's own save now keeps the form too (see "Form travels with Link" below), so a reset or owl-save
+  quit no longer leaves MM's form on the next OOT slot.
 
 ## MM transformations in Hyrule, Goron body (B-M6a, 2026-11-12)
 
@@ -2614,6 +2614,22 @@ So a form in Hyrule is OOT's player and movement with:
   launcher pushes it into MM, which sets `playerForm` on its `OnSaveLoad` (before Link spawns), and brings MM's
   form back into OOT on the return (`SOH_SetComboForm`). The container keeps it too (`combo.link.form`). Only a
   crossing carries it; a save loaded from file select keeps MM's saved form (see "D-pad slots + shared button layout").
+- **OOT's save keeps the form (2026-11-25, owner: "whatever form the save was made in was saved"):** an extra,
+  optional SoH save section `comboForm` (version 1, `{"form": 0..4}`, `ComboForms.cpp`, registered by
+  `Combo_FormSaveRegister`) is written with every OOT save, so the next load of that slot gets Link back in the form
+  he was saved in. No existing section, save version or `COMBO_RELEASE_VERSION` changed. A save without the section
+  loads human, and a build that doesn't know the section logs "unloadable section comboForm" and skips it (its own
+  saves then drop it, so the slot loads human again).
+  - **Load order:** `SaveManager::LoadFile` runs the init functions (the form goes human, so nothing of the previous
+    slot stays), then the section (`LoadFormSection`, through `Combo_OotSetForm`, which falls back to human when the
+    form's MM skeleton is unavailable), then the `OnLoadFile` hook. `OnLoadGame` follows and its "IS_RANDO" init
+    (`ResetFormOfPreviousSlot`) sets human when `Combo_FormsAllowed` is off (forms switched off, or a vanilla slot).
+    All of this runs before Play, so Link spawns in the form without a visible switch. A new save starts human too.
+  - **Crossings win over the save:** `SOH_SetComboForm` now only stores the form (`Combo_OotSetCrossingForm`). The
+    `OnLoadFile` hook applies it after the slot has loaded, so MM's form beats the one the slot was saved with.
+    Later OOT saves keep it. A reset or owl-save quit sends -1 (nothing), so the next slot loads its own saved form.
+  - **Not saved:** the worn mask (OOT never saved masks). The save thread reads the live form, so a form changed
+    while a save is queued may be stored a few frames early.
 - **Logic credits nothing for a form in Hyrule** until its moves are real (§B4 Tier C rule).
 
 **Verified (headless, Xvfb):** Goron Link standing and walking in Link's house; becoming a Goron in Hyrule and

@@ -2215,6 +2215,7 @@ static void Combo_FinishInit() {
     }
     // Restores settings left over from a run that never exited cleanly, so it must come after other setup.
     Speedrun_Register();
+    Combo_FormSaveRegister();
     ShipInit::InitAll();
     Rando::StaticData::InitHashMaps();
     OTRGlobals::Instance->gRandoContext->AddExcludedOptions();
@@ -4299,10 +4300,10 @@ static int Combo_LiveLinkState() {
     return (LINK_IS_ADULT ? 1 : 0) | (tunic << 1) | (Combo_OotForm() << 3); // bits 3-5: MM form in Hyrule
 }
 
-// Launcher push before OOT resumes: the MM form Link had in Termina (ComboForms.h; human if OOT has no port yet).
+// Launcher push before OOT resumes: the MM form Link had in Termina, or -1 when nothing crossed (ComboForms.h).
 extern "C" COMBO_EXPORT void SOH_SetComboForm(int form) {
-    Combo_OotSetForm(form);
-    SPDLOG_INFO("[ComboShip] form from Termina: {} -> Hyrule form {}", form, Combo_OotForm());
+    Combo_OotSetCrossingForm(form);
+    SPDLOG_INFO("[ComboShip] form from Termina: {} (applied when the slot loads)", form);
 }
 extern "C" COMBO_EXPORT int SOH_GetComboLinkState(void) {
     if (sComboLinkStateAtSwitch >= 0) {
