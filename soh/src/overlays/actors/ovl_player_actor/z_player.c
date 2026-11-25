@@ -3112,9 +3112,9 @@ s32 Player_GetItemOnButton(PlayState* play, s32 index) {
         if (Combo_FormHeldBItem() != ITEM_NONE) {
             return Combo_FormHeldBItem(); // ComboShip: Zora fins = boomerang, Deku bubble = slingshot (held B)
         }
-        // ComboShip: 2S2H's "Great Fairy Sword B-Button Attack" (gEnhancements.Equipment.GreatFairySwordBButton,
-        // shared CVar): while the GFS is held, B attacks with it instead of drawing the B sword (A still puts it away).
-        if (CVarGetInteger("gEnhancements.Equipment.GreatFairySwordBButton", 0) &&
+        // ComboShip: 2S2H's "Active item on B" (gEnhancements.Equipment.ActiveItemOnB, shared CVar), for the GFS
+        // only here: while the GFS is held, B attacks with it instead of drawing the B sword (A still puts it away).
+        if (CVarGetInteger("gEnhancements.Equipment.ActiveItemOnB", 0) &&
             (Combo_OotForm() == COMBO_FORM_HUMAN) && Combo_GfsInHand(GET_PLAYER(play)) &&
             Combo_PauseIsForeignGfs(gComboGfsItem)) {
             return gComboGfsItem;
