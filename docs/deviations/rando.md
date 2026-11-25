@@ -3060,6 +3060,34 @@ releases nothing.
 - Traps (`RG_ICE_TRAP`, `RI_TRAP`, and a foreign item with `trap` set) are marked collected and never given, sprung or
   sent.
 
+**The world pickup is spent too (OoT).** After marking a check collected, `SpendWorldPickup` sets the flag the check's own
+pickup tests (its `SpoilerCollectionCheck`, the same one the tracker reads back in `ComboCheckFlagObtained`), so the chest,
+Skulltula, collectible, NPC gift, scrub, cow or shop slot in the world gives nothing again:
+- chest and collectible: `gSaveContext.sceneFlags[scene].chest` / `.collect`. If that scene is the one being played the live
+  flag is set too, through the game's `Flags_SetTreasure` / `Flags_SetCollectible` (the game writes the live flags back on
+  leaving the scene). Collectible flags from 0x20 up are the game's one-visit `tempCollect`: only the live flag, and only
+  in the current scene.
+- Skulltula: `SET_GS_FLAGS(scene, flag)`.
+- `eventChkInf`, `itemGetInf`, `infTable`: `Flags_SetEventChkInf` / `Flags_SetItemGetInf` / `Flags_SetInfTable`.
+- `randomizerInf` (shops, cows, scrubs' and others' randomizer flags, beehives, pots...): `Flags_SetRandomizerInf` on
+  `Randomizer::GetRandomizerInfFromCheck(rc)`.
+- Traps and foreign checks are spent the same way; only their item is never given.
+The flag setters fire the game's flag hooks, so Anchor teammates get the flags as well. A check whose kind is not mapped
+(`SPOILER_CHK_NONE`, the gravedigger type, or a `randomizerInf` check with no flag) is logged by name at release time and
+its pickup may still give once more. A pickup already spawned in the scene being played stays as it is until the scene
+reloads.
+
+**The world pickup (MM)** needed no flag writes: 2S2H treats an `obtained` check as spent when the item is given. A second
+collection of a released check goes through `Rando::ConvertItem(item, rc)` (`mm/2s2h/Rando/ConvertItem.cpp:729`, via
+`IsItemObtainable`, `:232`), which turns it into junk when the check is `obtained` for heart pieces and containers
+(`:387`), progressive items, wallets, swords, small keys, stray fairies, Skulltula tokens, songs,
+clock items and Triforce pieces, and when the item is already owned for masks and the rest. The `CheckQueue` give lambda
+(`CheckQueue.cpp` `.giveItem`) calls it, and the foreign branch only delivers the first time (`wasObtained`). After a Song of
+Time, `OnCycleSave.cpp` clears `cycleObtained` and the cycle flags for every check but keeps `obtained`, so a released check
+is re-collectible for junk like any check collected normally; actors that test `cycleObtained` (ObjGrass, ObjTsubo and the
+rest of `ActorBehavior/`) see it spent this cycle, as set by the release. A released MM trap re-collected in the world
+springs once more, as any collected trap does.
+
 **The tracker.** OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
 `RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. MM's tracker reads `RANDO_SAVE_CHECKS` live.
 
@@ -3082,9 +3110,6 @@ large release is a burst, and teammates' partner feeds list the non-junk finds.
 - A check the item queue is already giving is skipped (above), so nothing is given twice.
 - A bottle refill with no free bottle is dropped, as for every cross-grant (`Combo_MM_GiveDormant`,
   `Combo_GiveResolvedOOT`).
-- Known limit: the world pickup of a released check is not blocked. A released chest stays closed in the world and gives
-  its item again if opened later; for MM the same holds for a pickup that sets `eligible`. This matches how a
-  teammate's Anchor pickup or a cross-delivered foreign check behaves today.
 
 **Preserve on future merges.** `OTRGlobals.cpp` (`Combo_GiveResolvedOOT` and `Combo_PersistOOT` non-static),
 `randomizer_check_tracker.cpp/.h` (`SpoilAreasFromChecks`), `combo/ComboShip.cpp` (the release block before

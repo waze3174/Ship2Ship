@@ -24,6 +24,8 @@ extern "C" {
 #include "z64.h"
 #include "macros.h"
 #include "variables.h"
+#include "functions.h"
+extern PlayState* gPlayState;
 }
 
 // OTRGlobals.cpp: the save-direct give of a resolved OOT item (what a cross-game grant and Anchor use) and the save it
@@ -41,6 +43,10 @@ extern "C" void (*gComboSharedChanged)(int game, int fileNum);
 namespace {
 
 constexpr int kOotGameId = 0; // the GameId convention: 0 = OOT, 1 = MM
+// Collectible flags below this are saved with the scene; the rest (tempCollect) last one visit, as in the game's own
+// Flags_SetCollectible.
+constexpr uint16_t kSavedCollectFlagCount = 0x20;
+constexpr int kGsFlagSceneShift = 2; // four scenes' Skulltula flags share a byte (GET_GS_FLAGS)
 
 struct SaveBatch {
     SaveBatch() {
@@ -62,6 +68,80 @@ bool IsRemaining(RandomizerCheck rc) {
     Rando::ItemLocation* location = Rando::Context::GetInstance()->GetItemLocation(rc);
     return !location->IsExcluded() && location->GetPlacedRandomizerGet() != RG_NONE && !location->HasObtained() &&
            rc != OOT_GetQueuedDrawCheck();
+}
+
+bool IsCurrentScene(uint8_t scene) {
+    return gPlayState != nullptr && gPlayState->sceneNum == scene;
+}
+
+// The scene flags are saved per scene, and the scene being played keeps its live copy in the play state, which the game
+// writes back on leaving: so the live flag is set too, through the game's own setter.
+void SpendChest(uint8_t scene, uint16_t flag) {
+    gSaveContext.sceneFlags[scene].chest |= 1u << flag;
+    if (IsCurrentScene(scene)) {
+        Flags_SetTreasure(gPlayState, flag);
+    }
+}
+
+void SpendCollectible(uint8_t scene, uint16_t flag) {
+    if (flag == 0) {
+        return; // the game ignores collectible flag 0
+    }
+    if (flag < kSavedCollectFlagCount) {
+        gSaveContext.sceneFlags[scene].collect |= 1u << flag;
+    }
+    if (IsCurrentScene(scene)) {
+        Flags_SetCollectible(gPlayState, flag);
+    }
+}
+
+bool SpendRandomizerInf(RandomizerCheck rc) {
+    const RandomizerInf inf = OTRGlobals::Instance->gRandomizer->GetRandomizerInfFromCheck(rc);
+    if (inf == RAND_INF_MAX) {
+        return false;
+    }
+    Flags_SetRandomizerInf(inf);
+    return true;
+}
+
+// Sets the world flag the check's own pickup tests (the one the check tracker reads back in ComboCheckFlagObtained), so
+// a chest, collectible, Skulltula, NPC gift, scrub, cow or shop slot in the world counts as spent and gives nothing
+// again. Returns false for a check whose flag kind is not handled.
+bool SpendWorldPickup(RandomizerCheck rc) {
+    const Rando::SpoilerCollectionCheck check = Rando::StaticData::GetLocation(rc)->GetCollectionCheck();
+    switch (check.type) {
+        case SPOILER_CHK_CHEST:
+            if (check.scene >= ARRAY_COUNT(gSaveContext.sceneFlags)) {
+                return false;
+            }
+            SpendChest(check.scene, check.flag);
+            return true;
+        case SPOILER_CHK_COLLECTABLE:
+            if (check.scene >= ARRAY_COUNT(gSaveContext.sceneFlags)) {
+                return false;
+            }
+            SpendCollectible(check.scene, check.flag);
+            return true;
+        case SPOILER_CHK_GOLD_SKULLTULA:
+            if ((check.scene >> kGsFlagSceneShift) >= ARRAY_COUNT(gSaveContext.gsFlags)) {
+                return false;
+            }
+            SET_GS_FLAGS(check.scene, check.flag);
+            return true;
+        case SPOILER_CHK_EVENT_CHK_INF:
+            Flags_SetEventChkInf(check.flag);
+            return true;
+        case SPOILER_CHK_ITEM_GET_INF:
+            Flags_SetItemGetInf(check.flag);
+            return true;
+        case SPOILER_CHK_INF_TABLE:
+            Flags_SetInfTable(check.flag);
+            return true;
+        case SPOILER_CHK_RANDOMIZER_INF:
+            return SpendRandomizerInf(rc);
+        default:
+            return false;
+    }
 }
 
 // A check holding a Majora's Mask item: the item goes to MM's save like any pickup's, and to teammates. A trap is never
@@ -91,11 +171,7 @@ void ReleaseNative(RandomizerCheck rc) {
     }
 }
 
-// The check is marked first, so nothing can queue it again. A trap is collected and never sprung.
-void ReleaseCheck(RandomizerCheck rc) {
-    Rando::ItemLocation* location = Rando::Context::GetInstance()->GetItemLocation(rc);
-    const RandomizerGet placed = location->GetPlacedRandomizerGet();
-    location->SetCheckStatus(RCSHOW_COLLECTED);
+void GiveCheckItem(RandomizerCheck rc, RandomizerGet placed) {
     if (placed == RG_ICE_TRAP) {
         return;
     }
@@ -106,6 +182,17 @@ void ReleaseCheck(RandomizerCheck rc) {
     ReleaseNative(rc);
 }
 
+// The check is marked first, so nothing can queue it again, and its world pickup is spent whatever it held. A trap is
+// collected and never sprung. Returns whether the world pickup could be spent.
+bool ReleaseCheck(RandomizerCheck rc) {
+    Rando::ItemLocation* location = Rando::Context::GetInstance()->GetItemLocation(rc);
+    const RandomizerGet placed = location->GetPlacedRandomizerGet();
+    location->SetCheckStatus(RCSHOW_COLLECTED);
+    const bool worldPickupSpent = SpendWorldPickup(rc);
+    GiveCheckItem(rc, placed);
+    return worldPickupSpent;
+}
+
 std::vector<RandomizerCheck> ReleaseAll() {
     std::vector<RandomizerCheck> released;
     for (const Rando::Location& location : Rando::StaticData::GetLocationTable()) {
@@ -113,7 +200,10 @@ std::vector<RandomizerCheck> ReleaseAll() {
         if (!IsRemaining(rc)) {
             continue;
         }
-        ReleaseCheck(rc);
+        if (!ReleaseCheck(rc)) {
+            SPDLOG_WARN("[ComboShip] release: '{}' has no world flag to spend; its pickup may give again",
+                        location.GetName());
+        }
         released.push_back(rc);
     }
     return released;
