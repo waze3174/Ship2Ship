@@ -4367,6 +4367,23 @@ static void Combo_PlayerChangeAmmo(s32 ootItem, s32 n) {
 #endif
 
 #ifdef COMBO_BUILD
+// MM Player_UseItem -> func_80831814(PLAYER_UNKAA5_2): not falling / carrying / on a ledge, a first-person camera
+// allowed here, on the ground or swimming at the surface. Then the first-person view (Player_ActionHandler_13) is MM's
+// picto lens; the HUD (ComboPicto.cpp) runs the shutter and the photo. Returns 0 when refused.
+static s32 Combo_PictoTryStart(PlayState* play, Player* this) {
+    if ((this->stateFlags1 & (PLAYER_STATE1_HOOKSHOT_FALLING | PLAYER_STATE1_CARRYING_ACTOR |
+                              PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE)) ||
+        !Camera_CheckValidMode(Play_GetCamera(play, CAM_ID_MAIN), CAM_MODE_FIRST_PERSON) ||
+        !((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
+          ((this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->currentBoots != PLAYER_BOOTS_IRON) &&
+           (this->actor.yDistToWater < this->ageProperties->unk_2C)))) {
+        return false;
+    }
+    this->unk_6AD = 1;
+    sComboPicto = true;
+    return true;
+}
+
 // MM's sounds for a mask going on (CHANGE_ARMS) or off (TAKE_OUT_SHIELD), through MM's sfx player.
 static void Combo_PlayMaskSfx(Player* this, s32 on) {
     const u16 maskSfx = on ? NA_SE_PL_CHANGE_ARMS : NA_SE_PL_TAKE_OUT_SHIELD;
@@ -4506,17 +4523,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
                                             : "MM item -> shown (MM's no-taker reply)");
             }
         } else if ((sComboMmUseItem == COMBO_MM_ITEM_PICTOGRAPH_BOX) && (Combo_OotForm() == COMBO_FORM_HUMAN)) {
-            // MM Player_UseItem -> func_80831814(PLAYER_UNKAA5_2): not falling / carrying / on a ledge, a first-person
-            // camera allowed here, on the ground or swimming at the surface. Then the first-person view below
-            // (Player_ActionHandler_13) is MM's picto lens; the HUD (ComboPicto.cpp) runs the shutter and the photo.
-            if (!(this->stateFlags1 & (PLAYER_STATE1_HOOKSHOT_FALLING | PLAYER_STATE1_CARRYING_ACTOR |
-                                       PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE)) &&
-                Camera_CheckValidMode(Play_GetCamera(play, CAM_ID_MAIN), CAM_MODE_FIRST_PERSON) &&
-                ((this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
-                 ((this->stateFlags1 & PLAYER_STATE1_IN_WATER) && (this->currentBoots != PLAYER_BOOTS_IRON) &&
-                  (this->actor.yDistToWater < this->ageProperties->unk_2C)))) {
-                this->unk_6AD = 1;
-                sComboPicto = true;
+            if (Combo_PictoTryStart(play, this)) {
                 Combo_PauseLogUse(item, "Pictograph Box -> MM picto lens");
             } else {
                 Combo_PictoErrorSfx();
@@ -7736,6 +7743,14 @@ s32 Player_ActionHandler_0(Player* this, PlayState* play) {
         (CHECK_FLAG_ALL(this->focusActor->flags, ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_TALK_WITH_C_UP) ||
          (this->focusActor->naviEnemyId != 0xFF))) {
         this->stateFlags2 |= PLAYER_STATE2_NAVI_ALERT;
+#ifdef COMBO_BUILD
+    } else if ((this->naviTextId == 0) && (Combo_OotForm() == COMBO_FORM_HUMAN) && Combo_PictoOnCUpWanted() &&
+               !Player_CheckHostileLockOn(this) && CHECK_BTN_ALL(sControlInput->press.button, BTN_CUP)) {
+        // 2S2H PictoBoxOnCUp.cpp VB_FIRST_PERSON_CAMERA: C-Up opens the Pictograph Box (MM's Tatl-text test is Navi's)
+        if (!Combo_PictoTryStart(play, this)) {
+            Combo_PictoErrorSfx();
+        }
+#endif
     } else if ((this->naviTextId == 0 || CVarGetInteger(CVAR_ENHANCEMENT("NaviOnL"), 0)) &&
                !Player_CheckHostileLockOn(this) && CHECK_BTN_ALL(sControlInput->press.button, BTN_CUP) &&
                (YREG(15) != 0x10) && (YREG(15) != 0x20) && !func_8083B8F4(this, play)) {
