@@ -92,9 +92,7 @@ void DiscordPresence::Run() try {
     Drop("the program is closing");
 } catch (const std::exception& e) {
     Log(std::string("presence thread stopped by an exception: ") + e.what());
-} catch (...) {
-    Log("presence thread stopped by an unknown exception");
-}
+} catch (...) { Log("presence thread stopped by an unknown exception"); }
 
 void DiscordPresence::Step(const Snapshot& snapshot) {
     if (!snapshot.enabled) {
