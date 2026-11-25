@@ -31,6 +31,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_FAST_FARORES "gEnhancements.FastFarores"
 #define COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER "gCheats.HookshotReachMultiplier"
 #define COMBO_SOH_CVAR_BOOMERANG_RETICLE "gEnhancements.BoomerangReticle"
+#define COMBO_SOH_CVAR_FAST_BOOMERANG "gEnhancements.FastBoomerang"
 #define COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE "gEnhancements.HookshotableReticle"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR "gCosmetics.HookshotReticle.Target.Value"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR "gCosmetics.HookshotReticle.NonTarget.Value"

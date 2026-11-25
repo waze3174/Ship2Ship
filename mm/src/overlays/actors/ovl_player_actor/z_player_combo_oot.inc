@@ -160,6 +160,10 @@ s32 ComboOot_Boomerang_Out(Player* this, PlayState* play) {
         return true;
     }
 
+    if (sPlayerUseHeldItem && CVarGetInteger(COMBO_SOH_CVAR_FAST_BOOMERANG, 0)) {
+        EnBoom_ComboOotRequestQuickRecall();
+    }
+
     return false;
 }
 
