@@ -2583,6 +2583,14 @@ Combo menu, Randomizer panel, "Pots & Grass": one checkbox each for pots and gra
   OOT's. Now the launcher marks a file-select resume (`g_PendingMMEntryIsSaveLoad`) and sends MM no layout then.
   A reset or owl-save quit ends on OOT's file select, so `Combo_HandOffToOot` sends OOT no layout either; before,
   MM's layout waited there and landed on the next slot to start in OOT.
+- **The form and the worn mask follow the same rule (2026-11-25):** MM saves both (`playerForm`, `equippedMask`), so a
+  file-select resume sends MM neither and MM keeps what it saved. Before, OOT's form (`Combo_OotForm`, which is per
+  process and in no save) and OOT's live mask (none, since OOT parks before its first Play frame) were pushed: an MM
+  save made as a Goron or with a mask on came back human or unmasked. MM also drops an OOT mask worn in Termina on
+  every `OnSaveLoad`, since no save records it; a crossing puts the door's mask back on its first frame. After a
+  reset or owl-save quit, OOT gets the human form and no mask instead of MM's. Age and tunic still come from OOT on
+  every entry. Not changed: OOT's own save keeps no form, so a load that starts in Hyrule gets whatever form this
+  process last had (human after a launch).
 
 ## MM transformations in Hyrule, Goron body (B-M6a, 2026-11-12)
 
@@ -2604,7 +2612,8 @@ So a form in Hyrule is OOT's player and movement with:
   mask while transformed changes back. Setting `gCombo.Forms.InHyrule` (on by default).
 - **Form travels with Link:** OOT puts the form in the link state it captures at the switch door (bits 3-5). The
   launcher pushes it into MM, which sets `playerForm` on its `OnSaveLoad` (before Link spawns), and brings MM's
-  form back into OOT on the return (`SOH_SetComboForm`). The container keeps it too (`combo.link.form`).
+  form back into OOT on the return (`SOH_SetComboForm`). The container keeps it too (`combo.link.form`). Only a
+  crossing carries it; a save loaded from file select keeps MM's saved form (see "D-pad slots + shared button layout").
 - **Logic credits nothing for a form in Hyrule** until its moves are real (§B4 Tier C rule).
 
 **Verified (headless, Xvfb):** Goron Link standing and walking in Link's house; becoming a Goron in Hyrule and
