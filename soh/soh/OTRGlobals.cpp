@@ -3899,9 +3899,10 @@ extern "C" COMBO_EXPORT int SOH_GetNewSaveBackToBackOptions(void) {
 // Whether OoT's tunic or boots (an EQUIP_TYPE_*) are kept out of Termina by the loaded back-to-back slot's locks.
 extern "C" int Combo_BackToBackGearLocked(int equipType) {
     namespace Locks = ComboRando::BackToBack;
-    if ((equipType != EQUIP_TYPE_TUNIC && equipType != EQUIP_TYPE_BOOTS) || !Locks::LocksActive(gComboCrossGate))
+    if (equipType != EQUIP_TYPE_TUNIC && equipType != EQUIP_TYPE_BOOTS)
         return 0;
-    return Locks::Locked(sComboBackToBackOptions, Locks::GearLock(equipType == EQUIP_TYPE_BOOTS), false) ? 1 : 0;
+    const Locks::ItemLock gear = Locks::GearLock(equipType == EQUIP_TYPE_BOOTS);
+    return Locks::LockedInTermina(gComboCrossGate, sComboBackToBackOptions, gear, false) ? 1 : 0;
 }
 // An explicit MM start forces these, so grey them out. Under Random they stay editable — the force is silent when MM
 // rolls. HandleStartingAgeUI owns RSK_STARTING_AGE in both directions. FinalizeSettings decides which of them an MM

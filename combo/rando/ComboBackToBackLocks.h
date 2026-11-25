@@ -123,9 +123,15 @@ inline bool Locked(int options, ItemLock lock, bool mmHoldsCounterpart) {
     return true;
 }
 
-// The locks are in force: a back-to-back slot that has not yet beaten both games. Every other slot has none.
+// The locks are in force: a back-to-back slot that has not yet beaten both games. Every other slot has none, and a
+// slot that has beaten both has everything usable in both games.
 inline bool LocksActive(int crossGateMask) {
     return CrossGate::IsBackToBack(crossGateMask) && !CrossGate::ToTerminaOpen(crossGateMask);
+}
+
+// An item the loaded slot keeps out of Termina right now: Locked(), but only while the locks are in force.
+inline bool LockedInTermina(int crossGateMask, int options, ItemLock lock, bool mmHoldsCounterpart) {
+    return LocksActive(crossGateMask) && Locked(options, lock, mmHoldsCounterpart);
 }
 
 } // namespace ComboRando::BackToBack

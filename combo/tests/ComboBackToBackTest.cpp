@@ -151,6 +151,24 @@ void TestGear() {
     CHECK(!B2B::Locked(B2B::kBoots, B2B::GearLock(true), false));
 }
 
+// Both games beaten: no item of any kind is locked, whatever the page chose, and nothing is locked in any other mode.
+void TestPostGameUnlocksEverything() {
+    const ComboMode backToBack = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, 0);
+    const int bothBeaten = Gate::Mask(backToBack, true, true);
+    const int ganonOnly = Gate::Mask(backToBack, true, false);
+    const int rando = Gate::Mask(ComboMode::Rando(ComboRando::COMBO_GAMES_BOTH), false, false);
+    constexpr int kLastOotItem = 0x9D;
+    for (int item = 0; item <= kLastOotItem; item++) {
+        const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
+        CHECK(!B2B::LockedInTermina(bothBeaten, 0, lock, false));
+        CHECK(!B2B::LockedInTermina(rando, 0, lock, false));
+        CHECK(B2B::LockedInTermina(ganonOnly, 0, lock, false)); // with nothing chosen and nothing found, all locked
+    }
+    CHECK(!B2B::LockedInTermina(bothBeaten, 0, B2B::GearLock(true), false));
+    CHECK(!B2B::LockedInTermina(bothBeaten, 0, B2B::GearLock(false), false));
+    CHECK(B2B::LockedInTermina(ganonOnly, 0, B2B::GearLock(true), false));
+}
+
 } // namespace
 
 int main() {
@@ -163,6 +181,7 @@ int main() {
     TestMasks();
     TestOotOnlyItems();
     TestGear();
+    TestPostGameUnlocksEverything();
     if (ComboTest::gFailures != 0) {
         std::cerr << ComboTest::gFailures << " of " << ComboTest::gChecks << " checks failed\n";
         return 1;
