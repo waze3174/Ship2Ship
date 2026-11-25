@@ -13166,9 +13166,10 @@ void Player_Action_ComboZoraSwim(Player* this, PlayState* play) {
     f32 speedTarget = 0.0f;
     s16 yawTarget;
     s8 stickX = sControlInput->rel.stick_x;
-    // MM stickY *= -GameInteractor_InvertControl(GI_INVERT_ZORA_SWIM_Y); 2ship's default (InvertZoraSwimY on) makes
-    // that +stick_y: pull back to climb
-    s8 stickY = sControlInput->rel.stick_y;
+    // MM stickY *= -GameInteractor_InvertControl(GI_INVERT_ZORA_SWIM_Y), 2S2H's own setting (GameInteractor.cpp:368,
+    // default on): on is +stick_y (pull back to climb), off is the raw stick flipped.
+    s8 stickY = CVarGetInteger("gEnhancements.Player.InvertZoraSwimY", 1) ? sControlInput->rel.stick_y
+                                                                          : -sControlInput->rel.stick_y;
     const s32 aHeld = CHECK_BTN_ALL(sControlInput->cur.button, BTN_A);
 
     this->stateFlags2 |= PLAYER_STATE2_DISABLE_ROTATION_Z_TARGET;
