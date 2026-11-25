@@ -352,10 +352,16 @@ static void ComboApplyPendingForm() {
 }
 
 extern "C" void Combo_RequestCrossSwitch(int ootEntrance); // BenPort.cpp
+extern "C" void Combo_MmOotClearMask(void);                // ComboOotItems.cpp
 
 static void ComboApplyPendingMask(); // (below)
 static void RegisterComboFormCarry() {
-    COND_HOOK(OnSaveLoad, true, [](s16 fileNum) { ComboApplyPendingForm(); });
+    // MM's save keeps its own mask (equippedMask) but never an OOT mask worn in Termina, so a loaded save starts
+    // without one. A crossing puts the door's mask back on its first frame (ComboApplyPendingMask).
+    COND_HOOK(OnSaveLoad, true, [](s16 fileNum) {
+        ComboApplyPendingForm();
+        Combo_MmOotClearMask();
+    });
     COND_HOOK(OnGameStateUpdate, true, []() { ComboApplyPendingMask(); });
     // Debug (test harness only): COMBO_DEBUG_MM_RETURN=<oot entrance> — once Link has been in MM play ~2 s, cross
     // back to Hyrule at that entrance, like a crossed door does.
@@ -382,7 +388,6 @@ static RegisterShipInitFunc sComboFormCarryInit(RegisterComboFormCarry, {});
 // Token (same as OOT's SOH_GetComboMask): -1 none, an OOT item id for an OOT mask, 0x100 | MM item id for an MM mask.
 // Transformation masks travel as the form.
 extern "C" int Combo_MmOotWornMask(void);
-extern "C" void Combo_MmOotClearMask(void);
 extern "C" int Combo_MmOotWearMask(int ootItem);
 static int sComboPendingMask = -2; // -2 = nothing pending
 

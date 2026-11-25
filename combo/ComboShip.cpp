@@ -943,8 +943,14 @@ static int (*MM_GetComboMask)(void) = nullptr;
 static void (*MM_SetComboMask)(int) = nullptr;
 static int (*MM_GetComboForm)(void) = nullptr;
 static void (*SOH_SetComboForm)(int) = nullptr;
+// Handoff values (ComboAdultBody.cpp, OTRGlobals.cpp, soh ComboForms.h).
+constexpr int kComboNoPendingForm = -1;
+constexpr int kComboNoPendingMask = -2;
+constexpr int kComboNoMask = -1;
+constexpr int kComboFormHuman = 0;
 
-static void Combo_PushLinkStateToMM(int fileNum) {
+// carryForm: Link crossed a door, so his form goes with him. A save loaded from file select keeps the form MM saved.
+static void Combo_PushLinkStateToMM(int fileNum, bool carryForm) {
     if (!MM_SetComboLinkState)
         return;
     int st = SOH_GetComboLinkState ? SOH_GetComboLinkState() : -1;
@@ -963,12 +969,13 @@ static void Combo_PushLinkStateToMM(int fileNum) {
     if (st < 0)
         st = 0;
     std::cout << "[ComboShip] Link enters Termina as " << ((st & 1) ? "ADULT" : "child")
-              << std::array<const char*,
-                            8>{ "", " (Goron)", " (Zora)", " (Deku)", " (Fierce Deity)", "", "", "" }[(st >> 3) & 7]
+              << (carryForm ? std::array<const char*, 8>{ "", " (Goron)", " (Zora)", " (Deku)", " (Fierce Deity)", "",
+                                                          "", "" }[(st >> 3) & 7]
+                            : " (form from MM's save)")
               << "\n";
     MM_SetComboLinkState(st & 1, (st >> 1) & 3);
     if (MM_SetComboForm)
-        MM_SetComboForm((st >> 3) & 7); // the form travels with Link
+        MM_SetComboForm(carryForm ? ((st >> 3) & 7) : kComboNoPendingForm);
 }
 
 // One health / magic bar for both games (combo/ComboSharedHealth.h): at every switch the game Link leaves hands its
@@ -3818,21 +3825,23 @@ static void Combo_HandOffToMM(int fileNum) {
         if (MM_SetComboLinkState)
             MM_SetComboLinkState(0, 0);
         if (MM_SetComboForm)
-            MM_SetComboForm(-1); // -1: nothing pending
+            MM_SetComboForm(kComboNoPendingForm);
         if (MM_SetComboMask)
-            MM_SetComboMask(-2); // -2: nothing pending
+            MM_SetComboMask(kComboNoPendingMask);
         if (MM_SetComboButtons)
             MM_SetComboButtons("");
         return;
     }
-    Combo_PushLinkStateToMM(fileNum);
+    // The form, the worn mask and the button layout travel only with Link. A save loaded from file select keeps what
+    // MM saved (playerForm, equippedMask, its buttons): OOT's, applied as MM starts, would replace them. Age and tunic
+    // come from OOT on every entry.
+    const bool crossing = !g_PendingMMEntryIsSaveLoad;
+    Combo_PushLinkStateToMM(fileNum, crossing);
     Combo_HandoffSharedHealth(ComboRando::GAME_OOT, ComboRando::GAME_MM, fileNum);
-    if (SOH_GetComboMask && MM_SetComboMask)
-        MM_SetComboMask(SOH_GetComboMask()); // the mask Link wore through the door stays on
-    // The button layout travels only with Link. A save loaded from file select keeps the buttons MM saved: OOT's
-    // layout, applied on MM's first frame, would replace them.
+    if (MM_SetComboMask)
+        MM_SetComboMask((SOH_GetComboMask && crossing) ? SOH_GetComboMask() : kComboNoPendingMask);
     if (MM_SetComboButtons)
-        MM_SetComboButtons((SOH_GetComboButtons && !g_PendingMMEntryIsSaveLoad) ? SOH_GetComboButtons() : "");
+        MM_SetComboButtons((SOH_GetComboButtons && crossing) ? SOH_GetComboButtons() : "");
 }
 
 // Why MM handed control back: 0 = portal, 1 = Ctrl+R reset, 2 = owl-save quit (see BenPort.cpp).
@@ -3841,14 +3850,16 @@ static int g_mmReturnKind = 0;
 static void Combo_HandOffToOot() {
     if (g_activeMode.IsVanillaMm())
         return;
-    // A reset or owl-save quit ends on OOT's file select: a layout pushed then would land on the next slot loaded.
+    // A reset or owl-save quit ends on OOT's file select, so nothing crosses: what MM had would land on the next slot
+    // loaded. OOT's save keeps no form or worn mask, so that slot starts human and unmasked, with its own buttons.
+    const bool crossing = (g_mmReturnKind == 0);
     if (SOH_SetComboButtons)
-        SOH_SetComboButtons((MM_GetComboButtons && (g_mmReturnKind == 0)) ? MM_GetComboButtons() : "");
-    if (MM_GetComboForm && SOH_SetComboForm)
-        SOH_SetComboForm(MM_GetComboForm()); // the form Link had in Termina comes back with him
+        SOH_SetComboButtons((MM_GetComboButtons && crossing) ? MM_GetComboButtons() : "");
+    if (SOH_SetComboForm)
+        SOH_SetComboForm((MM_GetComboForm && crossing) ? MM_GetComboForm() : kComboFormHuman);
     Combo_HandoffSharedHealth(ComboRando::GAME_MM, ComboRando::GAME_OOT, g_comboCompletionSlot);
-    if (MM_GetComboMask && SOH_SetComboMask)
-        SOH_SetComboMask(MM_GetComboMask()); // the mask Link wore in Termina stays on
+    if (SOH_SetComboMask)
+        SOH_SetComboMask((MM_GetComboMask && crossing) ? MM_GetComboMask() : kComboNoMask);
 }
 
 static void Combo_OnMMReturn(int kind) {
