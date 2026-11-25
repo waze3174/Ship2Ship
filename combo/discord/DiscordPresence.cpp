@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <ctime>
+#include <exception>
 #include <utility>
 
 namespace ComboDiscord {
@@ -78,7 +79,7 @@ void DiscordPresence::Stop() {
         mThread.join();
 }
 
-void DiscordPresence::Run() {
+void DiscordPresence::Run() try {
     std::unique_lock<std::mutex> lock(mMutex);
     while (!mStopRequested) {
         const Snapshot snapshot = mSnapshot;
@@ -89,6 +90,10 @@ void DiscordPresence::Run() {
     }
     lock.unlock();
     Drop("the program is closing");
+} catch (const std::exception& e) {
+    Log(std::string("presence thread stopped by an exception: ") + e.what());
+} catch (...) {
+    Log("presence thread stopped by an unknown exception");
 }
 
 void DiscordPresence::Step(const Snapshot& snapshot) {
