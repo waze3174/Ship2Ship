@@ -299,27 +299,45 @@ game for seconds". The design comment at the top of that header is the reference
   first waits for the slot's writes (`WaitIdle`), which also orders the `.corrupt-<ts>` and `-<ts>.bak` renames it can
   make.
 - *Erase and copy:* `EraseComboContainer` drops the slot's waiting snapshot and waits out its write in progress
-  (`CancelAndWait`) before it removes the file, so no write can bring an erased slot back. A copy replaces the
+  (`CancelAndWait`) before it removes the file and its temp file (`DiscardContainerFiles`), so no write and no
+  recovery from the temp file (below) can bring an erased slot back. A file that cannot be removed, even after the
+  retries below, is emptied instead, so it never parses again; either is logged as an error. A copy replaces the
   destination's waiting snapshot with the copied container; a write of the destination already in progress finishes
-  first, so the copy always lands last.
+  first, so the copy always lands last. A copy never reads the destination from disk, and its write truncates the
+  destination's temp file, so nothing stale in it comes back either.
 - *Kill switch:* `gCombo.Debug.SyncSaveWrites=1` writes on the thread that saved, as before (after `CancelAndWait`
   for the slot). The game in play hands its value to the launcher every frame (`Combo_ContainerWriterFrame`, via the
   optional `SOH_`/`MM_SetContainerWriterFrame`), since the launcher links no CVar store; it applies from the next
   write. The same fallback covers a writer thread that could not start.
 - *Quit:* teardown drains the writer right after the shutdown watchdog starts ("writing saves") and stops it after
   `SOH_Deinit` ("writing the last saves"), both against one deadline 8 s after the watchdog's start
-  (`kSaveWriterShutdownBudget`, inside its 10 s). What is still unwritten then, and write failures not yet logged, go
-  to stderr and `logs/shutdown-watchdog.log`; a thread still in a write is detached and the process exit cuts it off
-  (the container stays the previous one). A save of that same slot made after that is not written by its caller
-  either (`CancelAndWait` returns false, `FlushContainer` reports it): two threads would write the one temp file, and
-  the rename fallback could then remove the container. Another exit that runs atexit handlers drains it for up to 3 s
-  (`Writer::StopAtExit`). The writer is never destroyed, so a detached thread never finds its mutex gone.
+  (`kSaveWriterShutdownBudget`, inside its 10 s). What is still unwritten then, and write failures and rename retries
+  not yet logged, go to stderr and `logs/shutdown-watchdog.log`; a thread still in a write is detached and the process
+  exit cuts it off (the container stays the previous one). A save of that same slot made after that is not written
+  by its caller either (`CancelAndWait` returns false, `FlushContainer` reports it): two threads would write the one
+  temp file, and the rename fallback could then remove the container. Another exit that runs atexit handlers drains
+  it for up to 3 s (`Writer::StopAtExit`). The writer is never destroyed, so a detached thread never finds its mutex
+  gone.
 - *Crash:* the snapshots not yet on disk are lost: normally the last 50-100 ms, and while the disk stalls, as long as
   it stalls (before 0.1.3 the game froze for that long instead). A snapshot is the whole container, so OOT's grant and
   MM's obtained flag for one pickup are lost together and the check can be collected again. A write cut short leaves
-  only `fileN.combosav.temp`, which nothing reads.
+  only a partial `fileN.combosav.temp`, which does not parse and is ignored.
 - *Failures:* a write that fails is reported on stderr as before, and through the writer report the game in play logs
   as an error. A short write (a full disk) is no longer renamed over the last good container.
+- *Rename retries and recovery (expert review, finding 1):* on Windows a scanner or sync tool that holds the temp
+  file or the container for a moment makes the rename over the container fail. Before 0.1.3 the code then removed the
+  container and renamed again; if that failed too, the slot had no container until the next good save, and a quit or
+  crash in between lost it. Now `WriteContainerFile` first retries the rename 5 times, 20 ms apart, and only then
+  removes the container and renames again (retried the same way). That bounds a write at about 200 ms of retries, on
+  the writer thread and on the kill-switch path alike. If the rename still fails, the slot is in its temp file, which
+  was written whole before any rename: `LoadOrCreateContainer` (`RecoverContainerFromTemp`) reads a slot whose
+  container is missing from its temp file when that parses as a JSON object, the check a normal load makes, moves it
+  into place and then applies the same `comboRelease` gate and notes migration. A temp file that does not parse is
+  left alone, as before. The recovery runs only for a slot that is not in memory and has no write waiting or in
+  progress (`WaitIdle` returns true), and never while a thread left behind at quit still writes the slot. Each retry,
+  fallback and recovery goes to stderr and into the writer report (`renameRetried`, `removedFirst`, `recovered`,
+  `lastNotice`), which the game in play logs as a warning even with save timing off. The retries should also
+  outlast a plando editor read that holds the container during a rename (review finding 2), as that read is short.
 - *Not ordered behind the writer:* comboui's plando editor reads `combo.rando` straight from the file
   (`PlandoLoad`), so it can see the snapshot before the newest; `combo.rando` changes only when a new file bakes its
   seed. A save-thread write of OOT that lands after an erase recreates the container, as it did before.
@@ -340,7 +358,8 @@ of 250 ms or more (`kSlowWriteMs`) is logged as a warning even with the switch o
 game for seconds"). With the save writer (v0.1.3) a game's line says the file was handed to the writer and how many
 snapshots were queued; the game in play logs `save timing: save writer:` once a frame with what the thread wrote:
 counts, the longest a change waited from hand-over to disk, and that write's open, file write and rename. It logs it
-with the switch on, and always as a warning when that wait reached 250 ms or as an error when a write failed.
+with the switch on, and always as a warning when that wait reached 250 ms, a rename was retried or a container was
+recovered from its temp file, and as an error when a write or an erase failed.
 `gCombo.Debug.MmSaveFullRead` switches MM's live save back
 to reading its whole section, to time it against the smaller read (rando.md, "Smaller read for the live MM save").
 `Combo_ReadGameSave` takes the container's `combo` object by reference (`ComboObjectOf`): it holds the baked seed,

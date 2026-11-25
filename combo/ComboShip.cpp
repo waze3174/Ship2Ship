@@ -638,6 +638,45 @@ static std::string ComboReleaseMajorMinor(const std::string& v) {
     return v.substr(0, dot == std::string::npos ? std::string::npos : v.find('.', dot + 1));
 }
 
+// Reads a container file into j; false, with j untouched, when it cannot be opened or is not a whole JSON object.
+static bool ReadContainerJson(const std::filesystem::path& file, nlohmann::json& j) {
+    std::ifstream in(file);
+    if (!in.is_open())
+        return false;
+    try {
+        nlohmann::json read;
+        in >> read;
+        if (!read.is_object())
+            return false;
+        j = std::move(read);
+        return true;
+    } catch (...) { return false; }
+}
+
+// For a slot whose container is missing: a write whose rename failed after it removed the container
+// (ComboContainerWriter.h, WriteContainerFile) left the slot in its temp file, written whole before the rename. Reads
+// that as a container and moves it into place; source says where the data is now. A temp file a crash cut short does
+// not parse and is left alone, as before. An erase removes the temp file with the container (EraseComboContainer), and
+// a copy never reads its destination from disk, so neither can bring old data back through here.
+static bool RecoverContainerFromTemp(int fileNum, const std::filesystem::path& path, nlohmann::json& j,
+                                     std::filesystem::path& source) {
+    const auto tmp = ComboContainerIo::TempPathOf(path);
+    std::error_code ec;
+    if (!std::filesystem::exists(tmp, ec) || !ReadContainerJson(tmp, j))
+        return false;
+    const auto moveIntoPlace = [&](std::error_code& e) { std::filesystem::rename(tmp, path, e); };
+    moveIntoPlace(ec);
+    ComboContainerIo::RetryWhileHeld(moveIntoPlace, ec);
+    source = ec ? tmp : path;
+    std::string notice =
+        "slot " + std::to_string(fileNum) + ": its container was missing; recovered it from " + tmp.filename().string();
+    if (ec)
+        notice += ", which cannot be moved into place (" + ec.message() + "); the next save writes the container";
+    std::cerr << "[ComboShip] WARNING: " << notice << std::endl;
+    ComboContainerIo::SharedWriter().NoteRecovered(notice);
+    return true;
+}
+
 // Hold g_containerMutex. Returns a ref into the cache; loads from disk or creates a fresh container.
 static nlohmann::json& LoadOrCreateContainer(int fileNum) {
     auto it = g_containerCache.find(fileNum);
@@ -646,18 +685,15 @@ static nlohmann::json& LoadOrCreateContainer(int fileNum) {
     nlohmann::json j;
     auto path = ComboContainerPath(fileNum);
     // An erased slot can still have its last write going: read (and rename aside) only what it leaves on disk.
-    ComboContainerIo::SharedWriter().WaitIdle(fileNum);
+    const bool slotIdle = ComboContainerIo::SharedWriter().WaitIdle(fileNum);
     std::error_code ec;
     bool existed = std::filesystem::exists(path, ec);
-    std::ifstream in(path);
-    bool parsed = false;
-    if (in.is_open()) {
-        try {
-            in >> j;
-            parsed = j.is_object();
-        } catch (...) { parsed = false; }
-    }
-    in.close();
+    const bool knownMissing = !existed && !ec;
+    bool parsed = ReadContainerJson(path, j);
+    std::filesystem::path source = path; // the file the container was read from
+    // Not while a thread left writing the slot at quit still owns its temp file (slotIdle false).
+    if (knownMissing && !parsed && slotIdle && RecoverContainerFromTemp(fileNum, path, j, source))
+        existed = parsed = true;
     // Never silently overwrite an existing-but-unreadable container: a fresh cache entry would drop
     // the other game's section on the next write. Preserve the file aside, then start fresh.
     if (existed && !parsed) {
@@ -670,7 +706,7 @@ static nlohmann::json& LoadOrCreateContainer(int fileNum) {
         auto rel = j.find("comboRelease");
         if (rel == j.end() || !rel->is_string() ||
             ComboReleaseMajorMinor(rel->get<std::string>()) != ComboReleaseMajorMinor(COMBO_RELEASE_VERSION)) {
-            std::filesystem::rename(path, path.string() + "-" + std::to_string(std::time(nullptr)) + ".bak", ec);
+            std::filesystem::rename(source, path.string() + "-" + std::to_string(std::time(nullptr)) + ".bak", ec);
             g_evictedSlots.push_back(fileNum); // caller holds g_containerMutex
             g_hasEvictedSlots = true;
             parsed = false;
@@ -718,7 +754,7 @@ static void FlushContainer(int fileNum) {
         const std::string error = "save container of slot " + std::to_string(fileNum) +
                                   " not written: the save writer was left writing that slot at quit";
         std::cerr << "[ComboShip] ERROR: " << error << std::endl;
-        writer.NoteCallerWriteFailed(error);
+        writer.NoteCallerFailed(error);
         return;
     }
     const ComboContainerIo::FileWriteResult result = ComboContainerIo::WriteContainerFile(path, text);
@@ -726,8 +762,7 @@ static void FlushContainer(int fileNum) {
     tl_containerIoStats.openMs = result.io.openMs;
     tl_containerIoStats.fileWriteMs = result.io.fileWriteMs;
     tl_containerIoStats.renameMs = result.io.renameMs;
-    if (!result.ok)
-        writer.NoteCallerWriteFailed(result.error);
+    writer.NoteCallerWrite(result);
 }
 
 // OOT (main thread) polls this each frame via SOH_SetOutdatedSaveNotice: pops the next slot whose
@@ -753,9 +788,15 @@ static void EraseComboContainer(int slot) {
         if (g_MmSaveInMemorySlot == slot)
             g_MmSaveInMemorySlot = -1;
         // The slot's waiting snapshot is dropped and its write in progress waited out, or it would put the file back.
-        ComboContainerIo::SharedWriter().CancelAndWait(slot);
-        std::error_code ec;
-        std::filesystem::remove(ComboContainerPath(slot), ec);
+        auto& writer = ComboContainerIo::SharedWriter();
+        writer.CancelAndWait(slot);
+        // The temp file goes too: LoadOrCreateContainer would recover the erased slot from it.
+        const std::string problem = ComboContainerIo::DiscardContainerFiles(ComboContainerPath(slot));
+        if (!problem.empty()) {
+            const std::string error = "erasing slot " + std::to_string(slot) + ": " + problem;
+            std::cerr << "[ComboShip] ERROR: " << error << std::endl;
+            writer.NoteCallerFailed(error);
+        }
     }
     // ComboShip (#182): MM caches which slot's owl save its gSaveContext came from; the section it
     // named is gone. Outside the lock — the DLL must never re-enter the container.
@@ -774,6 +815,7 @@ static void Combo_CopyContainer(int from, int to) {
         std::lock_guard<std::mutex> lk(g_containerMutex);
         nlohmann::json copy = LoadOrCreateContainer(from); // deep copy of the source container
         copy["slot"] = to;
+        // Never read from disk: whatever the destination's files hold, its write below replaces.
         g_containerCache[to] = std::move(copy);
         if (g_MmSaveInMemorySlot == to)
             g_MmSaveInMemorySlot = -1; // the destination's MM save just changed under us
@@ -1785,7 +1827,8 @@ static void StartShutdownWatchdog() {
 }
 
 // Quit: the save writer puts what it still holds on disk and stops (ComboContainerWriter.h). What it could not write by
-// the deadline, and writes that failed since the game in play last logged, are reported here: spdlog is gone by now.
+// the deadline, and writes that failed or needed a rename retry since the game in play last logged, are reported
+// here: spdlog is gone by now.
 static void Combo_FinishSaveWrites(std::chrono::steady_clock::time_point deadline) {
     auto& writer = ComboContainerIo::SharedWriter();
     const int unwritten = writer.Stop(deadline);
@@ -1793,7 +1836,7 @@ static void Combo_FinishSaveWrites(std::chrono::steady_clock::time_point deadlin
     writer.TakeReport(&report);
     const std::string described = ComboSaveTiming::DescribeWriterReport(report);
     std::cerr << "[ComboShip] shutdown: " << described << std::endl;
-    if (report.failed > 0)
+    if ((report.failed > 0) || (report.renameRetried > 0))
         AppendShutdownLog(described);
     if (unwritten > 0) {
         const std::string lost = std::to_string(unwritten) +
