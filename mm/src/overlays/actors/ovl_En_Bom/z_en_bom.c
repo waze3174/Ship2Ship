@@ -133,8 +133,9 @@ static InitChainEntry sInitChain[] = {
 };
 
 #ifdef COMBO_BUILD
-// SoH's Bomb Timer Multiplier (soh z_en_bom.c EnBom_Init) for a bomb taken out on OOT's bag: the fuse is scaled, and
-// the bomb shows and sounds at once, since the cue at timer 67 would come late (or never) on a scaled fuse.
+// SoH's Bomb Timer Multiplier and Deku Nuts Explode Bombs (soh z_en_bom.c EnBom_Init) for a bomb taken out on OOT's
+// bag. The fuse is scaled, and the bomb shows and sounds at once, since the cue at timer 67 would come late (or never)
+// on a scaled fuse. A Deku Nut sets the bomb off.
 static void EnBom_ComboInitOotOrigin(EnBom* this) {
     f32 timerMultiplier;
 
@@ -149,6 +150,10 @@ static void EnBom_ComboInitOotOrigin(EnBom* this) {
         this->comboFuseSetUp = true;
         Actor_PlaySfx(&this->actor, NA_SE_PL_TAKE_OUT_SHIELD);
         Actor_SetScale(&this->actor, enBomScales[this->isPowderKeg]);
+    }
+
+    if (CVarGetInteger(COMBO_SOH_CVAR_NUTS_EXPLODE_BOMBS, 0)) {
+        this->collider1.elem.acDmgInfo.dmgFlags |= DMG_DEKU_NUT;
     }
 }
 #endif
