@@ -93,12 +93,16 @@ static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType);
 #define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) \
     Combo_MmOotExplosiveOriginPending(Combo_PlayerExplosiveFromOot(explosiveType))
 #define COMBO_EXPLOSIVE_SPAWN_END() Combo_MmOotExplosiveOriginPending(0)
+// SoH's Remove Explosive Limit, for a bomb or bombchu taken out on OOT's bag (MM's own has 2S2H's switch).
+#define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) \
+    (Combo_PlayerExplosiveFromOot(explosiveType) && CVarGetInteger(COMBO_SOH_CVAR_REMOVE_EXPLOSIVE_LIMIT, 0))
 #else
 #define COMBO_MELEE_INFO(this, mwa) (sMeleeAttackAnimInfo[mwa])
 #define COMBO_PLAYER_AMMO(item) AMMO(item)
 #define COMBO_PLAYER_CHANGE_AMMO(item, n) Inventory_ChangeAmmo(item, n)
 #define COMBO_EXPLOSIVE_SPAWN_BEGIN(explosiveType) ((void)0)
 #define COMBO_EXPLOSIVE_SPAWN_END() ((void)0)
+#define COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType) false
 #endif
 
 void Player_Init(Actor* thisx, PlayState* play);
@@ -4974,7 +4978,8 @@ void Player_UseItem(PlayState* play, Player* this, ItemId item) {
                     ((explosiveType = Player_ExplosiveFromIA(this, itemAction)) > PLAYER_EXPLOSIVE_NONE) &&
                     ((COMBO_PLAYER_AMMO(sPlayerExplosiveInfo[explosiveType].itemId) == 0) ||
                      GameInteractor_Should(VB_LIMIT_EXPLOSIVES,
-                                           play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 3)))) {
+                                           (play->actorCtx.actorLists[ACTORCAT_EXPLOSIVES].length >= 3) &&
+                                               !COMBO_OOT_EXPLOSIVE_LIMIT_REMOVED(explosiveType))))) {
             // Prevent some items from being used if player is out of ammo.
             // Also prevent explosives from being used if too many are active
             Audio_PlaySfx(NA_SE_SY_ERROR);

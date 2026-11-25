@@ -36,6 +36,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_BOW_RETICLE "gEnhancements.BowReticle"
 #define COMBO_SOH_CVAR_BOMB_TIMER_MULTIPLIER "gCheats.BombTimerMultiplier"
 #define COMBO_SOH_CVAR_NUTS_EXPLODE_BOMBS "gEnhancements.NutsExplodeBombs"
+#define COMBO_SOH_CVAR_REMOVE_EXPLOSIVE_LIMIT "gEnhancements.RemoveExplosiveLimit"
 #define COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE "gEnhancements.HookshotableReticle"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR "gCosmetics.HookshotReticle.Target.Value"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR "gCosmetics.HookshotReticle.NonTarget.Value"
