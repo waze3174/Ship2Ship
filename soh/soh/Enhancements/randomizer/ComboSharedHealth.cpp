@@ -15,6 +15,7 @@ extern "C" {
 #include "z64.h"
 #include "macros.h"
 #include "variables.h"
+#include "functions.h"
 extern PlayState* gPlayState;
 }
 
@@ -160,6 +161,36 @@ extern "C" COMBO_EXPORT int SOH_ComboAmmoBag(int ootItem, int* cap, int* kind) {
         }
     }
     return -1;
+}
+
+// The infinite upgrades OOT's save holds (RandomizerOnGameFrameUpdateHandler keeps those bags, the meter and the wallet
+// full in Hyrule), as ComboHealth's bits, for Termina: OOT's own items used there and MM's side of what both games hold
+// one of (ComboHealth::MmShareInfinite). 0 = no OOT rando save loaded.
+extern "C" COMBO_EXPORT uint32_t SOH_ComboInfiniteMask(void) {
+    struct Infinite {
+        RandomizerInf flag;
+        uint32_t bit;
+    };
+    static const Infinite kInfinite[] = {
+        { RAND_INF_HAS_INFINITE_QUIVER, ComboHealth::InfiniteAmmoBit(ComboHealth::kAmmoArrows) },
+        { RAND_INF_HAS_INFINITE_BOMB_BAG, ComboHealth::InfiniteAmmoBit(ComboHealth::kAmmoBombs) },
+        { RAND_INF_HAS_INFINITE_BOMBCHUS, ComboHealth::InfiniteAmmoBit(ComboHealth::kAmmoBombchus) },
+        { RAND_INF_HAS_INFINITE_STICK_UPGRADE, ComboHealth::InfiniteAmmoBit(ComboHealth::kAmmoSticks) },
+        { RAND_INF_HAS_INFINITE_NUT_UPGRADE, ComboHealth::InfiniteAmmoBit(ComboHealth::kAmmoNuts) },
+        { RAND_INF_HAS_INFINITE_BULLET_BAG, ComboHealth::InfiniteAmmoBit(ComboHealth::kAmmoSeeds) },
+        { RAND_INF_HAS_INFINITE_MAGIC_METER, ComboHealth::kInfiniteMagic },
+        { RAND_INF_HAS_INFINITE_MONEY, ComboHealth::kInfiniteMoney },
+    };
+    if ((gSaveContext.fileNum > 2) || !IS_RANDO) {
+        return 0;
+    }
+    uint32_t mask = 0;
+    for (const Infinite& i : kInfinite) {
+        if (Flags_GetRandomizerInf(i.flag)) {
+            mask |= i.bit;
+        }
+    }
+    return mask;
 }
 
 // MM's bags seen from Hyrule (MM items on OOT's buttons and OOT's Termina face, ComboPause.cpp): with sharing on, the

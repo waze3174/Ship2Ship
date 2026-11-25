@@ -2730,6 +2730,15 @@ Features that change the rules of play are off until the player turns them on in
   as that game will show it on arrival, `ComboHealth::DormantAmmo`; OOT's Slingshot fired in Termina spends from the
   shared seeds (`SpendDormantAmmo`). With it off they show, and the Slingshot spends, OOT's own save, written at the
   switch back before OOT reloads it (`Combo_TerminaPersistDormantSave`).
+  Ship of Harkinian's Infinite Upgrades (owner 2026-11-25: "having the infinite stick bag in OoT doesnt carry over to
+  termina with shared items"): OOT's `RAND_INF_HAS_INFINITE_*` flags are read live from OOT's resident save
+  (`SOH_ComboInfiniteMask`); nothing is stored in MM's save. MM's own bag, meter or wallet is infinite when OOT's is
+  and the two games hold one of it (`ComboHealth::MmShareInfinite`): with this switch on for the ammo and the meter,
+  or through the Shared Items family (bow → quiver, bomb bag, bombchu bag, magic, wallet → rupees). MM then refills
+  it every frame as SoH does in Hyrule and hides its count on the C buttons, the D-pad and the pause menu (the B
+  button keeps it for minigames). OOT's own items used in Termina (OOT's bag) are infinite whenever OOT's bag is.
+  Sticks and nuts have no Shared Items family, so without this switch MM's own sticks and nuts stay MM's. 2S2H has
+  no Infinite Upgrades of its own yet (its menu entry is a "Coming Soon" placeholder), so nothing goes the other way.
 - `gCombo.Rando.FormLogicCredit` (seed-bound, stored as `formLogicCredit`): logic may credit MM's Zora and Goron
   Masks as Hyrule abilities (`ComboFormCredit` in `logic.cpp`). Off: no seed ever requires a form's ability.
   The launcher pushes the setting with `SOH_SetComboFormLogicCredit` before each oracle pass; a seed without the

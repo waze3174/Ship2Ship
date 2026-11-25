@@ -1,5 +1,7 @@
 // mm/2s2h/Rando/MiscBehavior/ComboSharedHealth.cpp — ComboShip: MM's side of the one health bar for both games
 // (rationale and balancing: combo/ComboSharedHealth.h).
+#include <cstdarg>
+#include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <string>
@@ -7,14 +9,17 @@
 #include <libultraship/libultraship.h>
 
 #include "ComboExport.h"
+#include "ComboResolve.h"
 #include "ComboSharedHealth.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#include "2s2h/Rando/Rando.h"
 #include "2s2h/ShipInit.hpp"
 
 extern "C" {
 #include "z64.h"
 #include "macros.h"
 #include "variables.h"
+extern int gMMComboSharedMask; // BenPort.cpp: the loaded slot's Shared Items
 }
 
 namespace {
@@ -58,7 +63,88 @@ int MmBagCap(u8 item) {
             return 0;
     }
 }
+
+// Ship of Harkinian's Infinite Upgrades as OOT's save holds them (SOH_ComboInfiniteMask), 0 without an OOT rando save.
+uint32_t OotInfinite() {
+    typedef uint32_t (*FnMask)(void);
+    static const FnMask sMask = (FnMask)Combo_ResolveSym("soh", "SOH_ComboInfiniteMask");
+    return (IS_RANDO && (sMask != nullptr)) ? sMask() : 0;
+}
+
+bool MmInfinite(uint32_t ootInfinite, uint32_t bit) {
+    return ComboHealth::MmShareInfinite(ootInfinite, bit, (uint32_t)gMMComboSharedMask);
+}
+
+// MM's own ammo item whose bag is infinite through OOT's (its magic arrows draw on the quiver).
+bool MmItemInfinite(s16 item) {
+    if ((item >= ITEM_BOW_FIRE) && (item <= ITEM_BOW_LIGHT)) {
+        item = ITEM_BOW;
+    }
+    for (const MmBag& b : kMmBags) {
+        if ((b.item == item) && (b.kind >= 0)) {
+            return MmInfinite(OotInfinite(), ComboHealth::InfiniteAmmoBit(b.kind));
+        }
+    }
+    return false;
+}
+
+// SoH's RandomizerOnGameFrameUpdateHandler for MM's side of what OOT holds infinite: the bag full (never lowered), the
+// meter full (as 2S2H's Infinite Magic cheat fills it, once it has grown), the wallet full. A use in Termina then
+// spends nothing, as in Hyrule, and with the count shared the shared count does not drop either.
+void FillInfinite() {
+    const uint32_t oot = OotInfinite();
+    if (oot == 0) {
+        return;
+    }
+    for (const MmBag& b : kMmBags) {
+        if ((b.kind < 0) || (INV_CONTENT(b.item) != b.item) || !MmInfinite(oot, ComboHealth::InfiniteAmmoBit(b.kind))) {
+            continue;
+        }
+        const int cap = MmBagCap(b.item);
+        if (AMMO(b.item) < cap) {
+            AMMO(b.item) = (s8)cap;
+        }
+    }
+    if (MmInfinite(oot, ComboHealth::kInfiniteMagic)) {
+        const u8 level = gSaveContext.save.saveInfo.playerData.magicLevel;
+        if ((level == 1) || (level == 2)) {
+            gSaveContext.save.saveInfo.playerData.magic = (level == 1) ? MAGIC_NORMAL_METER : MAGIC_DOUBLE_METER;
+        }
+    }
+    if (MmInfinite(oot, ComboHealth::kInfiniteMoney) &&
+        (gSaveContext.save.saveInfo.playerData.rupees < CUR_CAPACITY(UPG_WALLET))) {
+        gSaveContext.save.saveInfo.playerData.rupees = CUR_CAPACITY(UPG_WALLET);
+    }
+}
+
+// SoH's VB_DRAW_AMMO_COUNT: an infinite bag shows no count, on the C buttons and the D-pad. The B button keeps it
+// (minigame arrows count there), as in Varuuna/ComboShip PR #246 f749c3cac (MiscBehavior/InfiniteUpgrades.cpp).
+void HideInfiniteHudCount(bool* should, va_list args) {
+    const s16 button = (s16)va_arg(args, int);
+    (void)va_arg(args, int); // alpha
+    const bool isDpad = va_arg(args, int) != 0;
+    if (!isDpad && (button == EQUIP_SLOT_B)) {
+        return;
+    }
+    if (MmItemInfinite(isDpad ? DPAD_GET_CUR_FORM_BTN_ITEM(button) : GET_CUR_FORM_BTN_ITEM(button))) {
+        *should = false;
+    }
+}
+
+void HideInfinitePauseCount(bool* should, va_list args) {
+    (void)va_arg(args, void*); // PauseContext*
+    (void)va_arg(args, void*); // GraphicsContext*
+    if (MmItemInfinite((s16)va_arg(args, int))) {
+        *should = false;
+    }
+}
 } // namespace
+
+// OOT's own bag of a shared consumable is infinite (OOT's items used in Termina spend nothing from it).
+extern "C" int Combo_OotAmmoInfinite(int kind) {
+    return (kind >= 0) && (kind < ComboHealth::kAmmoKinds) &&
+           ((OotInfinite() & ComboHealth::InfiniteAmmoBit(kind)) != 0);
+}
 
 // The shared heart-piece meter in eighths (0-7) for this game's pause screen; -1 before the first tick of a save.
 extern "C" int Combo_HeartPieceEighths(void) {
@@ -110,6 +196,7 @@ static void ComboSharedHealthTick() {
         }
     }
     ComboHealth::TickIfEnabled(sRt, ComboHealth::kGameMm, n);
+    FillInfinite();
     if (!Combo_GamesSolo()) {
         // The watched-transformation record is one for both games: MM's weekEventReg flags (z_player.c D_8085D908)
         // and the shared bits, merged both ways, so a transformation watched in Hyrule is skippable in Termina. A
@@ -134,7 +221,8 @@ static void ComboSharedHealthTick() {
                     AMMO(ITEM_BOW), sRt.s.ammo[0], AMMO(ITEM_BOMB), sRt.s.ammo[1], AMMO(ITEM_BOMBCHU), sRt.s.ammo[2],
                     AMMO(ITEM_DEKU_STICK), sRt.s.ammo[3], AMMO(ITEM_DEKU_NUT), sRt.s.ammo[4], AMMO(ITEM_MAGIC_BEANS),
                     sRt.s.ammo[5]);
-        SPDLOG_INFO("[ComboShip] ammo MM: seeds shared {}", sRt.s.ammo[ComboHealth::kAmmoSeeds]);
+        SPDLOG_INFO("[ComboShip] ammo MM: seeds shared {}, OOT infinite 0x{:x}", sRt.s.ammo[ComboHealth::kAmmoSeeds],
+                    OotInfinite());
     }
 }
 
@@ -151,6 +239,8 @@ static void ComboSharedOnLoad(s16 fileNum) {
 static void RegisterComboSharedHealth() {
     COND_HOOK(OnSaveLoad, true, ComboSharedOnLoad);
     COND_HOOK(OnGameStateUpdate, true, []() { ComboSharedHealthTick(); });
+    COND_VB_SHOULD(VB_DRAW_HUD_AMMO_COUNT, true, HideInfiniteHudCount(should, args));
+    COND_VB_SHOULD(VB_KALEIDO_DRAW_AMMO_COUNT, true, HideInfinitePauseCount(should, args));
 }
 static RegisterShipInitFunc sComboSharedHealthInit(RegisterComboSharedHealth, {});
 

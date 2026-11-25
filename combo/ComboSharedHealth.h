@@ -24,6 +24,8 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 #include <nlohmann/json.hpp>
 
+#include "rando/SharedItems.h"
+
 extern "C" int Combo_GamesSolo(void); // each game's DLL: a one-game seed (combo/rando/ComboGames.h)
 
 namespace ComboHealth {
@@ -295,6 +297,48 @@ inline void TickIfEnabled(Runtime& rt, int game, const Native& n) {
     } else {
         Release(rt);
     }
+}
+
+// Ship of Harkinian's "Infinite Upgrades" (RAND_INF_HAS_INFINITE_*, kept in OOT's save), as OOT hands them to Termina
+// (SOH_ComboInfiniteMask): one bit per upgrade, a consumable's at its AmmoKind.
+constexpr uint32_t InfiniteAmmoBit(int kind) {
+    return 1u << kind;
+}
+constexpr uint32_t kInfiniteMagic = 1u << kAmmoKinds;
+constexpr uint32_t kInfiniteMoney = 1u << (kAmmoKinds + 1);
+
+// The Shared Items family that makes an upgrade one for both games, -1 = none (sticks, nuts and seeds have none).
+inline int InfiniteFamily(uint32_t bit) {
+    if (bit == InfiniteAmmoBit(kAmmoArrows)) {
+        return ComboRando::SF_BOW;
+    }
+    if (bit == InfiniteAmmoBit(kAmmoBombs)) {
+        return ComboRando::SF_BOMB_BAG;
+    }
+    if (bit == InfiniteAmmoBit(kAmmoBombchus)) {
+        return ComboRando::SF_BOMBCHU_BAG;
+    }
+    if (bit == kInfiniteMagic) {
+        return ComboRando::SF_MAGIC;
+    }
+    if (bit == kInfiniteMoney) {
+        return ComboRando::SF_WALLET;
+    }
+    return -1;
+}
+
+// MM's side of an upgrade OOT holds infinite (`ootInfinite`) is infinite too where the two games hold one of it: its
+// count is shared (this switch: the ammo and the magic meter, not rupees), or its upgrade is a Shared Item
+// (`sharedMask`: the slot's SharedFamily bits).
+inline bool MmShareInfinite(uint32_t ootInfinite, uint32_t bit, uint32_t sharedMask) {
+    if ((ootInfinite & bit) == 0) {
+        return false;
+    }
+    if ((bit != kInfiniteMoney) && Enabled()) {
+        return true;
+    }
+    const int family = InfiniteFamily(bit);
+    return (family >= 0) && (((sharedMask >> family) & 1u) != 0);
 }
 
 // The other (dormant) game's bag, seen from the game being played: its items on this game's buttons and its face of

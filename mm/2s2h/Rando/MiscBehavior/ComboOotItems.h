@@ -36,12 +36,14 @@ int Combo_MmOotItemOf(int foreignItem);
 int Combo_MmOotItemAgeOk(int foreignItem);
 
 // OOT's ammo for an ammo item (Deku Seeds etc.) as a use in Termina spends it (-1 = not an ammo item OOT holds), and
-// OOT's Inventory_ChangeAmmo on it. With shared consumables on, that is the shared count, not OOT's dormant save.
+// OOT's Inventory_ChangeAmmo on it. With shared consumables on, that is the shared count, not OOT's dormant save. A bag
+// Ship of Harkinian's Infinite Upgrades keeps full in Hyrule is full in Termina too: a use spends nothing.
 int Combo_MmOotAmmo(int ootItem);
 void Combo_MmOotChangeAmmo(int ootItem, int delta);
 
-// The ammo digits for a foreign (OOT) item on an MM button: that count, -1 = none. `full` (may be NULL): OOT's bag is
-// full (the count is drawn green).
+// The ammo digits for an OOT item / a foreign (OOT) item on an MM button: that count, -1 = none (also for an infinite
+// bag, whose count OOT hides). `full` (may be NULL): OOT's bag is full (the count is drawn green).
+int Combo_MmOotAmmoDigits(int ootItem, int* full);
 int Combo_MmForeignAmmo(int foreignItem, int* full);
 
 // Link's hand model while holding an OOT item: the OOT model (routed "@oot:") for the left / right hand limb, or NULL

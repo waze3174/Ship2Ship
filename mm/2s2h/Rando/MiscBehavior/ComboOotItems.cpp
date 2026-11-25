@@ -13,6 +13,7 @@
 // Only damage / puzzle credit maps to MM (e.g. the Boomerang's damage bit is MM's Zora-boomerang bit).
 #ifdef COMBO_BUILD
 
+#include <algorithm>
 #include <cstdarg>
 #include <cstdio>
 #include <cstdlib>
@@ -156,13 +157,16 @@ extern "C" int Combo_MmOotItemAgeOk(int foreignItem) {
 // (ComboSharedHealth.cpp) answers for it; with sharing off it hands back OOT's own count.
 extern "C" int Combo_SharedOotAmmo(int kind, int ootCount, int ootCap);
 extern "C" int Combo_SharedOotAmmoSpend(int kind, int change, int ootCount);
+// Ship of Harkinian's Infinite Upgrades on OOT's bag (OOT keeps it full every frame in Hyrule).
+extern "C" int Combo_OotAmmoInfinite(int kind);
 
 namespace {
 struct OotBag {
-    int count = -1; // what a use spends (and what OOT will show on arrival), -1 = not an ammo item OOT holds
-    int cap = 0;    // OOT's bag
-    int kind = -1;  // the shared consumable
-    int own = -1;   // OOT's save's own count
+    int count = -1;        // what a use spends (and what OOT will show on arrival), -1 = not an ammo item OOT holds
+    int cap = 0;           // OOT's bag
+    int kind = -1;         // the shared consumable
+    int own = -1;          // OOT's save's own count
+    bool infinite = false; // full whatever is spent, and its count hidden, as in Hyrule
 };
 
 OotBag BagOf(int ootItem) {
@@ -173,7 +177,8 @@ OotBag BagOf(int ootItem) {
         b.own = sBag(ootItem, &b.cap, &b.kind);
     }
     if (b.own >= 0) {
-        b.count = Combo_SharedOotAmmo(b.kind, b.own, b.cap);
+        b.infinite = Combo_OotAmmoInfinite(b.kind) != 0;
+        b.count = b.infinite ? std::max(b.cap, b.own) : Combo_SharedOotAmmo(b.kind, b.own, b.cap);
     }
     return b;
 }
@@ -186,7 +191,7 @@ extern "C" int Combo_MmOotAmmo(int ootItem) {
 extern "C" void Combo_MmOotChangeAmmo(int ootItem, int delta) {
     static FnVoidIntInt sChange = Sym<FnVoidIntInt>("SOH_ComboTermina_ChangeAmmo");
     const OotBag b = BagOf(ootItem);
-    if (b.count < 0) {
+    if ((b.count < 0) || b.infinite) {
         return;
     }
     // OOT's Inventory_ChangeAmmo: never below 0, never above OOT's bag.
@@ -198,13 +203,24 @@ extern "C" void Combo_MmOotChangeAmmo(int ootItem, int delta) {
     }
 }
 
+extern "C" int Combo_MmOotAmmoDigits(int ootItem, int* full) {
+    const OotBag b = BagOf(ootItem);
+    const int digits = b.infinite ? -1 : b.count;
+    if (full != nullptr) {
+        *full = (digits >= 0) && (digits >= b.cap);
+    }
+    return digits;
+}
+
 extern "C" int Combo_MmForeignAmmo(int foreignItem, int* full) {
     const int oot = Combo_MmOotItemOf(foreignItem);
-    const OotBag b = (oot >= 0) ? BagOf(oot) : OotBag{};
-    if (full != nullptr) {
-        *full = (b.count >= 0) && (b.count >= b.cap);
+    if (oot < 0) {
+        if (full != nullptr) {
+            *full = 0;
+        }
+        return -1;
     }
-    return b.count;
+    return Combo_MmOotAmmoDigits(oot, full);
 }
 
 // OOT's hand models (soh z_player_lib.c sPlayerDListGroups) for the OOT items Link holds in Termina. OOT has each
