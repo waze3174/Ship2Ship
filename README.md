@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/images/ship2ship-icon.png" alt="The Ship2Ship icon" width="256"></p>
+
 # Ship2Ship
 
 **Ocarina of Time and Majora's Mask in one PC port: a cross-game randomizer in the spirit of
