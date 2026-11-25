@@ -627,6 +627,25 @@ SoH gets 2S2H's "Dash After Roll" (Enhancements -> QoL -> Controls): keep holdin
 - Forms: no check on the form, as in 2S2H (it tests the action, never the form). A form that rolls with OOT's roll (Zora, Fierce Deity, human) dashes; Goron and Deku have no OOT roll action, so the latch never starts for them.
 - Not in-game tested (2026-11-25).
 
+## 2S2H enhancements for MM forms and items in Hyrule (2026-11-25, branch `ultimate/xenh-hyrule`)
+
+Forms and MM items in Hyrule are SoH reimplementations, so 2S2H's hooks (`COND_VB_SHOULD`) never fire there. Each enhancement is ported to the SoH side and reads 2S2H's own CVar string (one shared CVar store), with the same default; no new menu control, so the switch is the one in 2S2H's menu. No save or seed field changes. Forms get no logic credit, so none of this is in logic. Not in-game tested (2026-11-25, no build).
+
+- **Goron: spikes need R** (`gEnhancements.Masks.GoronRollingSpikesRequireShield`): `Combo_GoronSpikesRetract` / `Combo_GoronSpikesCharge` in `z_player.c`; spikes charge only while R is held and retract when it is let go.
+- **Goron: fast spikes** (`gEnhancements.Masks.GoronRollingFastSpikes`): +8 charge per frame at the charge step, as `GoronRollingFastSpikes.cpp`.
+- **Goron: ignores magic** (`gEnhancements.Masks.GoronRollingIgnoresMagic`): no 2 magic up front, no drain, and no magic term in the charge and retract checks.
+- **Zora: invert swim Y** (`gEnhancements.Player.InvertZoraSwimY`, default on): `Player_Action_ComboZoraSwim`'s stick Y is flipped when the option is off, as MM's `stickY *= -InvertControl`. The camera and aiming invert settings are not involved, as in MM.
+- **Equip masks while swimming** (`gEnhancements.Masks.EquipWhileSwimming`): human Link's wearable MM masks keep their buttons off the bottom (`Combo_PauseMaskUsableWhileSwimming`, `Interface_UpdateButtons`). The Goron, Deku and Fierce Deity masks (and the Giant's) are not covered by MM's option and stay as before, so the Goron and Deku masks stay blocked in water (owner decision).
+- **Underwater ocarina** (`gEnhancements.Player.UnderwaterOcarina`): on the bottom (iron boots, or the sunk Zora) MM's Ocarina of Time and a transformed Link's ocarina stay usable, on the button and in `Player_UseItem`. Human Link's own OOT ocarina keeps OOT's rule.
+- **Infinite Deku hopping** (`gEnhancements.Player.InfiniteDekuHopping`): the last water hop still spins but refills the hops (not when dead), and the air steering after a water hop takes the full speed target (MM's `PLAYER_STATE3_200000`, `sComboDekuWaterHop`).
+- **Fierce Deity putaway / always wield** (`gEnhancements.Player.FierceDeityPutaway`): nothing to port. Hyrule's Fierce Deity is OOT's Link with the Double Helix on B: A already puts the sword away and nothing draws it by itself, which is what MM's option gives. With the option off Hyrule's Fierce Deity still behaves as with it on.
+- **3DS style mask equipping** (`gEnhancements.Masks.3DSMaskEquip`): a wearable MM mask used while transformed returns Link to human and goes on once he is (`sComboPendingMask`). The buttons were already enabled in forms in Hyrule; before, the mask only turned Link human.
+- **Easy mask equip** (`gEnhancements.Masks.EasyMaskEquip`): on the Masks face of the pause prism, A on an MM mask picks it to go on or off with no button (second A cancels, the Giant's gives the error sound); it is used through `Player_UseItem` once the menu closes, so every rule of a normal use applies. The mask worn that way stays on with no button and has the white outline. Not ported: the "Decide" A-button label and MM's own outline art.
+- **Persistent Bunny Hood** (`gEnhancements.Masks.PersistentBunnyHood.Enabled`): using the MM Bunny Hood, or A on it in the pause menu, flips a state instead of wearing it. It outlives buttons, forms and scenes, shows as a blue outline in the pause menu and keeps the 1.5x run in any form. The state lasts for the session only (MM keeps it in its save; Hyrule adds no save field), and the hood is drawn on human Link's head only, not on the forms' heads.
+- **Pictograph Box on C-Up** (`gEnhancements.Items.PictoBoxOnCUp`): C-Up opens the Box while MM's inventory holds it and no photo is kept; the error sound when the gate refuses. Hyrule's C-Up is Navi, so with a photo kept it stays Navi's.
+- **Extra Powder Kegs** (`gEnhancements.Items.ExtraPowderKegs`): Hyrule's view of MM's keg bag holds three (green count at three). Hyrule has no keg shop or pickup, so that is all of the option there.
+- **Bomb arrows** (`gEnhancements.Equipment.BombArrows`): not ported; see the report.
+
 ## Named presets and the ComboShip settings import (combo-owned)
 
 **Why:** neither port has a settings preset that is safe here. OOT's preset apply replaces whole CVar blocks with
