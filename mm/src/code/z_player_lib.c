@@ -2431,8 +2431,14 @@ void Player_DrawHookshotReticle(PlayState* play, Player* player, f32 hookshotDis
 
             MATRIX_FINALIZE_AND_LOAD(OVERLAY_DISP++, play->state.gfxCtx);
 
-            gSPSegment(OVERLAY_DISP++, 0x06, play->objectCtx.slots[player->actor.objectSlot].segment);
-            gSPDisplayList(OVERLAY_DISP++, gHookshotReticleDL);
+#ifdef COMBO_BUILD
+            // ComboShip: SoH's coloured reticle for OOT's Hookshot and Longshot.
+            if (!Combo_MmOotDrawHookshotReticle(play, player, poly, bgId))
+#endif
+            {
+                gSPSegment(OVERLAY_DISP++, 0x06, play->objectCtx.slots[player->actor.objectSlot].segment);
+                gSPDisplayList(OVERLAY_DISP++, gHookshotReticleDL);
+            }
 
             CLOSE_DISPS(play->state.gfxCtx);
         }

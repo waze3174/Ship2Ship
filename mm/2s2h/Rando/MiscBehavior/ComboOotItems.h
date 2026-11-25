@@ -31,6 +31,9 @@ struct PlayState;
 #define COMBO_SOH_CVAR_FAST_FARORES "gEnhancements.FastFarores"
 #define COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER "gCheats.HookshotReachMultiplier"
 #define COMBO_SOH_CVAR_BOOMERANG_RETICLE "gEnhancements.BoomerangReticle"
+#define COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE "gEnhancements.HookshotableReticle"
+#define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR "gCosmetics.HookshotReticle.Target.Value"
+#define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR "gCosmetics.HookshotReticle.NonTarget.Value"
 
 // The item action an OOT item (foreign id on an MM button) runs in Termina: one of PLAYER_IA_COMBO_OOT_* for an OOT
 // item with a Termina port, PLAYER_IA_NONE otherwise (masks with a Termina twin go through Combo_MmPauseUseItem).
@@ -63,6 +66,11 @@ void* Combo_MmOotRawResource(const char* path);
 // SoH's Hookshot Reach Multiplier for the item action in Link's hand: its CVar for OOT's Hookshot and Longshot, 1 for
 // anything else (MM's own Hookshot keeps its reach).
 float Combo_MmOotHookshotReachMultiplier(int heldItemAction);
+
+// SoH's coloured Hookshot reticle (the Hookshotable Reticle setting and the reticle colours) for OOT's Hookshot and
+// Longshot, drawn in place of MM's reticle at the hit point `poly` / `bgId` of Player_DrawHookshotReticle's line test.
+// Returns 1 when it drew the reticle, 0 when MM's own should be drawn.
+int Combo_MmOotDrawHookshotReticle(struct PlayState* play, struct Player* player, struct CollisionPoly* poly, int bgId);
 
 // Farore's Wind in Termina: OOT's "warp / dispel / exit" choice box, and the arrival flag Player_Init reads
 // (set: 1 / 0; query: -1 returns the flag).
