@@ -1015,6 +1015,14 @@ void func_80083108(PlayState* play) {
                             sp28 = 1;
                         }
                         gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
+                    } else if ((Player_GetEnvironmentalHazard(play) > 2) &&
+                               Combo_PauseMaskUsableWhileSwimming(gSaveContext.equips.buttonItems[i])) {
+                        // 2S2H's Equip Masks While Swimming (VB_DISABLE_ITEM_UNDERWATER): off the bottom, human Link's
+                        // wearable MM masks stay enabled. Player_UseItem puts them on or off in the water as is.
+                        if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
+                            sp28 = 1;
+                        }
+                        gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] = BTN_ENABLED;
                     } else if ((Player_GetEnvironmentalHazard(play) == 2) &&
                                (Combo_PauseForeignHostItem(gSaveContext.equips.buttonItems[i]) == ITEM_LONGSHOT)) {
                         // MM's Hookshot runs as OOT's Longshot: on the bottom it works, as OOT's own does below.

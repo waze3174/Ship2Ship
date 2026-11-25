@@ -56,7 +56,8 @@ int Combo_PauseOnButton(int item); // 1 = that foreign item sits on a C button /
 // Using a foreign item (Player_UseItem). Masks: transformation -> form, others -> worn with MM's model.
 int Combo_PauseForeignForm(int item); // COMBO_FORM_* for a transformation mask, -1 otherwise
 int Combo_PauseIsForeignMask(int item);
-int Combo_PauseIsForeignGfs(int item); // MM Great Fairy's Sword on an OOT button
+int Combo_PauseMaskUsableWhileSwimming(int item); // 2S2H's Equip Masks While Swimming, for a wearable MM mask
+int Combo_PauseIsForeignGfs(int item);            // MM Great Fairy's Sword on an OOT button
 void Combo_PauseToggleMmMask(int item);
 void Combo_PauseClearMmMask(void);
 const void* Combo_PauseWornMmMaskDL(void);               // routed "@mm:" DL of the worn MM mask, NULL = none

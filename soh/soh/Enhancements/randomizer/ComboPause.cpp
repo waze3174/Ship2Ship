@@ -437,6 +437,14 @@ extern "C" int Combo_PauseIsForeignMask(int item) {
     return mm >= MM_ITEM_MASK_DEKU && mm <= MM_ITEM_MASK_GIANT;
 }
 
+// 2S2H's "Equip Masks While Swimming" (mm/2s2h/Enhancements/Masks/EquipWhileSwimming.cpp, MM's own CVar): MM's wearable
+// masks, not the forms' and not the Giant's, keep their buttons while human Link swims or dives.
+extern "C" int Combo_PauseMaskUsableWhileSwimming(int item) {
+    const int mm = LiveMmItem(item);
+    return CVarGetInteger("gEnhancements.Masks.EquipWhileSwimming", 0) && (Combo_OotForm() == COMBO_FORM_HUMAN) &&
+           (mm > MM_ITEM_MASK_FIERCE_DEITY) && (mm < MM_ITEM_MASK_GIANT);
+}
+
 extern "C" void Combo_PauseToggleMmMask(int item) {
     const int mm = LiveMmItem(item);
     if (mm < 0 || mm == sWornMmMask) {
