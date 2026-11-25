@@ -274,7 +274,9 @@ refuses hammer bits, Ganon's tail only dies to Master-Sword bits (the Zora's jab
   spheres refusing Goron blows) are not modelled; OOT's own hard colliders do the equivalent.
 - **Not tagged:** Fierce Deity's sword (2026-11-14: B is the Double Helix on OOT's Biggoron action, two-handed,
   unbreakable; it hits as OOT's Biggoron), the Great Fairy's Sword (a human item: hits as OOT's Biggoron), Deku
-  flower launch (no flowers in Hyrule).
+  flower launch (no flowers in Hyrule). Both swords fall back to the enemy's stronger Master / Kokiri row where its
+  table has no Giant's Knife reaction at all (only Big Octo among the OOT enemies; z_collision_check.c
+  `Combo_TwoHanderTableEntry`).
 - **Fierce Deity sword beam (2026-11-14):** MM Player_ActionHandler_7 / func_808332A0 / EnMThunder_SwordBeam_Attack
   ported into OOT's Player_ActionHandler_7 and En_M_Thunder (comboBeam). A swing while Z-targeting, with magic,
   fires MM's gameplay_keep beam aimed at the lock-on target's focus. It costs 1 magic at once (MM
