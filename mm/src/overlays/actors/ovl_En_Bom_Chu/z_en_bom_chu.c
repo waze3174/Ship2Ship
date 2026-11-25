@@ -7,6 +7,9 @@
 #include "z_en_bom_chu.h"
 #include "overlays/actors/ovl_En_Bom/z_en_bom.h"
 #include "objects/gameplay_keep/gameplay_keep.h"
+#ifdef COMBO_BUILD
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
+#endif
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -86,6 +89,9 @@ void EnBomChu_Init(Actor* thisx, PlayState* play) {
     Effect_Add(play, &this->blure1Index, EFFECT_BLURE2, 0, 0, &sBlureInit);
     Effect_Add(play, &this->blure2Index, EFFECT_BLURE2, 0, 0, &sBlureInit);
 
+#ifdef COMBO_BUILD
+    this->comboIsOotOrigin = Combo_MmOotExplosiveOriginPending(-1);
+#endif
     this->timer = 120;
     this->actor.room = -1;
     this->shouldTimerCountDown = true;

@@ -160,6 +160,10 @@ s32 ComboOot_Boomerang_Out(Player* this, PlayState* play) {
         return true;
     }
 
+    if (sPlayerUseHeldItem && CVarGetInteger(COMBO_SOH_CVAR_FAST_BOOMERANG, 0)) {
+        EnBoom_ComboOotRequestQuickRecall();
+    }
+
     return false;
 }
 
@@ -323,6 +327,10 @@ static PlayerAnimationHeader* sComboOotSpellAnims3[] = {
 };
 static u8 sComboOotSpellHold[] = { 70, 10, 10 }; // OOT D_80854A7C
 
+#define COMBO_OOT_SPELL_ANIM_SPEED 0.83f
+#define COMBO_OOT_FAST_FARORES_ANIM_SPEED_FACTOR 2
+#define COMBO_OOT_FAST_FARORES_HOLD 10
+
 // OOT D_80854A80 / D_80854A8C (OOT ANIMSFX_TYPE_RUNNING / _WALKING = MM ANIMSFX_TYPE_6 / _8)
 static AnimSfxEntry sComboOotSpellSfxStart[] = {
     ANIMSFX(ANIMSFX_TYPE_GENERAL, 20, NA_SE_PL_SKIP, CONTINUE),
@@ -419,12 +427,29 @@ s32 ComboOot_UseSpell(PlayState* play, Player* this, s32 itemAction) {
     return true;
 }
 
+// SoH's Fast Farore's Wind (gEnhancements.FastFarores): the cast animations run at double speed, the hold before the
+// ending animation is 10 frames, and the cast doesn't wait for the magic meter to settle.
+static s32 ComboOot_IsFastFaroresWind(Player* this) {
+    return CVarGetInteger(COMBO_SOH_CVAR_FAST_FARORES, 0) && (this->itemAction == PLAYER_IA_COMBO_OOT_FARORES_WIND);
+}
+
+static f32 ComboOot_SpellAnimSpeed(Player* this) {
+    f32 speedFactor = ComboOot_IsFastFaroresWind(this) ? COMBO_OOT_FAST_FARORES_ANIM_SPEED_FACTOR : 1;
+
+    return COMBO_OOT_SPELL_ANIM_SPEED * speedFactor;
+}
+
+static s32 ComboOot_SpellHold(Player* this) {
+    return ComboOot_IsFastFaroresWind(this) ? COMBO_OOT_FAST_FARORES_HOLD : sComboOotSpellHold[this->av1.actionVar1];
+}
+
 // OOT func_8083AF44
 static void ComboOot_StartCast(PlayState* play, Player* this, s32 spell) {
     Player_SetAction_PreserveItemAction(play, this, ComboOot_Action_Spell, 0);
     this->av1.actionVar1 = spell - 3;
     Magic_Consume(play, sComboOotSpellCosts[spell], MAGIC_CONSUME_WAIT_PREVIEW);
-    PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, COMBO_OOT_ANIM("gPlayerAnim_link_magic_tame"), 0.83f);
+    PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, COMBO_OOT_ANIM("gPlayerAnim_link_magic_tame"),
+                                     ComboOot_SpellAnimSpeed(this));
     Combo_MmOotLog("cast %s (cost %d, magic %d)",
                    (spell == 3) ? "Farore's Wind" : (spell == 4) ? "Nayru's Love" : "Din's Fire",
                    sComboOotSpellCosts[spell], gSaveContext.save.saveInfo.playerData.magic);
@@ -450,7 +475,7 @@ s32 ComboOot_ActionHandlerSpell(Player* this, PlayState* play) {
 void ComboOot_Action_Spell(Player* this, PlayState* play) {
     if (PlayerAnimation_Update(play, &this->skelAnime)) {
         if (this->av1.actionVar1 < 0) {
-            if ((this->itemAction == PLAYER_IA_COMBO_OOT_NAYRUS_LOVE) ||
+            if ((this->itemAction == PLAYER_IA_COMBO_OOT_NAYRUS_LOVE) || ComboOot_IsFastFaroresWind(this) ||
                 (gSaveContext.magicState == MAGIC_STATE_IDLE)) {
                 this->stateFlags1 &= ~(PLAYER_STATE1_10000000 | PLAYER_STATE1_20000000);
                 func_80836988(this, play);                                 // OOT func_80839FFC
@@ -459,7 +484,7 @@ void ComboOot_Action_Spell(Player* this, PlayState* play) {
         } else {
             if (this->av2.actionVar2 == 0) {
                 PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, sComboOotSpellAnims1[this->av1.actionVar1],
-                                                 0.83f);
+                                                 ComboOot_SpellAnimSpeed(this));
 
                 if (ComboOot_SpawnMagicSpell(play, this, this->av1.actionVar1) != NULL) {
                     this->stateFlags1 |= PLAYER_STATE1_10000000 | PLAYER_STATE1_20000000;
@@ -471,7 +496,7 @@ void ComboOot_Action_Spell(Player* this, PlayState* play) {
                 }
             } else {
                 PlayerAnimation_PlayLoopSetSpeed(play, &this->skelAnime, sComboOotSpellAnims2[this->av1.actionVar1],
-                                                 0.83f);
+                                                 ComboOot_SpellAnimSpeed(this));
 
                 if (this->av1.actionVar1 == 0) {
                     this->av2.actionVar2 = -10;
@@ -496,9 +521,9 @@ void ComboOot_Action_Spell(Player* this, PlayState* play) {
                 if ((this->av1.actionVar1 == 2) && PlayerAnimation_OnFrame(&this->skelAnime, 30.0f)) {
                     this->stateFlags1 &= ~(PLAYER_STATE1_10000000 | PLAYER_STATE1_20000000);
                 }
-            } else if (sComboOotSpellHold[this->av1.actionVar1] < this->av2.actionVar2++) {
+            } else if (ComboOot_SpellHold(this) < this->av2.actionVar2++) {
                 PlayerAnimation_PlayOnceSetSpeed(play, &this->skelAnime, sComboOotSpellAnims3[this->av1.actionVar1],
-                                                 0.83f);
+                                                 ComboOot_SpellAnimSpeed(this));
                 this->yaw = this->actor.shape.rot.y;
                 this->av1.actionVar1 = -1;
             }

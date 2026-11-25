@@ -1,6 +1,7 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include "2s2h/ShipInit.hpp"
+#include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
 
 extern "C" {
 #include "variables.h"
@@ -12,10 +13,18 @@ void EnBomChu_UpdateRotation(EnBomChu*);
 }
 
 #define CVAR_NAME "gEnhancements.PlayerActions.RemoteBombchu"
-#define CVAR CVarGetInteger(CVAR_NAME, 0)
+#define CVAR_SOH_NAME COMBO_SOH_CVAR_REMOTE_BOMBCHU
+#define CVAR_MM CVarGetInteger(CVAR_NAME, 0)
+#define CVAR_SOH CVarGetInteger(CVAR_SOH_NAME, 0)
+#define CVAR (CVAR_MM || CVAR_SOH)
 
 static bool focused = false;
 static EnBomChu* activeBombchu = nullptr;
+
+// 2S2H's switch steers every bombchu; SoH's steers the ones taken out on OOT's bag.
+static bool CanSteer(Actor* bombchu) {
+    return CVAR_MM || (CVAR_SOH && ((EnBomChu*)bombchu)->comboIsOotOrigin);
+}
 
 bool IsBombchuFocused() {
     return focused;
@@ -30,7 +39,11 @@ static void ReleaseBombchuFocus() {
 
 void RegisterRemoteBombchu() {
     // Link can deploy multiple bombchus at once. Only assume control of the last placed one.
-    COND_ID_HOOK(OnActorInit, ACTOR_EN_BOM_CHU, CVAR, [](Actor* actor) { activeBombchu = (EnBomChu*)actor; });
+    COND_ID_HOOK(OnActorInit, ACTOR_EN_BOM_CHU, CVAR, [](Actor* actor) {
+        if (CanSteer(actor)) {
+            activeBombchu = (EnBomChu*)actor;
+        }
+    });
 
     COND_ID_HOOK(OnActorDestroy, ACTOR_EN_BOM_CHU, CVAR, [](Actor* actor) {
         Player* player = GET_PLAYER(gPlayState);
@@ -89,4 +102,4 @@ void RegisterRemoteBombchu() {
     });
 }
 
-static RegisterShipInitFunc initFunc(RegisterRemoteBombchu, { CVAR_NAME });
+static RegisterShipInitFunc initFunc(RegisterRemoteBombchu, { CVAR_NAME, CVAR_SOH_NAME });

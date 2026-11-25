@@ -140,6 +140,83 @@ extern "C" int Combo_MmIronFloorItemOk(int item) {
     return (oot == 0x0A) || (oot == 0x0B); // OOT ITEM_HOOKSHOT / ITEM_LONGSHOT
 }
 
+namespace {
+
+bool IsOotHookshotAction(int heldItemAction) {
+    return (heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) || (heldItemAction == PLAYER_IA_COMBO_OOT_LONGSHOT);
+}
+
+} // namespace
+
+extern "C" float Combo_MmOotHookshotReachMultiplier(int heldItemAction) {
+    if (!IsOotHookshotAction(heldItemAction)) {
+        return 1.0f;
+    }
+    return CVarGetFloat(COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER, 1.0f);
+}
+
+extern "C" int Combo_MmOotHookshotEverything(int heldItemAction) {
+    return IsOotHookshotAction(heldItemAction) && CVarGetInteger(COMBO_SOH_CVAR_HOOKSHOT_EVERYTHING, 0);
+}
+
+namespace {
+
+const Color_RGBA8 kHookshotReticleTargetColor = { 0, 255, 0, 255 };
+const Color_RGBA8 kHookshotReticleNonTargetColor = { 255, 0, 0, 255 };
+
+// OOT's reticle triangle (soh object_link_boy), from OOT's ResourceManager.
+const char kOotHookshotReticleTex[] = "__OTR__objects/object_link_boy/gLinkAdultHookshotReticleTex";
+const char kOotHookshotReticleVtx[] = "__OTR__objects/object_link_boy/gLinkAdultHookshotReticleVtx";
+const char kOotRm[] = "oot";
+
+constexpr int kReticleTexSize = 64;
+constexpr int kReticleTexMaskBits = 6;
+constexpr int kReticleVertexCount = 3;
+
+bool SameColor(const Color_RGBA8& a, const Color_RGBA8& b) {
+    return a.r == b.r && a.g == b.g && a.b == b.b && a.a == b.a;
+}
+
+// SoH HookshotReticle.cpp: the triangle with the texture, in the colour for the surface.
+void DrawColoredHookshotReticle(PlayState* play, const Color_RGBA8& color) {
+    GraphicsContext* __gfxCtx = play->state.gfxCtx;
+
+    gSPComboRMPush(OVERLAY_DISP++, kOotRm);
+    gSPMatrix(OVERLAY_DISP++, play->billboardMtx, G_MTX_NOPUSH | G_MTX_MUL | G_MTX_MODELVIEW);
+    gSPTexture(OVERLAY_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
+    gDPLoadTextureBlock(OVERLAY_DISP++, kOotHookshotReticleTex, G_IM_FMT_I, G_IM_SIZ_8b, kReticleTexSize,
+                        kReticleTexSize, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, kReticleTexMaskBits,
+                        kReticleTexMaskBits, G_TX_NOLOD, G_TX_NOLOD);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, color.r, color.g, color.b, color.a);
+    gSPVertex(OVERLAY_DISP++, (uintptr_t)kOotHookshotReticleVtx, kReticleVertexCount, 0);
+    gSP1Triangle(OVERLAY_DISP++, 0, 1, 2, 0);
+    gSPComboRMPop(OVERLAY_DISP++);
+}
+
+} // namespace
+
+extern "C" int Combo_MmOotDrawHookshotReticle(PlayState* play, Player* player, CollisionPoly* poly, int bgId) {
+    if (!IsOotHookshotAction(player->heldItemAction)) {
+        return 0;
+    }
+
+    const bool showsHookshotable = CVarGetInteger(COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE, 0) != 0;
+    const Color_RGBA8 nonTargetColor =
+        CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR, kHookshotReticleNonTargetColor);
+    if (!showsHookshotable && SameColor(nonTargetColor, kHookshotReticleNonTargetColor)) {
+        return 0;
+    }
+
+    if (showsHookshotable && (SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId) ||
+                              Combo_MmOotHookshotEverything(player->heldItemAction))) {
+        DrawColoredHookshotReticle(
+            play, CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR, kHookshotReticleTargetColor));
+    } else {
+        DrawColoredHookshotReticle(play, nonTargetColor);
+    }
+    return 1;
+}
+
 extern "C" int Combo_MmOotLinkAdult(void) {
     return LinkAdult() ? 1 : 0;
 }
@@ -344,6 +421,13 @@ extern "C" const void* Combo_MmOotWornMaskDL(void) {
         default:
             return nullptr;
     }
+}
+
+static int sExplosiveOriginPending = 0;
+extern "C" int Combo_MmOotExplosiveOriginPending(int set) {
+    if (set >= 0)
+        sExplosiveOriginPending = set;
+    return sExplosiveOriginPending;
 }
 
 static int sFwArrivalPending = 0;
