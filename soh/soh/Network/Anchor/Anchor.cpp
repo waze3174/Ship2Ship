@@ -1,4 +1,5 @@
 #include <nlohmann/json.hpp>
+#include <optional>
 
 #include "Anchor.h"
 #include "soh/Enhancements/nametag.h"
@@ -516,6 +517,26 @@ bool Anchor::ComboDropForVersionMismatch(const nlohmann::json& payload) {
     SPDLOG_INFO("[Anchor] dropped {} from client {}: version '{}' != ours '{}'", packetType, clientIt->first,
                 clientIt->second.clientVersion, clientVersion);
     return true;
+}
+
+size_t Anchor::DiscardDormantPackets() {
+    std::lock_guard<std::mutex> lock(incomingPacketQueueMutex);
+    size_t discarded = 0;
+    std::optional<nlohmann::json> newestRoomState;
+    while (!incomingPacketQueue.empty()) {
+        nlohmann::json packet = std::move(incomingPacketQueue.front());
+        incomingPacketQueue.pop();
+        if (packet.value("type", std::string()) == UPDATE_ROOM_STATE) {
+            discarded += newestRoomState.has_value() ? 1 : 0;
+            newestRoomState = std::move(packet);
+        } else {
+            discarded++;
+        }
+    }
+    if (newestRoomState.has_value()) {
+        incomingPacketQueue.push(std::move(*newestRoomState));
+    }
+    return discarded;
 }
 
 // Bug 2: launcher-orchestrated resync (auto on connect + the combo menu button). Forces

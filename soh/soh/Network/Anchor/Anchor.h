@@ -162,6 +162,11 @@ class Anchor : public Network {
     void ProcessIncomingPacketQueue();
     void PumpDormant(); // A6: drain+apply save-affecting co-op packets while OOT is the dormant game
 #ifdef COMBO_BUILD
+    // Drops the queued packets PumpDormant would have applied (all but the newest UPDATE_ROOM_STATE, which only
+    // keeps roomState current). Returns how many were dropped.
+    size_t DiscardDormantPackets();
+#endif
+#ifdef COMBO_BUILD
     // Bug 2: request a fresh team-state from teammates regardless of active/dormant (bypasses the
     // foreground-only assumption baked into the menu button's direct SendPacket_RequestTeamState call).
     void RequestResyncDormantSafe();

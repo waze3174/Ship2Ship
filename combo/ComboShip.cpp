@@ -1299,6 +1299,8 @@ static FnSetPumpDormant SOH_SetPumpDormant = nullptr;
 static FnSetPumpDormant MM_SetPumpDormant = nullptr;
 static FnVoidArgless SOH_Anchor_PumpDormant = nullptr;
 static FnVoidArgless MM_Anchor_PumpDormant = nullptr;
+static FnVoidArgless SOH_Anchor_DiscardDormant = nullptr;
+static FnVoidArgless MM_Anchor_DiscardDormant = nullptr;
 
 // Co-op hardening (2026-11-13): thread-safe toast into a game's notification window (prefix, message,
 // suffix, gate CVar or null = always). The game queues it and shows it on its next UI frame, so this is
@@ -2588,14 +2590,15 @@ static void PumpDormant() {
     // Connect/disconnect reactions (handshake, hook re-registration, on-connect resync) run here, on
     // the game thread, never on the receive thread.
     ComboAnchor::SyncLinkOnGameThread();
-    if (!DormantSiblingHoldsLoadedSlot())
-        return;
+    const bool applies = DormantSiblingHoldsLoadedSlot();
     if (ComboAnchor::sActiveGame.load() == 1) {
-        if (SOH_Anchor_PumpDormant)
-            SOH_Anchor_PumpDormant(); // MM foreground -> apply to dormant OOT
+        FnVoidArgless dormantOot = applies ? SOH_Anchor_PumpDormant : SOH_Anchor_DiscardDormant;
+        if (dormantOot)
+            dormantOot(); // MM foreground -> apply to dormant OOT, or drop what is queued for it
     } else {
-        if (MM_Anchor_PumpDormant)
-            MM_Anchor_PumpDormant(); // OOT foreground -> apply to dormant MM
+        FnVoidArgless dormantMm = applies ? MM_Anchor_PumpDormant : MM_Anchor_DiscardDormant;
+        if (dormantMm)
+            dormantMm(); // OOT foreground -> apply to dormant MM, or drop what is queued for it
     }
 }
 
@@ -2632,6 +2635,10 @@ static void LoadComboCompletion(int slot) {
     // A slot with no baked seed (vanilla) must not keep the previous slot's co-op scope or its seen packets.
     g_loadedMasterSeed.store(0);
     ComboAnchor::ResetSeenPacketIds();
+    if (SOH_Anchor_DiscardDormant)
+        SOH_Anchor_DiscardDormant();
+    if (MM_Anchor_DiscardDormant)
+        MM_Anchor_DiscardDormant();
     if (MM_SetComboSharedItems)
         MM_SetComboSharedItems(0); // clear before the slot read below re-pushes the loaded value (or stays 0)
     {
@@ -5057,6 +5064,8 @@ int main(int argc, char** argv) {
     MM_SetPumpDormant = (FnSetPumpDormant)GetSym(mmModule, "MM_SetPumpDormant");
     SOH_Anchor_PumpDormant = (FnVoidArgless)GetSym(sohModule, "SOH_Anchor_PumpDormant");
     MM_Anchor_PumpDormant = (FnVoidArgless)GetSym(mmModule, "MM_Anchor_PumpDormant");
+    SOH_Anchor_DiscardDormant = (FnVoidArgless)GetSym(sohModule, "SOH_Anchor_DiscardDormant");
+    MM_Anchor_DiscardDormant = (FnVoidArgless)GetSym(mmModule, "MM_Anchor_DiscardDormant");
     SOH_ComboToast = (FnComboToast)GetSym(sohModule, "SOH_ComboToast");
     MM_ComboToast = (FnComboToast)GetSym(mmModule, "MM_ComboToast");
 

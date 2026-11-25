@@ -129,6 +129,9 @@ class MMAnchor {
     // fileNum 0..2 AND IS_RANDO — neither alone is a reliable "real save resident" test.
     bool HasLoadedRandoSave();
     void PumpDormant(); // A6: drain+apply save-affecting co-op packets while MM is the dormant game
+    // Drops the queued packets PumpDormant would have applied (all but the newest UPDATE_ROOM_STATE, which only
+    // keeps roomState current). Returns how many were dropped.
+    size_t DiscardDormantPackets();
     // True while PumpDormant applies a packet (MM backgrounded, no gPlayState); mirrors soh's Anchor.
     bool isDormantApply = false;
     // Set only on a true commit at the end of HandlePacket_UpdateTeamState (mirrors soh's Anchor);

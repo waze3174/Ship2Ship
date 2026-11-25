@@ -3,6 +3,7 @@
 #include "ComboExport.h"
 
 #include <memory>
+#include <optional>
 #include <spdlog/spdlog.h>
 #include "rando/ComboAnchorToast.h" // shared cross-game resync-toast debounce
 #include "net/ComboAnchorMmFlags.h" // MM flag sync: packet vocabulary + bit rules (unit-tested)
@@ -364,6 +365,26 @@ void MMAnchor::PumpDormant() {
         SaveManager_SaveCurrentForCombo();
         SPDLOG_INFO("[MMAnchor] dormant MM save persisted after team-state apply");
     }
+}
+
+size_t MMAnchor::DiscardDormantPackets() {
+    std::lock_guard<std::mutex> lock(incomingMutex);
+    size_t discarded = 0;
+    std::optional<nlohmann::json> newestRoomState;
+    while (!incomingQueue.empty()) {
+        nlohmann::json packet = std::move(incomingQueue.front());
+        incomingQueue.pop();
+        if (packet.value("type", std::string()) == PKT_UPDATE_ROOM_STATE) {
+            discarded += newestRoomState.has_value() ? 1 : 0;
+            newestRoomState = std::move(packet);
+        } else {
+            discarded++;
+        }
+    }
+    if (newestRoomState.has_value()) {
+        incomingQueue.push(std::move(*newestRoomState));
+    }
+    return discarded;
 }
 
 // A6: dormant-safe variant of HandlePacket_GiveItem — marks the check obtained and grants via
@@ -1653,6 +1674,17 @@ extern "C" COMBO_EXPORT void MM_SetPumpDormant(void (*cb)()) {
 extern "C" COMBO_EXPORT void MM_Anchor_PumpDormant(void) {
     if (MMAnchor::Instance) {
         MMAnchor::Instance->PumpDormant();
+    }
+}
+
+// The launcher calls this when the dormant MM save is not the loaded slot's (or the slot just changed): what is
+// queued for it must never reach a save it was not meant for.
+extern "C" COMBO_EXPORT void MM_Anchor_DiscardDormant(void) {
+    if (!MMAnchor::Instance) {
+        return;
+    }
+    if (const size_t discarded = MMAnchor::Instance->DiscardDormantPackets(); discarded > 0) {
+        SPDLOG_INFO("[MMAnchor] discarded {} queued co-op packet(s) that had no save to apply to", discarded);
     }
 }
 

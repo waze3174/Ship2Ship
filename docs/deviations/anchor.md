@@ -460,8 +460,10 @@ and the packets below are not understood by older builds.
   (`SyncLinkOnGameThread`) always runs. The sibling game's `*_Anchor_PumpDormant` runs only when the loaded slot is
   a rando slot (`!g_activeMode.IsVanilla()`) of both games (`!ComboGamesSolo`), and the MM save in memory is that
   slot's (`g_MmSaveInMemorySlot == g_comboCompletionSlot`). Anywhere else the sibling's resident save belongs to
-  another slot, and a teammate's state must not be written into it. Packets queued in the sibling meanwhile stay
-  queued and are applied once the gate opens.
+  another slot, and a teammate's state must not be written into it. While the gate is closed the pump calls the
+  sibling's `*_Anchor_DiscardDormant` instead, which drops what is queued for it (all but the newest
+  `UPDATE_ROOM_STATE`, which only keeps its room settings current). `LoadComboCompletion` discards both games'
+  queues on every slot load, so nothing from the previous slot is applied to the next.
 - `LoadComboCompletion` resets the loaded master seed (the outbox scope) and the seen packet ids first, so a
   vanilla slot keeps nothing of the previous slot.
 - **Out-of-range peer flags are rejected.** `SET_FLAG` / `UNSET_FLAG` with `sceneNum == SCENE_ID_MAX` go through

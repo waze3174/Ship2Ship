@@ -3321,6 +3321,16 @@ extern "C" COMBO_EXPORT void SOH_Anchor_PumpDormant(void) {
         Anchor::Instance->PumpDormant();
     }
 }
+// The launcher calls this when the dormant OOT save is not the loaded slot's (or the slot just changed): what is
+// queued for it must never reach a save it was not meant for.
+extern "C" COMBO_EXPORT void SOH_Anchor_DiscardDormant(void) {
+    if (!Anchor::Instance) {
+        return;
+    }
+    if (const size_t discarded = Anchor::Instance->DiscardDormantPackets(); discarded > 0) {
+        SPDLOG_INFO("[Anchor] discarded {} queued co-op packet(s) that had no save to apply to", discarded);
+    }
+}
 // Bug 2: launcher-orchestrated resync (auto on connect + combo menu button), dormant-safe.
 // Finding 3: never let an exception unwind across this extern "C" boundary.
 extern "C" COMBO_EXPORT void SOH_Anchor_RequestResync(void) {
