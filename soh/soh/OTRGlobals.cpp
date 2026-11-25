@@ -171,6 +171,7 @@
 #include "soh/Enhancements/randomizer/hook_handlers.h" // ComboShip (#164): OOT_ForeignMapGen
 #include <functional>                                  // ComboShip (#164): shared hint-resolution callbacks
 // ComboShip: the back-to-back settings page's CVars
+#include "rando/ComboBackToBackLocks.h"
 #include "rando/ComboBackToBackSettings.h"
 #endif
 
@@ -3883,6 +3884,24 @@ extern "C" int Combo_LostWoodsToTerminaOpen(void) {
 // The credits of OoT's half of a back-to-back slot have ended: the slot goes on in the Temple of Time, as child Link.
 extern "C" int Combo_OotCreditsContinueInTemple(void) {
     return ComboRando::CrossGate::OotCreditsContinueInTemple(gComboCrossGate) ? 1 : 0;
+}
+// The Back to back page's choices (combo/rando/ComboBackToBackSettings.h) for the loaded slot, pushed by the launcher;
+// 0 outside a back-to-back slot.
+static int sComboBackToBackOptions = 0;
+extern "C" COMBO_EXPORT void SOH_SetComboBackToBackOptions(int options) {
+    sComboBackToBackOptions = options;
+}
+// The choices a new back-to-back file is created with: what the page holds now.
+extern "C" COMBO_EXPORT int SOH_GetNewSaveBackToBackOptions(void) {
+    return ComboRando::BackToBack::OptionsFromCVars(
+        [](const char* cvar, int fallback) { return CVarGetInteger(cvar, fallback); });
+}
+// Whether OoT's tunic or boots (an EQUIP_TYPE_*) are kept out of Termina by the loaded back-to-back slot's locks.
+extern "C" int Combo_BackToBackGearLocked(int equipType) {
+    namespace Locks = ComboRando::BackToBack;
+    if ((equipType != EQUIP_TYPE_TUNIC && equipType != EQUIP_TYPE_BOOTS) || !Locks::LocksActive(gComboCrossGate))
+        return 0;
+    return Locks::Locked(sComboBackToBackOptions, Locks::GearLock(equipType == EQUIP_TYPE_BOOTS), false) ? 1 : 0;
 }
 // An explicit MM start forces these, so grey them out. Under Random they stay editable — the force is silent when MM
 // rolls. HandleStartingAgeUI owns RSK_STARTING_AGE in both directions. FinalizeSettings decides which of them an MM

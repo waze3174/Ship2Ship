@@ -122,11 +122,14 @@ extern "C" COMBO_EXPORT void MM_ComboPause_DebugGive(int mmItem) {
 #include "ComboPause.h"
 #include "ComboPauseHarness.h"
 #include "ComboOotItems.h"
+#include "rando/ComboBackToBackLocks.h"
 
 extern "C" {
 extern u8 gPlayerFormItemRestrictions[PLAYER_FORM_MAX][114];
 void Combo_RequestCrossSwitch(int ootEntrance); // BenPort.cpp
 int Combo_GamesSolo(void);                      // BenPort.cpp
+int Combo_MM_BackToBackOptions(void);           // BenPort.cpp
+int Combo_MM_BackToBackLocksActive(void);       // BenPort.cpp
 }
 
 namespace {
@@ -148,6 +151,10 @@ bool OotResolved() {
     return sOotGetItems && sOotIconTex && sOotNameTex && sOotPageTexs;
 }
 
+// A back-to-back slot's locks (combo/rando/ComboBackToBackLocks.h), applied to what OOT's save shows (defined below).
+void ApplyBackToBackItemLocks();
+void ApplyBackToBackEquipLocks();
+
 // OOT's resident save, read live.
 uint8_t sOotItems[COMBO_PAUSE_OOT_SLOTS];
 int8_t sOotAmmo[COMBO_PAUSE_OOT_SLOTS];
@@ -162,6 +169,7 @@ bool Snapshot() {
         memset(sOotItems, 0xFF, sizeof(sOotItems));
         return false;
     }
+    ApplyBackToBackItemLocks();
     return true;
 }
 
@@ -274,6 +282,36 @@ uint8_t NativeSlotFor(uint8_t ootItem, uint8_t* mmItemOut) {
     return SLOT_NONE;
 }
 
+// Whether Link has found the MM item an OOT item is locked behind (bottles: any bottle at all).
+bool MmHoldsCounterpartOf(uint8_t ootItem) {
+    if (ootItem == OOT_ITEM_HOOKSHOT || ootItem == OOT_ITEM_LONGSHOT)
+        return INV_CONTENT(ITEM_HOOKSHOT) != ITEM_NONE;
+    if (ootItem >= OOT_ITEM_BOTTLE && ootItem <= OOT_ITEM_POE) {
+        for (int s = SLOT_BOTTLE_1; s <= SLOT_BOTTLE_6; s++) {
+            if (gSaveContext.save.saveInfo.inventory.items[s] != ITEM_NONE)
+                return true;
+        }
+        return false;
+    }
+    uint8_t mmItem = ITEM_NONE;
+    return NativeSlotFor(ootItem, &mmItem) != SLOT_NONE;
+}
+
+// OOT items the locks keep out of the Hyrule face, and with them off the buttons and out of Termina's item use.
+void ApplyBackToBackItemLocks() {
+    namespace B2B = ComboRando::BackToBack;
+    if (!Combo_MM_BackToBackLocksActive())
+        return;
+    const int options = Combo_MM_BackToBackOptions();
+    for (int s = 0; s < COMBO_PAUSE_OOT_SLOTS; s++) {
+        const uint8_t item = sOotItems[s];
+        if (item == 0xFF || !B2B::Locked(options, B2B::ClassifyOotItem(item), MmHoldsCounterpartOf(item)))
+            continue;
+        sOotItems[s] = 0xFF;
+        sOotAmmo[s] = -1;
+    }
+}
+
 int LiveOotItem(int foreignId) {
     const int item = Combo_MmPauseOotItemAt(ComboPause_MmDecode(foreignId));
     return (item == ITEM_NONE) ? -1 : item;
@@ -305,6 +343,7 @@ bool EquipSnapshot() {
         memset(sOotEquipped, 0, sizeof(sOotEquipped));
         return false;
     }
+    ApplyBackToBackEquipLocks();
     return true;
 }
 
@@ -318,6 +357,21 @@ constexpr int kPiecesPerRow = 3;
 int GearGridSlot(int ootSlot) {
     const int k = ootSlot - COMBO_PAUSE_OOT_SLOTS;
     return (kEquipRowTunic + k / kPiecesPerRow) * 4 + 1 + (k % kPiecesPerRow);
+}
+
+// The tunics or boots a back-to-back slot keeps out of Termina leave their rows of the equipment face empty.
+void ApplyBackToBackEquipLocks() {
+    namespace B2B = ComboRando::BackToBack;
+    if (!Combo_MM_BackToBackLocksActive())
+        return;
+    const int options = Combo_MM_BackToBackOptions();
+    for (int row = kEquipRowTunic; row <= kEquipRowBoots; row++) {
+        if (!B2B::Locked(options, B2B::GearLock(row == kEquipRowBoots), false))
+            continue;
+        for (int col = 1; col <= kPiecesPerRow; col++)
+            sOotEquip[row * 4 + col] = 0xFF;
+        sOotEquipped[row] = 0;
+    }
 }
 
 bool sErrorPlayed = false;

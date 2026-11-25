@@ -89,6 +89,7 @@ void Setup_InitImpl(SetupState* this) {
             // A vanilla Majora's Mask slot's first entry: its opening, not the portal's South Clock Town. A
             // back-to-back slot's first crossing names the Lost Woods as its arrival; the opening replaces it.
             gComboTargetEntrance = -1;
+            Combo_MM_ApplyBackToBackStart();
         } else if (gComboEntryIsResume && CVarGetInteger("gEnhancements.Saving.RememberSaveLocation", 0) &&
                    gSaveContext.save.shipSaveInfo.pauseSaveEntrance != -1) {
             // South Clock Town is the default arrival for both portal entry and a resume. Only a resume

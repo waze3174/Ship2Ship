@@ -23,6 +23,12 @@ constexpr const char* kMasterQuestTooltip =
 constexpr const char* kMasterQuestUnavailable =
     "Needs the Master Quest ROM (oot-mq.o2r). Until it is extracted, new back-to-back files play Normal Quest.";
 
+constexpr const char* kCarryNote =
+    "Every other item Ocarina of Time and Majora's Mask both have stays locked in Termina until Link finds "
+    "Majora's Mask's own.";
+constexpr const char* kOotOnlyItemsNote =
+    "Items only Ocarina of Time has. Off, each stays in Hyrule until both games are beaten.";
+
 using FnHasArchive = int (*)();
 
 bool OotMasterQuestArchiveLoaded() {
@@ -75,6 +81,27 @@ void DrawMasterQuestSetting() {
     }
 }
 
+void DrawOption(const BackToBack::OptionDef& option) {
+    bool on = CVarGetInteger(option.cvar, option.defaultOn ? 1 : 0) != 0;
+    ComboMenu_PushCheckbox(ComboMenu_ThemeColor());
+    if (ImGui::Checkbox(option.label, &on)) {
+        CVarSetInteger(option.cvar, on ? 1 : 0);
+        SaveSettingsNextFrame();
+    }
+    ComboMenu_PopCheckbox();
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("%s", option.tooltip);
+    }
+}
+
+void DrawOptionGroup(BackToBack::OptionGroup group) {
+    for (const BackToBack::OptionDef& option : BackToBack::kOptions) {
+        if (option.group == group) {
+            DrawOption(option);
+        }
+    }
+}
+
 } // namespace
 
 void DrawBackToBackSharedPanel() {
@@ -82,6 +109,12 @@ void DrawBackToBackSharedPanel() {
     ImGui::TextWrapped("%s", kPageNote);
     ImGui::SeparatorText("Ocarina of Time");
     DrawMasterQuestSetting();
+    ImGui::SeparatorText("Carried into Termina");
+    DrawHintText(kCarryNote);
+    DrawOptionGroup(BackToBack::OptionGroup::Carry);
+    ImGui::SeparatorText("Ocarina of Time items usable in Termina");
+    DrawHintText(kOotOnlyItemsNote);
+    DrawOptionGroup(BackToBack::OptionGroup::OotOnlyItems);
 }
 
 } // namespace ComboRando

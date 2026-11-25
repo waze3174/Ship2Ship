@@ -217,8 +217,9 @@ void TestModeLabels() {
     CHECK(ModeLabel(ComboMode::VanillaOot(ComboRando::OOT_QUEST_NORMAL)) == "Ocarina of Time");
     CHECK(ModeLabel(ComboMode::VanillaOot(ComboRando::OOT_QUEST_MQ)) == "Ocarina of Time");
     CHECK(ModeLabel(ComboMode::VanillaMm()) == "Majora's Mask");
-    CHECK(ModeLabel(ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL)) == "Back to back");
-    CHECK(ModeLabel(ComboMode::BackToBack(ComboRando::OOT_QUEST_MQ)) == "Back to back");
+    const int options = ComboRando::BackToBack::DefaultOptions();
+    CHECK(ModeLabel(ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, options)) == "Back to back");
+    CHECK(ModeLabel(ComboMode::BackToBack(ComboRando::OOT_QUEST_MQ, options)) == "Back to back");
 }
 
 void TestFrames() {

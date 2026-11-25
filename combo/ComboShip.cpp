@@ -291,6 +291,8 @@ static FnGetPlayerName SOH_GetCurrentPlayerName = nullptr;
 static FnInt SOH_GetNewSaveQuest = nullptr;
 // The quest the new save's OoT half was stored as (kSohQuestNormal or kSohQuestMaster); valid in the same callback.
 static FnInt SOH_GetNewSaveStoredQuest = nullptr;
+// The Back to back page's choices as the file select's new file takes them (ComboBackToBackSettings.h).
+static FnInt SOH_GetNewSaveBackToBackOptions = nullptr;
 // Nonzero = the slot's MM half is missing/broken; nothing was loaded (see SaveManager_LoadSaveFile).
 typedef int (*FnMMLoadSave)(int);
 static FnMMLoadSave MM_LoadSaveForCombo = nullptr;
@@ -1490,6 +1492,15 @@ static void Combo_PushCrossGate(int mask) {
         SOH_SetComboCrossGate(mask);
     if (MM_SetComboCrossGate)
         MM_SetComboCrossGate(mask);
+}
+// The loaded slot's Back to back page choices (ComboBackToBackSettings.h), pushed to both DLLs. 0 for every other slot.
+static FnSetInt SOH_SetComboBackToBackOptions = nullptr;
+static FnSetInt MM_SetComboBackToBackOptions = nullptr;
+static void Combo_PushBackToBackOptions(int options) {
+    if (SOH_SetComboBackToBackOptions)
+        SOH_SetComboBackToBackOptions(options);
+    if (MM_SetComboBackToBackOptions)
+        MM_SetComboBackToBackOptions(options);
 }
 // Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
 // follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.
@@ -2778,6 +2789,7 @@ static void LoadComboCompletion(int slot) {
     PushComboGames(g_comboGames);
     Combo_PushLostWoodsLink(g_lostWoodsLink);
     Combo_PushCrossGate(Combo_CrossGateMask());
+    Combo_PushBackToBackOptions(g_activeMode.IsBackToBack() ? g_activeMode.options : 0);
     if (MM_SetComboVanillaSlot)
         MM_SetComboVanillaSlot(g_activeMode.HasVanillaMmSave() ? 1 : 0);
     if (SOH_SetComboGoal)
@@ -4612,11 +4624,14 @@ static void Combo_InitVanillaMmSlot(int fileNum) {
 // A new back-to-back slot: vanilla Ocarina of Time, then vanilla Majora's Mask, one save of each and no seed. MM's
 // save is made now, as for a vanilla Majora's Mask slot, but the slot's last game is OoT: it is played first and MM is
 // entered through the Lost Woods once Ganon is beaten. The OoT half's quest is the one OoT just stored for the file
-// (the Master Quest setting, or Normal Quest without oot-mq.o2r), so the mode records what the save plays.
+// (the Master Quest setting, or Normal Quest without oot-mq.o2r), so the mode records what the save plays, and the
+// Back to back page's other choices are stored the same way: read once here, fixed for the file after.
 static void Combo_InitBackToBackSlot(int fileNum) {
     const ComboRando::OotQuest quest =
         Combo_OotQuestOfSohQuest(SOH_GetNewSaveStoredQuest ? SOH_GetNewSaveStoredQuest() : ComboRando::kSohQuestNormal);
-    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack(quest));
+    const int options =
+        SOH_GetNewSaveBackToBackOptions ? SOH_GetNewSaveBackToBackOptions() : ComboRando::BackToBack::DefaultOptions();
+    Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack(quest, options));
     if (!MM_InitVanillaSaveFile) {
         std::cerr << "[ComboShip] ERROR: MM has no vanilla save creation, slot " << fileNum << " has no MM save."
                   << std::endl;
@@ -5176,6 +5191,7 @@ int main(int argc, char** argv) {
     SOH_GetCurrentPlayerName = (FnGetPlayerName)GetSym(sohModule, "SOH_GetCurrentPlayerName");
     SOH_GetNewSaveQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveQuest");
     SOH_GetNewSaveStoredQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveStoredQuest");
+    SOH_GetNewSaveBackToBackOptions = (FnInt)GetSym(sohModule, "SOH_GetNewSaveBackToBackOptions");
     MM_LoadSaveForCombo = (FnMMLoadSave)GetSym(mmModule, "MM_LoadSaveForCombo");
     MM_InvalidateOwlBlobSlot = (FnMMInvalidateOwlBlob)GetSym(mmModule, "MM_InvalidateOwlBlobSlot");
     SOH_ParkForComboMMResume = (FnVoid)GetSym(sohModule, "SOH_ParkForComboMMResume");
@@ -5328,6 +5344,8 @@ int main(int argc, char** argv) {
     MM_SetComboLostWoodsLink = (FnSetInt)GetSym(mmModule, "MM_SetComboLostWoodsLink");
     SOH_SetComboCrossGate = (FnSetInt)GetSym(sohModule, "SOH_SetComboCrossGate");
     MM_SetComboCrossGate = (FnSetInt)GetSym(mmModule, "MM_SetComboCrossGate");
+    SOH_SetComboBackToBackOptions = (FnSetInt)GetSym(sohModule, "SOH_SetComboBackToBackOptions");
+    MM_SetComboBackToBackOptions = (FnSetInt)GetSym(mmModule, "MM_SetComboBackToBackOptions");
 
     // Shared Items seam — SOH_SetComboSharedItems is OOT-only (shapes the gen-time wallet force).
     SOH_SetComboSharedItems = (FnSetComboSharedItems)GetSym(sohModule, "SOH_SetComboSharedItems");

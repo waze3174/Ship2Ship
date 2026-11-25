@@ -184,6 +184,12 @@ add_executable(comboDiscordTest EXCLUDE_FROM_ALL discord/tests/DiscordActivityTe
 target_include_directories(comboDiscordTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(comboDiscordTest PRIVATE nlohmann_json::nlohmann_json)
 
+# Unit tests for the back-to-back mode's pure rules (options, mode storage, item locks): header code, no game DLL.
+# EXCLUDE_FROM_ALL like comborando: build with `cmake --build <dir> --target comboBackToBackTest`, then run the exe.
+add_executable(comboBackToBackTest EXCLUDE_FROM_ALL tests/ComboBackToBackTest.cpp)
+target_include_directories(comboBackToBackTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(comboBackToBackTest PRIVATE nlohmann_json::nlohmann_json)
+
 # Windows-specific settings
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # Icon + version info for Ship2Ship.exe; the version is SHIP2SHIP_VERSION padded to 4 parts.
