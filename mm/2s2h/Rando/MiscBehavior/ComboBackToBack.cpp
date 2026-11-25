@@ -50,8 +50,8 @@ bool OptionOn(B2B::Option option) {
 
 void CarryHearts() {
     const int capacity = std::clamp(CarriedFromOot(B2B::kCarryHealthCapacity), 0, kMaxHealthCapacity);
-    if (capacity <= gSaveContext.save.saveInfo.playerData.healthCapacity)
-        return; // nothing carried: MM keeps its three hearts
+    if (capacity == 0)
+        return; // no OoT save is resident: MM keeps its three hearts
     gSaveContext.save.saveInfo.playerData.healthCapacity = static_cast<s16>(capacity);
     gSaveContext.save.saveInfo.playerData.health = static_cast<s16>(capacity);
     const uint32_t pieces = static_cast<uint32_t>(CarriedFromOot(B2B::kCarryHeartPieces)) & B2B::kHeartPiecesMask;
