@@ -1886,7 +1886,8 @@ void func_8090120C(BossGanon2* this, PlayState* play) {
 #ifdef COMBO_BUILD
             // ComboShip: gate the ending on both bosses. If Majora isn't dead yet, skip OOT's credits
             // and warp Adult to the Temple of Time adult spawn — the pedestal is the route to Child
-            // and the Mask Shop portal to go finish MM.
+            // and the Mask Shop portal to go finish MM. A back-to-back slot plays the full ending
+            // (ComboBackToBackEnding.cpp).
             if (gComboFinalBossDefeated == NULL || !gComboFinalBossDefeated(0, gSaveContext.fileNum)) {
                 play->nextEntranceIndex = ENTR_TEMPLE_OF_TIME_WARP_PAD;
                 gSaveContext.nextCutsceneIndex = 0xFFEF;

@@ -2311,6 +2311,9 @@ void Play_Init(GameState* thisx) {
     }
 
     if (gSaveContext.save.entrance == -1) {
+#ifdef COMBO_BUILD
+        Combo_MM_CreditsEnded();
+#endif
         gSaveContext.save.entrance = 0;
         STOP_GAMESTATE(&this->state);
         SET_NEXT_GAMESTATE(&this->state, TitleSetup_Init, sizeof(TitleSetupState));

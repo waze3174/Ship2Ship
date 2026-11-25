@@ -2220,8 +2220,9 @@ static void Combo_OnMmHintRevealed(int fileNum, int kind, int poolIndex, const c
     std::cerr << "[ComboShip] Combo_OnMmHintRevealed threw: " << e.what() << std::endl;
 } catch (...) { std::cerr << "[ComboShip] Combo_OnMmHintRevealed threw a non-std exception" << std::endl; }
 
-// Registered into both games: record THIS game's final-boss kill for its slot and return 1 iff BOTH
-// games' bosses are now dead (a solo seed: the played game's). game/fileNum use the GameId convention (0=OOT, 1=MM).
+// Registered into both games: record THIS game's final-boss kill for its slot and return 1 iff the game plays its full
+// ending: BOTH games' bosses are now dead (a solo seed: the played game's), or the slot is a back-to-back one, where
+// each game ends with its own credits. game/fileNum use the GameId convention (0=OOT, 1=MM).
 static int Combo_OnFinalBossDefeated(int game, int fileNum) {
     if ((game != 0 && game != 1) || !ComboIsValidSlot(fileNum))
         return 0;
@@ -2236,7 +2237,7 @@ static int Combo_OnFinalBossDefeated(int game, int fileNum) {
                   << " complete=" << ComboBossesComplete(g_comboCompletion)
                   << " games=" << ComboRando::ComboGamesKey(g_comboGames) << std::endl;
     }
-    return ComboBossesComplete(g_comboCompletion) ? 1 : 0;
+    return (g_activeMode.IsBackToBack() || ComboBossesComplete(g_comboCompletion)) ? 1 : 0;
 }
 
 // ComboShip (#136): each game's piece-count getter, handed to the OTHER game so its pickup messages
