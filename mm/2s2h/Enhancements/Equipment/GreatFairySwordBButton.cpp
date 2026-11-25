@@ -15,8 +15,10 @@ void RegisterGreatFairySwordBButton() {
         Player* player = GET_PLAYER(gPlayState);
         EquipSlot slot = (EquipSlot)va_arg(args, int);
         ItemId* item = va_arg(args, ItemId*);
+        // D-pad Right is slot 0 too (EQUIP_SLOT_D_RIGHT == EQUIP_SLOT_B).
+        bool isDpad = (bool)va_arg(args, int);
 
-        if (slot == EQUIP_SLOT_B && player->transformation == PLAYER_FORM_HUMAN &&
+        if (!isDpad && slot == EQUIP_SLOT_B && player->transformation == PLAYER_FORM_HUMAN &&
             player->heldItemId == ITEM_SWORD_GREAT_FAIRY) {
             *item = ITEM_SWORD_GREAT_FAIRY;
         }
