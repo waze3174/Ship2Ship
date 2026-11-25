@@ -466,6 +466,12 @@ void EnArrow_Update(Actor* thisx, PlayState* play) {
 #endif
     Player* player = GET_PLAYER(play);
 
+#ifdef COMBO_BUILD
+    if (this->comboBombArrow && EnArrow_ComboBombArrowUpdate(this, play)) {
+        return; // ComboShip: a bomb arrow that has gone off (z_en_arrow_combo_bomb.c)
+    }
+#endif
+
     if (this->isCsNut || ((this->actor.params >= ARROW_NORMAL_LIT) && (player->unk_A73 != 0)) ||
         !Player_InBlockingCsMode(play, player)) {
         this->actionFunc(this, play);
@@ -571,6 +577,12 @@ void EnArrow_Draw(Actor* thisx, PlayState* play) {
         Matrix_RotateY(this->actor.world.rot.y * (M_PI / 0x8000), MTXMODE_APPLY);
         CLOSE_DISPS(play->state.gfxCtx);
     }
+
+#ifdef COMBO_BUILD
+    if (this->comboBombArrow) {
+        EnArrow_ComboBombArrowDraw(this, play); // ComboShip: the bomb on its tip (z_en_arrow_combo_bomb.c)
+    }
+#endif
 
     func_809B4800(this, play);
 }

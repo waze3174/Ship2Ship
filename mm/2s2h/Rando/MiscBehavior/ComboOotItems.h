@@ -31,6 +31,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_FAST_FARORES "gEnhancements.FastFarores"
 #define COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER "gCheats.HookshotReachMultiplier"
 #define COMBO_SOH_CVAR_BOOMERANG_RETICLE "gEnhancements.BoomerangReticle"
+#define COMBO_SOH_CVAR_BOOMERANG_FIRST_PERSON "gEnhancements.BoomerangFirstPerson"
 #define COMBO_SOH_CVAR_FAST_BOOMERANG "gEnhancements.FastBoomerang"
 #define COMBO_SOH_CVAR_HOOKSHOT_EVERYTHING "gCheats.HookshotEverything"
 #define COMBO_SOH_CVAR_BOW_RETICLE "gEnhancements.BowReticle"
