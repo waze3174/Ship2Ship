@@ -4413,6 +4413,10 @@ static void Combo_WearPendingMask(Player* this) {
     sComboPendingMask = ITEM_NONE;
 }
 
+void Combo_PlayerDropPendingMask(void) {
+    sComboPendingMask = ITEM_NONE;
+}
+
 // The mask to wear once Link is human again is wanted only while a transformation (or the fast one) is in progress.
 static void Combo_DropPendingMaskIfIdle(s32 formBefore) {
     if ((Combo_OotForm() == formBefore) && !Combo_TransformRunning()) {
