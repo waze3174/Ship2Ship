@@ -273,6 +273,10 @@ Color_RGB8 AdultTunicColor() {
 
 } // namespace
 
+extern "C" int Combo_MM_LinkIsAdult(void) {
+    return sLinkAdult;
+}
+
 extern "C" int Combo_MM_AdultBodyActive(Actor* actor) {
     if (actor == nullptr || actor->id != ACTOR_PLAYER)
         return 0;

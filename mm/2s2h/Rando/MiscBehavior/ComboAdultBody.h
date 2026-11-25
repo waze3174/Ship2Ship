@@ -10,6 +10,9 @@ extern "C" {
 struct Actor;
 struct PlayState;
 
+// OOT says Link is adult (the launcher's push), whatever form he has now. For Discord Rich Presence.
+int Combo_MM_LinkIsAdult(void);
+
 // The player actor should be adult Link right now: human form, OOT says adult, OOT's adult skeleton is loadable.
 int Combo_MM_AdultBodyActive(struct Actor* actor);
 

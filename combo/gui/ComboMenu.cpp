@@ -16,6 +16,7 @@
 #include "ComboNotesWindow.h"       // combo-owned cross-game Personal Notes window
 #include "ComboHintTracker.h"       // combo-owned unified Hint Tracker (#164)
 #include "ComboTimersWindow.h"      // combo-owned overlay timers (#173)
+#include "ComboDiscordPanel.h"      // Settings > Discord: Rich Presence switches
 #include "rando/CrossForeign.h"     // ComboRando::ContainerPath — anchored save-container location
 #include "rando/ComboPlaythrough.h" // plando: ParseSpoilerPlacements + Suffix/BuildForeignArray + slot paths
 #include "rando/ComboGames.h"       // Games (OoT only / MM only / Combo)
@@ -508,7 +509,8 @@ struct HubEntry {
         COMBO_PRESETS,
         COMBO_CONFIG_IMPORT,
         COMBO_NETWORK,
-        COMBO_BOTH_GAMES
+        COMBO_BOTH_GAMES,
+        COMBO_DISCORD
     } kind;
     const ComboRando::GameMenu* game = nullptr; // ENGINE/OOT_RANDO/MM_RANDO
     int sectionIndex = -1;
@@ -1514,6 +1516,12 @@ void ComboMenu::DrawSharedPanel() {
         imp.group = "Settings";
         imp.kind = HubEntry::COMBO_CONFIG_IMPORT;
         e.push_back(std::move(imp));
+        // Combo-owned Discord Rich Presence switches (the launcher sends the presence).
+        HubEntry dsc;
+        dsc.label = "Discord";
+        dsc.group = "Settings";
+        dsc.kind = HubEntry::COMBO_DISCORD;
+        e.push_back(std::move(dsc));
         if (!e.empty())
             groups.push_back({ "Settings", std::move(e) });
         // Both games: controls that set a setting in both games at once (ComboBothGames.cpp). The entry label is the
@@ -1670,6 +1678,8 @@ void ComboMenu::DrawSharedPanel() {
         DrawNetworkSharedPanel();
     } else if (active->kind == HubEntry::COMBO_BOTH_GAMES) {
         DrawBothGamesTab(active->label.c_str());
+    } else if (active->kind == HubEntry::COMBO_DISCORD) {
+        DrawDiscordSharedPanel();
     } else {
         const CwSidebar& side = active->game->menu->sections[active->sectionIndex].sidebars[active->sidebarIndex];
         RenderSidebarWidgets(side, *active->game);
