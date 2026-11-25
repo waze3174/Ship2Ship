@@ -29,6 +29,8 @@
 #include <libultraship/bridge/consolevariablebridge.h>
 
 #ifdef COMBO_BUILD
+#include "ComboTitleMMAssets.h"
+
 // ComboShip: the quest-select carousel offers Normal, Master Quest, Randomizer and Majora's Mask. Normal and Master
 // Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save; SohFileSelect_IsQuestHidden
 // hides Boss Rush and Speedrun (the values between), and the quest whose archive (oot.o2r, oot-mq.o2r) isn't loaded.
@@ -78,12 +80,15 @@ void FileChoose_DrawTextureI8(GraphicsContext* gfxCtx, const void* texture, s16 
     CLOSE_DISPS(gfxCtx);
 }
 
-void FileChoose_DrawImageRGBA32(GraphicsContext* gfxCtx, s16 centerX, s16 centerY, const char* source, u32 width,
-                                u32 height) {
+void FileChoose_DrawImageRGBA32Scaled(GraphicsContext* gfxCtx, s16 centerX, s16 centerY, const char* source, u32 width,
+                                      u32 height, f32 scale) {
     u8* curTexture;
     s32 textureCount;
     u32 rectLeft;
     u32 rectTop;
+    u32 rectWidth;
+    u32 rectHeight;
+    s32 texelStep;
     u32 textureHeight;
     s32 remainingSize;
     s32 textureSize;
@@ -92,8 +97,11 @@ void FileChoose_DrawImageRGBA32(GraphicsContext* gfxCtx, s16 centerX, s16 center
 
     OPEN_DISPS(gfxCtx);
 
-    rectLeft = centerX - (width / 2);
-    rectTop = centerY - (height / 2);
+    rectWidth = (u32)(width * scale + 0.5f);
+    rectHeight = (u32)(height * scale + 0.5f);
+    rectLeft = centerX - (rectWidth / 2);
+    rectTop = centerY - (rectHeight / 2);
+    texelStep = (s32)(1024.0f / scale + 0.5f);
 
     gDPSetTileCustom(POLY_OPA_DISP++, G_IM_FMT_RGBA, G_IM_SIZ_32b, width, height, 0, G_TX_NOMIRROR | G_TX_CLAMP,
                      G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD, G_TX_NOLOD);
@@ -103,10 +111,70 @@ void FileChoose_DrawImageRGBA32(GraphicsContext* gfxCtx, s16 centerX, s16 center
     gDPLoadSync(POLY_OPA_DISP++);
     gDPLoadTile(POLY_OPA_DISP++, G_TX_LOADTILE, 0, 0, (width - 1) << 2, (height - 1) << 2);
 
-    gSPTextureRectangle(POLY_OPA_DISP++, rectLeft << 2, rectTop << 2, (rectLeft + (s32)width) << 2,
-                        (rectTop + height) << 2, G_TX_RENDERTILE, 0, 0, 1 << 10, 1 << 10);
+    gSPTextureRectangle(POLY_OPA_DISP++, rectLeft << 2, rectTop << 2, (rectLeft + rectWidth) << 2,
+                        (rectTop + rectHeight) << 2, G_TX_RENDERTILE, 0, 0, texelStep, texelStep);
     CLOSE_DISPS(gfxCtx);
 }
+
+void FileChoose_DrawImageRGBA32(GraphicsContext* gfxCtx, s16 centerX, s16 centerY, const char* source, u32 width,
+                                u32 height) {
+    FileChoose_DrawImageRGBA32Scaled(gfxCtx, centerX, centerY, source, width, height, 1.0f);
+}
+
+#ifdef COMBO_BUILD
+// The Majora's Mask quest shows MM's own title logo (mask, Zelda logo and subtitle), drawn from MM's archive like the
+// combined title screen does (ComboTitleLogos.h). Positions are MM's En_Mag layout, whose cluster spans x 60..255 and
+// y 47..159; it is scaled to about 160 wide and centred where the other quests centre their logo.
+#define MM_LOGO_SCALE 0.8f
+#define MM_LOGO_CENTER_X 160
+#define MM_LOGO_CENTER_Y 135
+#define MM_LOGO_NATIVE_CENTER_X 157.5f
+#define MM_LOGO_NATIVE_CENTER_Y 103.0f
+#define MM_LOGO_DIM(d) ((s16)((d)*MM_LOGO_SCALE + 0.5f))
+#define MM_LOGO_TEXEL_STEP ((s16)(1024.0f / MM_LOGO_SCALE + 0.5f))
+#define MM_LOGO_TEXT_R 208
+#define MM_LOGO_TEXT_G 102
+#define MM_LOGO_TEXT_B 222
+
+static s16 FileChoose_MMLogoX(f32 nativeX) {
+    return (s16)(MM_LOGO_CENTER_X + (nativeX - MM_LOGO_NATIVE_CENTER_X) * MM_LOGO_SCALE + 0.5f);
+}
+
+static s16 FileChoose_MMLogoY(f32 nativeY) {
+    return (s16)(MM_LOGO_CENTER_Y + (nativeY - MM_LOGO_NATIVE_CENTER_Y) * MM_LOGO_SCALE + 0.5f);
+}
+
+static void FileChoose_DrawMMLogoText(GraphicsContext* gfxCtx, const char* texture, s16 width, s16 height, f32 nativeX,
+                                      f32 nativeY) {
+    FileChoose_DrawTextureI8(gfxCtx, texture, width, height, FileChoose_MMLogoX(nativeX), FileChoose_MMLogoY(nativeY),
+                             MM_LOGO_DIM(width), MM_LOGO_DIM(height), MM_LOGO_TEXEL_STEP, MM_LOGO_TEXEL_STEP);
+}
+
+static void FileChoose_DrawMMLogo(GraphicsContext* gfxCtx, s16 alpha) {
+    OPEN_DISPS(gfxCtx);
+
+    gSPComboRMPush(POLY_OPA_DISP++, "mm");
+
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, alpha);
+    FileChoose_DrawImageRGBA32Scaled(gfxCtx, FileChoose_MMLogoX(124), FileChoose_MMLogoY(103),
+                                     gTitleScreenMajorasMaskTex, 128, 112, MM_LOGO_SCALE);
+    FileChoose_DrawImageRGBA32Scaled(gfxCtx, FileChoose_MMLogoX(177), FileChoose_MMLogoY(105), gTitleScreenZeldaLogoTex,
+                                     144, 64, MM_LOGO_SCALE);
+
+    // The subtitle gets a dark backing pass under its coloured pass, as on MM's title screen.
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 0, 0, 0, alpha);
+    FileChoose_DrawMMLogoText(gfxCtx, gTitleScreenMajorasMaskSubtitleMaskTex, 104, 16, 151, 124);
+
+    gDPPipeSync(POLY_OPA_DISP++);
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, MM_LOGO_TEXT_R, MM_LOGO_TEXT_G, MM_LOGO_TEXT_B, alpha);
+    FileChoose_DrawMMLogoText(gfxCtx, gTitleScreenMajorasMaskSubtitleTex, 104, 16, 151, 124);
+    FileChoose_DrawMMLogoText(gfxCtx, gTitleScreenTheLegendOfTextTex, 72, 8, 158, 71);
+
+    gSPComboRMPop(POLY_OPA_DISP++);
+
+    CLOSE_DISPS(gfxCtx);
+}
+#endif
 
 void FileChoose_DrawTextRec(GraphicsContext* gfxCtx, s32 r, s32 g, s32 b, s32 a, f32 x, f32 y, f32 z, s32 s, s32 t,
                             f32 dx, f32 dy) {
@@ -2113,9 +2181,13 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
 
 #ifdef COMBO_BUILD
             case QUEST_COMBO_MM:
+                if (SOH_MMHasResource(dgTitleScreenMajorasMaskTex)) {
+                    FileChoose_DrawMMLogo(this->state.gfxCtx, this->logoAlpha);
+                    break;
+                }
+                // Without MM's archive, OOT's logo with the name drawn as text.
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, this->logoAlpha);
                 FileChoose_DrawImageRGBA32(this->state.gfxCtx, 160, 135, gTitleZeldaShieldLogoTex, 160, 160);
-                // No subtitle texture exists for Majora's Mask, so the name is drawn as text instead.
                 Interface_DrawTextLine(this->state.gfxCtx, "Majora's Mask", 110, 176, 255, 255, 255, this->logoAlpha,
                                        1.0f, true);
                 break;
