@@ -478,8 +478,9 @@ extern "C" unsigned char Combo_MmPauseSlotItem(int ootSlot) {
 extern "C" int Combo_MmPauseSlotAmmo(int ootSlot) {
     if (CurTab() != COMBO_MM_PAUSE_TAB_HYRULE || ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot())
         return -1;
-    // The count a use spends (with shared consumables, what Hyrule will show), not only what OOT's dormant save holds.
-    return (sOotAmmo[ootSlot] < 0) ? -1 : Combo_MmOotAmmo(sOotItems[ootSlot]);
+    // The count a use spends (with shared consumables, what Hyrule will show), not only what OOT's dormant save holds;
+    // none for an infinite bag, as OOT's own pause shows it.
+    return (sOotAmmo[ootSlot] < 0) ? -1 : Combo_MmOotAmmoDigits(sOotItems[ootSlot], nullptr);
 }
 
 extern "C" const char* Combo_MmPauseIconTex(int item) {
