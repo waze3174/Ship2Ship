@@ -3151,6 +3151,10 @@ extern "C" COMBO_EXPORT void MM_SetContainerIoStatsGetter(ComboSaveTiming::FnGet
     SaveManager_SetContainerIoStatsGetter(get);
 }
 
+extern "C" COMBO_EXPORT void MM_SetComboLiveWriteRead(ComboRando::FnComboReadSaveForLiveWrite read) {
+    SaveManager_SetComboLiveWriteRead(read);
+}
+
 // ComboShip: receive the consolidated combo spoiler (foreign map + cross-hints), pushed once per
 // save-load; store the blob and invalidate MM's lookup caches so they rebuild from it. Idempotent.
 namespace Rando::Entrances {

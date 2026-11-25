@@ -368,6 +368,9 @@ static FnSetComboSaveIO MM_SetComboSaveIO = nullptr;
 typedef void (*FnSetContainerIoStatsGetter)(ComboSaveTiming::FnGetContainerIoStats);
 static FnSetContainerIoStatsGetter SOH_SetContainerIoStatsGetter = nullptr;
 static FnSetContainerIoStatsGetter MM_SetContainerIoStatsGetter = nullptr;
+// Optional: the smaller read MM's live save uses (Combo_ReadGameSaveForLiveWrite).
+typedef void (*FnSetComboLiveWriteRead)(ComboRando::FnComboReadSaveForLiveWrite);
+static FnSetComboLiveWriteRead MM_SetComboLiveWriteRead = nullptr;
 static FnTakeStr SOH_LoadComboRando = nullptr;
 static FnTakeStr MM_LoadComboRando = nullptr;
 // OOT file-select "copy file": whole-container copy (both games + rando) through the launcher.
@@ -795,7 +798,63 @@ static const nlohmann::json& ComboObjectOf(const nlohmann::json& c) {
     return (it != c.end() && it->is_object()) ? *it : kNone;
 }
 
-static const char* Combo_ReadGameSave(int game, int fileNum) {
+// Of a stored owl blob, the three fields MM's live save carries over into the refreshed blob. A blob not shaped the way
+// that code reads it is returned whole, so MM fails on it exactly as it would on the stored one.
+static nlohmann::json ComboMmOwlBlobCarriedFields(const nlohmann::json& owl) {
+    auto save = owl.find("save");
+    if (save == owl.end() || !save->is_object()) {
+        return owl;
+    }
+    nlohmann::json kept = nlohmann::json::object();
+    if (auto isOwlSave = save->find("isOwlSave"); isOwlSave != save->end()) {
+        kept["isOwlSave"] = *isOwlSave;
+    }
+    if (auto ship = save->find("shipSaveInfo"); ship != save->end()) {
+        if (!ship->is_object()) {
+            return owl;
+        }
+        nlohmann::json shipKept = nlohmann::json::object();
+        for (const char* field : { "pauseSaveEntrance", "respawn" }) {
+            if (auto f = ship->find(field); f != ship->end()) {
+                shipKept[field] = *f;
+            }
+        }
+        kept["shipSaveInfo"] = std::move(shipKept);
+    }
+    return nlohmann::json{ { "save", std::move(kept) } };
+}
+
+// What MM's live save reads of its stored section (SaveManager_WriteCurrentSave in 2ship's SaveManager.cpp): that write
+// replaces newCycleSave.save with the live save, and the owl blob with the live state or nothing, so neither is handed
+// over; of the blob only the fields the write keeps, and only when the live state descends from it. MM ends up with
+// the same document it would have built from the whole section, without dumping and parsing two whole saves.
+static nlohmann::json ComboMmSectionForLiveWrite(const nlohmann::json& mm, bool keepOwlBlobFields) {
+    if (!mm.is_object()) {
+        return mm;
+    }
+    nlohmann::json out = nlohmann::json::object();
+    for (auto it = mm.begin(); it != mm.end(); ++it) {
+        const nlohmann::json& value = it.value();
+        if (it.key() == "newCycleSave" && value.is_object()) {
+            nlohmann::json rest = nlohmann::json::object();
+            for (auto f = value.begin(); f != value.end(); ++f) {
+                if (f.key() != "save") {
+                    rest[f.key()] = f.value();
+                }
+            }
+            out[it.key()] = std::move(rest);
+        } else if (it.key() == "owlSave" && value.is_object()) {
+            out[it.key()] = keepOwlBlobFields ? ComboMmOwlBlobCarriedFields(value) : nlohmann::json::object();
+        } else {
+            out[it.key()] = value;
+        }
+    }
+    return out;
+}
+
+enum class ComboSectionView { kWhole, kMmLiveWrite, kMmLiveWriteWithOwlBlob };
+
+static const char* Combo_ReadGameSaveAs(int game, int fileNum, ComboSectionView view) {
     // No container exists for a sentinel fileNum - see ComboIsValidSlot.
     if (!ComboIsValidSlot(fileNum))
         return "";
@@ -807,7 +866,13 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
     auto& c = LoadOrCreateContainer(fileNum);
     const char* key = (game == ComboRando::GAME_OOT) ? "oot" : "mm";
     auto it = c.find(key);
-    buf = (it == c.end() || it->is_null()) ? std::string() : it->dump();
+    if (it == c.end() || it->is_null()) {
+        buf.clear();
+    } else if (game == ComboRando::GAME_MM && view != ComboSectionView::kWhole) {
+        buf = ComboMmSectionForLiveWrite(*it, view == ComboSectionView::kMmLiveWriteWithOwlBlob).dump();
+    } else {
+        buf = it->dump();
+    }
     tl_containerIoStats.sectionDumpMs = timer.Lap();
     tl_containerIoStats.sectionBytes = buf.size();
     if (FnShelfSet set = game == ComboRando::GAME_OOT ? SOH_BottleShelfSetState : MM_BottleShelfSetState) {
@@ -845,6 +910,17 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
         }
     }
     return buf.c_str();
+}
+
+static const char* Combo_ReadGameSave(int game, int fileNum) {
+    return Combo_ReadGameSaveAs(game, fileNum, ComboSectionView::kWhole);
+}
+
+// MM's live save reads through this one (MM_SetComboLiveWriteRead); everything but the section text is the same read.
+static const char* Combo_ReadGameSaveForLiveWrite(int game, int fileNum, int keepOwlBlobFields) {
+    return Combo_ReadGameSaveAs(game, fileNum,
+                                (keepOwlBlobFields != 0) ? ComboSectionView::kMmLiveWriteWithOwlBlob
+                                                         : ComboSectionView::kMmLiveWrite);
 }
 
 // Read-modify-write the FULL container (never re-derived) so the other game's section stays intact
@@ -4162,6 +4238,7 @@ int main(int argc, char** argv) {
     MM_SetComboSaveIO = (FnSetComboSaveIO)GetSym(mmModule, "MM_SetComboSaveIO");
     SOH_SetContainerIoStatsGetter = (FnSetContainerIoStatsGetter)GetSym(sohModule, "SOH_SetContainerIoStatsGetter");
     MM_SetContainerIoStatsGetter = (FnSetContainerIoStatsGetter)GetSym(mmModule, "MM_SetContainerIoStatsGetter");
+    MM_SetComboLiveWriteRead = (FnSetComboLiveWriteRead)GetSym(mmModule, "MM_SetComboLiveWriteRead");
     SOH_LoadComboRando = (FnTakeStr)GetSym(sohModule, "SOH_LoadComboRando");
     MM_LoadComboRando = (FnTakeStr)GetSym(mmModule, "MM_LoadComboRando");
     SOH_SetCopyContainer = (FnSetCopyContainer)GetSym(sohModule, "SOH_SetCopyContainer");
@@ -4527,6 +4604,8 @@ int main(int argc, char** argv) {
         SOH_SetContainerIoStatsGetter(&Combo_GetContainerIoStats);
     if (MM_SetContainerIoStatsGetter)
         MM_SetContainerIoStatsGetter(&Combo_GetContainerIoStats);
+    if (MM_SetComboLiveWriteRead)
+        MM_SetComboLiveWriteRead(&Combo_ReadGameSaveForLiveWrite);
     if (SOH_SetCopyContainer)
         SOH_SetCopyContainer(&Combo_CopyContainer);
     // OOT owns the shared file-select; it polls for release-evicted slots and shows the outdated-save popup.

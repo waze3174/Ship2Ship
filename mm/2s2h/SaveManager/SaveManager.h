@@ -12,6 +12,7 @@
 // ComboShip: register the launcher's .combosav IO callbacks (routes file{N}.json IO into the container).
 void SaveManager_SetComboSaveIO(ComboRando::FnComboReadSave r, ComboRando::FnComboWriteSave w);
 void SaveManager_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStats get);
+void SaveManager_SetComboLiveWriteRead(ComboRando::FnComboReadSaveForLiveWrite read);
 // ComboShip: one write for the live saves that one pickup or one shared-items pass asks for. Between Begin and the
 // matching End, SaveManager_SaveCurrentForCombo only marks a save as owed, and the outermost End writes it with the
 // state as it is then. Batches nest. Game thread only.
