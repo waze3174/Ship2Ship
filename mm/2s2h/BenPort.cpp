@@ -2766,10 +2766,12 @@ extern "C" int Combo_LoadMMSaveFile(int mmFileNum) {
 }
 
 extern "C" void MM_RunMain(void);
+extern "C" void Combo_HyrulePersistDormantSave(void); // ComboHyruleItems.cpp
 
 // Full MM initialization + game loop, entered after OOT has exited.
 // fileNum is the OOT 0-indexed slot; we map it to the same MM slot.
 extern "C" COMBO_EXPORT void MM_RunGame(int fileNum) {
+    Combo_HyrulePersistDormantSave(); // before Setup_InitImpl loads the slot again
     gComboStartFileNum = fileNum;
     MM_RunMain();
 }
@@ -2838,6 +2840,7 @@ extern "C" COMBO_EXPORT void MM_ResumeGame(int fileNum) {
     auto ctx = Ship::Context::GetRawInstance();
     ctx->GetLogger()->flush_on(spdlog::level::trace);
     SPDLOG_INFO("[ComboShip] MM_ResumeGame: begin (fileNum={})", fileNum);
+    Combo_HyrulePersistDormantSave(); // before Setup_InitImpl loads the slot again
 
     // 1. Re-activate MM's own ResourceManager (created at MM's first boot, kept resident the whole
     //    time OOT was running). Its archives + factories + resource cache never went away, so there's
@@ -2887,6 +2890,7 @@ extern "C" COMBO_EXPORT void MM_ResumeGame(int fileNum) {
 // the tracker peek shows real items before MM is visited this session. Same headless load path
 // title_setup.c runs on resume (no gPlayState needed). Nonzero = nothing usable was loaded.
 extern "C" COMBO_EXPORT int MM_LoadSaveForCombo(int fileNum) {
+    Combo_HyrulePersistDormantSave();           // the slot it replaces
     int rc = Combo_LoadMMSaveFile(fileNum + 1); // shares the saveType tripwire
     if (rc == 0) {
         Rando::CheckTracker::OnFileLoad(); // rebuild the peek map; the peek never refreshes a filled one

@@ -617,6 +617,11 @@ extern "C" int Combo_PauseForeignBottleAction(int item) {
     }
 }
 
+extern "C" int Combo_PauseIsForeignBottle(int item) {
+    const int mm = LiveMmItem(item);
+    return (mm >= MM_ITEM_BOTTLE) && (mm <= 0x27); // MM ITEM_BOTTLE .. ITEM_OBABA_DRINK, show-only contents too
+}
+
 namespace {
 typedef int (*FnSetSlot)(int, int);
 FnSetSlot sMmSetSlot = nullptr;

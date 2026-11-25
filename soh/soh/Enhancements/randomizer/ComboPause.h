@@ -110,6 +110,7 @@ int Combo_PauseForeignHostItem(int item);
 int Combo_PauseForeignAgeOk(int item);
 int Combo_PauseLiveMmItem(int item);                         // the MM item id a foreign id names right now, -1 = none
 int Combo_PauseForeignBottleAction(int item);                // OOT PLAYER_IA_BOTTLE_* running that MM bottle, -1 = none
+int Combo_PauseIsForeignBottle(int item);                    // any MM bottle (OOT's bottle button rules apply)
 int Combo_PauseSetForeignBottle(int foreignId, int ootItem); // write the new content into MM's slot; 1 = done
 int Combo_PauseMmBottleColor(int foreignId, unsigned char* rgb); // MM's bottle content colour; 1 = an MM bottle
 void Combo_ChateauDrink(void); // MM Chateau Romani drunk in Hyrule: infinite magic until next dawn
