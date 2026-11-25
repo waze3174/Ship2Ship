@@ -450,12 +450,17 @@ extern "C" int Combo_PauseOcarinaUsableOnBottom(int item) {
     return (Combo_OotForm() != COMBO_FORM_HUMAN) && ((item == ITEM_OCARINA_FAIRY) || (item == ITEM_OCARINA_TIME));
 }
 
-// 2S2H's "Equip Masks While Swimming" (mm/2s2h/Enhancements/Masks/EquipWhileSwimming.cpp, MM's own CVar): MM's wearable
-// masks, not the forms' and not the Giant's, keep their buttons while human Link swims or dives.
-extern "C" int Combo_PauseMaskUsableWhileSwimming(int item) {
+// MM's wearable masks: worn on the head, so not the forms' masks and not the Giant's.
+extern "C" int Combo_PauseIsForeignWearableMask(int item) {
     const int mm = LiveMmItem(item);
+    return (mm > MM_ITEM_MASK_FIERCE_DEITY) && (mm < MM_ITEM_MASK_GIANT);
+}
+
+// 2S2H's "Equip Masks While Swimming" (mm/2s2h/Enhancements/Masks/EquipWhileSwimming.cpp, MM's own CVar): MM's wearable
+// masks keep their buttons while human Link swims or dives.
+extern "C" int Combo_PauseMaskUsableWhileSwimming(int item) {
     return CVarGetInteger("gEnhancements.Masks.EquipWhileSwimming", 0) && (Combo_OotForm() == COMBO_FORM_HUMAN) &&
-           (mm > MM_ITEM_MASK_FIERCE_DEITY) && (mm < MM_ITEM_MASK_GIANT);
+           Combo_PauseIsForeignWearableMask(item);
 }
 
 extern "C" void Combo_PauseToggleMmMask(int item) {

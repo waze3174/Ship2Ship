@@ -1391,6 +1391,7 @@ static s32 sComboMmUseItem = -1;           // MM item id of the MM item being us
 static s32 sComboKegItem = ITEM_NONE;      // foreign id of the MM Powder Keg being taken out (MM: Goron only)
 static s32 sComboPicto = false;            // MM unk_AA5 == PLAYER_UNKAA5_2: the first-person view is the Pictograph Box
 static s32 sComboDekuWaterHop = false;     // MM PLAYER_STATE3_200000: in the air after a Deku's hop off the water
+static s32 sComboPendingMask = ITEM_NONE;  // foreign id of the MM mask to wear once Link is human again
 int Combo_PauseForeignAmmo(int foreignId); // ComboPause.cpp: MM's ammo for that MM item
 int Combo_PauseForeignAmmoChange(int foreignId, int n); // ComboPause.cpp: MM Inventory_ChangeAmmo
 // MM's B-button mask actions (MM Player_GetItemOnButton ITEM_F0/F1/F2): Blast Mask explode, Bremen march, Kamaro dance
@@ -4365,6 +4366,27 @@ static void Combo_PlayerChangeAmmo(s32 ootItem, s32 n) {
 }
 #endif
 
+#ifdef COMBO_BUILD
+// MM's mask branch of Player_UseItem for a wearable MM mask: on, or off when it is the one worn. Sound is the caller's.
+static void Combo_WearMmMask(Player* this, s32 item) {
+    Combo_PauseToggleMmMask(item);
+    this->currentMask = PLAYER_MASK_NONE;
+    gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
+}
+
+// 2S2H 3DSMaskEquipping.cpp OnTransform (mm/2s2h/Enhancements/Masks): once Link is human again the mask used while
+// transformed goes on, unless it is the one already worn.
+static void Combo_WearPendingMask(Player* this) {
+    if ((sComboPendingMask == ITEM_NONE) || (Combo_OotForm() != COMBO_FORM_HUMAN)) {
+        return;
+    }
+    if (Combo_PauseWornMmMaskItem() != Combo_PauseLiveMmItem(sComboPendingMask)) {
+        Combo_WearMmMask(this, sComboPendingMask);
+    }
+    sComboPendingMask = ITEM_NONE;
+}
+#endif
+
 void Player_UseItem(PlayState* play, Player* this, s32 item) {
     s8 itemAction;
     s32 temp;
@@ -4424,15 +4446,17 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
             return;
         } else if ((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) {
             const s32 target = Combo_TransformTarget(comboForm);
+            if ((comboForm < 0) && Combo_PauseIsForeignWearableMask(item) &&
+                CVarGetInteger("gEnhancements.Masks.3DSMaskEquip", 0)) {
+                sComboPendingMask = item; // 2S2H 3DSMaskEquipping.cpp VB_USE_ITEM_CONSIDER_LINK_HUMAN
+            }
             Combo_PauseLogUse(item, target != COMBO_FORM_HUMAN ? "transformation mask -> form"
                                                                : "mask while transformed -> human");
             Combo_TransformBegin(play, this, target); // MM's transformation (or 2S2H's fast one)
         } else if (Combo_PauseIsForeignMask(item)) {
             // MM Player_UseItem "Handle wearable masks": on at once with CHANGE_ARMS, off with TAKE_OUT_SHIELD (MM's
             // samples through MM's sfx player).
-            Combo_PauseToggleMmMask(item);
-            this->currentMask = PLAYER_MASK_NONE;
-            gSaveContext.ship.maskMemory = PLAYER_MASK_NONE;
+            Combo_WearMmMask(this, item);
             {
                 const u16 maskSfx =
                     (Combo_PauseWornMmMaskItem() >= 0) ? NA_SE_PL_CHANGE_ARMS : NA_SE_PL_TAKE_OUT_SHIELD;
@@ -16833,6 +16857,7 @@ void Player_Update(Actor* thisx, PlayState* play) {
     Input input;
 
 #ifdef COMBO_BUILD
+    Combo_WearPendingMask(this);
     Combo_TestEnemyUpdate(play, this);
     {
         // Test hook (launch env only): COMBO_DEBUG_SHOCK=<frame> electrifies Link once at that frame, as a Biri / Bari
