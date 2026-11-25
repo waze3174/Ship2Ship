@@ -4,6 +4,7 @@
 #include "ComboSettingsLink.h" // first-time merge of the two games' values
 #include "ComboPresetPanels.h" // Settings > Presets and Import from Ship2Ship or ComboShip panels
 #include "ComboExport.h"
+#include "ComboRelease.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
 #include "ComboWidgetStyle.h"
@@ -1797,6 +1798,22 @@ void ComboMenu::DrawComboPanel() {
         ImGui::TextDisabled(games == ComboRando::COMBO_GAMES_OOT  ? "Beat Ganon to finish."
                             : games == ComboRando::COMBO_GAMES_MM ? "Beat Majora to finish."
                                                                   : "Beat Ganon and Majora to finish.");
+    }
+    {
+        // Play-time, not seed-bound: it works on a seed already in play, and applies from the next boss kill.
+        bool releaseOnBoss = CVarGetInteger(ComboRelease::kSettingCVar, 0) != 0;
+        ComboRando::ComboMenu_PushCheckbox(goalTheme);
+        if (ImGui::Checkbox("Release a game's checks when its boss falls", &releaseOnBoss)) {
+            CVarSetInteger(ComboRelease::kSettingCVar, releaseOnBoss ? 1 : 0);
+            if (auto ctx = Ship::Context::GetRawInstance(); ctx && ctx->GetWindow() && ctx->GetWindow()->GetGui())
+                ctx->GetWindow()->GetGui()->SaveConsoleVariablesNextFrame();
+        }
+        ComboRando::ComboMenu_PopCheckbox();
+        ImGui::SameLine();
+        ImGui::TextDisabled("Beating Ganon gives you every Ocarina of Time check you have not collected; beating\n"
+                            "Majora does the same for Majora's Mask. All at once, no cutscenes: the tracker marks\n"
+                            "them collected and one notification counts them. Items for the other game are sent\n"
+                            "over, traps are skipped. Works on any seed; once per game and file.");
     }
     ImGui::Separator();
 

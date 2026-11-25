@@ -3005,3 +3005,114 @@ Hooks:
 - `OTRGlobals.cpp` (OoT) `OnSceneInit`: the Mask Shop switch asks `Combo_OOT_LostWoodsLinkKeepsMaskShop` first.
 - `mm/2s2h/Rando/MiscBehavior/ComboLostWoodsLink.cpp`: the `OnSceneInit` and `OnActorInit` (stone doors) hooks. `soh/soh/Enhancements/randomizer/ComboLostWoodsLink.cpp`: the
   marker actor (registered in ActorDB like `Obj_Aqua`) and its `OnSceneSpawnActors` spawn.
+
+## Release checks on boss kill (Ship2Ship, v0.1.3)
+
+Owner, 2026-11-25: "during a rando, if a game (MM or OoT)'s boss is beaten (majora's or Ganon) that game's checks are
+released and given to the player (and later, the AP)."
+
+**The setting.** `gCombo.ReleaseOnBossKill`, off by default, a checkbox in the combo menu's Randomizer panel, under
+Goal. It is a play-time CVar, not a seed setting: no seed field, no format change, no `COMBO_RELEASE_VERSION` change,
+so a seed already in play has it. It sits outside `gCombo.Rando.*` on purpose (that prefix is seed-bound, applied only
+at the file select); `combo/ComboPresetScope.h` already carries it as a preset key through the `gCombo.` prefix.
+
+**The trigger.** `Combo_OnFinalBossDefeated` (`combo/ComboShip.cpp`) already runs when Ganon or Majora dies. With the
+setting on and the game not yet released, it queues a release (`g_releasePending[game]`); the boss reports from inside
+its own death cutscene, and items given there would land mid-frame. `Combo_SharedTick` (the per-frame seam both games
+call) drains the queue through `Combo_DrainBossRelease` on the played game's thread, once the other game's save is
+resident for the items that go to it (a one-game seed needs no other save). The setting is read at the kill, so turning
+it on after the kill does nothing.
+
+**The entry point.** `Combo_ReleaseGameChecks(game, reason)` in the launcher: the one function a kill calls today and
+Archipelago can call later. Each game exports the giver: `SOH_ReleaseRemainingChecks`
+(`soh/soh/Enhancements/randomizer/ComboReleaseChecks.cpp`) and `MM_ReleaseRemainingChecks`
+(`mm/2s2h/Rando/MiscBehavior/ComboReleaseChecks.cpp`). Both return the count, or `ComboRelease::kCannotRelease` (-1)
+when no rando save is loaded. The names, the CVar and the container key are in `combo/ComboRelease.h`.
+
+**Archipelago.** A release has to tell the AP server too: whoever wires AP in must send the released locations (the
+same set the game just marked collected) to the server from `Combo_ReleaseGameChecks`. Nothing here talks to a server.
+
+**Idempotence.** The container holds `combo.released = {"oot": bool, "mm": bool}`, set after a release and read back
+with the completion on every file load (`LoadComboCompletion`). A new key in the existing `combo` section: no save
+version, no seed field. A game releases at most once per file. Running it again would find every check collected and
+give nothing, but the marker also stops the notification and the scan. A vanilla slot (`g_activeMode.IsVanilla()`)
+releases nothing.
+
+**What counts as a remaining check**, in the same terms the game's own tracker uses:
+- OoT: `CheckTracker::IsCheckShuffled(rc)` (shuffled, and shown in the tracker for this seed's settings: shops, scrubs,
+  Skulltulas, cows... only when shuffled), not excluded, a placed item (`!= RG_NONE`), and `!HasObtained()`
+  (`RCSHOW_COLLECTED` or `RCSHOW_SAVED`). The check the item queue is giving this frame (`OOT_GetQueuedDrawCheck`) is
+  left to it.
+- MM: `RANDO_SAVE_CHECKS[rc].shuffled && !obtained`, minus a check already flagged `eligible` (the `CheckQueue` is about
+  to give it).
+
+**Giving the items.** No get-item cutscene, no textbox, no per-item toast.
+- OoT: the check is set `RCSHOW_COLLECTED`, then its item is resolved right then (`Context::GetFinalGIEntry`, so
+  progressive items come out in order against the live save) and given by `Combo_GiveResolvedOOT`, the save-direct give
+  that cross-game grants and Anchor use (`OTRGlobals.cpp`, no longer `static`).
+- MM: the check is marked `obtained`, `cycleObtained`, not `eligible`; the item is resolved with `Rando::ConvertItem`
+  and `CurrentJunkItem` and given by `Combo_MM_GiveDormantResolved`, the same save-direct give.
+- An item of the other game (OoT's `RG_COMBO_FOREIGN`, MM's `RI_COMBO_FOREIGN`) goes through the existing foreign-check
+  path without its toast: `gComboCrossDeliver` / `gMMComboCrossDeliver` (the launcher's `DeliverCrossItem`, which
+  handles shared vitals and de-duplicates by check name) and the Anchor cross-item broadcast.
+- Shared Items: MM's give pokes `gMMComboSharedChanged` itself; the OoT release pokes `gComboSharedChanged` once at the
+  end, so the launcher's next tick reconciles the tiers. The Triforce counters poke as for any grant.
+- Traps (`RG_ICE_TRAP`, `RI_TRAP`, and a foreign item with `trap` set) are marked collected and never given, sprung or
+  sent.
+
+**The world pickup is spent too (OoT).** After marking a check collected, `SpendWorldPickup` sets the flag the check's own
+pickup tests (its `SpoilerCollectionCheck`, the same one the tracker reads back in `ComboCheckFlagObtained`), so the chest,
+Skulltula, collectible, NPC gift, scrub, cow or shop slot in the world gives nothing again:
+- chest and collectible: `gSaveContext.sceneFlags[scene].chest` / `.collect`. If that scene is the one being played the live
+  flag is set too, through the game's `Flags_SetTreasure` / `Flags_SetCollectible` (the game writes the live flags back on
+  leaving the scene). Collectible flags from 0x20 up are the game's one-visit `tempCollect`: only the live flag, and only
+  in the current scene.
+- Skulltula: `SET_GS_FLAGS(scene, flag)`.
+- `eventChkInf`, `itemGetInf`, `infTable`: `Flags_SetEventChkInf` / `Flags_SetItemGetInf` / `Flags_SetInfTable`.
+- `randomizerInf` (shops, cows, scrubs' and others' randomizer flags, beehives, pots...): `Flags_SetRandomizerInf` on
+  `Randomizer::GetRandomizerInfFromCheck(rc)`.
+- Traps and foreign checks are spent the same way; only their item is never given.
+The flag setters fire the game's flag hooks, so Anchor teammates get the flags as well. A check whose kind is not mapped
+(`SPOILER_CHK_NONE`, the gravedigger type, or a `randomizerInf` check with no flag) is logged by name at release time and
+its pickup may still give once more. A pickup already spawned in the scene being played stays as it is until the scene
+reloads.
+
+**The world pickup (MM)** needed no flag writes: 2S2H treats an `obtained` check as spent when the item is given. A second
+collection of a released check goes through `Rando::ConvertItem(item, rc)` (`mm/2s2h/Rando/ConvertItem.cpp:729`, via
+`IsItemObtainable`, `:232`), which turns it into junk when the check is `obtained` for heart pieces and containers
+(`:387`), progressive items, wallets, swords, small keys, stray fairies, Skulltula tokens, songs,
+clock items and Triforce pieces, and when the item is already owned for masks and the rest. The `CheckQueue` give lambda
+(`CheckQueue.cpp` `.giveItem`) calls it, and the foreign branch only delivers the first time (`wasObtained`). After a Song of
+Time, `OnCycleSave.cpp` clears `cycleObtained` and the cycle flags for every check but keeps `obtained`, so a released check
+is re-collectible for junk like any check collected normally; actors that test `cycleObtained` (ObjGrass, ObjTsubo and the
+rest of `ActorBehavior/`) see it spent this cycle, as set by the release. A released MM trap re-collected in the world
+springs once more, as any collected trap does.
+
+**The tracker.** OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
+`RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. MM's tracker reads `RANDO_SAVE_CHECKS` live.
+
+**Saves.** Each game opens its save batch for the loop (`SOH_ComboSaveBatchBegin/End` through `SaveBatch`, MM's
+`ComboSaveBatch`), and the launcher holds both games' batches open around the call (`SaveBatchGuard`, now shared with
+the shared-items pass), so the cross-game deliveries write each save once as well: one container write per game for
+100+ checks. The OoT area spoils of released maps are folded into that save.
+
+**Notification.** One, from the released game: "Released 143 checks from Ocarina of Time" (or "Majora's Mask"), through
+the existing `Notification::Emit` both games have.
+
+**Anchor co-op.** Released checks sync through the same paths as pickups. OoT: each `SetCheckStatus` fires the
+`OnRandoSetCheckStatus` Anchor hook, and each item is sent with `SendPacket_GiveItem`. MM: `BroadcastCheckObtainedIfFirst`.
+Foreign items use the cross-item broadcast. A trap is sent to nobody. Teammates therefore get one packet per check; a
+large release is a burst, and teammates' partner feeds list the non-junk finds.
+
+**Edge cases.**
+- The other game's pending queue is not touched: its checks are its own, and the cross-game items land in its resident
+  save as any cross-grant does.
+- A check the item queue is already giving is skipped (above), so nothing is given twice.
+- A bottle refill with no free bottle is dropped, as for every cross-grant (`Combo_MM_GiveDormant`,
+  `Combo_GiveResolvedOOT`).
+
+**Preserve on future merges.** `OTRGlobals.cpp` (`Combo_GiveResolvedOOT` and `Combo_PersistOOT` non-static),
+`randomizer_check_tracker.cpp/.h` (`SpoilAreasFromChecks`), `combo/ComboShip.cpp` (the release block before
+`Combo_OnFinalBossDefeated`, the queue in it, the drain in `Combo_SharedTick`, the `LoadComboCompletion` read, the three
+`GetSym` lines), `combo/gui/ComboMenu.cpp` (the checkbox). The two `ComboReleaseChecks.cpp` files and
+`combo/ComboRelease.h` are combo-owned.

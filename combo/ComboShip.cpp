@@ -54,6 +54,7 @@
 #include "ComboSettingsImport.h"
 #include "ComboConfigTree.h"
 #include "ComboPresetScope.h"
+#include "ComboRelease.h"
 #include "ComboSaveTiming.h"
 #include "ComboContainerWriter.h"
 
@@ -1317,6 +1318,15 @@ static FnSetBossDefeatedCb SOH_SetFinalBossDefeatedCb = nullptr;
 static FnSetBossDefeatedCb MM_SetFinalBossDefeatedCb = nullptr;
 static bool g_comboCompletion[2] = { false, false };
 static int g_comboCompletionSlot = -1;
+// "Release checks on boss kill" (combo/ComboRelease.h): each game's giver, and the setting (the CVar store is one
+// instance across the exe and both DLLs, so soh answers for both games). Which games' checks the loaded slot already
+// released lives in the container (combo.released); a kill queues a release, and the per-frame tick runs it.
+typedef int (*FnReleaseChecks)(void);
+static FnReleaseChecks SOH_ReleaseRemainingChecks = nullptr;
+static FnReleaseChecks MM_ReleaseRemainingChecks = nullptr;
+static int (*SOH_ComboReleaseOnBossKillEnabled)(void) = nullptr;
+static bool g_comboReleased[2] = { false, false };
+static std::atomic<bool> g_releasePending[2] = {};
 
 // ComboShip (#136): Triforce Hunt is ONE combined goal — the launcher pushes it into both DLLs, sums
 // both counters on every piece grant/merge, and dispatches the ending itself.
@@ -1405,6 +1415,18 @@ static FnSaveBatch SOH_ComboSaveBatchBegin = nullptr;
 static FnSaveBatch SOH_ComboSaveBatchEnd = nullptr;
 static FnSaveBatch MM_ComboSaveBatchBegin = nullptr;
 static FnSaveBatch MM_ComboSaveBatchEnd = nullptr;
+// Holds a game's save batch open for the life of the guard; inert when the game exports none.
+struct SaveBatchGuard {
+    FnSaveBatch end;
+    SaveBatchGuard(FnSaveBatch begin, FnSaveBatch endFn) : end((begin != nullptr) ? endFn : nullptr) {
+        if (end != nullptr)
+            begin();
+    }
+    ~SaveBatchGuard() {
+        if (end != nullptr)
+            end();
+    }
+};
 // Shared-items mask of the LOADED slot (seed-bound, like g_goalHunt/g_startingGameMM). Absent key = 0.
 static uint32_t g_sharedMask = 0;
 static bool g_unifiedInventory = false; // owner ruling 2026-11-11: the loaded slot's seed shares every item
@@ -2015,6 +2037,8 @@ static void MarkForeignObtained(int srcGame, const char* checkName) {
 // play too. Read on save-load, rewritten on each final-boss kill.
 static void LoadComboCompletion(int slot) {
     g_comboCompletion[0] = g_comboCompletion[1] = false;
+    g_comboReleased[0] = g_comboReleased[1] = false;
+    g_releasePending[0] = g_releasePending[1] = false;
     g_comboCompletionSlot = slot;
     g_comboTriforceDone = false;
     g_goalHunt = false;
@@ -2036,6 +2060,9 @@ static void LoadComboCompletion(int slot) {
         g_comboCompletion[0] = comp.value("oot", false);
         g_comboCompletion[1] = comp.value("mm", false);
         g_comboTriforceDone = comp.value("triforce", false);
+        const auto released = combo.value(ComboRelease::kReleasedContainerKey, nlohmann::json::object());
+        g_comboReleased[0] = released.value(ComboRando::GameIdToKey(ComboRando::GAME_OOT), false);
+        g_comboReleased[1] = released.value(ComboRando::GameIdToKey(ComboRando::GAME_MM), false);
         // The goal is seed-bound: it rides the slot's baked combo.rando, not the live menu CVars.
         auto rando = combo.value("rando", nlohmann::json::object());
         auto goal = rando.value("goal", nlohmann::json::object());
@@ -2201,6 +2228,68 @@ static void Combo_OnMmHintRevealed(int fileNum, int kind, int poolIndex, const c
     std::cerr << "[ComboShip] Combo_OnMmHintRevealed threw: " << e.what() << std::endl;
 } catch (...) { std::cerr << "[ComboShip] Combo_OnMmHintRevealed threw a non-std exception" << std::endl; }
 
+static FnReleaseChecks Combo_ReleaseGiver(int game) {
+    if (game == 0)
+        return SOH_ReleaseRemainingChecks;
+    if (game == 1)
+        return MM_ReleaseRemainingChecks;
+    return nullptr;
+}
+
+static void SaveComboReleased(int slot) {
+    std::lock_guard<std::mutex> lk(g_containerMutex);
+    auto& c = LoadOrCreateContainer(slot);
+    auto& released = c["combo"][ComboRelease::kReleasedContainerKey];
+    released[ComboRando::GameIdToKey(ComboRando::GAME_OOT)] = g_comboReleased[0];
+    released[ComboRando::GameIdToKey(ComboRando::GAME_MM)] = g_comboReleased[1];
+    FlushContainer(slot);
+}
+
+// Releases a game's uncollected checks to the player, once per slot (combo/ComboRelease.h). The one entry point, for a
+// boss kill today and for Archipelago later; AP also has to send the released locations to its server. `game` is being
+// played (GameId convention, 0 = OOT, 1 = MM): its giver runs on this thread, and the items for the other game go
+// through the cross-game delivery. Returns how many checks were released, or ComboRelease::kCannotRelease.
+static int Combo_ReleaseGameChecks(int game, const char* reason) try {
+    const FnReleaseChecks release = Combo_ReleaseGiver(game);
+    if (release == nullptr || !ComboIsValidSlot(g_comboCompletionSlot) || g_comboReleased[game] ||
+        g_activeMode.IsVanilla())
+        return ComboRelease::kCannotRelease;
+    int released = ComboRelease::kCannotRelease;
+    {
+        // Both games' saves are written once, when the release is done (the same order as the shared-items pass).
+        const SaveBatchGuard ootSaves(SOH_ComboSaveBatchBegin, SOH_ComboSaveBatchEnd);
+        const SaveBatchGuard mmSaves(MM_ComboSaveBatchBegin, MM_ComboSaveBatchEnd);
+        released = release();
+    }
+    if (released == ComboRelease::kCannotRelease)
+        return released;
+    g_comboReleased[game] = true;
+    SaveComboReleased(g_comboCompletionSlot);
+    std::cout << "[ComboShip] Released " << released << " checks of game=" << game << " slot=" << g_comboCompletionSlot
+              << " (" << reason << ")" << std::endl;
+    return released;
+} catch (const std::exception& e) {
+    std::cerr << "[ComboShip] Combo_ReleaseGameChecks threw: " << e.what() << std::endl;
+    return ComboRelease::kCannotRelease;
+} catch (...) {
+    std::cerr << "[ComboShip] Combo_ReleaseGameChecks threw a non-std exception" << std::endl;
+    return ComboRelease::kCannotRelease;
+}
+
+// The release is queued, not run: a boss reports its death from inside its own cutscene, and items given there would
+// land mid-frame. Per-frame, on the played game's thread (Combo_SharedTick), this runs it between frames, once the
+// other game's save is resident to take its half of the items (a one-game seed has no other half).
+static void Combo_DrainBossRelease() {
+    const int game = ComboAnchor::sActiveGame.load();
+    if ((game != 0 && game != 1) || !g_releasePending[game])
+        return;
+    if (g_comboCompletionSlot < 0 ||
+        (!ComboRando::ComboGamesSolo(g_comboGames) && g_MmSaveInMemorySlot != g_comboCompletionSlot))
+        return;
+    g_releasePending[game] = false;
+    Combo_ReleaseGameChecks(game, "final boss defeated");
+}
+
 // Registered into both games: record THIS game's final-boss kill for its slot and return 1 iff BOTH
 // games' bosses are now dead (a solo seed: the played game's). game/fileNum use the GameId convention (0=OOT, 1=MM).
 static int Combo_OnFinalBossDefeated(int game, int fileNum) {
@@ -2217,6 +2306,9 @@ static int Combo_OnFinalBossDefeated(int game, int fileNum) {
                   << " complete=" << ComboBossesComplete(g_comboCompletion)
                   << " games=" << ComboRando::ComboGamesKey(g_comboGames) << std::endl;
     }
+    // Like the completion above, this is reported again on each frame of the fade; a release already made ends it.
+    if (!g_comboReleased[game] && SOH_ComboReleaseOnBossKillEnabled && SOH_ComboReleaseOnBossKillEnabled() != 0)
+        g_releasePending[game] = true;
     return ComboBossesComplete(g_comboCompletion) ? 1 : 0;
 }
 
@@ -2293,17 +2385,6 @@ static void Combo_SharedReconcileNow() try {
     g_sharedReconcileRunning = true;
     // One save per game for the whole pass, not one per family raised. Destroyed in reverse order, so MM writes
     // first: its write runs on this thread, and OOT's (on OOT's save thread) would hold the container meanwhile.
-    struct SaveBatchGuard {
-        FnSaveBatch end;
-        SaveBatchGuard(FnSaveBatch begin, FnSaveBatch endFn) : end((begin != nullptr) ? endFn : nullptr) {
-            if (end != nullptr)
-                begin();
-        }
-        ~SaveBatchGuard() {
-            if (end != nullptr)
-                end();
-        }
-    };
     const SaveBatchGuard ootSaves(SOH_ComboSaveBatchBegin, SOH_ComboSaveBatchEnd);
     const SaveBatchGuard mmSaves(MM_ComboSaveBatchBegin, MM_ComboSaveBatchEnd);
     bool moved = false;
@@ -2339,6 +2420,7 @@ static void Combo_SharedReconcileNow() try {
 
 // Per-frame drain seam (SOH_/MM_SetSharedTickCb). Gated on both saves resident.
 static void Combo_SharedTick() try {
+    Combo_DrainBossRelease();
     if (!g_sharedReconcilePending || g_sharedMask == 0)
         return;
     if (g_comboCompletionSlot < 0 || g_MmSaveInMemorySlot != g_comboCompletionSlot)
@@ -4326,6 +4408,9 @@ int main(int argc, char** argv) {
     SOH_SetComboMirrorStart = (void (*)(uint32_t))GetSym(sohModule, "SOH_SetComboMirrorStart");
     SOH_BottleShelfGetState = (FnShelfGet)GetSym(sohModule, "SOH_BottleShelfGetState");
     SOH_ComboSharedHealthEnabled = (int (*)(void))GetSym(sohModule, "SOH_ComboSharedHealthEnabled");
+    SOH_ComboReleaseOnBossKillEnabled = (int (*)(void))GetSym(sohModule, "SOH_ComboReleaseOnBossKillEnabled");
+    SOH_ReleaseRemainingChecks = (FnReleaseChecks)GetSym(sohModule, "SOH_ReleaseRemainingChecks");
+    MM_ReleaseRemainingChecks = (FnReleaseChecks)GetSym(mmModule, "MM_ReleaseRemainingChecks");
     SOH_ComboHealthGetState = (FnShelfGet)GetSym(sohModule, "SOH_ComboHealthGetState");
     SOH_ComboHealthSetState = (FnShelfSet)GetSym(sohModule, "SOH_ComboHealthSetState");
     MM_ComboHealthGetState = (FnShelfGet)GetSym(mmModule, "MM_ComboHealthGetState");
