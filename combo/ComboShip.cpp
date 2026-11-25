@@ -713,7 +713,14 @@ static void FlushContainer(int fileNum) {
             return;
         }
     }
-    writer.CancelAndWait(fileNum); // what the thread still has of this slot is older than this snapshot
+    // What the thread still has of this slot is older than this snapshot.
+    if (!writer.CancelAndWait(fileNum)) {
+        const std::string error = "save container of slot " + std::to_string(fileNum) +
+                                  " not written: the save writer was left writing that slot at quit";
+        std::cerr << "[ComboShip] ERROR: " << error << std::endl;
+        writer.NoteCallerWriteFailed(error);
+        return;
+    }
     const ComboContainerIo::FileWriteResult result = ComboContainerIo::WriteContainerFile(path, text);
     tl_containerIoStats.syncWrite = true;
     tl_containerIoStats.openMs = result.io.openMs;

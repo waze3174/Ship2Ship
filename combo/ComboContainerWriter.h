@@ -21,7 +21,8 @@
 //   (CancelAndWait), and reading a slot that is not in memory waits for both (WaitIdle), which also covers the
 //   corrupt/outdated-container renames that read can make.
 // - A write that cannot go to the thread (the kill switch gCombo.Debug.SyncSaveWrites, a thread that could not start,
-//   or a writer already stopped at quit) is written by the caller, after CancelAndWait for its slot.
+//   or a writer already stopped at quit) is written by the caller, after CancelAndWait for its slot. The one write
+//   nobody makes: a slot the thread was still writing when the quit deadline left it behind (see Stop).
 // - Quit drains the writer before the process ends (Drain, Stop), inside the shutdown watchdog's time. Any other exit
 //   that runs atexit handlers drains it too (StopAtExit).
 //
@@ -139,13 +140,16 @@ class Writer {
     }
 
     // Drops the slot's waiting snapshot and waits until the slot is not being written. Call with g_containerMutex held.
-    void CancelAndWait(int slot) {
+    // Returns false when a thread left behind at a stop is still writing the slot: a caller that wants to write the
+    // slot itself must not, because both would write the one temp file and the older snapshot could land last.
+    bool CancelAndWait(int slot) {
         std::unique_lock<std::mutex> lk(mMutex);
         if (mPending.erase(slot) > 0) {
             ++mReport.replaced;
             mDone.notify_all(); // a Drain may be waiting for exactly this snapshot
         }
         mDone.wait(lk, [&] { return (mWritingSlot != slot) || mDetached; });
+        return mWritingSlot != slot;
     }
 
     // Waits until the slot has nothing waiting or being written. Call with g_containerMutex held.

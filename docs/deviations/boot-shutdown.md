@@ -310,7 +310,9 @@ game for seconds". The design comment at the top of that header is the reference
   `SOH_Deinit` ("writing the last saves"), both against one deadline 8 s after the watchdog's start
   (`kSaveWriterShutdownBudget`, inside its 10 s). What is still unwritten then, and write failures not yet logged, go
   to stderr and `logs/shutdown-watchdog.log`; a thread still in a write is detached and the process exit cuts it off
-  (the container stays the previous one). Another exit that runs atexit handlers drains it for up to 3 s
+  (the container stays the previous one). A save of that same slot made after that is not written by its caller
+  either (`CancelAndWait` returns false, `FlushContainer` reports it): two threads would write the one temp file, and
+  the rename fallback could then remove the container. Another exit that runs atexit handlers drains it for up to 3 s
   (`Writer::StopAtExit`). The writer is never destroyed, so a detached thread never finds its mutex gone.
 - *Crash:* the snapshots not yet on disk are lost: normally the last 50-100 ms, and while the disk stalls, as long as
   it stalls (before 0.1.3 the game froze for that long instead). A snapshot is the whole container, so OOT's grant and
