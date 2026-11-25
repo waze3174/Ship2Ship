@@ -1,21 +1,19 @@
 // combo/gui/ComboSettingsLink.cpp
 //
-// ComboShip: OOT and MM each own a private CVar for the same preference — camera speed, invert,
-// first-person aim, the ocarina stick, D-pad equips, quality-of-life toggles, cheats. The names differ
-// by design (OOT reads gSettings.FreeLook.*, MM reads gEnhancements.Camera.*), so a player had to find
-// and set two controls for one thing. This links each pair (table in ComboLinkRows.h): move either
-// control and the other follows. ComboBothGames.cpp draws each pair once and hides the per-game copies.
+// ComboShip: OOT and MM each own a private CVar for the same preference (camera speed, invert, first-person
+// aim, quality-of-life toggles, cheats...). The names differ by design (OOT reads gSettings.FreeLook.*, MM reads
+// gEnhancements.Camera.*). The Both games menu (ComboBothGames.cpp) shows one control per pair and, when it is
+// changed, calls LinkCopyToOtherGame so both games get the value. The per-game controls stay as they are and
+// only change their own game. Pairs are in ComboLinkRows.h.
 //
-// Lives in comboui because the CVar store is one instance across the exe and both game DLLs, so
-// the link is plain reads/writes — the same arrangement ComboCosmeticsSync.cpp uses. Each write is
-// handed to the owning game's MenuApplyCVarChange so it takes effect without a restart.
+// Lives in comboui because the CVar store is one instance across the exe and both game DLLs, so a copy is plain
+// reads/writes, the same arrangement ComboCosmeticsSync.cpp uses. Each write is handed to the owning game's
+// MenuApplyCVarChange so it takes effect without a restart.
 //
-// NOT linked on purpose: anything only one game has (OOT's D-pad on pause / in text, MM's camera
-// pitch clamps), anything already shared (gSettings.Controllers.* bindings, volumes via
-// ComboAudioBridge, HUD colours via ComboCosmeticsSync), and everything the randomizer reads.
+// NOT linked on purpose: anything only one game has (OOT's D-pad on pause / in text, MM's camera pitch clamps),
+// anything already shared (gSettings.Controllers.* bindings, volumes via ComboAudioBridge, HUD colours via
+// ComboCosmeticsSync), D-pad equips (the combo's own setting owns them), and everything the randomizer reads.
 #include <libultraship/libultraship.h> // CVar API
-#include "ComboExport.h"
-#include "ComboLinkRows.h"
 #include "ComboSettingsLink.h"
 #include <ship/Context.h> // SaveConsoleVariablesNextFrame
 #include <spdlog/spdlog.h>
@@ -23,51 +21,46 @@
 #include <climits>
 #include <cmath>
 #include <cstring>
-#include <string>
+
+namespace ComboRando {
 
 namespace {
 
-constexpr const char* kLinkCVar = "gCombo.LinkSettings";
-constexpr int kLinkDefault = 1;
-// Set once the pairs have been merged from both games' existing values. A sibling leaf of
-// gCombo.LinkSettings, never a child of it: a key can't be a value and a parent at once in the nested config.
-constexpr const char* kSeededCVar = "gCombo.LinkSettingsPairsSeeded";
+// One marker per seed wave, indexed by wave - 1. Siblings of the other gCombo.LinkSettings* names, never children of
+// one: a key can't be a value and a parent at once in the nested config. "Seeded" keeps them out of presets.
+constexpr const char* kSeedMarkers[kSeedWaveCount] = { "gCombo.LinkSettingsPairsSeeded",
+                                                       "gCombo.LinkSettingsCutscenesSeeded" };
 
-using ComboRando::kLinkRowCount;
-using ComboRando::kLinkRows;
-using ComboRando::LinkRow;
-using ComboRando::LinkType;
+constexpr const char* kOotFirstPersonSensitivityPrefix = "gSettings.FirstPersonCameraSensitivity.";
+constexpr const char* kOotFirstPersonSensitivityMaster = "gSettings.FirstPersonCameraSensitivity.Enabled";
 
-// Last value this module saw on each side, so a poll can tell which one the user moved. float holds
-// every int we link exactly (all are small), so one cache type covers both. NaN = "unset".
-struct RowCache {
-    float oot = NAN;
-    float mm = NAN;
-};
-RowCache sCache[kLinkRowCount];
-bool sPrimed = false;
-
-// NaN when the key has never been set. An unset key means "this game's own default", and the two games'
-// defaults differ (OOT camera speed 1.0, invert-Y on, transition 25...), so an unset key is never copied:
-// reading it as 0 would have written camera speed 0 / invert off into the other game.
+// NaN when the key has never been set. An unset key means "this game's own default", so it is never copied:
+// reading it as 0 would write camera speed 0 / invert off into the other game.
 float ReadKey(const char* key, LinkType type) {
-    if (type == LinkType::Int) {
-        const int v = CVarGetInteger(key, INT_MIN);
-        return (v == INT_MIN) ? NAN : static_cast<float>(v);
+    if (type == LinkType::Float) {
+        return CVarGetFloat(key, NAN);
     }
-    return CVarGetFloat(key, NAN);
+    const int v = CVarGetInteger(key, INT_MIN);
+    return (v == INT_MIN) ? NAN : static_cast<float>(v);
 }
 
-// Equal including "both unset" (NaN != NaN otherwise).
-bool Same(float a, float b) {
-    return (std::isnan(a) && std::isnan(b)) || (a == b);
+float EffectiveOrDefault(float stored, float defaultValue) {
+    return std::isnan(stored) ? defaultValue : stored;
+}
+
+const char* SideKey(const LinkRow& row, GameSide side) {
+    return side == GameSide::Oot ? row.oot : row.mm[0];
+}
+
+float SideDefault(const LinkRow& row, GameSide side) {
+    return side == GameSide::Oot ? row.ootDefault : row.mmDefault;
 }
 
 void WriteKey(const char* key, LinkType type, float value, Fn_MenuApplyCVar apply) {
-    if (type == LinkType::Int) {
-        CVarSetInteger(key, static_cast<int>(value));
-    } else {
+    if (type == LinkType::Float) {
         CVarSetFloat(key, value);
+    } else {
+        CVarSetInteger(key, static_cast<int>(value));
     }
     if (apply) {
         apply(key);
@@ -86,7 +79,7 @@ struct Applies {
 };
 
 Applies ResolveApplies() {
-    auto& model = ComboRando::ComboMenuModel::Get();
+    auto& model = ComboMenuModel::Get();
     model.EnsureLoaded();
     return { model.Oot().applyCVarChange, model.Mm().applyCVarChange };
 }
@@ -94,211 +87,145 @@ Applies ResolveApplies() {
 // OOT clears its aiming-sensitivity values whenever the master checkbox is off, so a value arriving
 // from MM has to switch that master on or it would be wiped on the next menu draw.
 void EnableOotFirstPersonSensitivityIfNeeded(const LinkRow& row, Fn_MenuApplyCVar apply) {
-    if (std::strncmp(row.oot, "gSettings.FirstPersonCameraSensitivity.", 39) != 0) {
+    if (std::strncmp(row.oot, kOotFirstPersonSensitivityPrefix, std::strlen(kOotFirstPersonSensitivityPrefix)) != 0) {
         return;
     }
-    const char* master = "gSettings.FirstPersonCameraSensitivity.Enabled";
-    if (CVarGetInteger(master, 0) != 1) {
-        CVarSetInteger(master, 1);
+    if (CVarGetInteger(kOotFirstPersonSensitivityMaster, 0) != 1) {
+        CVarSetInteger(kOotFirstPersonSensitivityMaster, 1);
         if (apply) {
-            apply(master);
+            apply(kOotFirstPersonSensitivityMaster);
         }
     }
 }
 
-void PushOotToMm(int i, const Applies& fns, bool* wrote) {
-    const LinkRow& row = kLinkRows[i];
-    const float value = ReadKey(row.oot, row.type);
-    if (std::isnan(value)) {
-        // Unset on OOT's side. If it WAS set (the player just reset it to default), reset MM too; if it never
-        // was, leave MM alone on its own default.
-        if (!std::isnan(sCache[i].oot)) {
-            for (const char* mmKey : row.mm) {
-                if (!mmKey) {
-                    break;
-                }
-                CVarClear(mmKey);
-                if (fns.mm) {
-                    fns.mm(mmKey);
-                }
-                *wrote = true;
-            }
-        }
-        sCache[i].oot = value;
-        sCache[i].mm = ReadKey(row.mm[0], row.type);
-        return;
+// Writes `value` to one key unless the game already uses it.
+bool WriteIfDifferent(const char* key, LinkType type, float defaultValue, float value, Fn_MenuApplyCVar apply) {
+    if (EffectiveOrDefault(ReadKey(key, type), defaultValue) == value) {
+        return false;
     }
-    for (const char* mmKey : row.mm) {
-        if (!mmKey) {
-            break;
-        }
-        if (!Same(ReadKey(mmKey, row.type), value)) {
-            WriteKey(mmKey, row.type, value, fns.mm);
-            *wrote = true;
-        }
-    }
-    sCache[i].oot = value;
-    sCache[i].mm = value;
+    WriteKey(key, type, value, apply);
+    return true;
 }
 
-void PushMmToOot(int i, const Applies& fns, bool* wrote) {
-    const LinkRow& row = kLinkRows[i];
-    const float value = ReadKey(row.mm[0], row.type);
-    if (std::isnan(value)) {
-        // Unset on MM's side: mirror a reset-to-default, never invent a value.
-        if (!std::isnan(sCache[i].mm)) {
-            CVarClear(row.oot);
-            if (fns.oot) {
-                fns.oot(row.oot);
+bool CopyValue(const LinkRow& row, GameSide from, float value, const Applies& fns) {
+    bool wrote = false;
+    if (from == GameSide::Oot) {
+        for (const char* key : row.mm) {
+            if (key) {
+                wrote |= WriteIfDifferent(key, row.type, row.mmDefault, value, fns.mm);
             }
-            for (int k = 1; k < 3 && row.mm[k]; ++k) {
-                CVarClear(row.mm[k]);
-                if (fns.mm) {
-                    fns.mm(row.mm[k]);
-                }
-            }
-            *wrote = true;
         }
-        sCache[i].oot = ReadKey(row.oot, row.type);
-        sCache[i].mm = value;
-        return;
+        return wrote;
     }
-    if (!Same(ReadKey(row.oot, row.type), value)) {
-        WriteKey(row.oot, row.type, value, fns.oot);
+    wrote = WriteIfDifferent(row.oot, row.type, row.ootDefault, value, fns.oot);
+    if (wrote) {
         EnableOotFirstPersonSensitivityIfNeeded(row, fns.oot);
-        *wrote = true;
     }
     // MM's second key (its left-stick/gyro twin) follows its right-stick partner.
     for (int k = 1; k < 3 && row.mm[k]; ++k) {
-        if (!Same(ReadKey(row.mm[k], row.type), value)) {
-            WriteKey(row.mm[k], row.type, value, fns.mm);
-            *wrote = true;
-        }
+        wrote |= WriteIfDifferent(row.mm[k], row.type, row.mmDefault, value, fns.mm);
     }
-    sCache[i].oot = value;
-    sCache[i].mm = value;
+    return wrote;
 }
 
-// A key counts as "moved" only when it is set to something other than its default. Defaults are equal on
-// both sides, and an unset key is never copied.
-bool MovedOffDefault(float stored, const LinkRow& row) {
-    return !std::isnan(stored) && stored != row.defaultValue;
+// A key counts as "moved" only when it is set to something other than its default.
+bool MovedOffDefault(float stored, float defaultValue) {
+    return !std::isnan(stored) && stored != defaultValue;
 }
 
-// One-time merge of two existing configs. The side that moved off its default is copied to the other; when both
-// moved, OOT wins (it is the side the Shared tab draws). An on/off switch that defaults to off therefore ends up
-// on in both games when it was on in either.
-void SeedRow(int i, const Applies& fns, bool* wrote) {
-    const LinkRow& row = kLinkRows[i];
-    const float oot = ReadKey(row.oot, row.type);
-    const float mm = ReadKey(row.mm[0], row.type);
-    const bool fromOot = MovedOffDefault(oot, row);
-    if (!fromOot && !MovedOffDefault(mm, row)) {
+// One-time merge of two existing configs, judged on the values the games use (unset keys count as their default).
+//   * A switch that is off by default in either game: on in either means on in both.
+//   * Anything else: the side that moved off its default is copied to the other; when both moved, OOT wins.
+// A pair that already agrees is never written.
+void SeedRow(const LinkRow& row, const Applies& fns, bool* wrote) {
+    const float ootStored = ReadKey(row.oot, row.type);
+    const float mmStored = ReadKey(row.mm[0], row.type);
+    const float oot = EffectiveOrDefault(ootStored, row.ootDefault);
+    const float mm = EffectiveOrDefault(mmStored, row.mmDefault);
+    if (oot == mm) {
         return;
     }
-    bool rowWrote = false;
-    if (fromOot) {
-        PushOotToMm(i, fns, &rowWrote);
-    } else {
-        PushMmToOot(i, fns, &rowWrote);
+    const bool onWins = row.type == LinkType::Switch && (row.ootDefault == 0 || row.mmDefault == 0);
+    GameSide from = GameSide::Oot;
+    if (onWins) {
+        from = (oot != 0) ? GameSide::Oot : GameSide::Mm;
+    } else if (!MovedOffDefault(ootStored, row.ootDefault)) {
+        if (!MovedOffDefault(mmStored, row.mmDefault)) {
+            return;
+        }
+        from = GameSide::Mm;
     }
-    if (rowWrote) {
-        SPDLOG_INFO("[ComboShip] settings link seeded {} from {} ({})", row.oot, fromOot ? "OOT" : "MM",
-                    fromOot ? oot : mm);
+    const float value = (from == GameSide::Oot) ? oot : mm;
+    if (CopyValue(row, from, value, fns)) {
+        SPDLOG_INFO("[ComboShip] settings link seeded {} from {} ({})", row.oot, from == GameSide::Oot ? "OOT" : "MM",
+                    value);
+        *wrote = true;
     }
-    *wrote = *wrote || rowWrote;
-}
-
-void PrimeCaches() {
-    for (int i = 0; i < kLinkRowCount; ++i) {
-        sCache[i].oot = ReadKey(kLinkRows[i].oot, kLinkRows[i].type);
-        sCache[i].mm = ReadKey(kLinkRows[i].mm[0], kLinkRows[i].type);
-    }
-    sPrimed = true;
-}
-
-void SeedPairs(const Applies& fns) {
-    bool wrote = false;
-    for (int i = 0; i < kLinkRowCount; ++i) {
-        SeedRow(i, fns, &wrote);
-    }
-    PrimeCaches();
-    CVarSetInteger(kSeededCVar, 1);
-    RequestCVarSave(); // persists the marker even when no value changed
-    SPDLOG_INFO("[ComboShip] settings link: first-time merge of {} linked settings done ({})", kLinkRowCount,
-                wrote ? "values copied" : "nothing to copy");
 }
 
 bool BothGamesLoaded() {
-    auto& model = ComboRando::ComboMenuModel::Get();
+    auto& model = ComboMenuModel::Get();
     model.EnsureLoaded();
     return model.Oot().loaded && model.Mm().loaded;
 }
 
+void SeedWave(int wave, const Applies& fns) {
+    bool wrote = false;
+    for (const LinkRow& row : kLinkRows) {
+        if (row.seedWave == wave) {
+            SeedRow(row, fns, &wrote);
+        }
+    }
+    CVarSetInteger(kSeedMarkers[wave - 1], 1);
+    SPDLOG_INFO("[ComboShip] settings link: seed wave {} done ({})", wave, wrote ? "values copied" : "nothing to copy");
+}
+
+bool WaveDone(int wave) {
+    return CVarGetInteger(kSeedMarkers[wave - 1], 0) != 0;
+}
+
 } // namespace
 
-extern "C" COMBO_EXPORT int ComboUI_SettingsLinkEnabled(void) {
-    return CVarGetInteger(kLinkCVar, kLinkDefault) != 0 ? 1 : 0;
+float LinkEffectiveValue(const LinkRow& row, GameSide side) {
+    return EffectiveOrDefault(ReadKey(SideKey(row, side), row.type), SideDefault(row, side));
 }
 
-extern "C" COMBO_EXPORT int ComboUI_SettingsLinkCount(void) {
-    return kLinkRowCount;
+bool LinkValuesDiffer(const LinkRow& row) {
+    return LinkEffectiveValue(row, GameSide::Oot) != LinkEffectiveValue(row, GameSide::Mm);
 }
 
-extern "C" COMBO_EXPORT void ComboUI_SettingsLinkPushOotToMm(void) {
-    const Applies fns = ResolveApplies();
-    bool wrote = false;
-    int copied = 0;
-    for (int i = 0; i < kLinkRowCount; ++i) {
-        bool rowWrote = false;
-        PushOotToMm(i, fns, &rowWrote);
-        copied += rowWrote ? 1 : 0;
-        wrote = wrote || rowWrote;
-    }
-    sPrimed = true;
-    CVarSetInteger(kSeededCVar, 1); // an explicit adopt supersedes the first-time merge
+bool LinkCopyToOtherGame(const LinkRow& row, GameSide from) {
+    const bool wrote = CopyValue(row, from, LinkEffectiveValue(row, from), ResolveApplies());
     if (wrote) {
         RequestCVarSave();
     }
-    SPDLOG_INFO("[ComboShip] settings link on: {} of {} linked settings copied OOT -> MM (unset ones left alone)",
-                copied, kLinkRowCount);
+    return wrote;
 }
 
-extern "C" COMBO_EXPORT void ComboUI_SettingsLinkPoll(void) {
-    if (!ComboUI_SettingsLinkEnabled()) {
-        sPrimed = false; // adopt OOT's values when the link is switched back on
+void LinkSeedIfNeeded() {
+    static bool sAllDone = false;
+    if (sAllDone) {
         return;
     }
-    if (!sPrimed) {
-        if (!BothGamesLoaded()) {
-            return; // seeding needs both games' live-apply hooks; try again next frame
-        }
-        // Link switched back on after the first merge: OOT is the side the Shared tab shows, so it wins.
-        if (CVarGetInteger(kSeededCVar, 0)) {
-            ComboUI_SettingsLinkPushOotToMm();
-        } else {
-            SeedPairs(ResolveApplies());
-        }
+    bool pending = false;
+    for (int wave = kFirstSeedWave; wave <= kSeedWaveCount; ++wave) {
+        pending = pending || !WaveDone(wave);
+    }
+    if (!pending) {
+        sAllDone = true;
         return;
     }
-
+    if (!BothGamesLoaded()) {
+        return; // seeding needs both games' live-apply hooks; try again next frame
+    }
     const Applies fns = ResolveApplies();
-    bool wrote = false;
-    for (int i = 0; i < kLinkRowCount; ++i) {
-        const LinkRow& row = kLinkRows[i];
-        const float ootNow = ReadKey(row.oot, row.type);
-        const float mmNow = ReadKey(row.mm[0], row.type);
-        if (Same(ootNow, sCache[i].oot) && Same(mmNow, sCache[i].mm)) {
-            continue; // neither side touched
-        }
-        // OOT wins a simultaneous change: it is the side the Shared tab puts in front of the player.
-        if (!Same(ootNow, sCache[i].oot)) {
-            PushOotToMm(i, fns, &wrote);
-        } else {
-            PushMmToOot(i, fns, &wrote);
+    for (int wave = kFirstSeedWave; wave <= kSeedWaveCount; ++wave) {
+        if (!WaveDone(wave)) {
+            SeedWave(wave, fns);
         }
     }
-    if (wrote) {
-        RequestCVarSave();
-    }
+    RequestCVarSave(); // persists the markers even when no value changed
+    sAllDone = true;
 }
+
+} // namespace ComboRando

@@ -1,24 +1,25 @@
 // combo/gui/ComboSettingsLink.h
 //
-// ComboShip: one control for settings both games own separately (camera speed, invert, first-person
-// aim, ocarina stick, D-pad equips...). See ComboSettingsLink.cpp for the pairing table.
+// ComboShip: reads, copies and seeds the settings both games own under different CVar names. The pairs are
+// in ComboLinkRows.h; ComboBothGames.cpp is the menu that uses them. See ComboSettingsLink.cpp.
 #pragma once
 
-#include "ComboExport.h"
+#include "ComboLinkRows.h"
 
-extern "C" {
+namespace ComboRando {
 
-// Master toggle CVar: gCombo.LinkSettings (1 = linked, the default).
-COMBO_EXPORT int ComboUI_SettingsLinkEnabled(void);
+// The value the game uses for this row: its stored value, or the row's default while the key is unset.
+float LinkEffectiveValue(const LinkRow& row, GameSide side);
 
-// Called once per frame by the combo menu. Mirrors whichever side the user just changed onto the
-// other, live-applies it in the owning game and persists. No-op when the link is off.
-COMBO_EXPORT void ComboUI_SettingsLinkPoll(void);
+// True when the two games use different values for this row.
+bool LinkValuesDiffer(const LinkRow& row);
 
-// Push OOT's current values onto MM for every linked row, ignoring change detection. Used when the
-// link is switched on (OOT is the side the Shared tab shows) and by the play preset.
-COMBO_EXPORT void ComboUI_SettingsLinkPushOotToMm(void);
+// Gives the other game `from`'s value through that game's live-apply path, and saves the config. Keys already
+// equal in effect are left unwritten. Returns true when a key was written.
+bool LinkCopyToOtherGame(const LinkRow& row, GameSide from);
 
-// How many settings the link covers — for the menu's explanatory line.
-COMBO_EXPORT int ComboUI_SettingsLinkCount(void);
-}
+// Merges the existing values of both games once per seed wave (marker CVars gCombo.LinkSettings*Seeded). Cheap
+// once done; waits until both games' menus are loaded.
+void LinkSeedIfNeeded();
+
+} // namespace ComboRando

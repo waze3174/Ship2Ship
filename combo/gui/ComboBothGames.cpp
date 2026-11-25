@@ -1,24 +1,22 @@
 // combo/gui/ComboBothGames.cpp
 //
-// ComboShip: draws Settings > Both games and tells the per-game tabs and the search which controls
-// live there. See ComboBothGames.h for the rules. Controls are found by CVar in the "Enhancements"
-// section of each game's menu model: that is where both games keep every setting listed here.
+// ComboShip: draws Settings > Both games. See ComboBothGames.h for the rules. Controls are found by CVar in each
+// game's menu model.
 #include "ComboBothGames.h"
-#include "ComboLinkRows.h"
 #include "ComboMenuModel.h"
 #include "ComboSettingsLink.h"
 #include "ComboWidgetRender.h"
 #include <imgui.h>
+#include <cstdio>
 #include <cstring>
+#include <string>
 #include <unordered_map>
 
 namespace ComboRando {
 
 namespace {
 
-constexpr const char* kEnhancementsSection = "Enhancements";
-// Where OOT's control for a SharedTab row sits: the Shared tab's own Settings sections.
-constexpr const char* kSharedSettingsTab = "Settings";
+const ImVec4 kDiffersColor(1.0f, 0.75f, 0.2f, 1.0f);
 
 struct SectionInfo {
     BothSection id;
@@ -26,7 +24,7 @@ struct SectionInfo {
     const char* heading;
 };
 
-// Display order of the group: tabs in first-appearance order, sections in table order.
+// Display order of the group: a tab's sections are listed together, tabs in first-appearance order.
 constexpr SectionInfo kSections[] = {
     { BothSection::Infinite, "Cheats", "Infinite" },
     { BothSection::MovementAndItems, "Cheats", "Movement and items" },
@@ -34,16 +32,21 @@ constexpr SectionInfo kSections[] = {
     { BothSection::SpeedModifier, "Cheats", "Speed modifier" },
     { BothSection::Player, "Gameplay", "Link" },
     { BothSection::Items, "Gameplay", "Items" },
-    { BothSection::Ocarina, "Gameplay", "Ocarina" },
     { BothSection::Difficulty, "Gameplay", "Difficulty" },
+    { BothSection::Camera, "Controls", "Third-person camera" },
+    { BothSection::Aiming, "Controls", "Aiming and first person" },
+    { BothSection::Ocarina, "Controls", "Ocarina" },
     { BothSection::Saving, "Quality of life", "Saving" },
     { BothSection::TimeSavers, "Quality of life", "Time savers" },
+    { BothSection::Cutscenes, "Quality of life", "Cutscenes" },
     { BothSection::Input, "Quality of life", "Input" },
     { BothSection::Display, "Graphics", "Display" },
     { BothSection::ModSupport, "Graphics", "Mod support" },
+    { BothSection::Accessibility, "Accessibility", "Accessibility" },
+    { BothSection::Notifications, "Accessibility", "Notifications" },
 };
 
-// A CVar both games read under the same name: one setting already, so it needs no link.
+// A CVar both games read under the same name: one setting already, so it needs no copy.
 struct SharedItem {
     const char* cvar;
     BothSection section;
@@ -65,46 +68,13 @@ constexpr SharedItem kSharedItems[] = {
     { "gSettings.LowResMode", BothSection::Display, nullptr },
 };
 
-const SectionInfo* SectionById(BothSection id) {
+const SectionInfo& SectionById(BothSection id) {
     for (const SectionInfo& info : kSections) {
         if (info.id == id) {
-            return &info;
+            return info;
         }
     }
-    return nullptr;
-}
-
-bool LinkIsOn() {
-    return ComboUI_SettingsLinkEnabled() != 0;
-}
-
-const SharedItem* FindSharedItem(const char* cvar) {
-    for (const SharedItem& item : kSharedItems) {
-        if (std::strcmp(item.cvar, cvar) == 0) {
-            return &item;
-        }
-    }
-    return nullptr;
-}
-
-bool RowHasMmKey(const LinkRow& row, const char* cvar) {
-    for (const char* key : row.mm) {
-        if (key && std::strcmp(key, cvar) == 0) {
-            return true;
-        }
-    }
-    return false;
-}
-
-// The link row that owns this CVar on the given side, or nullptr.
-const LinkRow* FindLinkRow(const char* cvar, GameSide side) {
-    for (const LinkRow& row : kLinkRows) {
-        const bool match = (side == GameSide::Oot) ? std::strcmp(row.oot, cvar) == 0 : RowHasMmKey(row, cvar);
-        if (match) {
-            return &row;
-        }
-    }
-    return nullptr;
+    return kSections[0];
 }
 
 bool IsCVarWidget(const CwWidget& w) {
@@ -112,9 +82,9 @@ bool IsCVarWidget(const CwWidget& w) {
            w.kind != CW_CUSTOM && w.kind != CW_WINDOW_BUTTON;
 }
 
-// Looks up the control of a CVar in one game's Enhancements section. The menu model is process-stable, so the
-// index is rebuilt only when the model pointer changes.
-class EnhancementsIndex {
+// Finds the control of a CVar in one game's menu model. The model is process-stable, so the index is rebuilt only
+// when the model pointer changes. A CVar can be drawn in more than one place; the first control wins.
+class MenuIndex {
   public:
     const CwWidget* Find(const GameMenu& game, const char* cvar) {
         if (!game.loaded || !game.menu) {
@@ -132,12 +102,8 @@ class EnhancementsIndex {
         mMenu = &menu;
         mByCVar.clear();
         for (int s = 0; s < menu.sectionCount; ++s) {
-            const CwSection& section = menu.sections[s];
-            if (!section.sectionLabel || std::strcmp(section.sectionLabel, kEnhancementsSection) != 0) {
-                continue;
-            }
-            for (int sb = 0; sb < section.sidebarCount; ++sb) {
-                const CwSidebar& sidebar = section.sidebars[sb];
+            for (int sb = 0; sb < menu.sections[s].sidebarCount; ++sb) {
+                const CwSidebar& sidebar = menu.sections[s].sidebars[sb];
                 for (int w = 0; w < sidebar.widgetCount; ++w) {
                     if (IsCVarWidget(sidebar.widgets[w])) {
                         mByCVar.emplace(sidebar.widgets[w].cvar, &sidebar.widgets[w]);
@@ -151,141 +117,81 @@ class EnhancementsIndex {
     std::unordered_map<std::string, const CwWidget*> mByCVar;
 };
 
-// One control ready to draw.
-struct Resolved {
-    const CwWidget* widget = nullptr;
-    const GameMenu* game = nullptr;
-    const char* gameId = "";
-    const char* label = nullptr;
-};
-
-// OOT's control when it has one, else MM's.
-Resolved Resolve(const char* ootCVar, const char* mmCVar, const char* label) {
-    static EnhancementsIndex sOotIndex;
-    static EnhancementsIndex sMmIndex;
+// OOT's control when it has one, else MM's. The OOT camera and aiming controls are drawn by the game's input
+// editor, so for those rows the control is MM's.
+BothGamesItem Resolve(const char* ootCVar, const char* mmCVar, BothSection section, const char* label,
+                      const LinkRow* row) {
+    static MenuIndex sOotIndex;
+    static MenuIndex sMmIndex;
     auto& model = ComboMenuModel::Get();
     model.EnsureLoaded();
+    const char* tab = SectionById(section).tab;
     if (const CwWidget* w = sOotIndex.Find(model.Oot(), ootCVar)) {
-        return { w, &model.Oot(), "oot", label };
+        return { w, &model.Oot(), GameSide::Oot, tab, label, row };
     }
     if (const CwWidget* w = sMmIndex.Find(model.Mm(), mmCVar)) {
-        return { w, &model.Mm(), "mm", label };
+        return { w, &model.Mm(), GameSide::Mm, tab, label, row };
     }
     return {};
 }
 
-std::vector<Resolved> ResolveSection(BothSection section) {
-    std::vector<Resolved> items;
+std::vector<BothGamesItem> ResolveSection(BothSection section) {
+    std::vector<BothGamesItem> items;
     for (const SharedItem& item : kSharedItems) {
         if (item.section != section) {
             continue;
         }
-        const Resolved r = Resolve(item.cvar, item.cvar, item.label);
-        if (r.widget) {
-            items.push_back(r);
+        const BothGamesItem resolved = Resolve(item.cvar, item.cvar, section, item.label, nullptr);
+        if (resolved.widget) {
+            items.push_back(resolved);
         }
-    }
-    if (!LinkIsOn()) {
-        return items;
     }
     for (const LinkRow& row : kLinkRows) {
-        if (row.placement != LinkPlacement::BothGamesPanel || row.section != section) {
+        if (row.section != section) {
             continue;
         }
-        const Resolved r = Resolve(row.oot, row.mm[0], nullptr);
-        if (r.widget) {
-            items.push_back(r);
+        const BothGamesItem resolved = Resolve(row.oot, row.mm[0], section, nullptr, &row);
+        if (resolved.widget) {
+            items.push_back(resolved);
         }
     }
     return items;
 }
 
-bool HidesCVar(const char* cvar, GameSide side) {
-    if (!cvar || !cvar[0]) {
-        return false;
+std::string FormatValue(const BothGamesItem& item, float value) {
+    if (item.row->type == LinkType::Switch) {
+        return value != 0 ? "On" : "Off";
     }
-    if (FindSharedItem(cvar)) {
-        return true;
+    if (item.widget->kind == CW_COMBOBOX) {
+        for (int i = 0; i < item.widget->choiceCount; ++i) {
+            if (item.widget->choices[i].value == static_cast<int32_t>(value)) {
+                return item.widget->choices[i].label;
+            }
+        }
     }
-    if (!LinkIsOn()) {
-        return false;
-    }
-    const LinkRow* row = FindLinkRow(cvar, side);
-    if (!row) {
-        return false;
-    }
-    // OOT's control only leaves its tab when the group draws it; MM's leaves whenever OOT's copy is the one shown.
-    return side == GameSide::Mm ? row->placement != LinkPlacement::PerGame
-                                : row->placement == LinkPlacement::BothGamesPanel;
+    char text[32];
+    std::snprintf(text, sizeof(text), "%g", value);
+    return text;
 }
 
-bool IsHeader(const CwWidget& w) {
-    return w.kind == CW_SEPARATOR || w.kind == CW_SEPARATOR_TEXT;
-}
-
-bool IsContent(const CwWidget& w) {
-    return !IsHeader(w) && w.kind != CW_TEXT;
+void DrawDiffers(const BothGamesItem& item) {
+    ImGui::TextColored(kDiffersColor, "Differs: Ocarina of Time %s, Majora's Mask %s",
+                       FormatValue(item, LinkEffectiveValue(*item.row, GameSide::Oot)).c_str(),
+                       FormatValue(item, LinkEffectiveValue(*item.row, GameSide::Mm)).c_str());
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Changing this control sets both games.");
+    }
 }
 
 } // namespace
 
-bool BothGamesHidesWidget(const CwWidget& widget, GameSide side) {
-    return IsCVarWidget(widget) && HidesCVar(widget.cvar, side);
-}
-
-bool BothGamesFilterSidebar(const CwSidebar& sidebar, GameSide side, std::vector<CwWidget>& out) {
-    const int count = sidebar.widgetCount;
-    std::vector<char> keep(count, 1);
-    bool anyHidden = false;
-    for (int i = 0; i < count; ++i) {
-        if (BothGamesHidesWidget(sidebar.widgets[i], side)) {
-            keep[i] = 0;
-            anyHidden = true;
-        }
+std::vector<BothGamesItem> BothGamesItems() {
+    std::vector<BothGamesItem> all;
+    for (const SectionInfo& info : kSections) {
+        const std::vector<BothGamesItem> items = ResolveSection(info.id);
+        all.insert(all.end(), items.begin(), items.end());
     }
-    if (!anyHidden) {
-        return false;
-    }
-    // Widgets are stored column by column. Walk each column bottom-up so a header with no control left under it
-    // goes too.
-    bool contentBelow = false;
-    int column = -1;
-    for (int i = count - 1; i >= 0; --i) {
-        const CwWidget& w = sidebar.widgets[i];
-        if (w.column != column) {
-            column = w.column;
-            contentBelow = false;
-        }
-        if (!keep[i]) {
-            continue;
-        }
-        if (IsHeader(w)) {
-            keep[i] = contentBelow ? 1 : 0;
-            contentBelow = false;
-        } else {
-            contentBelow = true;
-        }
-    }
-    out.clear();
-    for (int i = 0; i < count; ++i) {
-        if (keep[i]) {
-            out.push_back(sidebar.widgets[i]);
-        }
-    }
-    return true;
-}
-
-bool BothGamesLeavesSidebarEmpty(const CwSidebar& sidebar, GameSide side) {
-    bool anyHidden = false;
-    for (int i = 0; i < sidebar.widgetCount; ++i) {
-        const CwWidget& w = sidebar.widgets[i];
-        if (BothGamesHidesWidget(w, side)) {
-            anyHidden = true;
-        } else if (IsContent(w)) {
-            return false;
-        }
-    }
-    return anyHidden;
+    return all;
 }
 
 std::vector<const char*> BothGamesTabs() {
@@ -299,62 +205,42 @@ std::vector<const char*> BothGamesTabs() {
     return tabs;
 }
 
+void DrawBothGamesItem(const BothGamesItem& item, int widthBudget) {
+    if (item.label) {
+        ImGui::TextUnformatted(item.label);
+    }
+    const float before = item.row ? LinkEffectiveValue(*item.row, item.drawnFrom) : 0.0f;
+    // Both games number their widgets from zero, so scope the ImGui ID per game.
+    ImGui::PushID(item.drawnFrom == GameSide::Oot ? "oot" : "mm");
+    RenderWidget(*item.widget, *item.game, widthBudget);
+    ImGui::PopID();
+    if (!item.row) {
+        return;
+    }
+    if (LinkEffectiveValue(*item.row, item.drawnFrom) != before) {
+        LinkCopyToOtherGame(*item.row, item.drawnFrom);
+    }
+    if (LinkValuesDiffer(*item.row)) {
+        DrawDiffers(item);
+    }
+}
+
 void DrawBothGamesTab(const char* tab) {
-    ImGui::TextDisabled("These settings apply to Ocarina of Time and Majora's Mask alike.");
+    ImGui::TextDisabled("Changing a control here sets it in Ocarina of Time and in Majora's Mask. The game tabs "
+                        "still change only their own game.");
     for (const SectionInfo& info : kSections) {
         if (std::strcmp(info.tab, tab) != 0) {
             continue;
         }
-        const std::vector<Resolved> items = ResolveSection(info.id);
+        const std::vector<BothGamesItem> items = ResolveSection(info.id);
         if (items.empty()) {
             continue;
         }
         ImGui::SeparatorText(info.heading);
-        for (const Resolved& item : items) {
-            if (item.label) {
-                ImGui::TextUnformatted(item.label);
-            }
-            // Both games number their widgets from zero, so scope the ImGui ID per game.
-            ImGui::PushID(item.gameId);
-            RenderWidget(*item.widget, *item.game);
-            ImGui::PopID();
+        for (const BothGamesItem& item : items) {
+            DrawBothGamesItem(item);
         }
     }
-    if (!LinkIsOn()) {
-        ImGui::Spacing();
-        ImGui::TextDisabled("Turn on \"Use one setting for both games\" to list the paired settings here too.");
-    }
-}
-
-const char* BothGamesTabFor(const char* cvar) {
-    if (!cvar || !cvar[0]) {
-        return nullptr;
-    }
-    if (const SharedItem* item = FindSharedItem(cvar)) {
-        return SectionById(item->section)->tab;
-    }
-    if (!LinkIsOn()) {
-        return nullptr;
-    }
-    for (const GameSide side : { GameSide::Oot, GameSide::Mm }) {
-        const LinkRow* row = FindLinkRow(cvar, side);
-        if (row && row->placement == LinkPlacement::BothGamesPanel) {
-            return SectionById(row->section)->tab;
-        }
-        if (row && row->placement == LinkPlacement::SharedTab && side == GameSide::Mm) {
-            return kSharedSettingsTab;
-        }
-    }
-    return nullptr;
-}
-
-std::string BothGamesSearchKey(const char* cvar) {
-    if (LinkIsOn()) {
-        if (const LinkRow* row = FindLinkRow(cvar, GameSide::Mm)) {
-            return row->oot;
-        }
-    }
-    return cvar;
 }
 
 } // namespace ComboRando

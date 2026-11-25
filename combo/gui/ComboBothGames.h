@@ -1,38 +1,39 @@
 // combo/gui/ComboBothGames.h
 //
-// ComboShip: the "Both games" group of Settings. A setting both games own is drawn once there, from
-// OOT's menu model (MM's when OOT has no such control), and left out of the two per-game tabs.
-//   * exact matches: the same CVar in both games (gCheats.NoClip, ...). Always shown here.
-//   * linked pairs: ComboLinkRows.h. Shown here, and hidden from the per-game tabs, while the link is on.
+// ComboShip: the "Both games" group of Settings. One control per setting both games own; changing it sets the
+// setting in Ocarina of Time and in Majora's Mask. The per-game tabs keep their own controls and change one game.
+//   * exact matches: the same CVar in both games (gCheats.NoClip, ...). One CVar, so the games always agree.
+//   * linked pairs: two CVars, listed in ComboLinkRows.h. The control is OOT's (MM's when OOT has none); a change
+//     is copied to the other game, and a line under the control says when the two games disagree.
 // An explicit list decides what appears; nothing is matched by name.
 #pragma once
 
+#include "ComboLinkRows.h"
 #include "ComboMenuABI.h"
-#include <string>
 #include <vector>
 
 namespace ComboRando {
 
-enum class GameSide { Oot, Mm };
+struct GameMenu;
 
-// True when the control is drawn once under Both games, so the per-game tab leaves it out.
-bool BothGamesHidesWidget(const CwWidget& widget, GameSide side);
+// One control of the group, ready to draw.
+struct BothGamesItem {
+    const CwWidget* widget = nullptr;
+    const GameMenu* game = nullptr; // the game whose menu model owns `widget`
+    GameSide drawnFrom = GameSide::Oot;
+    const char* tab = "";
+    const char* label = nullptr;  // printed above the control; nullptr for none
+    const LinkRow* row = nullptr; // nullptr for an exact match
+};
 
-// Copies the sidebar's widgets into `out` without the hidden ones, and without the headers they leave
-// empty. Returns false (and leaves `out` alone) when nothing in the sidebar is hidden.
-bool BothGamesFilterSidebar(const CwSidebar& sidebar, GameSide side, std::vector<CwWidget>& out);
+// Every control of the group in display order (the search lists them all).
+std::vector<BothGamesItem> BothGamesItems();
 
-// True when hiding leaves the sidebar with no control at all, so the tab should drop its entry.
-bool BothGamesLeavesSidebarEmpty(const CwSidebar& sidebar, GameSide side);
-
-// Tab names for the Both games group, in display order; only tabs with a control to draw.
+// Tab names for the group, in display order; only tabs with a control to draw.
 std::vector<const char*> BothGamesTabs();
 void DrawBothGamesTab(const char* tab);
 
-// The Both games tab that draws this CVar's control, or nullptr when it is not drawn there.
-const char* BothGamesTabFor(const char* cvar);
-
-// Search dedupe key: a linked MM CVar maps to its OOT partner, so one pair is listed once.
-std::string BothGamesSearchKey(const char* cvar);
+// Draws the control and, for a linked pair, copies a change to the other game and notes when they differ.
+void DrawBothGamesItem(const BothGamesItem& item, int widthBudget = 90);
 
 } // namespace ComboRando
