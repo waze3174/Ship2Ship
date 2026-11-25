@@ -20,6 +20,7 @@
 // addressed to its own sender only). Header-only; standard library + nlohmann/json.
 #pragma once
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
@@ -174,11 +175,17 @@ inline std::string MakeAckMark(uint32_t ownClientId, uint32_t number) {
     return j.dump();
 }
 
-// The marker number of an echoed ack mark, or 0 if the packet is not one.
-inline uint32_t AckMarkNumber(const std::string& packet) {
+// The marker number of an echoed ack mark, or 0 if the packet is not one, or not ours: the marker names the client
+// that made it, and only that client's own marker may confirm its packets (ownClientId 0 = unknown: none is).
+inline uint32_t AckMarkNumber(const std::string& packet, uint32_t ownClientId) {
+    if (ownClientId == 0)
+        return 0;
     try {
         const nlohmann::json j = nlohmann::json::parse(packet);
         if (!j.is_object())
+            return 0;
+        const auto sender = j.find("clientId");
+        if (sender == j.end() || !sender->is_number_unsigned() || sender->get<uint32_t>() != ownClientId)
             return 0;
         const auto type = j.find("type");
         if (type == j.end() || !type->is_string() || type->get<std::string>() != kAckMarkType)
@@ -322,5 +329,20 @@ class TeamStateRequestGate {
     int64_t mSentAtMs = 0;
     std::vector<std::pair<std::string, std::string>> mParked; // (origin, packet), oldest first
 };
+
+// ---- 4. reconnect pacing ----
+
+constexpr int kStableConnectionSeconds = 5; // a connection that held this long is healthy: the wait starts over
+constexpr int kReconnectWaitMinSeconds = 1;
+constexpr int kReconnectWaitMaxSeconds = 30;
+
+// Seconds to wait before the next connection attempt, after a connection that lasted `lastedSeconds`. `previous` is
+// the wait before that connection (0 = none yet). A short connection (a server that accepts and closes) doubles the
+// wait up to the maximum; a stable one starts it over.
+inline int ReconnectWaitSeconds(int previous, int lastedSeconds) {
+    if (lastedSeconds >= kStableConnectionSeconds || previous < kReconnectWaitMinSeconds)
+        return kReconnectWaitMinSeconds;
+    return std::min(previous * 2, kReconnectWaitMaxSeconds);
+}
 
 } // namespace ComboAnchorCore

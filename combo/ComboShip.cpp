@@ -1975,6 +1975,7 @@ static const char* Combo_Anchor_GetRoster() {
 // (enqueue under the game's own mutex) and the thread-safe toast.
 constexpr int kPollMs = 5;
 constexpr int kOutboxCheckMs = 250;
+constexpr int kSleepSliceMs = 100;                  // how often a long wait looks at sEnabled
 constexpr size_t kMaxFrameBytes = 16 * 1024 * 1024; // an unterminated frame past this is not a packet: drop the link
 
 // Hold sOutMutex. Everything still queued for a socket that just died: keep the save-affecting part.
@@ -1995,7 +1996,7 @@ static void HoldUnsentLocked(std::queue<std::string>& unsent) {
 static bool AcceptInbound(std::string& packet) {
     const char* text = packet.c_str();
     if (std::strstr(text, Core::kAckMarkType) != nullptr) {
-        if (const uint32_t number = Core::AckMarkNumber(packet); number != 0) {
+        if (const uint32_t number = Core::AckMarkNumber(packet, sOwnIdThisConn.load()); number != 0) {
             sInFlight.OnMarkerEchoed(number);
             sMarkerProven = true;
             return false;
@@ -2033,6 +2034,46 @@ static bool AcceptInbound(std::string& packet) {
     return true;
 }
 
+// Inside a catch block: say what was thrown. Nothing may unwind out of the receive thread (that ends the program).
+static void LogCurrentException(const char* where) {
+    try {
+        throw;
+    } catch (const std::exception& e) {
+        std::cerr << "[ComboShip][Anchor] error while " << where << ": " << e.what() << std::endl;
+    } catch (...) { std::cerr << "[ComboShip][Anchor] unknown error while " << where << std::endl; }
+}
+
+static void SleepWhileEnabled(int seconds) {
+    const auto until = std::chrono::steady_clock::now() + std::chrono::seconds(seconds);
+    while (sEnabled && std::chrono::steady_clock::now() < until)
+        std::this_thread::sleep_for(std::chrono::milliseconds(kSleepSliceMs));
+}
+
+// The socket of a connection that ended (or failed half-way) and what it left behind.
+static void EndConnection(TCPsocket socket, SDLNet_SocketSet set) {
+    if (set)
+        SDLNet_FreeSocketSet(set);
+    SDLNet_TCP_Close(socket);
+    {
+        // Packets the game queued after the last drain would otherwise sit in sOutQueue until the
+        // next connection; hold the save-affecting part now so it is persisted.
+        std::lock_guard<std::mutex> lk(sOutMutex);
+        SetLinkLocked(false); // the game thread tells soh's Anchor (SyncLinkOnGameThread)
+        sHandshakeQueued = false;
+        HoldUnsentLocked(sOutQueue);
+        // Written to the socket but never confirmed by a marker: the server may or may not have them.
+        // Send them again on the next connection; receivers drop the copy they already have (packet
+        // id). Only once this server has proven that it echoes markers at all.
+        std::vector<std::string> unconfirmed = sInFlight.TakeUnconfirmed();
+        if (sMarkerProven && !unconfirmed.empty()) {
+            std::cout << "[ComboShip][Anchor] " << unconfirmed.size()
+                      << " sent packet(s) were not confirmed by the server, holding them again" << std::endl;
+            OutboxPushFrontLocked(unconfirmed);
+        }
+    }
+    PersistOutboxIfDirty();
+}
+
 static void ReceiveLoop() {
     IPaddress address;
     while (sEnabled && SDLNet_ResolveHost(&address, sHost.c_str(), sPort) == -1) {
@@ -2043,6 +2084,7 @@ static void ReceiveLoop() {
 
     std::string received;
     bool lostToastShown = false;
+    int reconnectWaitSeconds = 0;
     while (sEnabled) {
         TCPsocket socket = nullptr;
         while (sEnabled && !socket) {
@@ -2058,172 +2100,170 @@ static void ReceiveLoop() {
                 SDLNet_TCP_Close(socket);
             break;
         }
-        if (!ComboNet_EnableKeepAlive(socket))
-            std::cerr << "[ComboShip][Anchor] TCP keepalive unavailable; dead links are detected by send errors only\n";
+        const auto connectedAt = std::chrono::steady_clock::now();
+        SDLNet_SocketSet set = nullptr;
+        try {
+            if (!ComboNet_EnableKeepAlive(socket))
+                std::cerr
+                    << "[ComboShip][Anchor] TCP keepalive unavailable; dead links are detected by send errors only\n";
 
-        received.clear();
-        const bool reconnect = sEverConnected.exchange(true);
-        {
-            // Whatever the previous connection left unsent is stale ordering-wise (it would precede the
-            // new HANDSHAKE): hold the save-affecting part, drop the rest. Then go live.
-            std::lock_guard<std::mutex> lk(sOutMutex);
-            LoadOutboxFromDiskLocked();
-            std::queue<std::string> leftover;
-            leftover.swap(sOutQueue);
-            HoldUnsentLocked(leftover);
-        }
-        PersistOutboxIfDirty();
-        {
-            std::lock_guard<std::mutex> lk(sRosterMutex);
-            sPresenceSeeded = false; // the first roster of this connection only seeds presence
-        }
-        sOwnIdThisConn.store(0); // not confirmed for this connection yet
-        {
-            // Go live. The game thread notices the new epoch on its next frame and sends the HANDSHAKE
-            // (SyncLinkOnGameThread); until that is queued, Send() holds or drops everything else.
-            std::lock_guard<std::mutex> lk(sOutMutex);
-            sHandshakeQueued = false;
-            sTeamReqGate.Reset(); // nothing is on the wire of this connection yet
-            SetLinkLocked(true);
-        }
-        uint32_t markerNumber = 0; // ack markers are numbered per connection
-        Toast("Co-op", reconnect ? "reconnected" : "connected", "", "gRemote.Anchor.PartnerFeed.Connection");
-        lostToastShown = false;
-
-        SDLNet_SocketSet set = SDLNet_AllocSocketSet(1);
-        SDLNet_TCP_AddSocket(set, socket);
-        auto nextOutboxCheck = std::chrono::steady_clock::now();
-
-        while (sEnabled && sConnected) {
-            // Held packets go out once the game thread has queued the HANDSHAKE, the server has
-            // confirmed our client id, and the loaded slot proves they belong to this playthrough.
-            // Checked a few times per second, not per 5 ms spin: entries of another slot or room can
-            // sit here for hours.
-            if (const auto tick = std::chrono::steady_clock::now(); tick >= nextOutboxCheck) {
-                nextOutboxCheck = tick + std::chrono::milliseconds(kOutboxCheckMs);
-                if (int flushed = FlushOutbox(); flushed > 0) {
-                    std::string n = std::to_string(flushed) + (flushed == 1 ? " held update" : " held updates");
-                    Toast("Co-op", "sent", n.c_str(), "gRemote.Anchor.PartnerFeed.Connection");
-                }
-                PersistOutboxIfDirty(); // also covers packets Send() held while waiting for the handshake
-                // A team-state request that got no answer must not block the other game's forever.
-                std::lock_guard<std::mutex> lk(sOutMutex);
-                std::string next = sTeamReqGate.OnTick(SteadyNowMs());
-                if (!next.empty() && sHandshakeQueued)
-                    sOutQueue.push(std::move(next));
-            }
-
-            // Drain outbound queue (packets handed to us by the game via Send()).
-            std::queue<std::string> toSend;
+            received.clear();
+            const bool reconnect = sEverConnected.exchange(true);
             {
+                // Whatever the previous connection left unsent is stale ordering-wise (it would precede the
+                // new HANDSHAKE): hold the save-affecting part, drop the rest. Then go live.
                 std::lock_guard<std::mutex> lk(sOutMutex);
-                toSend.swap(sOutQueue);
+                LoadOutboxFromDiskLocked();
+                std::queue<std::string> leftover;
+                leftover.swap(sOutQueue);
+                HoldUnsentLocked(leftover);
             }
-            bool sendFailed = false;
-            while (!toSend.empty()) {
-                const std::string& p = toSend.front();
-                // Include the NUL delimiter in the framing (matches Network::SendDataToRemote).
-                const int want = (int)p.size() + 1;
-                if (SDLNet_TCP_Send(socket, p.c_str(), want) < want) {
-                    std::cerr << "[ComboShip][Anchor] send failed: " << SDLNet_GetError() << std::endl;
-                    sendFailed = true;
-                    break;
+            PersistOutboxIfDirty();
+            {
+                std::lock_guard<std::mutex> lk(sRosterMutex);
+                sPresenceSeeded = false; // the first roster of this connection only seeds presence
+            }
+            sOwnIdThisConn.store(0); // not confirmed for this connection yet
+            {
+                // Go live. The game thread notices the new epoch on its next frame and sends the HANDSHAKE
+                // (SyncLinkOnGameThread); until that is queued, Send() holds or drops everything else.
+                std::lock_guard<std::mutex> lk(sOutMutex);
+                sHandshakeQueued = false;
+                sTeamReqGate.Reset(); // nothing is on the wire of this connection yet
+                SetLinkLocked(true);
+            }
+            uint32_t markerNumber = 0; // ack markers are numbered per connection
+            if (!reconnect)
+                Toast("Co-op", "connected", "", "gRemote.Anchor.PartnerFeed.Connection");
+
+            set = SDLNet_AllocSocketSet(1);
+            SDLNet_TCP_AddSocket(set, socket);
+            auto nextOutboxCheck = std::chrono::steady_clock::now();
+
+            while (sEnabled && sConnected) {
+                // Held packets go out once the game thread has queued the HANDSHAKE, the server has
+                // confirmed our client id, and the loaded slot proves they belong to this playthrough.
+                // Checked a few times per second, not per 5 ms spin: entries of another slot or room can
+                // sit here for hours.
+                if (const auto tick = std::chrono::steady_clock::now(); tick >= nextOutboxCheck) {
+                    nextOutboxCheck = tick + std::chrono::milliseconds(kOutboxCheckMs);
+                    // "reconnected" only once the link has held, and only after "connection lost" was shown: a server
+                    // that accepts and closes would otherwise toast on every attempt.
+                    if (lostToastShown && tick - connectedAt >= std::chrono::seconds(Core::kStableConnectionSeconds)) {
+                        Toast("Co-op", "reconnected", "", "gRemote.Anchor.PartnerFeed.Connection");
+                        lostToastShown = false;
+                    }
+                    if (int flushed = FlushOutbox(); flushed > 0) {
+                        std::string n = std::to_string(flushed) + (flushed == 1 ? " held update" : " held updates");
+                        Toast("Co-op", "sent", n.c_str(), "gRemote.Anchor.PartnerFeed.Connection");
+                    }
+                    PersistOutboxIfDirty(); // also covers packets Send() held while waiting for the handshake
+                    // A team-state request that got no answer must not block the other game's forever.
+                    std::lock_guard<std::mutex> lk(sOutMutex);
+                    std::string next = sTeamReqGate.OnTick(SteadyNowMs());
+                    if (!next.empty() && sHandshakeQueued)
+                        sOutQueue.push(std::move(next));
                 }
-                if (Core::HasTopLevelPacketId(p.c_str()))
-                    sInFlight.OnSent(p); // save-affecting: wait for the server to confirm it
-                toSend.pop();
-            }
-            // Ask the server to confirm what was just written: a marker addressed to ourselves. It can
-            // only be written once the server has told us our client id on this connection.
-            if (!sendFailed && sInFlight.HasUnmarked()) {
-                if (const uint32_t ownId = sOwnIdThisConn.load(); ownId != 0) {
-                    const std::string mark = Core::MakeAckMark(ownId, markerNumber + 1);
-                    const int want = (int)mark.size() + 1;
-                    if (SDLNet_TCP_Send(socket, mark.c_str(), want) < want) {
+
+                // Drain outbound queue (packets handed to us by the game via Send()).
+                std::queue<std::string> toSend;
+                {
+                    std::lock_guard<std::mutex> lk(sOutMutex);
+                    toSend.swap(sOutQueue);
+                }
+                bool sendFailed = false;
+                while (!toSend.empty()) {
+                    const std::string& p = toSend.front();
+                    // Include the NUL delimiter in the framing (matches Network::SendDataToRemote).
+                    const int want = (int)p.size() + 1;
+                    if (SDLNet_TCP_Send(socket, p.c_str(), want) < want) {
                         std::cerr << "[ComboShip][Anchor] send failed: " << SDLNet_GetError() << std::endl;
                         sendFailed = true;
-                    } else {
-                        sInFlight.OnMarkerSent(++markerNumber);
+                        break;
+                    }
+                    if (Core::HasTopLevelPacketId(p.c_str()))
+                        sInFlight.OnSent(p); // save-affecting: wait for the server to confirm it
+                    toSend.pop();
+                }
+                // Ask the server to confirm what was just written: a marker addressed to ourselves. It can
+                // only be written once the server has told us our client id on this connection.
+                if (!sendFailed && sInFlight.HasUnmarked()) {
+                    if (const uint32_t ownId = sOwnIdThisConn.load(); ownId != 0) {
+                        const std::string mark = Core::MakeAckMark(ownId, markerNumber + 1);
+                        const int want = (int)mark.size() + 1;
+                        if (SDLNet_TCP_Send(socket, mark.c_str(), want) < want) {
+                            std::cerr << "[ComboShip][Anchor] send failed: " << SDLNet_GetError() << std::endl;
+                            sendFailed = true;
+                        } else {
+                            sInFlight.OnMarkerSent(++markerNumber);
+                        }
                     }
                 }
-            }
-            if (sendFailed) {
-                // The failed packet is still at toSend's front: it was never framed completely, so the
-                // server dropped it with the connection. Hold it and everything behind it.
-                std::lock_guard<std::mutex> lk(sOutMutex);
-                HoldUnsentLocked(toSend);
-                HoldUnsentLocked(sOutQueue);
-                SetLinkLocked(false);
-                break; // persisted below, after the socket is closed
-            }
+                if (sendFailed) {
+                    // The failed packet is still at toSend's front: it was never framed completely, so the
+                    // server dropped it with the connection. Hold it and everything behind it.
+                    std::lock_guard<std::mutex> lk(sOutMutex);
+                    HoldUnsentLocked(toSend);
+                    HoldUnsentLocked(sOutQueue);
+                    SetLinkLocked(false);
+                    break; // persisted below, after the socket is closed
+                }
 
-            // Wait briefly for inbound data (also paces this loop; outbound latency stays <= kPollMs).
-            int ready = SDLNet_CheckSockets(set, kPollMs);
-            if (ready == -1)
-                break;
-            if (ready == 0)
-                continue;
-
-            // A-M1: 64 KiB reads (was 512 B).
-            static thread_local std::vector<char> buf(64 * 1024);
-            int len = SDLNet_TCP_Recv(socket, buf.data(), (int)buf.size());
-            if (len <= 0)
-                break;
-            received.append(buf.data(), len);
-
-            size_t pos = received.find('\0');
-            while (pos != std::string::npos) {
-                std::string packet = received.substr(0, pos);
-                received.erase(0, pos + 1);
-                pos = received.find('\0');
-                if (packet.empty()) // A-M1: empty frames reached both DLLs as parse errors at connect
+                // Wait briefly for inbound data (also paces this loop; outbound latency stays <= kPollMs).
+                int ready = SDLNet_CheckSockets(set, kPollMs);
+                if (ready == -1)
+                    break;
+                if (ready == 0)
                     continue;
-                if (!AcceptInbound(packet))
-                    continue; // our own ack marker, or a save-affecting packet we already passed on
-                // Keep the always-live combo roster in sync before forwarding (fixes dormant staleness).
-                UpdateRosterFromPacket(packet);
-                // A6: feed every packet to BOTH games. Each RecvJson only enqueues (thread-safe). The
-                // active game drains+handles it on its tick; the dormant game applies its save-affecting
-                // subset via PumpDormant (driven by the active game's per-frame pump call), so a
-                // teammate's progression registers in the dormant game's save live.
-                if (SOH_Anchor_RecvJson)
-                    SOH_Anchor_RecvJson(packet.c_str());
-                if (MM_Anchor_RecvJson)
-                    MM_Anchor_RecvJson(packet.c_str());
-            }
-            if (received.size() > kMaxFrameBytes) { // what is left has no NUL: one frame, still unfinished
-                std::cerr << "[ComboShip][Anchor] frame over " << kMaxFrameBytes
-                          << " bytes without an end, dropping the link" << std::endl;
-                break;
-            }
-        }
 
-        SDLNet_FreeSocketSet(set);
-        SDLNet_TCP_Close(socket);
-        {
-            // Packets the game queued after the last drain would otherwise sit in sOutQueue until the
-            // next connection; hold the save-affecting part now so it is persisted.
-            std::lock_guard<std::mutex> lk(sOutMutex);
-            SetLinkLocked(false); // the game thread tells soh's Anchor (SyncLinkOnGameThread)
-            sHandshakeQueued = false;
-            HoldUnsentLocked(sOutQueue);
-            // Written to the socket but never confirmed by a marker: the server may or may not have them.
-            // Send them again on the next connection; receivers drop the copy they already have (packet
-            // id). Only once this server has proven that it echoes markers at all.
-            std::vector<std::string> unconfirmed = sInFlight.TakeUnconfirmed();
-            if (sMarkerProven && !unconfirmed.empty()) {
-                std::cout << "[ComboShip][Anchor] " << unconfirmed.size()
-                          << " sent packet(s) were not confirmed by the server, holding them again" << std::endl;
-                OutboxPushFrontLocked(unconfirmed);
+                // A-M1: 64 KiB reads (was 512 B).
+                static thread_local std::vector<char> buf(64 * 1024);
+                int len = SDLNet_TCP_Recv(socket, buf.data(), (int)buf.size());
+                if (len <= 0)
+                    break;
+                received.append(buf.data(), len);
+
+                size_t pos = received.find('\0');
+                while (pos != std::string::npos) {
+                    std::string packet = received.substr(0, pos);
+                    received.erase(0, pos + 1);
+                    pos = received.find('\0');
+                    if (packet.empty()) // A-M1: empty frames reached both DLLs as parse errors at connect
+                        continue;
+                    if (!AcceptInbound(packet))
+                        continue; // our own ack marker, or a save-affecting packet we already passed on
+                    // Keep the always-live combo roster in sync before forwarding (fixes dormant staleness).
+                    UpdateRosterFromPacket(packet);
+                    // A6: feed every packet to BOTH games. Each RecvJson only enqueues (thread-safe). The
+                    // active game drains+handles it on its tick; the dormant game applies its save-affecting
+                    // subset via PumpDormant (driven by the active game's per-frame pump call), so a
+                    // teammate's progression registers in the dormant game's save live.
+                    if (SOH_Anchor_RecvJson)
+                        SOH_Anchor_RecvJson(packet.c_str());
+                    if (MM_Anchor_RecvJson)
+                        MM_Anchor_RecvJson(packet.c_str());
+                }
+                if (received.size() > kMaxFrameBytes) { // what is left has no NUL: one frame, still unfinished
+                    std::cerr << "[ComboShip][Anchor] frame over " << kMaxFrameBytes
+                              << " bytes without an end, dropping the link" << std::endl;
+                    break;
+                }
             }
-        }
-        PersistOutboxIfDirty();
+
+        } catch (...) { LogCurrentException("serving the connection"); }
+
+        try {
+            EndConnection(socket, set);
+        } catch (...) { LogCurrentException("ending the connection"); }
         if (sEnabled && !lostToastShown) {
             Toast("Co-op", "connection lost", "reconnecting...", "gRemote.Anchor.PartnerFeed.Connection");
             lostToastShown = true;
         }
-        if (sEnabled) // don't hammer the server if it closes us right after accepting
-            std::this_thread::sleep_for(std::chrono::seconds(1));
+        // Don't hammer a server that closes us right after accepting: wait longer after each short connection.
+        const auto lasted =
+            std::chrono::duration_cast<std::chrono::seconds>(std::chrono::steady_clock::now() - connectedAt);
+        reconnectWaitSeconds = Core::ReconnectWaitSeconds(reconnectWaitSeconds, (int)lasted.count());
+        SleepWhileEnabled(reconnectWaitSeconds);
     }
 }
 

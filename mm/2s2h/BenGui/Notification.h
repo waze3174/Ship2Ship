@@ -18,6 +18,7 @@ struct Options {
     ImVec4 suffixColor = ImVec4(1.0f, 0.5f, 0.5f, 1.0f);
     float remainingTime = 0.0f; // Seconds
     bool mute = false;
+    std::string gateCvar = ""; // EmitThreadSafe: a default-on CVar that turns this toast off, read on the UI thread
 };
 
 class Window : public Ship::GuiWindow {
