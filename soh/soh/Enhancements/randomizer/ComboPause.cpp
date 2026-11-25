@@ -45,6 +45,8 @@ const char* KaleidoScope_ComboItemNameTex(int item);       // z_kaleido_scope_PA
 extern void* gItemIcons[];
 void Combo_RequestCrossSwitch(int mmEntrance); // OTRGlobals.cpp
 int Combo_GamesSolo(void);                     // OTRGlobals.cpp
+uint8_t SOH_IsOnFileSelect(void);              // OTRGlobals.cpp: the active gamestate is the file-select screen
+void Combo_PlayerDropPendingMask(void);        // z_player.c: the MM mask waiting for Link to be human again
 extern s16 gComboBlastMaskTimer;               // z_player_lib.c: MM blastMaskTimer for the Blast Mask in Hyrule
 int Combo_SharedMmAmmo(int kind, int mmCount, int mmCap); // ComboSharedHealth.cpp: MM's bag with shared consumables
 int Combo_SharedMmAmmoSpend(int kind, int change, int mmCount); // ComboSharedHealth.cpp: spend it, 0 = sharing off
@@ -216,7 +218,18 @@ bool sWornWithoutButton = false; // 2S2H Easy Mask Equip: worn from the pause me
 int sEasyEquipItem = ITEM_NONE;  // 2S2H Easy Mask Equip: the foreign id picked in the pause menu, used once it closes
 constexpr const char* kEasyMaskEquipCVar = "gEnhancements.Masks.EasyMaskEquip";
 constexpr const char* kPersistentBunnyHoodCVar = "gEnhancements.Masks.PersistentBunnyHood.Enabled";
-bool sPersistentBunnyHood = false; // 2S2H Persistent Bunny Hood: the hood's state, kept for the session
+bool sPersistentBunnyHood = false;       // 2S2H Persistent Bunny Hood: the hood's state, kept for the session
+constexpr int kMmMaskPageFirstSlot = 24; // MM items[]: the mask page, slots 24-47
+constexpr int kMmMaskPageSlotCount = 24;
+
+bool MmMaskPageHolds(int mmItem) {
+    for (int slot = kMmMaskPageFirstSlot; slot < kMmMaskPageFirstSlot + kMmMaskPageSlotCount; slot++) {
+        if (Combo_PauseSlotItemAny(slot) == mmItem) {
+            return true;
+        }
+    }
+    return false;
+}
 
 int LiveMmItem(int foreignId) {
     const int s = ComboPause_OotDecode(foreignId);
@@ -519,7 +532,15 @@ extern "C" int Combo_ChateauActive(void) {
 // 2S2H's "Persistent Bunny Hood" (mm/2s2h/Enhancements/Masks/PersistentMasks.cpp, MM's own CVar): using the hood flips
 // a state instead of wearing it. The state outlives buttons, forms and scenes, and keeps the hood's speed.
 extern "C" int Combo_PauseBunnyHoodPersistent(void) {
-    return sPersistentBunnyHood && CVarGetInteger(kPersistentBunnyHoodCVar, 0);
+    return sPersistentBunnyHood && CVarGetInteger(kPersistentBunnyHoodCVar, 0) && MmMaskPageHolds(MM_ITEM_MASK_BUNNY);
+}
+
+// What a loaded save must not inherit: the picked-but-unused mask, the persistent hood, and the mask waiting for Link
+// to be human again.
+extern "C" void Combo_PauseResetSession(void) {
+    sPersistentBunnyHood = false;
+    sEasyEquipItem = ITEM_NONE;
+    Combo_PlayerDropPendingMask();
 }
 
 extern "C" int Combo_PauseUsePersistentBunnyHood(int item) {
@@ -1106,6 +1127,17 @@ void RegisterComboPauseHarness() {
     });
 }
 RegisterShipInitFunc sHarnessInit(RegisterComboPauseHarness, {});
+
+// OnLoadGame also fires on the return from MM and on in-game reloads, where the session's picks stay; only a load from
+// the file-select screen starts a new session.
+void RegisterComboPauseSession() {
+    COND_HOOK(OnLoadGame, true, [](int32_t) {
+        if (SOH_IsOnFileSelect()) {
+            Combo_PauseResetSession();
+        }
+    });
+}
+RegisterShipInitFunc sSessionInit(RegisterComboPauseSession, {});
 } // namespace
 
 // Debug (test harness only, COMBO_DEBUG_MM_PAUSE "give=XX"): put an OOT item into OOT's resident save at its home slot.

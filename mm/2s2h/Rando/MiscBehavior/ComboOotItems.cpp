@@ -164,9 +164,11 @@ namespace {
 const Color_RGBA8 kHookshotReticleTargetColor = { 0, 255, 0, 255 };
 const Color_RGBA8 kHookshotReticleNonTargetColor = { 255, 0, 0, 255 };
 
-// OOT's reticle triangle (soh object_link_boy), from OOT's ResourceManager.
+// OOT's reticle triangle (soh object_link_boy), from OOT's ResourceManager. The texture is looked up by name at draw
+// time inside the "oot" bracket; the vertices are MM's gSPVertex's to resolve, which cannot see OOT's archive, so they
+// are handed over as OOT's resident data (Combo_MmOotRawResource, which adds the "__OTR__" prefix).
 const char kOotHookshotReticleTex[] = "__OTR__objects/object_link_boy/gLinkAdultHookshotReticleTex";
-const char kOotHookshotReticleVtx[] = "__OTR__objects/object_link_boy/gLinkAdultHookshotReticleVtx";
+const char kOotHookshotReticleVtx[] = "objects/object_link_boy/gLinkAdultHookshotReticleVtx";
 const char kOotRm[] = "oot";
 
 constexpr int kReticleTexSize = 64;
@@ -178,7 +180,7 @@ bool SameColor(const Color_RGBA8& a, const Color_RGBA8& b) {
 }
 
 // SoH HookshotReticle.cpp: the triangle with the texture, in the colour for the surface.
-void DrawColoredHookshotReticle(PlayState* play, const Color_RGBA8& color) {
+void DrawColoredHookshotReticle(PlayState* play, const Color_RGBA8& color, void* vertices) {
     GraphicsContext* __gfxCtx = play->state.gfxCtx;
 
     gSPComboRMPush(OVERLAY_DISP++, kOotRm);
@@ -188,7 +190,7 @@ void DrawColoredHookshotReticle(PlayState* play, const Color_RGBA8& color) {
                         kReticleTexSize, 0, G_TX_NOMIRROR | G_TX_CLAMP, G_TX_NOMIRROR | G_TX_CLAMP, kReticleTexMaskBits,
                         kReticleTexMaskBits, G_TX_NOLOD, G_TX_NOLOD);
     gDPSetPrimColor(OVERLAY_DISP++, 0, 0, color.r, color.g, color.b, color.a);
-    gSPVertex(OVERLAY_DISP++, (uintptr_t)kOotHookshotReticleVtx, kReticleVertexCount, 0);
+    gSPVertex(OVERLAY_DISP++, (uintptr_t)vertices, kReticleVertexCount, 0);
     gSP1Triangle(OVERLAY_DISP++, 0, 1, 2, 0);
     gSPComboRMPop(OVERLAY_DISP++);
 }
@@ -207,12 +209,17 @@ extern "C" int Combo_MmOotDrawHookshotReticle(PlayState* play, Player* player, C
         return 0;
     }
 
+    void* vertices = Combo_MmOotRawResource(kOotHookshotReticleVtx);
+    if (vertices == nullptr) {
+        return 0; // OOT's archive isn't there: MM's own reticle draws
+    }
+
     if (showsHookshotable && (SurfaceType_IsHookshotSurface(&play->colCtx, poly, bgId) ||
                               Combo_MmOotHookshotEverything(player->heldItemAction))) {
         DrawColoredHookshotReticle(
-            play, CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR, kHookshotReticleTargetColor));
+            play, CVarGetColor(COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR, kHookshotReticleTargetColor), vertices);
     } else {
-        DrawColoredHookshotReticle(play, nonTargetColor);
+        DrawColoredHookshotReticle(play, nonTargetColor, vertices);
     }
     return 1;
 }

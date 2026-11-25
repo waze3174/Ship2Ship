@@ -145,12 +145,18 @@ static void TestAckMark() {
     CHECK(j.value("type", std::string()) == kAckMarkType);
     CHECK(j.value("targetClientId", 0u) == 7u); // addressed to ourselves: the relay sends it back
     CHECK(j.value("clientId", 0u) == 7u);
-    CHECK(AckMarkNumber(mark) == 3u);
+    CHECK(AckMarkNumber(mark, 7) == 3u);
 
-    CHECK(AckMarkNumber(Packet("GIVE_ITEM")) == 0u);
-    CHECK(AckMarkNumber("not json") == 0u);
-    CHECK(AckMarkNumber("{\"type\":\"COMBO_ACK_MARK\"}") == 0u);             // no number
-    CHECK(AckMarkNumber("{\"type\":\"COMBO_ACK_MARK\",\"n\":\"3\"}") == 0u); // wrong type
+    // Only our own marker confirms our packets: another client's, or one while our id is unknown, does not.
+    CHECK(AckMarkNumber(mark, 8) == 0u);
+    CHECK(AckMarkNumber(mark, 0) == 0u);
+    CHECK(AckMarkNumber(MakeAckMark(8, 3), 7) == 0u);
+    CHECK(AckMarkNumber("{\"type\":\"COMBO_ACK_MARK\",\"n\":3}", 7) == 0u); // no sender
+
+    CHECK(AckMarkNumber(Packet("GIVE_ITEM"), 7) == 0u);
+    CHECK(AckMarkNumber("not json", 7) == 0u);
+    CHECK(AckMarkNumber("{\"type\":\"COMBO_ACK_MARK\",\"clientId\":7}", 7) == 0u);             // no number
+    CHECK(AckMarkNumber("{\"type\":\"COMBO_ACK_MARK\",\"clientId\":7,\"n\":\"3\"}", 7) == 0u); // wrong type
     CHECK(!MightBeDurable(mark.c_str()));
 }
 
@@ -249,6 +255,20 @@ static void TestTeamStateRequestGate() {
     CHECK(gate.OnRequest("mm", "FRESH", t0 + 999999));
 }
 
+static void TestReconnectWait() {
+    // Short connections back off 1, 2, 4 ... and stop at the maximum.
+    int wait = 0;
+    const int expected[] = { 1, 2, 4, 8, 16, 30, 30 };
+    for (const int want : expected) {
+        wait = ReconnectWaitSeconds(wait, 0);
+        CHECK(wait == want);
+    }
+    // A stable connection starts it over, whatever came before; a connection just under the bar does not.
+    CHECK(ReconnectWaitSeconds(30, kStableConnectionSeconds) == 1);
+    CHECK(ReconnectWaitSeconds(8, kStableConnectionSeconds - 1) == 16);
+    CHECK(ReconnectWaitSeconds(0, 3600) == 1);
+}
+
 void RunDeliveryTests() {
     TestPreChecks();
     TestPacketIds();
@@ -257,4 +277,5 @@ void RunDeliveryTests() {
     TestAckMark();
     TestInFlight();
     TestTeamStateRequestGate();
+    TestReconnectWait();
 }

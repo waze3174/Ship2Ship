@@ -465,12 +465,23 @@ and the packets below are not understood by older builds.
   `UPDATE_ROOM_STATE`, which only keeps its room settings current). `LoadComboCompletion` discards both games'
   queues on every slot load, so nothing from the previous slot is applied to the next.
 - `LoadComboCompletion` resets the loaded master seed (the outbox scope) and the seen packet ids first, so a
-  vanilla slot keeps nothing of the previous slot.
+  vanilla slot keeps nothing of the previous slot. It also drops the held packets that have no seed
+  (`DropSeedlessOutbox`, `OutboxDropSeedless` in `combo/net/ComboAnchorOutbox.h`): a vanilla slot holds its packets
+  with seed 0, which the outbox sends into any playthrough, so they would otherwise reach the next rando slot's room.
 - **Out-of-range peer flags are rejected.** `SET_FLAG` / `UNSET_FLAG` with `sceneNum == SCENE_ID_MAX` go through
   `Anchor_IsGlobalFlagInRange` (`soh/soh/Network/Anchor/Packets/SetFlag.cpp`) before `RawAction::SetFlag` /
   `UnsetFlag`, live and dormant. The bounds come from the save arrays (`eventChkInf`, `itemGetInf`, `infTable`,
   `eventInf`, `ship.randomizerInf`, `gsFlags`); an unknown `flagType` is rejected too.
-- `ReceiveLoop` drops the link, with a log line, when an unterminated frame passes `kMaxFrameBytes` (1 MiB).
+- `ReceiveLoop` drops the link, with a log line, when an unterminated frame passes `kMaxFrameBytes` (16 MiB: an `UPDATE_TEAM_STATE` carries the whole save and the server's queue, which a boss release makes large; a legitimate frame over the cap would drop the link, and the resync would bring the same frame back).
+- **Receive loop robustness.** `ReceiveLoop` catches every exception of a connection, logs it and goes back to
+  reconnecting (an exception on that thread would end the program). After a connection that lasted under 5 s the wait
+  before the next attempt doubles, 1, 2, 4 ... 30 s (`ReconnectWaitSeconds` in `combo/net/ComboAnchorDelivery.h`); a
+  stable connection starts it over. "Connection lost" is toasted once, and "reconnected" only after that and once
+  the link has held 5 s, so a server that accepts and closes does not flood the screen.
+- **Toast gate on the game's UI thread.** The launcher's toasts carry their display CVar name (`Notification::Options::gateCvar`,
+  both games); `DrainPending` reads it on the UI frame, no longer on the receive thread.
+- **Own acks only.** `AckMarkNumber` accepts a marker only when its `clientId` is this connection's own id
+  (`sOwnIdThisConn`), so another client's marker, or one before our id is known, never confirms our packets.
 - The launcher keeps its 64 KiB receive buffer and skips empty frames; the packet-id filter (`AcceptInbound`) runs
   after that skip.
 - Diagnostics button (Network panel): copies logs, the roster snapshot and the outbox into `diagnostics/<time>/`.
@@ -489,7 +500,7 @@ and the packets below are not understood by older builds.
 - `comboPid` on every save-affecting packet: a unique id, remembered by the receiver (8192 ids) so a re-sent
   packet applies once. Also looked at inside the queue of an `UPDATE_TEAM_STATE`.
 - `COMBO_ACK_MARK`: a marker the launcher addresses to itself after a batch. When it comes back, everything written
-  before it reached the server; up to 512 unconfirmed packets are held again on a drop.
+  before it reached the server; up to `kOutboxMaxEntries` (4096) unconfirmed packets are held again on a drop, as many as the outbox holds (a boss release sends over a thousand).
 - `COMBO_MM_FLAG` (`kind`: `chest`, `switch`, `collectible`, `weekEventReg`, `owl`): the MM flags that survive a
   cycle reset. Set-only and masked, so a replay changes nothing.
 - `addToQueue` on MM sends, so the server replays them to late joiners.

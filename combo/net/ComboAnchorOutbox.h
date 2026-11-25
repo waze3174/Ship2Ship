@@ -84,6 +84,17 @@ inline bool OutboxPush(std::deque<OutboxEntry>& outbox, OutboxEntry entry) {
     return droppedOldest;
 }
 
+// A slot loaded without a baked seed (a vanilla slot) holds its packets with seed 0, which OutboxTakeSendable treats as
+// "any playthrough". When another slot is loaded those packets are not that slot's to send: drop them. Returns how
+// many.
+inline size_t OutboxDropSeedless(std::deque<OutboxEntry>& outbox) {
+    const size_t before = outbox.size();
+    for (auto it = outbox.begin(); it != outbox.end();) {
+        it = (it->seed == 0) ? outbox.erase(it) : it + 1;
+    }
+    return before - outbox.size();
+}
+
 // The first HANDSHAKE of a connection names the room. Entries without a scope were held on the way
 // there (finds before the first connection of a session), so they belong to it. Returns how many.
 inline size_t OutboxAdoptScope(std::deque<OutboxEntry>& outbox, const std::string& scope) {

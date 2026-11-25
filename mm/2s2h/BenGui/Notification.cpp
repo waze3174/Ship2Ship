@@ -36,6 +36,9 @@ static void DrainPending() {
         pending.swap(sPending);
     }
     for (auto& notification : pending) {
+        if (!notification.gateCvar.empty() && !CVarGetInteger(notification.gateCvar.c_str(), 1)) {
+            continue; // the player turned this kind of toast off (read here, on the UI thread)
+        }
         Emit(std::move(notification));
     }
 }

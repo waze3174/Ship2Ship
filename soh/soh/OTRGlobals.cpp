@@ -3344,15 +3344,15 @@ extern "C" COMBO_EXPORT void SOH_Anchor_RequestResync(void) {
 }
 
 // Co-op hardening (2026-11-13): launcher link/presence toasts. Callable from the launcher's Anchor
-// thread (EmitThreadSafe queues it for the UI frame). gateCvar: a default-on display toggle, or null.
+// thread (EmitThreadSafe queues it for the UI frame). gateCvar: a default-on display toggle, or null; the UI frame
+// reads it, not this thread.
 extern "C" COMBO_EXPORT void SOH_ComboToast(const char* prefix, const char* message, const char* suffix,
                                             const char* gateCvar) {
     try {
-        if (gateCvar && gateCvar[0] != '\0' && !CVarGetInteger(gateCvar, 1)) {
-            return;
-        }
-        Notification::EmitThreadSafe(
-            { .prefix = prefix ? prefix : "", .message = message ? message : "", .suffix = suffix ? suffix : "" });
+        Notification::EmitThreadSafe({ .prefix = prefix ? prefix : "",
+                                       .message = message ? message : "",
+                                       .suffix = suffix ? suffix : "",
+                                       .gateCvar = gateCvar ? gateCvar : "" });
     } catch (...) {} // never unwind into the launcher
 }
 
