@@ -253,7 +253,8 @@ static void KaleidoScope_ComboUpdateForeignCursor(PlayState* play) {
 }
 
 // The outline quad (quad index `quad` of `extra`) around the slot holding foreign item `item`, if it is on this page.
-static void Combo_DrawSlotOutline(PauseContext* pauseCtx, Vtx* extra, s32 quad, u8 item) {
+static void Combo_DrawSlotOutline(GraphicsContext* gfxCtx, PauseContext* pauseCtx, Vtx* extra, s32 quad, u8 item) {
+    GraphicsContext* __gfxCtx = gfxCtx; // the caller's open display lists, for POLY_OPA_DISP
     u16 j;
 
     if (item == ITEM_NONE) {
@@ -306,15 +307,15 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
             break;
         }
         if (Combo_PauseIsForeign(item)) {
-            Combo_DrawSlotOutline(pauseCtx, extra, i - 1, item);
+            Combo_DrawSlotOutline(play->state.gfxCtx, pauseCtx, extra, i - 1, item);
         }
     }
     // 2S2H's Easy Mask Equip: the mask worn from this menu sits on no button, and gets the same outline.
-    Combo_DrawSlotOutline(pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems) - 1,
+    Combo_DrawSlotOutline(play->state.gfxCtx, pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems) - 1,
                           Combo_PauseWornWithoutButtonItem());
     // 2S2H's Persistent Bunny Hood: its state shows as a blue outline (PersistentMasks.cpp).
     gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 100, 200, 255, pauseCtx->alpha);
-    Combo_DrawSlotOutline(pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems),
+    Combo_DrawSlotOutline(play->state.gfxCtx, pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems),
                           Combo_PausePersistentBunnyHoodItem());
 
     gDPPipeSync(POLY_OPA_DISP++);
