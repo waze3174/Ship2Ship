@@ -87,20 +87,25 @@ static s32 ArmsHook_IsHookshotSurface(PlayState* play, CollisionPoly* poly, s32 
 }
 
 void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
-    if (GameInteractor_Should(VB_HOOKSHOT_SHOOT, this->actor.parent == NULL, this)) {
+    s32 shoots = (this->actor.parent == NULL);
+
+    if (GameInteractor_Should(VB_HOOKSHOT_SHOOT, shoots, this)) {
         ArmsHook_SetupAction(this, ArmsHook_Shoot);
         Actor_SetSpeeds(&this->actor, 20.0f);
         this->actor.parent = &GET_PLAYER(play)->actor;
         this->timer = 26;
+    }
 #ifdef COMBO_BUILD
-        // ComboShip: OOT's Hookshot in Termina flies OOT's 13 frames (OOT ArmsHook_Wait: Hookshot 13, Longshot 26;
-        // MM's own hookshot is as long as OOT's Longshot), times SoH's Hookshot Reach Multiplier for OOT's two.
+    // ComboShip: OOT's Hookshot in Termina flies half of MM's frames (OOT ArmsHook_Wait: Hookshot 13, Longshot 26;
+    // MM's own hookshot is as long as OOT's Longshot), times SoH's Hookshot Reach Multiplier for OOT's two. Runs after
+    // the should-hook so 2S2H's Faster Hookshot (which sets its own timer and returns false) is halved too.
+    if (shoots) {
         if (GET_PLAYER(play)->heldItemAction == PLAYER_IA_COMBO_OOT_HOOKSHOT) {
-            this->timer = 13;
+            this->timer /= 2;
         }
         this->timer *= Combo_MmOotHookshotReachMultiplier(GET_PLAYER(play)->heldItemAction);
-#endif
     }
+#endif
 }
 
 /**
