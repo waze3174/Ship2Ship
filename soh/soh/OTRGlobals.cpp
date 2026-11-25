@@ -13,6 +13,7 @@
 #include <algorithm>
 #include <atomic>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #if !defined(_WIN32)
@@ -6175,6 +6176,20 @@ extern "C" COMBO_EXPORT void SOH_TriggerComboGenerate(void) {
 extern "C" void FileChoose_Main(GameState* thisx);
 extern "C" COMBO_EXPORT uint8_t SOH_IsOnFileSelect(void) {
     return (gPlayState == NULL && gGameState != NULL && gGameState->main == (GameStateFunc)FileChoose_Main) ? 1 : 0;
+}
+
+// ComboShip: lets OOT-side screens draw MM assets only when MM's archive is there.
+extern "C" COMBO_EXPORT uint8_t SOH_MMHasResource(const char* otrPath) {
+    static constexpr char kOtrPrefix[] = "__OTR__";
+    static constexpr size_t kOtrPrefixLen = sizeof(kOtrPrefix) - 1;
+    auto mmResourceManager = Ship::CrossRMRegistry::Get("mm");
+    if (mmResourceManager == nullptr || mmResourceManager->GetArchiveManager() == nullptr) {
+        return 0;
+    }
+    if (strncmp(otrPath, kOtrPrefix, kOtrPrefixLen) == 0) {
+        otrPath += kOtrPrefixLen;
+    }
+    return mmResourceManager->GetArchiveManager()->HasFile(otrPath) ? 1 : 0;
 }
 
 // ComboShip (#89): leave OOT's game loop before its first Play frame so the launcher can enter MM.

@@ -32,17 +32,7 @@ static f32 sCtlScale = CTL_OOT_SCALE;
 #define CTL_MM_ANCHOR_X 154.0f
 #define CTL_MM_ANCHOR_Y 100.0f
 
-// MM title logo assets (ROM-extracted, in mm.o2r). Redeclared here — soh cannot include mm headers.
-#define dgTitleScreenMajorasMaskTex "__OTR__objects/object_mag/gTitleScreenMajorasMaskTex"
-static const ALIGN_ASSET(2) char gTitleScreenMajorasMaskTex[] = dgTitleScreenMajorasMaskTex;
-#define dgTitleScreenZeldaLogoTex "__OTR__objects/object_mag/gTitleScreenZeldaLogoTex"
-static const ALIGN_ASSET(2) char gTitleScreenZeldaLogoTex[] = dgTitleScreenZeldaLogoTex;
-#define dgTitleScreenTheLegendOfTextTex "__OTR__objects/object_mag/gTitleScreenTheLegendOfTextTex"
-static const ALIGN_ASSET(2) char gTitleScreenTheLegendOfTextTex[] = dgTitleScreenTheLegendOfTextTex;
-#define dgTitleScreenMajorasMaskSubtitleTex "__OTR__objects/object_mag/gTitleScreenMajorasMaskSubtitleTex"
-static const ALIGN_ASSET(2) char gTitleScreenMajorasMaskSubtitleTex[] = dgTitleScreenMajorasMaskSubtitleTex;
-#define dgTitleScreenMajorasMaskSubtitleMaskTex "__OTR__objects/object_mag/gTitleScreenMajorasMaskSubtitleMaskTex"
-static const ALIGN_ASSET(2) char gTitleScreenMajorasMaskSubtitleMaskTex[] = dgTitleScreenMajorasMaskSubtitleMaskTex;
+#include "ComboTitleMMAssets.h"
 
 // MM flame-effect grid behind its logo: 2x3 I4 masks + 4 I8 flame textures (display set).
 #define CTL_MM_EFFECT_MASK(n)                                                  \

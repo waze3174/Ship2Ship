@@ -142,6 +142,8 @@ int SOH_PollComboFinalize(void);
 int SOH_GetComboGenPercent(void);
 int SOH_GetComboGenPhase(void);
 uint8_t SOH_IsOnFileSelect(void);
+// ComboShip: 1 when MM's archive holds the resource at the given "__OTR__"-prefixed path (0 without MM's ROM data).
+uint8_t SOH_MMHasResource(const char* otrPath);
 // Open the combo menu on the Randomizer tab (file-select "Open Randomizer Settings").
 void SOH_OpenComboRandoSettings(void);
 // Reload a consolidated seed file (null/empty path = the remembered pending file). Returns 1 if loaded.
