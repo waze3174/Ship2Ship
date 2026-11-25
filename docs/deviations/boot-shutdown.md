@@ -291,12 +291,15 @@ each game logs `[ComboShip] save timing:` lines: MM's `SaveManager_SaveCurrentFo
 read + parse), serialize, and write (dump + launcher write, which includes the container flush); OOT's
 `SaveFileThreaded` container write (on the save thread); and any shared-reconcile tick over 1 ms in either game.
 The launcher has no log file of its own. It times its share of each container read and write per thread
-(`ComboSaveTiming::ContainerIoStats`: mutex wait, parse, section and container dump, temp-file write, rename,
-section and container size) and hands each game a getter (`SOH_`/`MM_SetContainerIoStatsGetter`), so those parts
+(`ComboSaveTiming::ContainerIoStats`: mutex wait, parse, section and container dump, temp-file open, write and
+rename, section and container size, and the kernel's dirty and writeback page cache after a slow write) and hands each
+game a getter (`SOH_`/`MM_SetContainerIoStatsGetter`), so those parts
 appear in the game's own line (2026-11-25). Also logged: the time MM takes to hand a foreign item to the launcher
 (`SendForeignCheck`), a line when one write stands for several save requests (see rando.md, "One write per pickup"),
-and every MM game frame of 100 ms to 2 s, with the live saves asked for and written since the previous frame and the
-reconcile's time, so a hitch without a save shows up too. `gCombo.Debug.MmSaveFullRead` switches MM's live save back
+and every MM game frame of 100 ms to 2 s (longer when saves took most of it), with the live saves asked for and
+written since the previous frame and the reconcile's time, so a hitch without a save shows up too. A container write
+of 250 ms or more (`kSlowWriteMs`) is logged as a warning even with the switch off (rando.md, "Saves that freeze the
+game for seconds"). `gCombo.Debug.MmSaveFullRead` switches MM's live save back
 to reading its whole section, to time it against the smaller read (rando.md, "Smaller read for the live MM save").
 `Combo_ReadGameSave` takes the container's `combo` object by reference (`ComboObjectOf`): it holds the baked seed,
 and it was deep-copied once or twice on every save read (twice for a dormant MM save).

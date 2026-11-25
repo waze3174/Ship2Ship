@@ -1168,7 +1168,9 @@ static void Combo_MM_ReportFrameHitch(double reconcileMs) {
     static ComboSaveTiming::Stopwatch sSinceLastFrame;
     const double frameMs = sSinceLastFrame.Lap();
     const ComboFrameSaves saves = SaveManager_ComboTakeFrameSaves();
-    if (frameMs < ComboSaveTiming::kFrameHitchMs || frameMs >= ComboSaveTiming::kFrameHitchMaxMs ||
+    const bool savesFilledFrame = saves.ms * 2.0 >= frameMs; // a save stall, not a game switch, however long
+    if (frameMs < ComboSaveTiming::kFrameHitchMs ||
+        (frameMs >= ComboSaveTiming::kFrameHitchMaxMs && !savesFilledFrame) ||
         !CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
         return;
     }
