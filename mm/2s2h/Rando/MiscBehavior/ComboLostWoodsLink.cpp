@@ -31,6 +31,7 @@ extern "C" {
 // BenPort.cpp
 void Combo_RequestCrossSwitch(int ootEntrance);
 int Combo_CrossToHyruleOpen(void);
+int Combo_MM_BackToBackOpeningPending(void);
 extern int gComboCrossArrival;
 }
 
@@ -65,8 +66,10 @@ constexpr u32 kInsideTowerSwitchBits = 1 << 0;
 // clears it.
 bool sSkipCorridorEndCutscene = false;
 
+// The walk's redirects and skipped cutscenes would cut MM's real opening short (the east exit is the intro's fall, the
+// Clock Tower's Salesman is part of it), so they wait until the slot has played it.
 bool Active() {
-    return Combo_LostWoodsLinkOn() != 0;
+    return Combo_LostWoodsLinkOn() != 0 && Combo_MM_BackToBackOpeningPending() == 0;
 }
 
 // The Clock Tower is entered without the intro, so the Salesman's flag is set by hand, in the cycle flags the scene
@@ -130,7 +133,7 @@ extern "C" int Combo_MM_LostWoodsLinkSkipsEntranceCs(void) {
 }
 
 extern "C" int Combo_MM_ClockTowerEntryStaysInMm(void) {
-    return kClockTowerEntryStaysInMm && Active();
+    return kClockTowerEntryStaysInMm && Combo_LostWoodsLinkOn() != 0;
 }
 
 #endif // COMBO_BUILD

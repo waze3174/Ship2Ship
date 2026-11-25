@@ -33,6 +33,7 @@ extern "C" {
 extern PlayState* gPlayState;
 void Interface_LoadItemIconImpl(PlayState* play, u8 btn);
 void Interface_Dpad_LoadItemIconImpl(PlayState* play, u8 btn);
+int Combo_MM_BackToBackOpeningPending(void); // BenPort.cpp
 }
 
 namespace {
@@ -175,7 +176,14 @@ bool DpadOn() {
 
 // The human form's layout (index 0 = human in MM's per-form button arrays).
 void Apply() {
-    if (sPending.empty() || gPlayState == nullptr || GET_PLAYER(gPlayState) == nullptr)
+    if (sPending.empty())
+        return;
+    // MM's opening starts with the buttons empty, as in a vanilla file; Hyrule's layout does not go into it.
+    if (Combo_MM_BackToBackOpeningPending()) {
+        sPending.clear();
+        return;
+    }
+    if (gPlayState == nullptr || GET_PLAYER(gPlayState) == nullptr)
         return;
     nlohmann::json j;
     try {

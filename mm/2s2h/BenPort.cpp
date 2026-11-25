@@ -4513,6 +4513,12 @@ extern "C" COMBO_EXPORT void MM_SetComboCrossGate(int mask) {
 extern "C" int Combo_CrossToHyruleOpen(void) {
     return ComboRando::CrossGate::ToHyruleOpen(gMMComboCrossGate) ? 1 : 0;
 }
+// A back-to-back slot that has not yet played Majora's Mask's opening. isFirstCycle is set when Link first enters
+// South Clock Town and is never cleared, so until then the opening (Skull Kid, the stolen Ocarina, the Deku curse) is
+// still to be played, or being played, and the slot's own story owns the scenes the Lost Woods link would redirect.
+extern "C" int Combo_MM_BackToBackOpeningPending(void) {
+    return (ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) && !gSaveContext.save.isFirstCycle) ? 1 : 0;
+}
 // MM's credits have ended (Play_Init reached the invalid entrance that returns to MM's own title). In a back-to-back
 // slot MM's title and file select are unreachable inside the launcher, so the slot goes back to OoT's title, as an owl
 // save quit does; the slot's save is not written again.

@@ -220,6 +220,8 @@ void Combo_RequestCrossSwitch(int ootEntrance);
 void Combo_RequestPortalReturn(void);
 // MM's credits have ended: a back-to-back slot returns to OOT's title (see BenPort.cpp).
 void Combo_MM_CreditsEnded(void);
+// A back-to-back slot that has not yet played MM's opening (see BenPort.cpp).
+int Combo_MM_BackToBackOpeningPending(void);
 COMBO_EXPORT void MM_PrepareForTransition(void);
 COMBO_EXPORT void MM_ResumeGame(int fileNum);
 #endif

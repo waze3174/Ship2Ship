@@ -38,6 +38,10 @@ inline int Mask(const ComboMode& mode, bool ootBeaten, bool mmBeaten) {
     return mask;
 }
 
+inline bool IsBackToBack(int mask) {
+    return (mask & kBackToBack) != 0;
+}
+
 inline bool ToTerminaOpen(int mask) {
     return (mask & kToTermina) != 0;
 }
@@ -53,13 +57,13 @@ inline bool LostWoodsToTerminaOpen(int mask, bool linkIsChild) {
 // OoT's credits have ended in a back-to-back slot where Ganon is beaten and Majora is not: the slot goes on in the
 // Temple of Time instead of returning to the title.
 inline bool OotCreditsContinueInTemple(int mask) {
-    return (mask & kBackToBack) != 0 && (mask & kLostWoodsToTermina) != 0 && !ToTerminaOpen(mask);
+    return IsBackToBack(mask) && (mask & kLostWoodsToTermina) != 0 && !ToTerminaOpen(mask);
 }
 
 // MM's credits have ended in a back-to-back slot: the slot returns to Ocarina of Time's title (MM's own title and file
 // select are unreachable inside the launcher).
 inline bool MmCreditsReturnToOot(int mask) {
-    return (mask & kBackToBack) != 0;
+    return IsBackToBack(mask);
 }
 
 } // namespace ComboRando::CrossGate

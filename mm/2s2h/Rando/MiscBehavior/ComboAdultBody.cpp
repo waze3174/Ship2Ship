@@ -357,6 +357,7 @@ static void ComboApplyPendingForm() {
 
 extern "C" void Combo_RequestCrossSwitch(int ootEntrance); // BenPort.cpp
 extern "C" void Combo_MmOotClearMask(void);                // ComboOotItems.cpp
+extern "C" int Combo_MM_BackToBackOpeningPending(void);    // BenPort.cpp
 
 static void ComboApplyPendingMask(); // (below)
 static void RegisterComboFormCarry() {
@@ -430,7 +431,15 @@ extern "C" COMBO_EXPORT void MM_SetComboMask(int token) {
 }
 
 static void ComboApplyPendingMask() {
-    if ((sComboPendingMask == -2) || (gPlayState == nullptr) || (GET_PLAYER(gPlayState) == nullptr)) {
+    if (sComboPendingMask == -2) {
+        return;
+    }
+    // MM's opening starts with no mask on Link, as in a vanilla file.
+    if (Combo_MM_BackToBackOpeningPending()) {
+        sComboPendingMask = -2;
+        return;
+    }
+    if ((gPlayState == nullptr) || (GET_PLAYER(gPlayState) == nullptr)) {
         return;
     }
     Player* player = GET_PLAYER(gPlayState);
