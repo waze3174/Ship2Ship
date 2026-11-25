@@ -4,23 +4,23 @@ A back-to-back slot plays **vanilla Ocarina of Time, then vanilla Majora's Mask*
 randomizer. The file select shows it as the Ship2Ship logo alone (the randomizer's choice has a "Randomizer" subtitle)
 and labels the slot `S2S`. Ganon's defeat ends OoT with its full ending and opens the Lost Woods path into Termina for
 child Link; Majora's defeat opens the way back. Save compatibility: no `COMBO_RELEASE_VERSION` change and no change to
-an existing field; the only new key is `sequential` inside `combo.mode`. An older build reads such a slot as a combo
+an existing field; the only new keys are `sequential` and `options` inside `combo.mode`. An older build reads such a slot as a combo
 randomizer slot with no seed, so downgrading is not covered.
 
-This page records stage A: the plumbing and the story gates, and the first setting of the mode's own page (Master Quest
-for Ocarina of Time's half). Not done yet: MM's real opening on first entry, item locks in Termina, carrying capacities
-over, the rest of the settings page, adult Link in Termina and "everything usable" after both games (see "Not done
-yet").
+This page records stage A (the plumbing and the story gates, and Master Quest for Ocarina of Time's half) and stages B to E
+(MM's real opening on the first crossing, the settings page with the item locks in Termina, carrying capacities over,
+and everything usable after both games). Not done: adult Link in Termina (see "Not done yet").
 
 ## The mode
 
 `combo.mode` for a back-to-back slot (`combo/rando/ComboMode.h`):
 
 ```json
-"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true }
+"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 14 }
 ```
 
-- `ComboMode::BackToBack(quest)`, `IsBackToBack()`. `sequential` is written only for this mode. `FromJson` reads a vanilla
+- `ComboMode::BackToBack(quest, options)`, `IsBackToBack()`. `sequential` and `options` (stage C) are written only for this mode;
+  a slot without `options` takes the page's defaults. `FromJson` reads a vanilla
   `ootmm` as a back-to-back slot only when `sequential` is true; every older mode reads exactly as before (a vanilla
   `ootmm` without it is still a randomizer slot).
 - `IsVanilla()` is true, so the launcher's vanilla paths (no seed bound, no combo rando pushed) apply. `game` is
@@ -59,7 +59,7 @@ the boss release (`Combo_OnFinalBossDefeated` queues it only for a non-vanilla s
 
 Settings > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
 the choices apply to new back-to-back files when they're created. Every setting on it is read once, when a file is
-created, and is fixed for that file from then on; later stages add the rest of the mode's settings to the same page.
+created, and is fixed for that file from then on; the rest of the mode's settings are on the same page (stage C).
 The CVars live under `gCombo.BackToBack.` (`combo/rando/ComboBackToBackSettings.h`); each is a leaf, and no
 `gCombo.BackToBack` leaf exists to collide with that subtree. Presets carry them like any other `gCombo.` preference.
 
@@ -147,25 +147,81 @@ unreachable (MM's boot would wipe the save through MM's file select), so for a b
 asks for the owl-save quit: the slot returns to OoT's title. The slot is not saved again there, so MM resumes from its last
 save, with the gate open from the completion record.
 
-## What happens now on the first crossing into Termina
+## Stage B: Majora's Mask's real opening on the first crossing
 
-Read from the code, not run. Stage B replaces this.
+Read from the code, not run. The opening under the launcher is untested, as it is for a vanilla Majora's Mask slot.
 
-- The MM save was made at slot creation by MM's new-file routine (`Sram_InitNewSave`): an empty inventory (no Ocarina, no
-  Deku Mask), three hearts, the opening not played (`isFirstCycle` false).
-- Entering MM, `Setup_InitImpl` loads that save, then `Combo_StartVanillaOpening` (a vanilla save whose opening hasn't
-  played) selects the opening, which the Lost Woods link's arrival entrance overrides (`gComboTargetEntrance`): Link
-  arrives at MM's Lost Woods spawn 0 as a human, with the entrance cutscene skipped
-  (`Combo_MM_LostWoodsLinkSkipsEntranceCs`) and the Happy Mask Salesman's flag marked done (`MarkIntroDone`). No Skull
-  Kid, no stolen Ocarina, no Deku curse.
-- The opening is not marked as played, so a later load of the slot into MM runs `Combo_StartVanillaOpening` again (or, with
-  2S2H's Skip Intro Sequence, starts in South Clock Town).
-- Age and tunic come from OoT on the crossing (child Link; the age and tunic hand-off is the combo one).
+- The MM save made at slot creation is a vanilla one with the opening unplayed (`isFirstCycle` false; it is set when Link
+  first enters South Clock Town and never cleared). Entering MM, `Setup_InitImpl` (`mm/src/code/title_setup.c`) loads that
+  save, and `Combo_StartVanillaOpening` selects the opening (`ENTRANCE(CUTSCENE, 0)`, human Link). In a back-to-back slot
+  the first crossing also names the Lost Woods spawn as the arrival (`gComboTargetEntrance`); that branch now drops it,
+  so the opening stands: Skull Kid, Epona and the Ocarina stolen, the Deku curse. With 2S2H's Skip Intro Sequence on, the
+  opening is replaced by South Clock Town as for any file.
+- `Combo_MM_BackToBackOpeningPending` (`BenPort.cpp`) is true for a back-to-back slot whose `isFirstCycle` is not set. While
+  it is true:
+  - the Lost Woods link's hooks stand down (`Active()` in `ComboLostWoodsLink.cpp`): the east-exit redirect would send the
+    intro's fall to the Clock Tower corridor, and the Salesman's flag would skip his cutscene;
+  - the carried mask and button layout are dropped instead of applied on the first frame (`ComboAdultBody.cpp`,
+    `ComboEquipShare.cpp`), so the opening starts with nothing worn or assigned, as in a vanilla file.
+  The Clock Tower's South Clock Town door still "stays in MM" (`Combo_MM_ClockTowerEntryStaysInMm` follows the link, not
+  `Active()`).
+- Later crossings (the opening played, so `isFirstCycle` set) behave as before: the target entrance applies.
+- Quitting during the opening writes nothing, so the next load of the slot plays it again.
+
+## Stage C: the settings and the Termina item locks
+
+The Back to back page lists the choices (`gCombo.BackToBack.*`, the table `kOptions` in
+`combo/rando/ComboBackToBackSettings.h`). They are read once when a file is created (`SOH_GetNewSaveBackToBackOptions`,
+called from `Combo_InitBackToBackSlot`), stored as one int in the file's `combo.mode` (`"options"`; a slot without it takes
+the defaults) and pushed to both DLLs with the cross gate (`SOH_SetComboBackToBackOptions`,
+`MM_SetComboBackToBackOptions`; 0 for every other slot).
+
+| Option | Default | What it does |
+|---|---|---|
+| Hearts | off | Termina starts with OoT's max hearts and heart pieces (MM's start is three hearts) |
+| Magic meter | on | Double magic carries once MM's Great Fairy has given magic (tick in `ComboBackToBack.cpp`) |
+| Bottles | on | OoT's bottles are usable in Termina once MM's first bottle is found; off: they stay in Hyrule |
+| Wallet and rupees | on | the wallet tier (capped at MM's 500) and the rupees (capped to the wallet) go in as the opening starts |
+| Songs and masks | off | the masks MM has too are unlocked from the start; the songs (Time, Epona's, Storms) are learned once Link has MM's Ocarina |
+| Din's, Farore's, Nayru's, Boomerang, Slingshot, Hammer, Boots, Tunics | off | one switch each: off, the item stays in Hyrule |
+
+The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/ComboBackToBackTest.cpp`):
+
+| OoT item | Locked in Termina until |
+|---|---|
+| Sticks, nuts, bombs, bow, the three arrows, ocarinas, bombchus, lens, beans, Hookshot and Longshot | MM holds its own copy (the Hookshot and Longshot: MM's Hookshot) |
+| Bottles and what is in them | the Bottles setting is on and MM holds any bottle |
+| Keaton, Bunny, Goron, Zora, Truth masks | MM holds its own, or Songs and masks is on |
+| Din's, Farore's, Nayru's, Boomerang, Slingshot, Hammer | its switch is on |
+| Tunics and boots | the Tunics / Boots switch is on |
+| Everything else OoT alone has (trade items, Ruto's letter, Skull / Spooky / Gerudo masks, Roc's Feather) | both games are beaten |
+
+Where they apply: `Snapshot()` (`mm/2s2h/Rando/MiscBehavior/ComboPause.cpp`), which feeds the Hyrule face of MM's pause
+menu, the buttons' foreign items, `Combo_MmPauseOotItemAt` and with it every use of an OoT item in Termina; `EquipSnapshot()`
+for the tunic and boots rows of the Hyrule equipment face; and `SOH_ComboTermina_EquipValue` / `SetEquipValue` /
+`ToggleEquipValue` (`ComboTerminaItems.cpp`), which make Termina's boots and tunic physics read the Kokiri pieces while
+locked. They are in force only while `LocksActive(mask)`: a back-to-back slot that has not beaten both games. Every other
+mode has `kAllOpen`.
+
+## Stage D: capacities carry over once MM has the item
+
+`ComboBackToBack.cpp` holds a tick (`TickCarryOnceFound`, in a back-to-back slot while the locks are in force) that raises
+MM's quiver, bomb bag, Deku stick and Deku nut levels to OoT's (`SOH_ComboCarry_Get`,
+`soh/soh/Enhancements/combo/ComboBackToBackCarry.cpp`) once MM's `INV_CONTENT` holds the bow, the bombs, the sticks or the
+nuts. MM's give code reads a nonzero level as "already owned" (`mm/src/code/z_parameter.c`, `Item_Give`: the first bow adds
+an arrow only when the quiver level is not 0), so a level is never written earlier. MM's own upgrade items set a level
+outright, so a lower one is raised again on the next frame.
+
+## Stage E: after both games are beaten
+
+Majora's defeat with Ganon's already recorded sets `kToTermina` in the cross gate, which ends the locks, the gear lock and
+the carry tick at once and at every later load: everything OoT has is usable in Termina through the Hyrule face, and
+everything MM has in Hyrule through OoT's Termina faces, as in a randomizer file. No new mechanism: `LocksActive` is the one
+gate. Both ways are open for either age, as in stage A.
 
 ## Not done yet
 
-- MM's real opening on first entry (stage B).
-- Item locks in Termina and the pause menu's Hyrule face: while not solo, OoT's items are visible and usable from Termina
-  as in a combo slot. Shared health (an opt-in CVar) also applies if the player has it on.
-- Carry-over of capacities (hearts, magic, quiver, bomb bag, wallet, bottles), the rest of the settings page, adult Link in Termina
-  (the adult path stays closed), and everything usable after both games.
+- Adult Link in Termina with OoT's adult gear (the adult path stays closed until both games are beaten).
+- Co-op: the mode is vanilla, so the dormant co-op gate stays closed.
+- Shared health (the opt-in `gCombo.Shared.HealthMagicAmmo`) is not aware of the mode: with it on, it can overwrite the
+  hearts the page chose.
