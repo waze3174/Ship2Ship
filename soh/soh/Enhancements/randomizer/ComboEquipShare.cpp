@@ -13,12 +13,12 @@
 // there (the bow, hookshot or magic arrows for child; the slingshot, boomerang or sticks for adult) doesn't stay on a
 // button after a crossing, a save load or an age swap. See KeepAgeRule.
 
-#include <cstdio>
 #include <cstring>
 #include <string>
 #include <utility>
 
 #include <nlohmann/json.hpp>
+#include <spdlog/spdlog.h>
 
 #include "ComboExport.h"
 #include "ComboPauseABI.h"
@@ -256,8 +256,8 @@ bool KeepAgeRule(int age, const u8* fallbackItems, const u8* fallbackSlots) {
     for (int b = kFirstItemButton; b < kButtonCount; ++b) {
         if (Combo_PauseItemAgeOk(equips.buttonItems[b], age))
             continue;
-        fprintf(stderr, "[ComboPause] OOT's age rule takes item %02X off button %d (%s Link)\n", equips.buttonItems[b],
-                b, (age == LINK_AGE_CHILD) ? "child" : "adult");
+        SPDLOG_INFO("[ComboPause] OOT's age rule takes item {:02X} off button {} ({} Link)", equips.buttonItems[b], b,
+                    (age == LINK_AGE_CHILD) ? "child" : "adult");
         refused[b] = true;
         changed = true;
         equips.buttonItems[b] = ITEM_NONE;
@@ -337,11 +337,10 @@ void ComboEquipShare_Tick() {
     const bool applied = ApplyPendingLayout();
     const bool aged = IS_RANDO && KeepAgeRule(gSaveContext.linkAge, savedItems, savedSlots);
     if (applied) {
-        fprintf(stderr, "[ComboPause] shared layout applied in Hyrule: C %02X/%02X/%02X D %02X/%02X/%02X/%02X\n",
-                gSaveContext.equips.buttonItems[1], gSaveContext.equips.buttonItems[2],
-                gSaveContext.equips.buttonItems[3], gSaveContext.equips.buttonItems[4],
-                gSaveContext.equips.buttonItems[5], gSaveContext.equips.buttonItems[6],
-                gSaveContext.equips.buttonItems[7]);
+        const u8* items = gSaveContext.equips.buttonItems;
+        SPDLOG_INFO(
+            "[ComboPause] shared layout applied in Hyrule: C {:02X}/{:02X}/{:02X} D {:02X}/{:02X}/{:02X}/{:02X}",
+            items[1], items[2], items[3], items[4], items[5], items[6], items[7]);
     }
     if (!applied && !aged)
         return;
