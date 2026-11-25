@@ -2064,6 +2064,11 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
 
             case QUEST_RANDOMIZER:
                 gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, this->logoAlpha);
+#ifdef COMBO_BUILD
+                // Ship2Ship's randomizer covers both games, so it shows the app's own logo rather than OOT's.
+                FileChoose_DrawImageRGBA32(this->state.gfxCtx, 160, 120, gTitleShip2ShipLogoTex, 128, 128);
+                FileChoose_DrawImageRGBA32(this->state.gfxCtx, 157, 198, gTitleRandomizerSubtitleTex, 128, 32);
+#else
                 FileChoose_DrawTextureI8(this->state.gfxCtx, gTitleTheLegendOfTextTex, 72, 8, 156, 108, 72, 8, 1024,
                                          1024);
                 FileChoose_DrawTextureI8(this->state.gfxCtx, gTitleOcarinaOfTimeTMTextTex, 96, 8, 154, 163, 96, 8, 1024,
@@ -2072,6 +2077,7 @@ void FileChoose_DrawWindowContents(GameState* thisx) {
                     this->state.gfxCtx, 160, 135,
                     ResourceMgr_GameHasOriginal() ? gTitleZeldaShieldLogoTex : gTitleZeldaShieldLogoMQTex, 160, 160);
                 FileChoose_DrawImageRGBA32(this->state.gfxCtx, 182, 180, gTitleRandomizerSubtitleTex, 128, 32);
+#endif
                 break;
 
             case QUEST_BOSSRUSH:

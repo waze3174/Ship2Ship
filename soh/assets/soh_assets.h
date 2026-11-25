@@ -77,6 +77,9 @@ static const ALIGN_ASSET(2) char gPotTokenDL[] = dgPotTokenDL;
 #define dgTitleRandomizerSubtitleTex "__OTR__objects/object_mag/gTitleRandomizerSubtitleTex"
 static const ALIGN_ASSET(2) char gTitleRandomizerSubtitleTex[] = dgTitleRandomizerSubtitleTex;
 
+#define dgTitleShip2ShipLogoTex "__OTR__objects/object_mag/gTitleShip2ShipLogoTex"
+static const ALIGN_ASSET(2) char gTitleShip2ShipLogoTex[] = dgTitleShip2ShipLogoTex;
+
 #define dgTitleBossRushSubtitleTex "__OTR__objects/object_mag/gTitleBossRushSubtitleTex"
 static const ALIGN_ASSET(2) char gTitleBossRushSubtitleTex[] = dgTitleBossRushSubtitleTex;
 
