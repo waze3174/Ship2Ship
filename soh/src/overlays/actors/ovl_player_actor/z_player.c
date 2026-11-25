@@ -17071,6 +17071,11 @@ void Player_Update(Actor* thisx, PlayState* play) {
         }
 
         Player_UpdateCommon(this, play, &input);
+#ifdef COMBO_BUILD
+        // MM reads the mask's B on the frame it is pressed (MM func_8082FDC4): a press that no item update took this
+        // frame (e.g. with the shield up while Z-targeting) is dropped, not kept for later.
+        sComboMaskBPress = false;
+#endif
     }
 
     MREG(52) = this->actor.world.pos.x;
