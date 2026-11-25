@@ -20,6 +20,14 @@ void Sram_InitDebugSave(void);            // z_sram.c (no header declares it; ne
 
 void TitleSetup_InitImpl(GameState* gameState) {
     osSyncPrintf("ゼルダ共通データ初期化\n"); // "Zelda common data initalization"
+#ifdef COMBO_BUILD
+    // The return from MM below skips the title screen, the only place that loads the file select's options from
+    // global.sav (Title_Destroy -> Sram_InitSram), so SaveContext_Init would leave Z-targeting on Switch and the
+    // sound on Stereo after every trip to Termina. MM takes OOT's copy on each entry (Combo_AdoptOOTGlobalOptions),
+    // so it lost them too. The language needs no keeping: GameState_Update rereads it from its CVar every frame.
+    const u8 keptAudioSetting = gSaveContext.audioSetting;
+    const u8 keptZTargetSetting = gSaveContext.zTargetSetting;
+#endif
     SaveContext_Init();
 #ifdef COMBO_BUILD
     {
@@ -118,7 +126,10 @@ void TitleSetup_InitImpl(GameState* gameState) {
         // jump directly to Play, then override the entrance so Link spawns in the Market outside the
         // Happy Mask Shop (fixed arrival for the cross-game portal return — symmetric with the OOT->MM
         // trigger of entering the shop).
-        LUSLOG_INFO("[ComboShip] TitleSetup combo jump -> Play (fileNum=%d)", gComboReturnFileNum);
+        LUSLOG_INFO("[ComboShip] TitleSetup combo jump -> Play (fileNum=%d, zTarget=%d, audio=%d)", gComboReturnFileNum,
+                    keptZTargetSetting, keptAudioSetting);
+        gSaveContext.audioSetting = keptAudioSetting;
+        gSaveContext.zTargetSetting = keptZTargetSetting;
         gSaveContext.fileNum = gComboReturnFileNum;
         gSaveContext.gameMode = GAMEMODE_NORMAL;
         Sram_OpenSave();
