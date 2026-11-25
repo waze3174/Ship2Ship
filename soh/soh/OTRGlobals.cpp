@@ -1795,8 +1795,10 @@ extern "C" COMBO_EXPORT void SOH_InitRandoHeadless() {
     Rando::StaticData::RegisterSignLocations();
     Rando::StaticData::RegisterWonderItemLocations();
     Rando::StaticData::RegisterBeggarLocations();
+    Rando::StaticData::RegisterFishermansHatLocation();
     Rando::StaticData::RegisterIcicleLocations();
     Rando::StaticData::RegisterRedIceLocations();
+    Rando::StaticData::RegisterFireGoronLocations();
     Rando::StaticData::RegisterSilverLocations();
     Rando::StaticData::InitHashMaps(); // ComboShip: name lookups for excluded locations
     // Build the option/trick tables (normally the rando menu's job, which headless lacks) so a spoiler's
