@@ -4604,6 +4604,31 @@ void Interface_DrawItemButtons(PlayState* play) {
 int16_t gItemIconWidth[] = { 30, 24, 24, 24, 16, 16, 16, 16 };
 int16_t gItemIconDD[] = { 550, 680, 680, 680, 1024, 1024, 1024, 1024 };
 
+#ifdef COMBO_BUILD
+// ComboShip: a bomb-arrow button's bow wears a bomb badge, half the icon's size and a little off its middle (2S2H
+// DrawBombArrowOverlayCButton / Dpad), dimmed with no bombs. (left, top) is the icon's corner, `size` its width.
+static void Interface_ComboDrawBombArrowBadge(PlayState* play, s16 button, s16 left, s16 top, s16 size) {
+    InterfaceContext* interfaceCtx = &play->interfaceCtx;
+    const u16 buttonAlphas[] = { interfaceCtx->bAlpha,        interfaceCtx->cLeftAlpha,    interfaceCtx->cDownAlpha,
+                                 interfaceCtx->cRightAlpha,   interfaceCtx->dpadUpAlpha,   interfaceCtx->dpadDownAlpha,
+                                 interfaceCtx->dpadLeftAlpha, interfaceCtx->dpadRightAlpha };
+    const s16 badge = size / 2;
+    const s16 badgeLeft = left + (size - badge) / 2 + 2;
+    const s16 badgeTop = top + (size - badge) / 2 - 2;
+    const u16 alpha = (AMMO(ITEM_BOMB) > 0) ? buttonAlphas[button] : (buttonAlphas[button] / 2);
+
+    OPEN_DISPS(play->state.gfxCtx);
+    gDPPipeSync(OVERLAY_DISP++);
+    gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 255, 255, 255, alpha);
+    gDPLoadTextureBlock(OVERLAY_DISP++, gItemIcons[ITEM_BOMB], G_IM_FMT_RGBA, G_IM_SIZ_32b, 32, 32, 0,
+                        G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
+                        G_TX_NOLOD);
+    gSPWideTextureRectangle(OVERLAY_DISP++, badgeLeft << 2, badgeTop << 2, (badgeLeft + badge) << 2,
+                            (badgeTop + badge) << 2, G_TX_RENDERTILE, 0, 0, (32 << 10) / badge, (32 << 10) / badge);
+    CLOSE_DISPS(play->state.gfxCtx);
+}
+#endif
+
 void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
     OPEN_DISPS(play->state.gfxCtx);
     GraphicsContext* gfxCtx = play->state.gfxCtx;
@@ -4857,6 +4882,13 @@ void Interface_DrawItemIconTexture(PlayState* play, void* texture, s16 button) {
                             (ItemIconPos[button][0] + gItemIconWidth[button]) << 2,
                             (ItemIconPos[button][1] + gItemIconWidth[button]) << 2, G_TX_RENDERTILE, 0, 0,
                             gItemIconDD[button] << 1, gItemIconDD[button] << 1);
+
+#ifdef COMBO_BUILD
+    if ((button >= 1) && Combo_BombArrowsButtonActive(button - 1)) {
+        Interface_ComboDrawBombArrowBadge(play, button, ItemIconPos[button][0], ItemIconPos[button][1],
+                                          gItemIconWidth[button]);
+    }
+#endif
 
     CLOSE_DISPS(play->state.gfxCtx);
 }
@@ -5151,6 +5183,12 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
             ammo = AMMO(i);
         }
 
+#ifdef COMBO_BUILD
+        // ComboShip: a bomb-arrow button counts what a shot spends both of (2S2H DrawBombArrowAmmoCount).
+        s32 comboBombArrowFull = false;
+        const s32 comboBombArrows = Combo_BombArrowsHudAmmo(button, &ammo, &comboBombArrowFull);
+#endif
+
         gDPPipeSync(OVERLAY_DISP++);
 
         if ((button == 0) && (gSaveContext.minigameState == 1)) {
@@ -5162,12 +5200,17 @@ void Interface_DrawAmmoCount(PlayState* play, s16 button, s16 alpha) {
             if (ammo < 0) {
                 ammo = 0;
             }
-        } else if (((i == ITEM_BOW) && (AMMO(i) == CUR_CAPACITY(UPG_QUIVER))) ||
-                   ((i == ITEM_BOMB) && (AMMO(i) == CUR_CAPACITY(UPG_BOMB_BAG))) ||
-                   ((i == ITEM_SLINGSHOT) && (AMMO(i) == CUR_CAPACITY(UPG_BULLET_BAG))) ||
-                   ((i == ITEM_STICK) && (AMMO(i) == CUR_CAPACITY(UPG_STICKS))) ||
-                   ((i == ITEM_NUT) && (AMMO(i) == CUR_CAPACITY(UPG_NUTS))) || ((i == ITEM_BOMBCHU) && (ammo == 50)) ||
-                   ((i == ITEM_BEAN) && (ammo == 15)) || GameInteractor_Should(VB_COLOR_AMMO_GREEN, false, i)) {
+        } else if (
+#ifdef COMBO_BUILD
+            comboBombArrows ? comboBombArrowFull :
+#endif
+                            (((i == ITEM_BOW) && (AMMO(i) == CUR_CAPACITY(UPG_QUIVER))) ||
+                             ((i == ITEM_BOMB) && (AMMO(i) == CUR_CAPACITY(UPG_BOMB_BAG))) ||
+                             ((i == ITEM_SLINGSHOT) && (AMMO(i) == CUR_CAPACITY(UPG_BULLET_BAG))) ||
+                             ((i == ITEM_STICK) && (AMMO(i) == CUR_CAPACITY(UPG_STICKS))) ||
+                             ((i == ITEM_NUT) && (AMMO(i) == CUR_CAPACITY(UPG_NUTS))) ||
+                             ((i == ITEM_BOMBCHU) && (ammo == 50)) || ((i == ITEM_BEAN) && (ammo == 15)) ||
+                             GameInteractor_Should(VB_COLOR_AMMO_GREEN, false, i))) {
             gDPSetPrimColor(OVERLAY_DISP++, 0, 0, 120, 255, 0, alpha);
         }
 

@@ -165,4 +165,12 @@ extern "C" void Combo_BombArrowsCount(int hudFallback, short* ammo, int* full) {
     *full = (*ammo == MIN(arrowCapacity, bombCapacity));
 }
 
+extern "C" int Combo_BombArrowsHudAmmo(int hudButton, short* ammo, int* full) {
+    if ((hudButton < kBButtonItemCount) || !Combo_BombArrowsButtonActive(hudButton - kBButtonItemCount)) {
+        return false;
+    }
+    Combo_BombArrowsCount(true, ammo, full);
+    return true;
+}
+
 #endif // COMBO_BUILD

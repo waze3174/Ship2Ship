@@ -45,6 +45,8 @@ int Combo_BombArrowsOutlineShown(int button);
 // The count shown with bomb arrows: a shot spends one of each, so the lower of the two. `hudFallback` (HUD only): with
 // no bombs the arrow count is shown instead. `full`: the lower of the two bags is full.
 void Combo_BombArrowsCount(int hudFallback, short* ammo, int* full);
+// The HUD's button (0 = B): returns 1 and fills `ammo` / `full` when it is a bomb-arrow button.
+int Combo_BombArrowsHudAmmo(int hudButton, short* ammo, int* full);
 
 #ifdef __cplusplus
 }
