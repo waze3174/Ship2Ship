@@ -4001,6 +4001,24 @@ void Player_SetFeetPos(PlayState* play, Player* player, s32 limbIndex) {
 #define COMBO_OOT_BOOMERANG_VIEW_CHILD_Y (-8700)
 #define COMBO_OOT_BOOMERANG_VIEW_Z 17000
 
+// SoH's Aiming Reticle for the Bow/Slingshot (gEnhancements.BowReticle, AdditionalReticles.cpp), for OOT's Slingshot in
+// Termina (MM's own bow has 2S2H's Bow Reticle): the hookshot reticle with no range limit while it is ready to fire.
+#define COMBO_OOT_SLINGSHOT_VIEW_Y (-15216)
+#define COMBO_OOT_SLINGSHOT_VIEW_Z (-17496)
+
+static void Player_ComboDrawOotSlingshotReticle(PlayState* play, Player* player) {
+    if ((player->heldItemAction != PLAYER_IA_COMBO_OOT_SLINGSHOT) || !CVarGetInteger(COMBO_SOH_CVAR_BOW_RETICLE, 0) ||
+        (player->heldActor == NULL)) {
+        return;
+    }
+
+    Matrix_RotateZYX(0, COMBO_OOT_SLINGSHOT_VIEW_Y, COMBO_OOT_SLINGSHOT_VIEW_Z, MTXMODE_APPLY);
+    if (func_800B7128(player)) {
+        Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
+        Player_DrawHookshotReticle(play, player, COMBO_OOT_RETICLE_MAX);
+    }
+}
+
 static void Player_ComboDrawOotBoomerangReticle(PlayState* play, Player* player) {
     if ((player->heldItemAction != PLAYER_IA_COMBO_OOT_BOOMERANG) ||
         !CVarGetInteger(COMBO_SOH_CVAR_BOOMERANG_RETICLE, 0) ||
@@ -4213,6 +4231,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
             }
 #ifdef COMBO_BUILD
             Player_ComboDrawOotBoomerangReticle(play, player);
+            Player_ComboDrawOotSlingshotReticle(play, player);
 #endif
             if ((player->getItemDrawIdPlusOne != (GID_NONE + 1)) ||
                 ((func_800B7118(player) == 0) && (heldActor != NULL))) {
