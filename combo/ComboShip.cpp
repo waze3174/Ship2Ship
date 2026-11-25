@@ -1975,7 +1975,7 @@ static const char* Combo_Anchor_GetRoster() {
 // (enqueue under the game's own mutex) and the thread-safe toast.
 constexpr int kPollMs = 5;
 constexpr int kOutboxCheckMs = 250;
-constexpr size_t kMaxFrameBytes = 1024 * 1024; // an unterminated frame past this is not a packet: drop the link
+constexpr size_t kMaxFrameBytes = 16 * 1024 * 1024; // an unterminated frame past this is not a packet: drop the link
 
 // Hold sOutMutex. Everything still queued for a socket that just died: keep the save-affecting part.
 static void HoldUnsentLocked(std::queue<std::string>& unsent) {

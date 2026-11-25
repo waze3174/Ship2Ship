@@ -472,7 +472,7 @@ and the packets below are not understood by older builds.
   `Anchor_IsGlobalFlagInRange` (`soh/soh/Network/Anchor/Packets/SetFlag.cpp`) before `RawAction::SetFlag` /
   `UnsetFlag`, live and dormant. The bounds come from the save arrays (`eventChkInf`, `itemGetInf`, `infTable`,
   `eventInf`, `ship.randomizerInf`, `gsFlags`); an unknown `flagType` is rejected too.
-- `ReceiveLoop` drops the link, with a log line, when an unterminated frame passes `kMaxFrameBytes` (1 MiB).
+- `ReceiveLoop` drops the link, with a log line, when an unterminated frame passes `kMaxFrameBytes` (16 MiB: an `UPDATE_TEAM_STATE` carries the whole save and the server's queue, which a boss release makes large; a legitimate frame over the cap would drop the link, and the resync would bring the same frame back).
 - The launcher keeps its 64 KiB receive buffer and skips empty frames; the packet-id filter (`AcceptInbound`) runs
   after that skip.
 - Diagnostics button (Network panel): copies logs, the roster snapshot and the outbox into `diagnostics/<time>/`.
