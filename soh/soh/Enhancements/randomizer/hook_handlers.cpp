@@ -304,17 +304,39 @@ void CheckTriggers() {
 #endif
 }
 
+#ifdef COMBO_BUILD
+void Anchor_DormantReplaceItem(u16 oldItem, u16 newItem); // Network/Anchor/Packets/SetFlag.cpp
+
+// ComboShip: Inventory_ReplaceItem reloads a C-button icon through the play state, which a dormant OOT does not have
+// (a Majora's Mask release collecting OOT's checks while Termina is played). The icons reload with the next scene.
+static void ReplaceAdultTradeItem(u16 oldItem) {
+    if (gPlayState == nullptr) {
+        Anchor_DormantReplaceItem(oldItem, Randomizer_GetNextAdultTradeItem());
+        return;
+    }
+    Inventory_ReplaceItem(gPlayState, oldItem, Randomizer_GetNextAdultTradeItem());
+}
+#endif
+
 void RandomizerOnFlagSetHandler(int16_t flagType, int16_t flag) {
     // Consume adult trade items
     if (RAND_GET_OPTION(RSK_SHUFFLE_ADULT_TRADE).Get() && flagType == FLAG_RANDOMIZER_INF) {
         switch (flag) {
             case RAND_INF_ADULT_TRADES_DMT_TRADE_BROKEN_SWORD:
                 Flags_UnsetRandomizerInf(RAND_INF_ADULT_TRADES_HAS_SWORD_BROKEN);
+#ifdef COMBO_BUILD
+                ReplaceAdultTradeItem(ITEM_SWORD_BROKEN);
+#else
                 Inventory_ReplaceItem(gPlayState, ITEM_SWORD_BROKEN, Randomizer_GetNextAdultTradeItem());
+#endif
                 break;
             case RAND_INF_ADULT_TRADES_DMT_TRADE_EYEDROPS:
                 Flags_UnsetRandomizerInf(RAND_INF_ADULT_TRADES_HAS_EYEDROPS);
+#ifdef COMBO_BUILD
+                ReplaceAdultTradeItem(ITEM_EYEDROPS);
+#else
                 Inventory_ReplaceItem(gPlayState, ITEM_EYEDROPS, Randomizer_GetNextAdultTradeItem());
+#endif
                 break;
         }
     }

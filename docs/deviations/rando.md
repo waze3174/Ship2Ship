@@ -3052,6 +3052,37 @@ Archipelago can call later. Each game exports the giver: `SOH_ReleaseRemainingCh
 (`mm/2s2h/Rando/MiscBehavior/ComboReleaseChecks.cpp`). Both return the count, or `ComboRelease::kCannotRelease` (-1)
 when no rando save is loaded. The names, the CVar and the container key are in `combo/ComboRelease.h`.
 
+**The collecting half.** Owner, 2026-11-25: "when releasing all the checks after beating one of the games, all of that
+games checks from the other game should count as collected like an AP game". As Archipelago collects a finished world's
+items out of the other worlds, a release of one game also collects that game's items still lying in the other game's
+checks, so no check anywhere holds an item of a finished game and both trackers count those checks collected.
+- A release arms `g_collectPending[game]`. On the next tick `Combo_DrainReleaseCollect` (in `Combo_SharedTick`, after
+  the release drain) runs `Combo_CollectReleasedGame`, which calls the other game's collector (`Combo_ReleaseCollector`)
+  inside both save batches: `MM_ReleaseForeignChecks(slot)` for an OoT release, `SOH_ReleaseForeignChecks(slot)` for an
+  MM release. It waits, as the release drain does, for MM's save to be the slot's. A one-game seed has no other game
+  and drops it.
+- `LoadComboCompletion` arms it again for every game the container marks released, on every file load. So a game
+  released by v0.1.3 (which had no collecting half) is collected the first time the file is loaded, and a collect that
+  could not run is retried at the next load. Run again, it finds nothing left and writes nothing.
+- Each takes the remaining checks (the same test as the giver's) whose item is the sentinel for the other game's item
+  (`RI_COMBO_FOREIGN` / `RG_COMBO_FOREIGN`) and releases them exactly as the giver releases a foreign check: marked
+  collected (OoT: unskipped, and the world pickup spent), the item sent home through `DeliverCrossItem` and the Anchor
+  cross-item broadcast, a trap sent nowhere. No notification: the release's one message stays the only one.
+- The collector runs on the played game's thread. After a kill its game is dormant: MM's on OoT's thread after Ganon,
+  OoT's on MM's thread after Majora. That is the
+  dormant cross-grant situation (`MM_GrantCrossItem`, `SOH_GrantCrossItem`): MM's resident save is written through its
+  batch (`SaveManager_SaveCurrentForCombo`), OoT's through `Combo_PersistOOT` (a full save, so the tracker writes
+  `RCSHOW_SAVED`; OoT reloads its save from disk when Link comes back). With no OoT play state, only the saved scene
+  flags are set. The drain already waits for MM's save to be resident; OoT's save is resident from the file select on.
+- The flag setters still fire OoT's flag hooks. One of them needs the play state: with adult trade shuffle on, spending
+  the Broken Sword or Eyedrops trade consumes that trade item through `Inventory_ReplaceItem`, which reloads a C-button
+  icon through `play` (`RandomizerOnFlagSetHandler`, `hook_handlers.cpp`). With no play state it now replaces the item
+  through Anchor's dormant helper `Anchor_DormantReplaceItem` (the icons reload with the next scene).
+- Each collector checks that its resident save is the launcher's slot and returns `kCannotRelease` otherwise; the
+  launcher logs that, and the next file load tries again.
+- The items the collect gives are save-direct gives, which poke no Shared Items reconcile on OoT's side, so the launcher
+  arms one (`g_sharedReconcilePending`).
+
 **Archipelago.** A release has to tell the AP server too: whoever wires AP in must send the released locations (the
 same set the game just marked collected) to the server from `Combo_ReleaseGameChecks`. Nothing here talks to a server.
 
@@ -3111,13 +3142,24 @@ is re-collectible for junk like any check collected normally; actors that test `
 rest of `ActorBehavior/`) see it spent this cycle, as set by the release. A released MM trap re-collected in the world
 springs once more, as any collected trap does.
 
-**The tracker.** OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
-`RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. MM's tracker reads `RANDO_SAVE_CHECKS` live.
+**The tracker.** Every row of the released game's tracker counts as collected afterwards, traps and checks with no world
+flag included.
+- OoT: `SetCheckStatus(RCSHOW_COLLECTED)` per check, then one `CheckTracker::SpoilAreasFromChecks`,
+  `RecalculateAllAreaTotals` and `RecalculateAvailableChecks` for the lot. The area and total counts count
+  `HasObtained()` (`RCSHOW_COLLECTED` or `RCSHOW_SAVED`) or skipped, and the release's own save turns `RCSHOW_COLLECTED`
+  into `RCSHOW_SAVED` on disk (`SaveTrackerData` with `fullSave`), so the counts hold after a reload whether or not the
+  check has a world flag. A released check the player had skipped is unskipped, as `SetCheckCollected` does for a pickup.
+- OoT rows the tracker shows and counts that are no check to release, the unshuffled shop slots under shopsanity
+  (`IsVisibleInCheckTracker` shows them, `IsCheckShuffled` does not), are marked `RCSHOW_COLLECTED` too, status only
+  (`MarkShownRowsCollected`). The check the item queue is giving is left to it.
+- MM's tracker reads `RANDO_SAVE_CHECKS` live and counts `obtained || skipped` over the shuffled checks.
 
 **Saves.** Each game opens its save batch for the loop (`SOH_ComboSaveBatchBegin/End` through `SaveBatch`, MM's
 `ComboSaveBatch`), and the launcher holds both games' batches open around the call (`SaveBatchGuard`, now shared with
 the shared-items pass), so the cross-game deliveries write each save once as well: one container write per game for
-100+ checks. The OoT area spoils of released maps are folded into that save.
+100+ checks. The OoT area spoils of released maps are folded into that save. MM's batch writes only a save something
+asked for, and a released trap or Ocarina of Time item asks for none, so `MM_ReleaseRemainingChecks` asks for one itself
+whenever it released anything.
 
 **Notification.** One, from the released game: "Released 143 checks from Ocarina of Time" (or "Majora's Mask"), through
 the existing `Notification::Emit` both games have.
@@ -3128,14 +3170,15 @@ Foreign items use the cross-item broadcast. A trap is sent to nobody. Teammates 
 large release is a burst, and teammates' partner feeds list the non-junk finds.
 
 **Edge cases.**
-- The other game's pending queue is not touched: its checks are its own, and the cross-game items land in its resident
-  save as any cross-grant does.
+- The other game's pending queue is not touched: the cross-game items land in its resident save as any cross-grant
+  does, and the collector leaves a check that game is already giving (MM `eligible`, OoT's queued check) to it.
 - A check the item queue is already giving is skipped (above), so nothing is given twice.
 - A bottle refill with no free bottle is dropped, as for every cross-grant (`Combo_MM_GiveDormant`,
   `Combo_GiveResolvedOOT`).
 
 **Preserve on future merges.** `OTRGlobals.cpp` (`Combo_GiveResolvedOOT` and `Combo_PersistOOT` non-static),
 `randomizer_check_tracker.cpp/.h` (`SpoilAreasFromChecks`), `combo/ComboShip.cpp` (the release block before
-`Combo_OnFinalBossDefeated`, the queue in it, the drain in `Combo_SharedTick`, the `LoadComboCompletion` read, the three
-`GetSym` lines), `combo/gui/ComboMenu.cpp` (the checkbox). The two `ComboReleaseChecks.cpp` files and
-`combo/ComboRelease.h` are combo-owned.
+`Combo_OnFinalBossDefeated`, the queue in it, the collect after it, both drains in `Combo_SharedTick`, the
+`LoadComboCompletion` read, the five `GetSym` lines), `combo/gui/ComboMenu.cpp` (the checkbox),
+`soh/soh/Enhancements/randomizer/hook_handlers.cpp` (`ReplaceAdultTradeItem` in `RandomizerOnFlagSetHandler`). The two
+`ComboReleaseChecks.cpp` files and `combo/ComboRelease.h` are combo-owned.

@@ -182,22 +182,38 @@ void GiveCheckItem(RandomizerCheck rc, RandomizerGet placed) {
     ReleaseNative(rc);
 }
 
+// Collected the way the tracker marks a pickup (CheckTracker::SetCheckCollected): a row the player had skipped is no
+// longer skipped, or it would keep its un-skip button.
+void MarkCollected(Rando::ItemLocation* location) {
+    location->SetCheckStatus(RCSHOW_COLLECTED);
+    if (location->GetIsSkipped()) {
+        location->SetIsSkipped(false);
+    }
+}
+
 // The check is marked first, so nothing can queue it again, and its world pickup is spent whatever it held. A trap is
 // collected and never sprung. Returns whether the world pickup could be spent.
 bool ReleaseCheck(RandomizerCheck rc) {
     Rando::ItemLocation* location = Rando::Context::GetInstance()->GetItemLocation(rc);
     const RandomizerGet placed = location->GetPlacedRandomizerGet();
-    location->SetCheckStatus(RCSHOW_COLLECTED);
+    MarkCollected(location);
     const bool worldPickupSpent = SpendWorldPickup(rc);
     GiveCheckItem(rc, placed);
     return worldPickupSpent;
 }
 
-std::vector<RandomizerCheck> ReleaseAll() {
+// A remaining check holding a Majora's Mask item: what a release of Majora's Mask collects from OOT.
+bool IsRemainingForeign(RandomizerCheck rc) {
+    return IsRemaining(rc) &&
+           Rando::Context::GetInstance()->GetItemLocation(rc)->GetPlacedRandomizerGet() == RG_COMBO_FOREIGN;
+}
+
+// Releases every check `wanted` picks and returns them.
+std::vector<RandomizerCheck> ReleaseWhere(bool (*wanted)(RandomizerCheck)) {
     std::vector<RandomizerCheck> released;
     for (const Rando::Location& location : Rando::StaticData::GetLocationTable()) {
         const RandomizerCheck rc = location.GetRandomizerCheck();
-        if (!IsRemaining(rc)) {
+        if (!wanted(rc)) {
             continue;
         }
         if (!ReleaseCheck(rc)) {
@@ -207,6 +223,26 @@ std::vector<RandomizerCheck> ReleaseAll() {
         released.push_back(rc);
     }
     return released;
+}
+
+// A row the tracker shows and counts without it being a check to release, such as a shop's unshuffled slots under
+// shopsanity, is marked collected as well, so the released game's totals come out full. It has no item and no flag.
+int MarkShownRowsCollected() {
+    int marked = 0;
+    for (const Rando::Location& location : Rando::StaticData::GetLocationTable()) {
+        const RandomizerCheck rc = location.GetRandomizerCheck();
+        if (rc == RC_UNKNOWN_CHECK || rc == RC_MAX || rc == OOT_GetQueuedDrawCheck() ||
+            !CheckTracker::IsVisibleInCheckTracker(rc)) {
+            continue;
+        }
+        Rando::ItemLocation* itemLocation = Rando::Context::GetInstance()->GetItemLocation(rc);
+        if (itemLocation->HasObtained()) {
+            continue;
+        }
+        MarkCollected(itemLocation);
+        ++marked;
+    }
+    return marked;
 }
 
 } // namespace
@@ -222,9 +258,11 @@ extern "C" COMBO_EXPORT int SOH_ReleaseRemainingChecks(void) try {
         return ComboRelease::kCannotRelease;
     }
     std::vector<RandomizerCheck> released;
+    int shownRows = 0;
     {
         SaveBatch saveBatch;
-        released = ReleaseAll();
+        released = ReleaseWhere(IsRemaining);
+        shownRows = MarkShownRowsCollected();
         CheckTracker::SpoilAreasFromChecks(released);
         CheckTracker::RecalculateAllAreaTotals();
         CheckTracker::RecalculateAvailableChecks();
@@ -235,13 +273,45 @@ extern "C" COMBO_EXPORT int SOH_ReleaseRemainingChecks(void) try {
     }
     const int count = static_cast<int>(released.size());
     Notification::Emit({ .message = ComboRelease::ReleasedMessage(count), .suffix = ComboRelease::kOotName });
-    SPDLOG_INFO("[ComboShip] SOH_ReleaseRemainingChecks: released {} checks", count);
+    SPDLOG_INFO("[ComboShip] SOH_ReleaseRemainingChecks: released {} checks, marked {} more tracker rows collected",
+                count, shownRows);
     return count;
 } catch (const std::exception& e) {
     SPDLOG_ERROR("[ComboShip] SOH_ReleaseRemainingChecks threw: {}", e.what());
     return ComboRelease::kCannotRelease;
 } catch (...) {
     SPDLOG_ERROR("[ComboShip] SOH_ReleaseRemainingChecks threw a non-std exception");
+    return ComboRelease::kCannotRelease;
+}
+
+// The collecting half of a Majora's Mask release, as Archipelago collects a finished world's items from the other
+// worlds: every uncollected OOT check holding a Majora's Mask item is marked collected, its world pickup spent and its
+// item sent to MM (a trap to nobody), so OOT's tracker counts it too. Silent. It runs on the played game's thread,
+// usually MM's with OOT dormant: with no play state only the saved flags are set, and the save is written as a dormant
+// cross-grant's is. `fileNum` is the launcher's slot. Returns how many checks, or ComboRelease::kCannotRelease when OOT
+// holds no rando save for that slot.
+extern "C" COMBO_EXPORT int SOH_ReleaseForeignChecks(int fileNum) try {
+    if (!IS_RANDO || gSaveContext.fileNum != fileNum) {
+        return ComboRelease::kCannotRelease;
+    }
+    std::vector<RandomizerCheck> collected;
+    {
+        SaveBatch saveBatch;
+        collected = ReleaseWhere(IsRemainingForeign);
+        if (!collected.empty()) {
+            CheckTracker::RecalculateAllAreaTotals();
+            CheckTracker::RecalculateAvailableChecks();
+            Combo_PersistOOT();
+        }
+    }
+    const int count = static_cast<int>(collected.size());
+    SPDLOG_INFO("[ComboShip] SOH_ReleaseForeignChecks: collected {} OOT checks holding Majora's Mask items", count);
+    return count;
+} catch (const std::exception& e) {
+    SPDLOG_ERROR("[ComboShip] SOH_ReleaseForeignChecks threw: {}", e.what());
+    return ComboRelease::kCannotRelease;
+} catch (...) {
+    SPDLOG_ERROR("[ComboShip] SOH_ReleaseForeignChecks threw a non-std exception");
     return ComboRelease::kCannotRelease;
 }
 
