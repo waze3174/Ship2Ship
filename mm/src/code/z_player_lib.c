@@ -3985,6 +3985,35 @@ void Player_SetFeetPos(PlayState* play, Player* player, s32 limbIndex) {
     Actor_SetFeetPos(&player->actor, limbIndex, PLAYER_LIMB_LEFT_FOOT, footPos, PLAYER_LIMB_RIGHT_FOOT, footPos);
 }
 
+#ifdef COMBO_BUILD
+// SoH's Boomerang Reticle (gEnhancements.BoomerangReticle, AdditionalReticles.cpp) for OOT's Boomerang in Termina:
+// while Link aims it, the hookshot reticle at the first thing in line, with no range limit.
+#define COMBO_OOT_RETICLE_MAX 3.402823466e+12f
+#define COMBO_OOT_BOOMERANG_VIEW_ADULT_X (-31200)
+#define COMBO_OOT_BOOMERANG_VIEW_ADULT_Y (-9200)
+#define COMBO_OOT_BOOMERANG_VIEW_CHILD_X (-31200)
+#define COMBO_OOT_BOOMERANG_VIEW_CHILD_Y (-8700)
+#define COMBO_OOT_BOOMERANG_VIEW_Z 17000
+
+static void Player_ComboDrawOotBoomerangReticle(PlayState* play, Player* player) {
+    if ((player->heldItemAction != PLAYER_IA_COMBO_OOT_BOOMERANG) ||
+        !CVarGetInteger(COMBO_SOH_CVAR_BOOMERANG_RETICLE, 0) ||
+        !(player->stateFlags1 & PLAYER_STATE1_USING_ZORA_BOOMERANG) || (player->unk_ACC == 0)) {
+        return;
+    }
+
+    if (Combo_MM_AdultBodyActive(&player->actor)) {
+        Matrix_RotateZYX(COMBO_OOT_BOOMERANG_VIEW_ADULT_X, COMBO_OOT_BOOMERANG_VIEW_ADULT_Y, COMBO_OOT_BOOMERANG_VIEW_Z,
+                         MTXMODE_APPLY);
+    } else {
+        Matrix_RotateZYX(COMBO_OOT_BOOMERANG_VIEW_CHILD_X, COMBO_OOT_BOOMERANG_VIEW_CHILD_Y, COMBO_OOT_BOOMERANG_VIEW_Z,
+                         MTXMODE_APPLY);
+    }
+    Matrix_Translate(500.0f, 300.0f, 0.0f, MTXMODE_APPLY);
+    Player_DrawHookshotReticle(play, player, COMBO_OOT_RETICLE_MAX);
+}
+#endif
+
 void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, Gfx** dList2, Vec3s* rot, Actor* actor) {
     Player* player = (Player*)actor;
 
@@ -4176,6 +4205,9 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList1, G
                     func_80126B8C(play, player);
                 }
             }
+#ifdef COMBO_BUILD
+            Player_ComboDrawOotBoomerangReticle(play, player);
+#endif
             if ((player->getItemDrawIdPlusOne != (GID_NONE + 1)) ||
                 ((func_800B7118(player) == 0) && (heldActor != NULL))) {
                 if (!(player->stateFlags1 & PLAYER_STATE1_400) && (player->getItemDrawIdPlusOne != (GID_NONE + 1)) &&

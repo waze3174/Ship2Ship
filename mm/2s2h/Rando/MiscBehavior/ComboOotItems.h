@@ -30,6 +30,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_INFINITE_NAYRU "gCheats.InfiniteNayru"
 #define COMBO_SOH_CVAR_FAST_FARORES "gEnhancements.FastFarores"
 #define COMBO_SOH_CVAR_HOOKSHOT_REACH_MULTIPLIER "gCheats.HookshotReachMultiplier"
+#define COMBO_SOH_CVAR_BOOMERANG_RETICLE "gEnhancements.BoomerangReticle"
 
 // The item action an OOT item (foreign id on an MM button) runs in Termina: one of PLAYER_IA_COMBO_OOT_* for an OOT
 // item with a Termina port, PLAYER_IA_NONE otherwise (masks with a Termina twin go through Combo_MmPauseUseItem).
