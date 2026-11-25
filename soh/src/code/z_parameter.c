@@ -18,6 +18,8 @@
 // scenes that restrict trade items grey them out; an MM mask (foreign id) gets the same treatment.
 #define COMBO_TRADE_LIKE(item) \
     ((((item) >= ITEM_WEIRD_EGG) && ((item) <= ITEM_CLAIM_CHECK)) || Combo_PauseIsForeignMask(item))
+// ...and an MM bottle follows OOT's bottle rules (restrictions.bottles, exempt from restrictions.all).
+#define COMBO_BOTTLE_LIKE(item) ((((item) >= ITEM_BOTTLE) && ((item) <= ITEM_POE)) || Combo_PauseIsForeignBottle(item))
 #define COMBO_HEAT_PROOF() (Combo_OotForm() == COMBO_FORM_GORON)
 // ...and a Zora breathes underwater like the Zora Tunic.
 #define COMBO_WATER_PROOF() (Combo_OotForm() == COMBO_FORM_ZORA)
@@ -32,6 +34,7 @@
 #define COMBO_HEAT_PROOF() 0
 #define COMBO_TUNIC_COUNTS() 1
 #define COMBO_TRADE_LIKE(item) (((item) >= ITEM_WEIRD_EGG) && ((item) <= ITEM_CLAIM_CHECK))
+#define COMBO_BOTTLE_LIKE(item) (((item) >= ITEM_BOTTLE) && ((item) <= ITEM_POE))
 #define COMBO_BTN_ICON(btn) gItemIcons[gSaveContext.equips.buttonItems[btn]]
 #endif
 
@@ -1197,8 +1200,7 @@ void func_80083108(PlayState* play) {
 
                 if (interfaceCtx->restrictions.bottles != 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
-                        if ((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                            (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) {
+                        if (COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_ENABLED) {
                                 sp28 = 1;
                             }
@@ -1208,8 +1210,7 @@ void func_80083108(PlayState* play) {
                     }
                 } else if (interfaceCtx->restrictions.bottles == 0) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
-                        if ((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                            (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) {
+                        if (COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;
                             }
@@ -1346,8 +1347,7 @@ void func_80083108(PlayState* play) {
                     for (i = 1; i < ARRAY_COUNT(gSaveContext.equips.buttonItems); i++) {
                         if ((gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_FAIRY) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_TIME) &&
-                            !((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                              (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) &&
+                            !COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i]) &&
                             !((gSaveContext.equips.buttonItems[i] >= ITEM_SHIELD_DEKU) && // Never disable equipment
                               (gSaveContext.equips.buttonItems[i] <=
                                ITEM_BOOTS_HOVER)) && // (tunics/boots) on C-buttons
@@ -1377,8 +1377,7 @@ void func_80083108(PlayState* play) {
                             (gSaveContext.equips.buttonItems[i] != ITEM_NAYRUS_LOVE) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_FAIRY) &&
                             (gSaveContext.equips.buttonItems[i] != ITEM_OCARINA_TIME) &&
-                            !((gSaveContext.equips.buttonItems[i] >= ITEM_BOTTLE) &&
-                              (gSaveContext.equips.buttonItems[i] <= ITEM_POE)) &&
+                            !COMBO_BOTTLE_LIKE(gSaveContext.equips.buttonItems[i]) &&
                             !COMBO_TRADE_LIKE(gSaveContext.equips.buttonItems[i])) {
                             if (gSaveContext.buttonStatus[BUTTON_STATUS_INDEX(i)] == BTN_DISABLED) {
                                 sp28 = 1;

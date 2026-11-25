@@ -554,9 +554,87 @@ extern "C" int Combo_MmPauseForeignHostItem(int item) {
             return ITEM_BOW;
         case OOT_ITEM_BEAN:
             return ITEM_MAGIC_BEANS;
+        // OOT's bottle code is MM's too (OOT Player_Action_8084EAC0 drink, Player_Action_SwingBottle catch,
+        // Player_Action_8084EED8 fairy, Player_Action_8084EFC0 release = MM Player_Action_67 / 68 / 69 / 70), run on
+        // OOT's slot (Combo_MmPauseSetForeignBottle). Not OOT's Blue Fire: MM's item table runs ITEM_BLUE_FIRE as a
+        // bug, which would let it out.
+        case OOT_ITEM_BOTTLE:
+        case OOT_ITEM_POTION_RED:
+        case OOT_ITEM_POTION_GREEN:
+        case OOT_ITEM_POTION_BLUE:
+        case OOT_ITEM_FAIRY:
+        case OOT_ITEM_FISH:
+        case OOT_ITEM_MILK_BOTTLE:
+        case OOT_ITEM_MILK_HALF:
+        case OOT_ITEM_BUG:
+        case OOT_ITEM_BIG_POE:
+        case OOT_ITEM_POE:
+            return TwinOf((uint8_t)LiveOotItem(item));
         default:
             return ITEM_NONE;
     }
+}
+
+// OOT's bottle content for an MM one (kTwins: the pairing OoTMM's getForeignBottle makes, packages/generator/src/
+// common/item/item.c), ITEM_NONE where OOT has none (spring water, Zora Egg, Deku Princess, seahorse, mushroom...).
+static int OotBottleOf(int mmItem) {
+    for (const Twin& t : kTwins) {
+        if ((t.mm == mmItem) && (t.oot >= OOT_ITEM_BOTTLE) && (t.oot <= OOT_ITEM_POE)) {
+            return t.oot;
+        }
+    }
+    return ITEM_NONE;
+}
+
+// The item on the button a held item came from (Player heldItemButton: C buttons 1-3, D-pad EQUIP_SLOT_MAX + d).
+static int HeldButtonItem(int heldItemButton, bool* dpad, int* btn) {
+    *dpad = IS_HELD_DPAD(heldItemButton);
+    *btn = *dpad ? HELD_ITEM_TO_DPAD(heldItemButton) : heldItemButton;
+    if (*dpad) {
+        return DPAD_GET_CUR_FORM_BTN_ITEM(*btn);
+    }
+    return ((*btn >= EQUIP_SLOT_C_LEFT) && (*btn <= EQUIP_SLOT_C_RIGHT)) ? GET_CUR_FORM_BTN_ITEM(*btn) : ITEM_NONE;
+}
+
+extern "C" int Combo_MmPauseRunsAs(int item) {
+    return Combo_MmPauseIsForeign(item) ? Combo_MmPauseForeignHostItem(item) : item;
+}
+
+extern "C" int Combo_MmPauseIsBottle(int item) {
+    const int mm = Combo_MmPauseRunsAs(item);
+    return (mm >= ITEM_BOTTLE) && (mm <= ITEM_OBABA_DRINK);
+}
+
+extern "C" int Combo_MmPauseBottleCanHold(int heldItemButton, int mmItem) {
+    bool dpad;
+    int btn;
+    return !Combo_MmPauseIsForeign(HeldButtonItem(heldItemButton, &dpad, &btn)) || (OotBottleOf(mmItem) != ITEM_NONE);
+}
+
+extern "C" int Combo_MmPauseSetForeignBottle(PlayState* play, int heldItemButton, int mmItem) {
+    typedef int (*FnSetBottle)(int, int);
+    static FnSetBottle sSet = (FnSetBottle)Combo_ResolveSym("soh", "SOH_ComboTermina_SetBottle");
+    bool dpad;
+    int btn;
+    const int foreign = HeldButtonItem(heldItemButton, &dpad, &btn);
+    if (!Combo_MmPauseIsForeign(foreign)) {
+        return 0;
+    }
+    const int oot = OotBottleOf(mmItem);
+    const int slot = ComboPause_MmDecode(foreign);
+    if ((oot == ITEM_NONE) || (sSet == nullptr) || !sSet(slot, oot)) {
+        Log("bottle: MM content 0x%02X not stored in OOT slot %d", mmItem, slot);
+        return 1; // never MM's Inventory_UpdateBottleItem: a foreign button's slot byte is no MM slot
+    }
+    Log("bottle: OOT slot %d -> OOT item 0x%02X (MM content 0x%02X)", slot, oot, mmItem);
+    if (dpad) {
+        Interface_Dpad_LoadItemIconImpl(play, btn);
+        gSaveContext.shipSaveContext.dpad.status[btn] = BTN_ENABLED;
+    } else {
+        Interface_LoadItemIconImpl(play, btn);
+        gSaveContext.buttonStatus[btn] = BTN_ENABLED;
+    }
+    return 1;
 }
 
 // The OOT slot behind a foreign id (ComboEquipShare.cpp), -1 = not foreign.

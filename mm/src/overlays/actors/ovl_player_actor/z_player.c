@@ -18728,6 +18728,16 @@ void Player_Action_67(Player* this, PlayState* play) {
 
 #define BOTTLE_CATCH_PARAMS_ANY -1
 
+#ifdef COMBO_BUILD
+// ComboShip: OOT's empty bottle on the button catches as MM's does (into OOT's slot, Player_UpdateBottleHeld), but
+// only what OOT's save can hold, as OOT's catch leaves Blue Fire out of an MM bottle (soh Player_Action_SwingBottle).
+#define COMBO_CATCH_BOTTLE(item) Combo_MmPauseRunsAs(item)
+#define COMBO_CATCH_HOLDS(this, itemId) Combo_MmPauseBottleCanHold((this)->heldItemButton, itemId)
+#else
+#define COMBO_CATCH_BOTTLE(item) (item)
+#define COMBO_CATCH_HOLDS(this, itemId) true
+#endif
+
 struct_8085D798 D_8085D798[] = {
     { ACTOR_EN_ELF, FAIRY_PARAMS(FAIRY_TYPE_2, false, 0), ITEM_FAIRY, PLAYER_IA_BOTTLE_FAIRY, 0x5E },
     { ACTOR_EN_FISH, BOTTLE_CATCH_PARAMS_ANY, ITEM_FISH, PLAYER_IA_BOTTLE_FISH, 0x62 },
@@ -18783,7 +18793,7 @@ void Player_Action_68(Player* this, PlayState* play) {
                     Player_PlaySfx(this, NA_SE_IT_SCOOP_UP_WATER);
                 }
 
-                if (Player_GetItemOnButton(play, this, this->heldItemButton) == ITEM_BOTTLE) {
+                if (COMBO_CATCH_BOTTLE(Player_GetItemOnButton(play, this, this->heldItemButton)) == ITEM_BOTTLE) {
                     Actor* interactRangeActor = this->interactRangeActor;
 
                     if (interactRangeActor != NULL) {
@@ -18797,6 +18807,9 @@ void Player_Action_68(Player* this, PlayState* play) {
                                 break;
                             }
                             entry++;
+                        }
+                        if ((i < ARRAY_COUNT(D_8085D798)) && !COMBO_CATCH_HOLDS(this, entry->itemId)) {
+                            i = ARRAY_COUNT(D_8085D798);
                         }
 
                         if (GameInteractor_Should(VB_PLAY_BOTTLE_CATCH_TEXT, i < ARRAY_COUNT(D_8085D798), this,
@@ -18812,8 +18825,8 @@ void Player_Action_68(Player* this, PlayState* play) {
                 }
                 // #region 2S2H [Dpad]
                 else if (CVarGetInteger("gEnhancements.Dpad.DpadEquips", 0)) {
-                    if (Player_Dpad_GetItemOnButton(play, this, HELD_ITEM_TO_DPAD(this->heldItemButton)) ==
-                        ITEM_BOTTLE) {
+                    if (COMBO_CATCH_BOTTLE(Player_Dpad_GetItemOnButton(
+                            play, this, HELD_ITEM_TO_DPAD(this->heldItemButton))) == ITEM_BOTTLE) {
                         Actor* interactRangeActor = this->interactRangeActor;
 
                         if (interactRangeActor != NULL) {
@@ -18827,6 +18840,9 @@ void Player_Action_68(Player* this, PlayState* play) {
                                     break;
                                 }
                                 entry++;
+                            }
+                            if ((i < ARRAY_COUNT(D_8085D798)) && !COMBO_CATCH_HOLDS(this, entry->itemId)) {
+                                i = ARRAY_COUNT(D_8085D798);
                             }
 
                             if (GameInteractor_Should(VB_PLAY_BOTTLE_CATCH_TEXT, i < ARRAY_COUNT(D_8085D798), this,

@@ -57,6 +57,28 @@ extern "C" COMBO_EXPORT void SOH_ComboTermina_ChangeAmmo(int ootItem, int delta)
     sDormantSaveChanged = true;
 }
 
+// An OOT bottle used in Termina (MM's bottle code, mm ComboPause.cpp Combo_MmPauseSetForeignBottle) takes new content:
+// OOT's Inventory_UpdateBottleItem on OOT's save, for every OOT button on that slot (OOT is dormant: no icon to load).
+// 0 = not a bottle slot holding a bottle, or not a bottle content.
+extern "C" COMBO_EXPORT int SOH_ComboTermina_SetBottle(int ootSlot, int ootItem) {
+    if (!SaveResident() || (ootSlot < SLOT_BOTTLE_1) || (ootSlot > SLOT_BOTTLE_4) || (ootItem < ITEM_BOTTLE) ||
+        (ootItem > ITEM_POE) || (ootItem == ITEM_LETTER_RUTO)) {
+        return 0;
+    }
+    const u8 cur = gSaveContext.inventory.items[ootSlot];
+    if ((cur < ITEM_BOTTLE) || (cur > ITEM_POE)) {
+        return 0;
+    }
+    gSaveContext.inventory.items[ootSlot] = (u8)ootItem;
+    for (int b = 1; b < ARRAY_COUNT(gSaveContext.equips.buttonItems); b++) {
+        if (gSaveContext.equips.cButtonSlots[b - 1] == ootSlot) {
+            gSaveContext.equips.buttonItems[b] = (u8)ootItem;
+        }
+    }
+    sDormantSaveChanged = true;
+    return 1;
+}
+
 // OOT loads its save again from the slot when Link comes back from Termina, so a change made to the dormant save from
 // Termina is written first (SOH_ResumeGame), or the seeds shot there would be back in the bag.
 extern "C" void Combo_TerminaPersistDormantSave(void) {
