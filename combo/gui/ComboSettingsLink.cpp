@@ -1,19 +1,21 @@
 // combo/gui/ComboSettingsLink.cpp
 //
 // ComboShip: OOT and MM each own a private CVar for the same preference — camera speed, invert,
-// first-person aim, the ocarina stick, D-pad equips. The names differ by design (OOT reads
-// gSettings.FreeLook.*, MM reads gEnhancements.Camera.*), so a player had to find and set two
-// sliders for one thing. This links each pair: move either control and the other follows.
+// first-person aim, the ocarina stick, D-pad equips, quality-of-life toggles, cheats. The names differ
+// by design (OOT reads gSettings.FreeLook.*, MM reads gEnhancements.Camera.*), so a player had to find
+// and set two controls for one thing. This links each pair (table in ComboLinkRows.h): move either
+// control and the other follows. ComboBothGames.cpp draws each pair once and hides the per-game copies.
 //
 // Lives in comboui because the CVar store is one instance across the exe and both game DLLs, so
 // the link is plain reads/writes — the same arrangement ComboCosmeticsSync.cpp uses. Each write is
 // handed to the owning game's MenuApplyCVarChange so it takes effect without a restart.
 //
 // NOT linked on purpose: anything only one game has (OOT's D-pad on pause / in text, MM's camera
-// pitch clamps), and anything already shared (gSettings.Controllers.* bindings, volumes via
-// ComboAudioBridge, HUD colours via ComboCosmeticsSync).
+// pitch clamps), anything already shared (gSettings.Controllers.* bindings, volumes via
+// ComboAudioBridge, HUD colours via ComboCosmeticsSync), and everything the randomizer reads.
 #include <libultraship/libultraship.h> // CVar API
 #include "ComboExport.h"
+#include "ComboLinkRows.h"
 #include "ComboSettingsLink.h"
 #include <ship/Context.h> // SaveConsoleVariablesNextFrame
 #include <spdlog/spdlog.h>
@@ -26,54 +28,15 @@
 namespace {
 
 constexpr const char* kLinkCVar = "gCombo.LinkSettings";
-// Off until the player asks: linking rewrites a preference in the other game, so the games stay independent by default.
-constexpr int kLinkDefault = 0;
-// Set once the first push has happened, so switching the link on seeds MM from OOT exactly once.
-constexpr const char* kSeededCVar = "gCombo.LinkSettingsSeeded";
+constexpr int kLinkDefault = 1;
+// Set once the pairs have been merged from both games' existing values. A sibling leaf of
+// gCombo.LinkSettings, never a child of it: a key can't be a value and a parent at once in the nested config.
+constexpr const char* kSeededCVar = "gCombo.LinkSettingsPairsSeeded";
 
-enum LinkType { LINK_INT, LINK_FLOAT };
-
-// One preference, one row. mm[] is nullptr-terminated: OOT's single first-person sensitivity feeds
-// BOTH of MM's (left-stick/gyro and right-stick), which is why there is room for more than one.
-// When MM is the side that changed, mm[0] is the authority.
-struct LinkRow {
-    const char* oot;
-    LinkType type;
-    const char* mm[3];
-};
-
-const LinkRow kRows[] = {
-    // Third-person / free look
-    { "gSettings.FreeLook.Enabled", LINK_INT, { "gEnhancements.Camera.FreeLook.Enable" } },
-    { "gSettings.FreeLook.CameraSensitivity.X", LINK_FLOAT, { "gEnhancements.Camera.RightStick.CameraSensitivity.X" } },
-    { "gSettings.FreeLook.CameraSensitivity.Y", LINK_FLOAT, { "gEnhancements.Camera.RightStick.CameraSensitivity.Y" } },
-    { "gSettings.FreeLook.InvertXAxis", LINK_INT, { "gEnhancements.Camera.RightStick.InvertXAxis" } },
-    { "gSettings.FreeLook.InvertYAxis", LINK_INT, { "gEnhancements.Camera.RightStick.InvertYAxis" } },
-    { "gSettings.FreeLook.MaxCameraDistance", LINK_INT, { "gEnhancements.Camera.FreeLook.MaxCameraDistance" } },
-    { "gSettings.FreeLook.TransitionSpeed", LINK_INT, { "gEnhancements.Camera.FreeLook.TransitionSpeed" } },
-    // First person
-    { "gSettings.Controls.RightStickAim", LINK_INT, { "gEnhancements.Camera.FirstPerson.RightStickEnabled" } },
-    { "gSettings.MoveInFirstPerson", LINK_INT, { "gEnhancements.Camera.FirstPerson.MoveInFirstPerson" } },
-    { "gSettings.DisableFirstPersonAutoCenterView",
-      LINK_INT,
-      { "gEnhancements.Camera.FirstPerson.DisableFirstPersonAutoCenterView" } },
-    // MM splits aiming sensitivity in two (left stick / gyro, and right stick); OOT has one slider,
-    // so it drives both. Coming back the other way, MM's right-stick value is the one OOT takes.
-    { "gSettings.FirstPersonCameraSensitivity.X",
-      LINK_FLOAT,
-      { "gEnhancements.Camera.FirstPerson.RightStickSensitivityX", "gEnhancements.Camera.FirstPerson.SensitivityX" } },
-    { "gSettings.FirstPersonCameraSensitivity.Y",
-      LINK_FLOAT,
-      { "gEnhancements.Camera.FirstPerson.RightStickSensitivityY", "gEnhancements.Camera.FirstPerson.SensitivityY" } },
-    // Ocarina input
-    { "gSettings.CustomOcarina.RightStick", LINK_INT, { "gEnhancements.Playback.RightStickOcarina" } },
-    { "gSettings.CustomOcarina.Dpad", LINK_INT, { "gEnhancements.Playback.DpadOcarina" } },
-    // D-pad as extra item buttons. Both leaves live under the shared gEnhancements prefix but are
-    // different keys, so this is a link like any other.
-    { "gEnhancements.DpadEquips", LINK_INT, { "gEnhancements.Dpad.DpadEquips" } },
-};
-
-constexpr int kRowCount = static_cast<int>(sizeof(kRows) / sizeof(kRows[0]));
+using ComboRando::kLinkRowCount;
+using ComboRando::kLinkRows;
+using ComboRando::LinkRow;
+using ComboRando::LinkType;
 
 // Last value this module saw on each side, so a poll can tell which one the user moved. float holds
 // every int we link exactly (all are small), so one cache type covers both. NaN = "unset".
@@ -81,14 +44,14 @@ struct RowCache {
     float oot = NAN;
     float mm = NAN;
 };
-RowCache sCache[kRowCount];
+RowCache sCache[kLinkRowCount];
 bool sPrimed = false;
 
 // NaN when the key has never been set. An unset key means "this game's own default", and the two games'
 // defaults differ (OOT camera speed 1.0, invert-Y on, transition 25...), so an unset key is never copied:
 // reading it as 0 would have written camera speed 0 / invert off into the other game.
 float ReadKey(const char* key, LinkType type) {
-    if (type == LINK_INT) {
+    if (type == LinkType::Int) {
         const int v = CVarGetInteger(key, INT_MIN);
         return (v == INT_MIN) ? NAN : static_cast<float>(v);
     }
@@ -101,7 +64,7 @@ bool Same(float a, float b) {
 }
 
 void WriteKey(const char* key, LinkType type, float value, Fn_MenuApplyCVar apply) {
-    if (type == LINK_INT) {
+    if (type == LinkType::Int) {
         CVarSetInteger(key, static_cast<int>(value));
     } else {
         CVarSetFloat(key, value);
@@ -144,7 +107,7 @@ void EnableOotFirstPersonSensitivityIfNeeded(const LinkRow& row, Fn_MenuApplyCVa
 }
 
 void PushOotToMm(int i, const Applies& fns, bool* wrote) {
-    const LinkRow& row = kRows[i];
+    const LinkRow& row = kLinkRows[i];
     const float value = ReadKey(row.oot, row.type);
     if (std::isnan(value)) {
         // Unset on OOT's side. If it WAS set (the player just reset it to default), reset MM too; if it never
@@ -179,7 +142,7 @@ void PushOotToMm(int i, const Applies& fns, bool* wrote) {
 }
 
 void PushMmToOot(int i, const Applies& fns, bool* wrote) {
-    const LinkRow& row = kRows[i];
+    const LinkRow& row = kLinkRows[i];
     const float value = ReadKey(row.mm[0], row.type);
     if (std::isnan(value)) {
         // Unset on MM's side: mirror a reset-to-default, never invent a value.
@@ -216,6 +179,62 @@ void PushMmToOot(int i, const Applies& fns, bool* wrote) {
     sCache[i].mm = value;
 }
 
+// A key counts as "moved" only when it is set to something other than its default. Defaults are equal on
+// both sides, and an unset key is never copied.
+bool MovedOffDefault(float stored, const LinkRow& row) {
+    return !std::isnan(stored) && stored != row.defaultValue;
+}
+
+// One-time merge of two existing configs. The side that moved off its default is copied to the other; when both
+// moved, OOT wins (it is the side the Shared tab draws). An on/off switch that defaults to off therefore ends up
+// on in both games when it was on in either.
+void SeedRow(int i, const Applies& fns, bool* wrote) {
+    const LinkRow& row = kLinkRows[i];
+    const float oot = ReadKey(row.oot, row.type);
+    const float mm = ReadKey(row.mm[0], row.type);
+    const bool fromOot = MovedOffDefault(oot, row);
+    if (!fromOot && !MovedOffDefault(mm, row)) {
+        return;
+    }
+    bool rowWrote = false;
+    if (fromOot) {
+        PushOotToMm(i, fns, &rowWrote);
+    } else {
+        PushMmToOot(i, fns, &rowWrote);
+    }
+    if (rowWrote) {
+        SPDLOG_INFO("[ComboShip] settings link seeded {} from {} ({})", row.oot, fromOot ? "OOT" : "MM",
+                    fromOot ? oot : mm);
+    }
+    *wrote = *wrote || rowWrote;
+}
+
+void PrimeCaches() {
+    for (int i = 0; i < kLinkRowCount; ++i) {
+        sCache[i].oot = ReadKey(kLinkRows[i].oot, kLinkRows[i].type);
+        sCache[i].mm = ReadKey(kLinkRows[i].mm[0], kLinkRows[i].type);
+    }
+    sPrimed = true;
+}
+
+void SeedPairs(const Applies& fns) {
+    bool wrote = false;
+    for (int i = 0; i < kLinkRowCount; ++i) {
+        SeedRow(i, fns, &wrote);
+    }
+    PrimeCaches();
+    CVarSetInteger(kSeededCVar, 1);
+    RequestCVarSave(); // persists the marker even when no value changed
+    SPDLOG_INFO("[ComboShip] settings link: first-time merge of {} linked settings done ({})", kLinkRowCount,
+                wrote ? "values copied" : "nothing to copy");
+}
+
+bool BothGamesLoaded() {
+    auto& model = ComboRando::ComboMenuModel::Get();
+    model.EnsureLoaded();
+    return model.Oot().loaded && model.Mm().loaded;
+}
+
 } // namespace
 
 extern "C" COMBO_EXPORT int ComboUI_SettingsLinkEnabled(void) {
@@ -223,43 +242,50 @@ extern "C" COMBO_EXPORT int ComboUI_SettingsLinkEnabled(void) {
 }
 
 extern "C" COMBO_EXPORT int ComboUI_SettingsLinkCount(void) {
-    return kRowCount;
+    return kLinkRowCount;
 }
 
 extern "C" COMBO_EXPORT void ComboUI_SettingsLinkPushOotToMm(void) {
     const Applies fns = ResolveApplies();
     bool wrote = false;
     int copied = 0;
-    for (int i = 0; i < kRowCount; ++i) {
+    for (int i = 0; i < kLinkRowCount; ++i) {
         bool rowWrote = false;
         PushOotToMm(i, fns, &rowWrote);
         copied += rowWrote ? 1 : 0;
         wrote = wrote || rowWrote;
     }
     sPrimed = true;
-    CVarSetInteger(kSeededCVar, 1);
+    CVarSetInteger(kSeededCVar, 1); // an explicit adopt supersedes the first-time merge
     if (wrote) {
         RequestCVarSave();
     }
     SPDLOG_INFO("[ComboShip] settings link on: {} of {} linked settings copied OOT -> MM (unset ones left alone)",
-                copied, kRowCount);
+                copied, kLinkRowCount);
 }
 
 extern "C" COMBO_EXPORT void ComboUI_SettingsLinkPoll(void) {
     if (!ComboUI_SettingsLinkEnabled()) {
-        sPrimed = false; // re-seed from OOT when the link is switched back on
+        sPrimed = false; // adopt OOT's values when the link is switched back on
         return;
     }
-    // First poll after the link is switched on: OOT is the side the Shared tab shows, so it wins once.
     if (!sPrimed) {
-        ComboUI_SettingsLinkPushOotToMm();
+        if (!BothGamesLoaded()) {
+            return; // seeding needs both games' live-apply hooks; try again next frame
+        }
+        // Link switched back on after the first merge: OOT is the side the Shared tab shows, so it wins.
+        if (CVarGetInteger(kSeededCVar, 0)) {
+            ComboUI_SettingsLinkPushOotToMm();
+        } else {
+            SeedPairs(ResolveApplies());
+        }
         return;
     }
 
     const Applies fns = ResolveApplies();
     bool wrote = false;
-    for (int i = 0; i < kRowCount; ++i) {
-        const LinkRow& row = kRows[i];
+    for (int i = 0; i < kLinkRowCount; ++i) {
+        const LinkRow& row = kLinkRows[i];
         const float ootNow = ReadKey(row.oot, row.type);
         const float mmNow = ReadKey(row.mm[0], row.type);
         if (Same(ootNow, sCache[i].oot) && Same(mmNow, sCache[i].mm)) {
