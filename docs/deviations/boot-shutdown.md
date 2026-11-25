@@ -286,6 +286,42 @@ write makes MM's per-slot backup redundant). One seam catches the native flashro
 combo-persist, Saria-hint, and drag-drop. `SaveManager_DeleteSaveFile` clears the section by writing
 `null`.
 
+**Save writer thread (v0.1.3, 2026-11-25):** `combo/ComboContainerWriter.h`; why: rando.md, "Saves that freeze the
+game for seconds". The design comment at the top of that header is the reference; in short:
+- *Who writes:* `FlushContainer` (under `g_containerMutex`, on whichever thread saved) stamps `comboRelease`,
+  serializes the slot and hands the text to `ComboContainerIo::SharedWriter()`. One thread writes the files with
+  `WriteContainerFile` (temp file, rename over the container, no fsync, as before) outside the mutex. It keeps at most
+  one waiting snapshot per slot; a newer one replaces it and keeps its place in line, so the file only moves forward.
+  The slot that has waited longest goes first. The thread starts with the first write and never takes
+  `g_containerMutex`. Locks nest only as `g_containerMutex`, then the writer's.
+- *Reads see the newest data:* the in-memory cache stays the truth for every read in the process (game switches, both
+  file selects, the trackers, every launcher query). The file is read only for a slot not in memory, and that read
+  first waits for the slot's writes (`WaitIdle`), which also orders the `.corrupt-<ts>` and `-<ts>.bak` renames it can
+  make.
+- *Erase and copy:* `EraseComboContainer` drops the slot's waiting snapshot and waits out its write in progress
+  (`CancelAndWait`) before it removes the file, so no write can bring an erased slot back. A copy replaces the
+  destination's waiting snapshot with the copied container; a write of the destination already in progress finishes
+  first, so the copy always lands last.
+- *Kill switch:* `gCombo.Debug.SyncSaveWrites=1` writes on the thread that saved, as before (after `CancelAndWait`
+  for the slot). The game in play hands its value to the launcher every frame (`Combo_ContainerWriterFrame`, via the
+  optional `SOH_`/`MM_SetContainerWriterFrame`), since the launcher links no CVar store; it applies from the next
+  write. The same fallback covers a writer thread that could not start.
+- *Quit:* teardown drains the writer right after the shutdown watchdog starts ("writing saves") and stops it after
+  `SOH_Deinit` ("writing the last saves"), both against one deadline 8 s after the watchdog's start
+  (`kSaveWriterShutdownBudget`, inside its 10 s). What is still unwritten then, and write failures not yet logged, go
+  to stderr and `logs/shutdown-watchdog.log`; a thread still in a write is detached and the process exit cuts it off
+  (the container stays the previous one). Another exit that runs atexit handlers drains it for up to 3 s
+  (`Writer::StopAtExit`). The writer is never destroyed, so a detached thread never finds its mutex gone.
+- *Crash:* the snapshots not yet on disk are lost: normally the last 50-100 ms, and while the disk stalls, as long as
+  it stalls (before 0.1.3 the game froze for that long instead). A snapshot is the whole container, so OOT's grant and
+  MM's obtained flag for one pickup are lost together and the check can be collected again. A write cut short leaves
+  only `fileN.combosav.temp`, which nothing reads.
+- *Failures:* a write that fails is reported on stderr as before, and through the writer report the game in play logs
+  as an error. A short write (a full disk) is no longer renamed over the last good container.
+- *Not ordered behind the writer:* comboui's plando editor reads `combo.rando` straight from the file
+  (`PlandoLoad`), so it can see the snapshot before the newest; `combo.rando` changes only when a new file bakes its
+  seed. A save-thread write of OOT that lands after an erase recreates the container, as it did before.
+
 **Save timing (`gCombo.Debug.SaveTiming`, off by default; 2026-11-24):** `combo/ComboSaveTiming.h`. With it on,
 each game logs `[ComboShip] save timing:` lines: MM's `SaveManager_SaveCurrentForCombo` split into read (launcher
 read + parse), serialize, and write (dump + launcher write, which includes the container flush); OOT's
@@ -299,7 +335,11 @@ appear in the game's own line (2026-11-25). Also logged: the time MM takes to ha
 and every MM game frame of 100 ms to 2 s (longer when saves took most of it), with the live saves asked for and
 written since the previous frame and the reconcile's time, so a hitch without a save shows up too. A container write
 of 250 ms or more (`kSlowWriteMs`) is logged as a warning even with the switch off (rando.md, "Saves that freeze the
-game for seconds"). `gCombo.Debug.MmSaveFullRead` switches MM's live save back
+game for seconds"). With the save writer (v0.1.3) a game's line says the file was handed to the writer and how many
+snapshots were queued; the game in play logs `save timing: save writer:` once a frame with what the thread wrote:
+counts, the longest a change waited from hand-over to disk, and that write's open, file write and rename. It logs it
+with the switch on, and always as a warning when that wait reached 250 ms or as an error when a write failed.
+`gCombo.Debug.MmSaveFullRead` switches MM's live save back
 to reading its whole section, to time it against the smaller read (rando.md, "Smaller read for the live MM save").
 `Combo_ReadGameSave` takes the container's `combo` object by reference (`ComboObjectOf`): it holds the baked seed,
 and it was deep-copied once or twice on every save read (twice for a dormant MM save).

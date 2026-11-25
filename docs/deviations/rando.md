@@ -2411,6 +2411,13 @@ after a write of `kSlowWriteMs` (250 ms) or more the launcher samples the kernel
 (Linux, `/proc/meminfo`). Each game logs such a write as a warning even with `gCombo.Debug.SaveTiming` off. MM's
 frame line also reports frames over 2 s when saves took most of the frame.
 
+**The fix (v0.1.3, owner-approved 2026-11-25):** container files are now written on a save writer thread of their
+own, so a stalled card holds back only the file, never the game. The game that saves still updates the launcher's
+in-memory container and serializes it, so its cost per pickup is the read, serialize, parse and dump measured above,
+and the disk part is gone from it. A crash now loses whatever has not reached the disk yet; how that is bounded, and
+how erases, copies and quit are ordered behind the writes, is in boot-shutdown.md, "Save writer thread".
+`gCombo.Debug.SyncSaveWrites=1` brings back the old write on the thread that saved, so one build can A/B both.
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.
