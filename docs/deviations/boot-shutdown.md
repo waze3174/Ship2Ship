@@ -290,7 +290,13 @@ combo-persist, Saria-hint, and drag-drop. `SaveManager_DeleteSaveFile` clears th
 each game logs `[ComboShip] save timing:` lines: MM's `SaveManager_SaveCurrentForCombo` split into read (launcher
 read + parse), serialize, and write (dump + launcher write, which includes the container flush); OOT's
 `SaveFileThreaded` container write (on the save thread); and any shared-reconcile tick over 1 ms in either game.
-The launcher has no log file of its own, so the container flush is timed only inside the callers' write.
+The launcher has no log file of its own. It times its share of each container read and write per thread
+(`ComboSaveTiming::ContainerIoStats`: mutex wait, parse, section and container dump, temp-file write, rename,
+section and container size) and hands each game a getter (`SOH_`/`MM_SetContainerIoStatsGetter`), so those parts
+appear in the game's own line (2026-11-25). Also logged: the time MM takes to hand a foreign item to the launcher
+(`SendForeignCheck`), a line when one write stands for several save requests (see rando.md, "One write per pickup"),
+and every MM game frame of 100 ms to 2 s, with the live saves asked for and written since the previous frame and the
+reconcile's time, so a hitch without a save shows up too.
 `Combo_ReadGameSave` takes the container's `combo` object by reference (`ComboObjectOf`): it holds the baked seed,
 and it was deep-copied once or twice on every save read (twice for a dormant MM save).
 

@@ -2356,6 +2356,18 @@ moved, so a raise of N tiers wrote N times; it now writes once at the end, and o
 `gCombo.Debug.BottleSaveEveryReconcile` (off by default) brings back the old write, so one build
 can time both with `gCombo.Debug.SaveTiming` (see boot-shutdown.md, "Save timing").
 
+**One write per pickup (2026-11-25, "still some lag when collecting checks while playing mm"):** some pickups still
+asked for several MM saves in a row. An OOT heart item found in Termina with shared health on is counted in MM
+(`DeliverCrossItem` → `MM_GrantCrossItem`, which saves), and `SendForeignCheck` then saved again for the check
+itself. A reconcile pass saved each game once per family it raised. Both are now batches
+(`SaveManager_ComboSaveBatchBegin`/`End` and the `ComboSaveBatch` guard in MM; `Combo_PersistOOT` in
+`soh/soh/OTRGlobals.cpp`). Inside a batch a save request only marks a save as owed, and the end of the outermost batch
+writes it once, with the state as it is then. `SendForeignCheck` is one batch. The launcher brackets each
+`Combo_SharedReconcileNow` pass with `MM_`/`SOH_ComboSaveBatchBegin`/`End` (optional symbols), and MM's batch ends
+first. MM writes on the calling thread, and OOT's save runs on OOT's save thread and holds the container meanwhile.
+Each batch ends within the same call, so no write moves to a later frame or another thread. The reconcile itself still
+runs at the end of the frame, never from inside a give.
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.

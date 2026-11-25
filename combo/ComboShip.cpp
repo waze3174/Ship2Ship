@@ -54,6 +54,7 @@
 #include "ComboSettingsImport.h"
 #include "ComboConfigTree.h"
 #include "ComboPresetScope.h"
+#include "ComboSaveTiming.h"
 
 // Surfaces the real exception behind a silent terminate()/exit(3). With the shared dynamic
 // CRT, exceptions thrown in soh.dll/2ship.dll propagate across the DLL boundary to here.
@@ -363,6 +364,10 @@ static FnDumpData SOH_GetComboSpoilerPath = nullptr;
 typedef void (*FnSetComboSaveIO)(ComboRando::FnComboReadSave, ComboRando::FnComboWriteSave);
 static FnSetComboSaveIO SOH_SetComboSaveIO = nullptr;
 static FnSetComboSaveIO MM_SetComboSaveIO = nullptr;
+// Optional: the getter behind each game's save-timing log line (ComboSaveTiming::ContainerIoStats).
+typedef void (*FnSetContainerIoStatsGetter)(ComboSaveTiming::FnGetContainerIoStats);
+static FnSetContainerIoStatsGetter SOH_SetContainerIoStatsGetter = nullptr;
+static FnSetContainerIoStatsGetter MM_SetContainerIoStatsGetter = nullptr;
 static FnTakeStr SOH_LoadComboRando = nullptr;
 static FnTakeStr MM_LoadComboRando = nullptr;
 // OOT file-select "copy file": whole-container copy (both games + rando) through the launcher.
@@ -577,6 +582,11 @@ static std::map<int, nlohmann::json> g_containerCache;
 static std::vector<int> g_evictedSlots;
 // Lets the per-frame poll skip g_containerMutex, which a save write on another thread can hold for tens of ms.
 static std::atomic<bool> g_hasEvictedSlots{ false };
+// What the last container read or write on this thread cost; each game reads it back for its save-timing log line.
+static thread_local ComboSaveTiming::ContainerIoStats tl_containerIoStats;
+static const ComboSaveTiming::ContainerIoStats* Combo_GetContainerIoStats() {
+    return &tl_containerIoStats;
+}
 
 static int g_foregroundGame = 0; // ComboRando::GAME_OOT at startup (shared health: only it writes combo.health)
 // Single place the foreground game changes, so every transition point notifies comboui consistently.
@@ -683,13 +693,21 @@ static void FlushContainer(int fileNum) {
             return;
         }
         it->second["comboRelease"] = COMBO_RELEASE_VERSION; // every write carries the current release
-        out << it->second.dump();
+        ComboSaveTiming::Stopwatch timer;
+        const std::string text = it->second.dump();
+        tl_containerIoStats.containerDumpMs = timer.Lap();
+        tl_containerIoStats.containerBytes = text.size();
+        out << text;
+        out.close();
+        tl_containerIoStats.fileWriteMs = timer.Lap();
     }
+    ComboSaveTiming::Stopwatch renameTimer;
     std::filesystem::rename(tmp, path, ec);
     if (ec) { // some filesystems won't replace-on-rename — remove then retry
         std::filesystem::remove(path, ec);
         std::filesystem::rename(tmp, path, ec);
     }
+    tl_containerIoStats.renameMs = renameTimer.Lap();
     if (ec) {
         std::cerr << "[ComboShip] ERROR: cannot commit save container " << path << " (" << ec.message()
                   << ") — THIS SLOT IS NOT BEING SAVED." << std::endl;
@@ -782,11 +800,16 @@ static const char* Combo_ReadGameSave(int game, int fileNum) {
     if (!ComboIsValidSlot(fileNum))
         return "";
     thread_local std::string buf;
+    tl_containerIoStats = {};
+    ComboSaveTiming::Stopwatch timer;
     std::lock_guard<std::mutex> lk(g_containerMutex);
+    tl_containerIoStats.lockWaitMs = timer.Lap();
     auto& c = LoadOrCreateContainer(fileNum);
     const char* key = (game == ComboRando::GAME_OOT) ? "oot" : "mm";
     auto it = c.find(key);
     buf = (it == c.end() || it->is_null()) ? std::string() : it->dump();
+    tl_containerIoStats.sectionDumpMs = timer.Lap();
+    tl_containerIoStats.sectionBytes = buf.size();
     if (FnShelfSet set = game == ComboRando::GAME_OOT ? SOH_BottleShelfSetState : MM_BottleShelfSetState) {
         set(ComboObjectOf(c)
                 .value("bottleShelf", nlohmann::json::object())
@@ -919,7 +942,10 @@ static void Combo_WriteGameSave(int game, int fileNum, const char* json) {
         }
         return;
     }
+    tl_containerIoStats = {};
+    ComboSaveTiming::Stopwatch timer;
     std::lock_guard<std::mutex> lk(g_containerMutex);
+    tl_containerIoStats.lockWaitMs = timer.Lap();
     auto& c = LoadOrCreateContainer(fileNum);
     const char* key = (game == ComboRando::GAME_OOT) ? "oot" : "mm";
     try {
@@ -931,6 +957,8 @@ static void Combo_WriteGameSave(int game, int fileNum, const char* json) {
                 c["combo"]["health"] = nlohmann::json::parse(get());
         }
     } catch (...) { return; }
+    tl_containerIoStats.parseMs = timer.Lap();
+    tl_containerIoStats.sectionBytes = std::strlen(json);
     FlushContainer(fileNum);
 }
 
@@ -1230,6 +1258,12 @@ static FnSetSharedChangedCb SOH_SetSharedChangedCb = nullptr;
 static FnSetSharedChangedCb MM_SetSharedChangedCb = nullptr;
 static FnSetSharedTickCb SOH_SetSharedTickCb = nullptr;
 static FnSetSharedTickCb MM_SetSharedTickCb = nullptr;
+// Optional: between Begin and End a game's reconcile saves only mark a save as owed, and End writes it once.
+typedef void (*FnSaveBatch)(void);
+static FnSaveBatch SOH_ComboSaveBatchBegin = nullptr;
+static FnSaveBatch SOH_ComboSaveBatchEnd = nullptr;
+static FnSaveBatch MM_ComboSaveBatchBegin = nullptr;
+static FnSaveBatch MM_ComboSaveBatchEnd = nullptr;
 // Shared-items mask of the LOADED slot (seed-bound, like g_goalHunt/g_startingGameMM). Absent key = 0.
 static uint32_t g_sharedMask = 0;
 static bool g_unifiedInventory = false; // owner ruling 2026-11-11: the loaded slot's seed shares every item
@@ -2086,6 +2120,21 @@ static void Combo_SharedReconcileNow() try {
         }
     } runningGuard;
     g_sharedReconcileRunning = true;
+    // One save per game for the whole pass, not one per family raised. Destroyed in reverse order, so MM writes
+    // first: its write runs on this thread, and OOT's (on OOT's save thread) would hold the container meanwhile.
+    struct SaveBatchGuard {
+        FnSaveBatch end;
+        SaveBatchGuard(FnSaveBatch begin, FnSaveBatch endFn) : end((begin != nullptr) ? endFn : nullptr) {
+            if (end != nullptr)
+                begin();
+        }
+        ~SaveBatchGuard() {
+            if (end != nullptr)
+                end();
+        }
+    };
+    const SaveBatchGuard ootSaves(SOH_ComboSaveBatchBegin, SOH_ComboSaveBatchEnd);
+    const SaveBatchGuard mmSaves(MM_ComboSaveBatchBegin, MM_ComboSaveBatchEnd);
     bool moved = false;
     for (int i = 0; i < ComboRando::SF_COUNT; ++i) {
         if (!(g_sharedMask & (1u << i)))
@@ -4061,6 +4110,10 @@ int main(int argc, char** argv) {
     MM_SetSharedChangedCb = (FnSetSharedChangedCb)GetSym(mmModule, "MM_SetSharedChangedCb");
     SOH_SetSharedTickCb = (FnSetSharedTickCb)GetSym(sohModule, "SOH_SetSharedTickCb");
     MM_SetSharedTickCb = (FnSetSharedTickCb)GetSym(mmModule, "MM_SetSharedTickCb");
+    SOH_ComboSaveBatchBegin = (FnSaveBatch)GetSym(sohModule, "SOH_ComboSaveBatchBegin");
+    SOH_ComboSaveBatchEnd = (FnSaveBatch)GetSym(sohModule, "SOH_ComboSaveBatchEnd");
+    MM_ComboSaveBatchBegin = (FnSaveBatch)GetSym(mmModule, "MM_ComboSaveBatchBegin");
+    MM_ComboSaveBatchEnd = (FnSaveBatch)GetSym(mmModule, "MM_ComboSaveBatchEnd");
 
     // Oracle exports
     Combo_SOH_Rando_Reset = (FnOracleVoid)GetSym(sohModule, "Combo_SOH_Rando_Reset");
@@ -4107,6 +4160,8 @@ int main(int argc, char** argv) {
     // Cross-game erase seam (issue #1)
     SOH_SetComboSaveIO = (FnSetComboSaveIO)GetSym(sohModule, "SOH_SetComboSaveIO");
     MM_SetComboSaveIO = (FnSetComboSaveIO)GetSym(mmModule, "MM_SetComboSaveIO");
+    SOH_SetContainerIoStatsGetter = (FnSetContainerIoStatsGetter)GetSym(sohModule, "SOH_SetContainerIoStatsGetter");
+    MM_SetContainerIoStatsGetter = (FnSetContainerIoStatsGetter)GetSym(mmModule, "MM_SetContainerIoStatsGetter");
     SOH_LoadComboRando = (FnTakeStr)GetSym(sohModule, "SOH_LoadComboRando");
     MM_LoadComboRando = (FnTakeStr)GetSym(mmModule, "MM_LoadComboRando");
     SOH_SetCopyContainer = (FnSetCopyContainer)GetSym(sohModule, "SOH_SetCopyContainer");
@@ -4468,6 +4523,10 @@ int main(int argc, char** argv) {
         SOH_SetComboSaveIO(&Combo_ReadGameSave, &Combo_WriteGameSave);
     if (MM_SetComboSaveIO)
         MM_SetComboSaveIO(&Combo_ReadGameSave, &Combo_WriteGameSave);
+    if (SOH_SetContainerIoStatsGetter)
+        SOH_SetContainerIoStatsGetter(&Combo_GetContainerIoStats);
+    if (MM_SetContainerIoStatsGetter)
+        MM_SetContainerIoStatsGetter(&Combo_GetContainerIoStats);
     if (SOH_SetCopyContainer)
         SOH_SetCopyContainer(&Combo_CopyContainer);
     // OOT owns the shared file-select; it polls for release-evicted slots and shows the outdated-save popup.

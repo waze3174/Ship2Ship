@@ -60,6 +60,10 @@ const ComboRando::ForeignItem* Rando::MiscBehavior::MM_LookupForeign(RandoCheckI
 // ComboShip: deliver a foreign-marked check's real item to its home game, toast, and persist the
 // save (caller sets the obtained flags). Exposed so the shop buy path can reuse it.
 void Rando::MiscBehavior::SendForeignCheck(RandoCheckId rc) {
+    // The delivery can save MM itself (under shared health a heart is counted here, in MM), and this check's own save
+    // follows below: the batch turns them into one write, made when it closes at the end of this function.
+    ComboSaveBatch saveBatch;
+    ComboSaveTiming::Stopwatch timer;
     int slot = gSaveContext.fileNum;
     if (g_mmForeignGen != g_comboRandoGen) {
         g_mmForeignMap = ComboRando::LoadForeignForGame(slot, ComboRando::GAME_MM);
@@ -74,6 +78,10 @@ void Rando::MiscBehavior::SendForeignCheck(RandoCheckId rc) {
         // share with networked teammates. Replaces the old JSON mailbox + per-frame drain.
         if (gMMComboCrossDeliver)
             gMMComboCrossDeliver((int)it->second.itemGame, it->second.itemName.c_str(), checkName.c_str());
+        if (CVarGetInteger(ComboSaveTiming::kCVar, 0)) {
+            SPDLOG_INFO("[ComboShip] save timing: MM handed '{}' to the launcher in {:.1f} ms", it->second.itemName,
+                        timer.Lap());
+        }
         MMAnchor_BroadcastCrossItem((int)it->second.itemGame, it->second.itemName.c_str(), checkName.c_str());
         // A trap latches under its disguise's tier, not its own; never name a trap's toast with it.
         const char* resolved = it->second.trap ? nullptr : Rando::ComboForeignLatchedName(rc);
