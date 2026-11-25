@@ -33,6 +33,11 @@ bool IsRemaining(const RandoSaveCheck& check) {
     return check.shuffled && !check.obtained && !check.eligible;
 }
 
+// A remaining check holding an Ocarina of Time item: what a release of Ocarina of Time collects from MM.
+bool IsRemainingForeign(const RandoSaveCheck& check) {
+    return IsRemaining(check) && check.randoItemId == RI_COMBO_FOREIGN;
+}
+
 void MarkCollected(RandoSaveCheck& check) {
     check.obtained = true;
     check.cycleObtained = true;
@@ -82,30 +87,33 @@ void ReleaseCheck(RandoCheckId rc) {
     ReleaseNative(rc, placed);
 }
 
+// Releases every check `wanted` picks, with one container write for the lot (ComboSaveBatch). Returns how many.
+int ReleaseWhere(bool (*wanted)(const RandoSaveCheck&)) {
+    ComboSaveBatch saveBatch;
+    int released = 0;
+    for (const auto& [rc, _] : Rando::StaticData::Checks) {
+        if (!wanted(RANDO_SAVE_CHECKS[rc])) {
+            continue;
+        }
+        ReleaseCheck(rc);
+        ++released;
+    }
+    // The batch writes only a save something asked for, and a trap or an Ocarina of Time item asks for none.
+    if (released > 0) {
+        SaveManager_SaveCurrentForCombo();
+    }
+    return released;
+}
+
 } // namespace
 
 // Releases every uncollected shuffled MM check to the player. Returns how many, or ComboRelease::kCannotRelease when no
-// rando save is loaded. One container write for the lot (ComboSaveBatch). The tracker reads RANDO_SAVE_CHECKS live, so
-// it shows them collected on its next frame.
+// rando save is loaded. The tracker reads RANDO_SAVE_CHECKS live, so it shows them collected on its next frame.
 extern "C" COMBO_EXPORT int MM_ReleaseRemainingChecks(void) try {
     if (!IS_RANDO || gSaveContext.fileNum == 0xFF) {
         return ComboRelease::kCannotRelease;
     }
-    int released = 0;
-    {
-        ComboSaveBatch saveBatch;
-        for (const auto& [rc, _] : Rando::StaticData::Checks) {
-            if (!IsRemaining(RANDO_SAVE_CHECKS[rc])) {
-                continue;
-            }
-            ReleaseCheck(rc);
-            ++released;
-        }
-        // The batch writes only a save something asked for, and a trap or an Ocarina of Time item asks for none.
-        if (released > 0) {
-            SaveManager_SaveCurrentForCombo();
-        }
-    }
+    const int released = ReleaseWhere(IsRemaining);
     Notification::Emit({ .message = ComboRelease::ReleasedMessage(released), .suffix = ComboRelease::kMmName });
     SPDLOG_INFO("[ComboShip] MM_ReleaseRemainingChecks: released {} checks", released);
     return released;
@@ -114,6 +122,26 @@ extern "C" COMBO_EXPORT int MM_ReleaseRemainingChecks(void) try {
     return ComboRelease::kCannotRelease;
 } catch (...) {
     SPDLOG_ERROR("[ComboShip] MM_ReleaseRemainingChecks threw a non-std exception");
+    return ComboRelease::kCannotRelease;
+}
+
+// The collecting half of an Ocarina of Time release, as Archipelago collects a finished world's items from the other
+// worlds: every uncollected MM check holding an Ocarina of Time item is marked obtained and its item sent to OOT (a
+// trap to nobody), so MM's tracker counts it too. Silent. It runs on the played game's thread, usually OOT's with MM
+// dormant; the resident save is written as a dormant cross-grant's is. `fileNum` is the launcher's slot. Returns how
+// many checks, or ComboRelease::kCannotRelease when MM holds no rando save for that slot.
+extern "C" COMBO_EXPORT int MM_ReleaseForeignChecks(int fileNum) try {
+    if (!IS_RANDO || gSaveContext.fileNum != fileNum) {
+        return ComboRelease::kCannotRelease;
+    }
+    const int collected = ReleaseWhere(IsRemainingForeign);
+    SPDLOG_INFO("[ComboShip] MM_ReleaseForeignChecks: collected {} MM checks holding Ocarina of Time items", collected);
+    return collected;
+} catch (const std::exception& e) {
+    SPDLOG_ERROR("[ComboShip] MM_ReleaseForeignChecks threw: {}", e.what());
+    return ComboRelease::kCannotRelease;
+} catch (...) {
+    SPDLOG_ERROR("[ComboShip] MM_ReleaseForeignChecks threw a non-std exception");
     return ComboRelease::kCannotRelease;
 }
 

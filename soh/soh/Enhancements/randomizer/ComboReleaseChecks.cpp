@@ -202,11 +202,18 @@ bool ReleaseCheck(RandomizerCheck rc) {
     return worldPickupSpent;
 }
 
-std::vector<RandomizerCheck> ReleaseAll() {
+// A remaining check holding a Majora's Mask item: what a release of Majora's Mask collects from OOT.
+bool IsRemainingForeign(RandomizerCheck rc) {
+    return IsRemaining(rc) &&
+           Rando::Context::GetInstance()->GetItemLocation(rc)->GetPlacedRandomizerGet() == RG_COMBO_FOREIGN;
+}
+
+// Releases every check `wanted` picks and returns them.
+std::vector<RandomizerCheck> ReleaseWhere(bool (*wanted)(RandomizerCheck)) {
     std::vector<RandomizerCheck> released;
     for (const Rando::Location& location : Rando::StaticData::GetLocationTable()) {
         const RandomizerCheck rc = location.GetRandomizerCheck();
-        if (!IsRemaining(rc)) {
+        if (!wanted(rc)) {
             continue;
         }
         if (!ReleaseCheck(rc)) {
@@ -254,7 +261,7 @@ extern "C" COMBO_EXPORT int SOH_ReleaseRemainingChecks(void) try {
     int shownRows = 0;
     {
         SaveBatch saveBatch;
-        released = ReleaseAll();
+        released = ReleaseWhere(IsRemaining);
         shownRows = MarkShownRowsCollected();
         CheckTracker::SpoilAreasFromChecks(released);
         CheckTracker::RecalculateAllAreaTotals();
@@ -274,6 +281,37 @@ extern "C" COMBO_EXPORT int SOH_ReleaseRemainingChecks(void) try {
     return ComboRelease::kCannotRelease;
 } catch (...) {
     SPDLOG_ERROR("[ComboShip] SOH_ReleaseRemainingChecks threw a non-std exception");
+    return ComboRelease::kCannotRelease;
+}
+
+// The collecting half of a Majora's Mask release, as Archipelago collects a finished world's items from the other
+// worlds: every uncollected OOT check holding a Majora's Mask item is marked collected, its world pickup spent and its
+// item sent to MM (a trap to nobody), so OOT's tracker counts it too. Silent. It runs on the played game's thread,
+// usually MM's with OOT dormant: with no play state only the saved flags are set, and the save is written as a dormant
+// cross-grant's is. `fileNum` is the launcher's slot. Returns how many checks, or ComboRelease::kCannotRelease when OOT
+// holds no rando save for that slot.
+extern "C" COMBO_EXPORT int SOH_ReleaseForeignChecks(int fileNum) try {
+    if (!IS_RANDO || gSaveContext.fileNum != fileNum) {
+        return ComboRelease::kCannotRelease;
+    }
+    std::vector<RandomizerCheck> collected;
+    {
+        SaveBatch saveBatch;
+        collected = ReleaseWhere(IsRemainingForeign);
+        if (!collected.empty()) {
+            CheckTracker::RecalculateAllAreaTotals();
+            CheckTracker::RecalculateAvailableChecks();
+            Combo_PersistOOT();
+        }
+    }
+    const int count = static_cast<int>(collected.size());
+    SPDLOG_INFO("[ComboShip] SOH_ReleaseForeignChecks: collected {} OOT checks holding Majora's Mask items", count);
+    return count;
+} catch (const std::exception& e) {
+    SPDLOG_ERROR("[ComboShip] SOH_ReleaseForeignChecks threw: {}", e.what());
+    return ComboRelease::kCannotRelease;
+} catch (...) {
+    SPDLOG_ERROR("[ComboShip] SOH_ReleaseForeignChecks threw a non-std exception");
     return ComboRelease::kCannotRelease;
 }
 

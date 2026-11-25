@@ -1324,9 +1324,17 @@ static int g_comboCompletionSlot = -1;
 typedef int (*FnReleaseChecks)(void);
 static FnReleaseChecks SOH_ReleaseRemainingChecks = nullptr;
 static FnReleaseChecks MM_ReleaseRemainingChecks = nullptr;
+// The collecting half: each game's checks holding the other game's items (argument: the slot).
+typedef int (*FnReleaseForeignChecks)(int);
+static FnReleaseForeignChecks SOH_ReleaseForeignChecks = nullptr;
+static FnReleaseForeignChecks MM_ReleaseForeignChecks = nullptr;
 static int (*SOH_ComboReleaseOnBossKillEnabled)(void) = nullptr;
 static bool g_comboReleased[2] = { false, false };
 static std::atomic<bool> g_releasePending[2] = {};
+// A released game whose collecting half (Combo_CollectReleasedGame) is still to run for the loaded slot: set by the
+// release, and at slot load for a game released before (by a build without the collecting half, or with the other
+// game's save absent). Repeating it is cheap: the collector finds nothing left.
+static std::atomic<bool> g_collectPending[2] = {};
 
 // ComboShip (#136): Triforce Hunt is ONE combined goal — the launcher pushes it into both DLLs, sums
 // both counters on every piece grant/merge, and dispatches the ending itself.
@@ -2039,6 +2047,7 @@ static void LoadComboCompletion(int slot) {
     g_comboCompletion[0] = g_comboCompletion[1] = false;
     g_comboReleased[0] = g_comboReleased[1] = false;
     g_releasePending[0] = g_releasePending[1] = false;
+    g_collectPending[0] = g_collectPending[1] = false;
     g_comboCompletionSlot = slot;
     g_comboTriforceDone = false;
     g_goalHunt = false;
@@ -2063,6 +2072,8 @@ static void LoadComboCompletion(int slot) {
         const auto released = combo.value(ComboRelease::kReleasedContainerKey, nlohmann::json::object());
         g_comboReleased[0] = released.value(ComboRando::GameIdToKey(ComboRando::GAME_OOT), false);
         g_comboReleased[1] = released.value(ComboRando::GameIdToKey(ComboRando::GAME_MM), false);
+        g_collectPending[0] = g_comboReleased[0];
+        g_collectPending[1] = g_comboReleased[1];
         // The goal is seed-bound: it rides the slot's baked combo.rando, not the live menu CVars.
         auto rando = combo.value("rando", nlohmann::json::object());
         auto goal = rando.value("goal", nlohmann::json::object());
@@ -2236,6 +2247,18 @@ static FnReleaseChecks Combo_ReleaseGiver(int game) {
     return nullptr;
 }
 
+// The OTHER game's collector for a release of `game`: it takes `game`'s items out of its own checks. A one-game seed
+// has no other game.
+static FnReleaseForeignChecks Combo_ReleaseCollector(int game) {
+    if (ComboRando::ComboGamesSolo(g_comboGames))
+        return nullptr;
+    if (game == 0)
+        return MM_ReleaseForeignChecks;
+    if (game == 1)
+        return SOH_ReleaseForeignChecks;
+    return nullptr;
+}
+
 static void SaveComboReleased(int slot) {
     std::lock_guard<std::mutex> lk(g_containerMutex);
     auto& c = LoadOrCreateContainer(slot);
@@ -2248,7 +2271,8 @@ static void SaveComboReleased(int slot) {
 // Releases a game's uncollected checks to the player, once per slot (combo/ComboRelease.h). The one entry point, for a
 // boss kill today and for Archipelago later; AP also has to send the released locations to its server. `game` is being
 // played (GameId convention, 0 = OOT, 1 = MM): its giver runs on this thread, and the items for the other game go
-// through the cross-game delivery. Returns how many checks were released, or ComboRelease::kCannotRelease.
+// through the cross-game delivery. The collecting half follows on the next tick (Combo_DrainReleaseCollect). Returns
+// how many checks were released, or ComboRelease::kCannotRelease.
 static int Combo_ReleaseGameChecks(int game, const char* reason) try {
     const FnReleaseChecks release = Combo_ReleaseGiver(game);
     if (release == nullptr || !ComboIsValidSlot(g_comboCompletionSlot) || g_comboReleased[game] ||
@@ -2264,6 +2288,7 @@ static int Combo_ReleaseGameChecks(int game, const char* reason) try {
     if (released == ComboRelease::kCannotRelease)
         return released;
     g_comboReleased[game] = true;
+    g_collectPending[game] = true;
     SaveComboReleased(g_comboCompletionSlot);
     std::cout << "[ComboShip] Released " << released << " checks of game=" << game << " slot=" << g_comboCompletionSlot
               << " (" << reason << ")" << std::endl;
@@ -2288,6 +2313,54 @@ static void Combo_DrainBossRelease() {
         return;
     g_releasePending[game] = false;
     Combo_ReleaseGameChecks(game, "final boss defeated");
+}
+
+// The collecting half of a release of `game` (combo/ComboRelease.h): as Archipelago collects a finished world's items,
+// the other game's checks that still hold `game`'s items are collected too, so both trackers count every check of the
+// released game. Silent. Returns how many checks, or ComboRelease::kCannotRelease.
+static int Combo_CollectReleasedGame(int game) try {
+    const FnReleaseForeignChecks collect = Combo_ReleaseCollector(game);
+    if (collect == nullptr)
+        return ComboRelease::kCannotRelease;
+    int collected = ComboRelease::kCannotRelease;
+    {
+        const SaveBatchGuard ootSaves(SOH_ComboSaveBatchBegin, SOH_ComboSaveBatchEnd);
+        const SaveBatchGuard mmSaves(MM_ComboSaveBatchBegin, MM_ComboSaveBatchEnd);
+        collected = collect(g_comboCompletionSlot);
+    }
+    if (collected == ComboRelease::kCannotRelease) {
+        std::cerr << "[ComboShip] Combo_CollectReleasedGame: the other game holds no rando save for slot "
+                  << g_comboCompletionSlot << "; its checks holding game=" << game << " items stay uncollected"
+                  << std::endl;
+        return collected;
+    }
+    // OOT's save-direct give pokes no Shared Items reconcile.
+    if (collected > 0)
+        g_sharedReconcilePending = true;
+    std::cout << "[ComboShip] Collected " << collected << " checks holding game=" << game
+              << " items from the other game, slot=" << g_comboCompletionSlot << std::endl;
+    return collected;
+} catch (const std::exception& e) {
+    std::cerr << "[ComboShip] Combo_CollectReleasedGame threw: " << e.what() << std::endl;
+    return ComboRelease::kCannotRelease;
+} catch (...) {
+    std::cerr << "[ComboShip] Combo_CollectReleasedGame threw a non-std exception" << std::endl;
+    return ComboRelease::kCannotRelease;
+}
+
+// Per-frame, on the played game's thread (Combo_SharedTick): runs the pending collecting halves once both games' saves
+// are resident. A one-game seed has nothing to collect.
+static void Combo_DrainReleaseCollect() {
+    if (ComboRando::ComboGamesSolo(g_comboGames)) {
+        g_collectPending[0] = g_collectPending[1] = false;
+        return;
+    }
+    if (g_comboCompletionSlot < 0 || g_MmSaveInMemorySlot != g_comboCompletionSlot)
+        return;
+    for (int game = 0; game < 2; ++game) {
+        if (g_collectPending[game].exchange(false))
+            Combo_CollectReleasedGame(game);
+    }
 }
 
 // Registered into both games: record THIS game's final-boss kill for its slot and return 1 iff BOTH
@@ -2421,6 +2494,7 @@ static void Combo_SharedReconcileNow() try {
 // Per-frame drain seam (SOH_/MM_SetSharedTickCb). Gated on both saves resident.
 static void Combo_SharedTick() try {
     Combo_DrainBossRelease();
+    Combo_DrainReleaseCollect();
     if (!g_sharedReconcilePending || g_sharedMask == 0)
         return;
     if (g_comboCompletionSlot < 0 || g_MmSaveInMemorySlot != g_comboCompletionSlot)
@@ -4411,6 +4485,8 @@ int main(int argc, char** argv) {
     SOH_ComboReleaseOnBossKillEnabled = (int (*)(void))GetSym(sohModule, "SOH_ComboReleaseOnBossKillEnabled");
     SOH_ReleaseRemainingChecks = (FnReleaseChecks)GetSym(sohModule, "SOH_ReleaseRemainingChecks");
     MM_ReleaseRemainingChecks = (FnReleaseChecks)GetSym(mmModule, "MM_ReleaseRemainingChecks");
+    SOH_ReleaseForeignChecks = (FnReleaseForeignChecks)GetSym(sohModule, "SOH_ReleaseForeignChecks");
+    MM_ReleaseForeignChecks = (FnReleaseForeignChecks)GetSym(mmModule, "MM_ReleaseForeignChecks");
     SOH_ComboHealthGetState = (FnShelfGet)GetSym(sohModule, "SOH_ComboHealthGetState");
     SOH_ComboHealthSetState = (FnShelfSet)GetSym(sohModule, "SOH_ComboHealthSetState");
     MM_ComboHealthGetState = (FnShelfGet)GetSym(mmModule, "MM_ComboHealthGetState");
