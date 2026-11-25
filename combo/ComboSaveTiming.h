@@ -148,7 +148,7 @@ inline std::string DescribeWrite(const ContainerIoStats& s) {
 // the exe/DLL boundary.
 struct ContainerWriterReport {
     int written = 0;   // container files the thread finished, including failed ones
-    int failed = 0;    // container writes that failed, on the thread or by the thread that saved (lastError: the last)
+    int failed = 0;    // container writes (or erases) that failed, on the thread or by the caller (lastError: the last)
     int replaced = 0;  // snapshots dropped unwritten: a newer snapshot or an erase of the same slot came first
     int maxQueued = 0; // most snapshots waiting or being written right after one hand-over
     // The finished write whose oldest change waited longest to be on disk, from its hand-over (or the hand-over of the
@@ -158,6 +158,13 @@ struct ContainerWriterReport {
     double slowestWaitMs = 0.0;   // of that wait, the time before the thread started on it
     ContainerIoStats slowestFile; // its open, file write, rename, size and kernel sample
     char lastError[192] = "";
+    // Fallbacks around the container files (ComboContainerWriter.h), on the thread or by the caller: writes whose
+    // rename over the container had to be retried, those of them that then removed the container first, and
+    // containers recovered from the temp file such a write left (lastNotice: what the last of these was).
+    int renameRetried = 0;
+    int removedFirst = 0;
+    int recovered = 0;
+    char lastNotice[192] = "";
 };
 
 // The launcher's per-frame entry, pushed into each game: takes the game's kSyncWritesCVar and fills the report.
@@ -169,7 +176,7 @@ inline ReportLevel WriterReportLevel(const ContainerWriterReport& r, bool timing
     if (r.failed > 0) {
         return ReportLevel::kError;
     }
-    if (r.maxHandoverToDiskMs >= kSlowWriteMs) {
+    if ((r.maxHandoverToDiskMs >= kSlowWriteMs) || (r.renameRetried > 0) || (r.recovered > 0)) {
         return ReportLevel::kWarn;
     }
     if (timingOn && ((r.written > 0) || (r.replaced > 0))) {
@@ -190,9 +197,16 @@ inline std::string DescribeWriterReport(const ContainerWriterReport& r) {
     if (r.failed > 0) {
         std::snprintf(failed, sizeof(failed), "; %d FAILED, last: %s", r.failed, r.lastError);
     }
-    char buf[640];
-    std::snprintf(buf, sizeof(buf), "save writer: %d written, %d replaced unwritten, at most %d queued%s%s", r.written,
-                  r.replaced, r.maxQueued, slowest, failed);
+    char fallbacks[320] = "";
+    if ((r.renameRetried > 0) || (r.recovered > 0)) {
+        std::snprintf(fallbacks, sizeof(fallbacks),
+                      "; %d rename(s) retried (%d removing the container first), %d recovered from the temp file, "
+                      "last: %s",
+                      r.renameRetried, r.removedFirst, r.recovered, r.lastNotice);
+    }
+    char buf[960];
+    std::snprintf(buf, sizeof(buf), "save writer: %d written, %d replaced unwritten, at most %d queued%s%s%s",
+                  r.written, r.replaced, r.maxQueued, slowest, failed, fallbacks);
     return buf;
 }
 

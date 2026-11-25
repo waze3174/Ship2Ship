@@ -19,7 +19,7 @@
 // - Every other disk step on a container waits for that slot's writes, called with g_containerMutex held so no new
 //   snapshot of the slot can arrive meanwhile: the erase drops the waiting snapshot and waits out the one being written
 //   (CancelAndWait), and reading a slot that is not in memory waits for both (WaitIdle), which also covers the
-//   corrupt/outdated-container renames that read can make.
+//   corrupt/outdated-container renames and the recovery from the temp file that read can make.
 // - A write that cannot go to the thread (the kill switch gCombo.Debug.SyncSaveWrites, a thread that could not start,
 //   or a writer already stopped at quit) is written by the caller, after CancelAndWait for its slot. The one write
 //   nobody makes: a slot the thread was still writing when the quit deadline left it behind (see Stop).
@@ -29,7 +29,13 @@
 // What a crash loses: the snapshots not yet on disk; normally the last 50-100 ms of saves, and while the disk is
 // stalled, as long as it stalls. Each snapshot is the whole container, so a lost snapshot takes both games' changes
 // with it: an OOT item and the MM check it came from are lost together, and the check can be collected again. The
-// container on disk is never torn; a write cut short leaves only the temp file, which nothing reads.
+// container on disk is never torn; a write cut short leaves only a partial temp file, which never parses, so nothing
+// uses it.
+//
+// A rename over the container that fails (on Windows, a scanner or sync tool holding one of the files) is retried for a
+// moment before the fallback that removes the container first. If the rename fails after that too, the slot is left in
+// its temp file, which was written whole before any rename; LoadOrCreateContainer recovers the slot from it while the
+// container is missing. An erase removes both files, so nothing of an erased slot can be recovered.
 
 #include <algorithm>
 #include <chrono>
@@ -59,8 +65,59 @@ inline double MsBetween(Clock::time_point from, Clock::time_point to) {
 struct FileWriteResult {
     bool ok = false;
     std::string error;
+    int renameRetries = 0;                // tries the rename over the container took beyond the first
+    bool removedFirst = false;            // it fell back to removing the container before renaming again
+    std::string notice;                   // what those retries and that fallback were, for the log
     ComboSaveTiming::ContainerIoStats io; // openMs, fileWriteMs, renameMs and containerBytes
 };
+
+// Something that holds a file for a moment (on Windows, a scanner or sync tool) makes a rename or remove of it fail.
+// Short retries wait that out; they are few, as the caller can hold g_containerMutex.
+inline constexpr int kHeldFileRetries = 5;
+inline constexpr auto kHeldFileRetryDelay = std::chrono::milliseconds(20);
+
+// After op(ec) failed, tries it again up to kHeldFileRetries times; returns the retries made. ec holds the last error.
+template <typename Op> inline int RetryWhileHeld(Op op, std::error_code& ec) {
+    int retries = 0;
+    while (ec && (retries < kHeldFileRetries)) {
+        std::this_thread::sleep_for(kHeldFileRetryDelay);
+        ++retries;
+        op(ec);
+    }
+    return retries;
+}
+
+inline std::filesystem::path TempPathOf(const std::filesystem::path& path) {
+    auto tmp = path;
+    tmp += ".temp";
+    return tmp;
+}
+
+// Removes a file, retrying while it is held. One that cannot be removed is emptied, so it can never be read back as a
+// container. Returns what went wrong, or "" (also when there was no file).
+inline std::string DiscardFile(const std::filesystem::path& file) {
+    const auto removeFile = [&](std::error_code& e) { std::filesystem::remove(file, e); };
+    std::error_code ec;
+    removeFile(ec);
+    RetryWhileHeld(removeFile, ec);
+    std::error_code existsEc;
+    if (!ec || (!std::filesystem::exists(file, existsEc) && !existsEc)) {
+        return ""; // removed, or gone anyway: never create the file by emptying it
+    }
+    // filename(), not string(): the folder name can be outside the Windows code page, and then string() throws.
+    std::string problem = "cannot remove " + file.filename().string() + " (" + ec.message() + ")";
+    std::ofstream emptied(file, std::ios::trunc | std::ios::binary);
+    problem += emptied.is_open() ? "; emptied it instead" : "; cannot empty it either, so it can be read back";
+    return problem;
+}
+
+// For an erase: removes the container and its temp file, so LoadOrCreateContainer can read back neither. Returns what
+// went wrong, or "".
+inline std::string DiscardContainerFiles(const std::filesystem::path& path) {
+    const std::string container = DiscardFile(path);
+    const std::string temp = DiscardFile(TempPathOf(path));
+    return container + ((!container.empty() && !temp.empty()) ? "; " : "") + temp;
+}
 
 // Writes the container text to path through path.temp and a rename over path, so the container is never torn.
 inline FileWriteResult WriteContainerFile(const std::filesystem::path& path, const std::string& text) {
@@ -69,8 +126,7 @@ inline FileWriteResult WriteContainerFile(const std::filesystem::path& path, con
     ComboSaveTiming::Stopwatch timer;
     std::error_code ec;
     std::filesystem::create_directories(path.parent_path(), ec);
-    auto tmp = path;
-    tmp += ".temp";
+    const auto tmp = TempPathOf(path);
     {
         std::ofstream out(tmp, std::ios::trunc | std::ios::binary);
         result.io.openMs = timer.Lap();
@@ -93,10 +149,34 @@ inline FileWriteResult WriteContainerFile(const std::filesystem::path& path, con
             return result;
         }
     }
-    std::filesystem::rename(tmp, path, ec);
-    if (ec) { // some filesystems won't replace-on-rename — remove then retry
-        std::filesystem::remove(path, ec);
-        std::filesystem::rename(tmp, path, ec);
+    const auto renameTemp = [&](std::error_code& e) { std::filesystem::rename(tmp, path, e); };
+    renameTemp(ec);
+    if (ec) {
+        const std::string firstError = ec.message();
+        result.renameRetries = RetryWhileHeld(renameTemp, ec);
+        // filename(), not string(): see DiscardFile.
+        result.notice = path.filename().string() + ": renaming the temp file over it failed (" + firstError + ")";
+        if (!ec) {
+            result.notice += ", then worked on retry " + std::to_string(result.renameRetries);
+        } else {
+            // Some filesystems won't rename over a file. Removing the container first can leave the slot only in the
+            // temp file, which is whole by now: LoadOrCreateContainer recovers it from there.
+            result.removedFirst = true;
+            std::error_code removeEc;
+            std::filesystem::remove(path, removeEc);
+            renameTemp(ec);
+            result.renameRetries += 1 + RetryWhileHeld(renameTemp, ec);
+            std::string outcome = "worked";
+            if (ec) {
+                outcome = removeEc ? "still failed, so the previous container stays"
+                                   : "still failed, so the slot is only in its .temp file until a save works";
+            }
+            result.notice += " " + std::to_string(kHeldFileRetries + 1) + " times; " +
+                             (removeEc ? "removing the container failed too (" + removeEc.message() + ")"
+                                       : std::string("removed the container")) +
+                             ", then the rename " + outcome;
+        }
+        std::cerr << "[ComboShip] WARNING: " << result.notice << std::endl;
     }
     result.io.renameMs = timer.Lap();
     if (ec) {
@@ -134,7 +214,7 @@ class Writer {
         }
         handover.accepted = true;
         handover.queued = UnwrittenLocked();
-        mReport.maxQueued = std::max(mReport.maxQueued, handover.queued);
+        mReport.maxQueued = (std::max)(mReport.maxQueued, handover.queued); // (): Windows.h may define max
         mWork.notify_one();
         return handover;
     }
@@ -152,10 +232,12 @@ class Writer {
         return mWritingSlot != slot;
     }
 
-    // Waits until the slot has nothing waiting or being written. Call with g_containerMutex held.
-    void WaitIdle(int slot) {
+    // Waits until the slot has nothing waiting or being written. Call with g_containerMutex held. Returns false when a
+    // thread left behind at a stop is still writing the slot, and so still owns its temp file.
+    bool WaitIdle(int slot) {
         std::unique_lock<std::mutex> lk(mMutex);
         mDone.wait(lk, [&] { return ((mPending.count(slot) == 0) && (mWritingSlot != slot)) || mDetached; });
+        return mWritingSlot != slot;
     }
 
     // Waits until every snapshot is on disk or the deadline passes; returns how many are still unwritten.
@@ -192,11 +274,22 @@ class Writer {
         return unwritten;
     }
 
-    // A write the caller made itself failed: report it with the thread's, so the game in play logs it.
-    void NoteCallerWriteFailed(const std::string& error) {
+    // The caller's own work on a container file is reported with the thread's, so the game in play logs it: a write it
+    // made itself, a write or erase that failed, a container it recovered from the temp file.
+    void NoteCallerWrite(const FileWriteResult& result) {
         std::lock_guard<std::mutex> lk(mMutex);
-        ++mReport.failed;
-        std::snprintf(mReport.lastError, sizeof(mReport.lastError), "%s", error.c_str());
+        NoteResultLocked(result);
+    }
+
+    void NoteCallerFailed(const std::string& error) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        NoteFailedLocked(error);
+    }
+
+    void NoteRecovered(const std::string& notice) {
+        std::lock_guard<std::mutex> lk(mMutex);
+        ++mReport.recovered;
+        std::snprintf(mReport.lastNotice, sizeof(mReport.lastNotice), "%s", notice.c_str());
     }
 
     // What the thread did since the previous call.
@@ -281,10 +374,7 @@ class Writer {
     void RecordLocked(int slot, Clock::time_point oldestHandover, Clock::time_point started, Clock::time_point done,
                       const FileWriteResult& result) {
         ++mReport.written;
-        if (!result.ok) {
-            ++mReport.failed;
-            std::snprintf(mReport.lastError, sizeof(mReport.lastError), "%s", result.error.c_str());
-        }
+        NoteResultLocked(result);
         const double handoverToDiskMs = MsBetween(oldestHandover, done);
         if ((mReport.slowestSlot < 0) || (handoverToDiskMs > mReport.maxHandoverToDiskMs)) {
             mReport.maxHandoverToDiskMs = handoverToDiskMs;
@@ -292,6 +382,26 @@ class Writer {
             mReport.slowestWaitMs = MsBetween(oldestHandover, started);
             mReport.slowestFile = result.io;
         }
+    }
+
+    void NoteResultLocked(const FileWriteResult& result) {
+        if (!result.ok) {
+            NoteFailedLocked(result.error);
+        }
+        if (result.renameRetries > 0) {
+            ++mReport.renameRetried;
+        }
+        if (result.removedFirst) {
+            ++mReport.removedFirst;
+        }
+        if (!result.notice.empty()) {
+            std::snprintf(mReport.lastNotice, sizeof(mReport.lastNotice), "%s", result.notice.c_str());
+        }
+    }
+
+    void NoteFailedLocked(const std::string& error) {
+        ++mReport.failed;
+        std::snprintf(mReport.lastError, sizeof(mReport.lastError), "%s", error.c_str());
     }
 
     std::mutex mMutex;
