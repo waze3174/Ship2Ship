@@ -767,9 +767,11 @@ void RegisterComboPauseHost() {
             return;
         }
         // OOT items in Termina: an OOT item with a Termina port stays itself (Player_ItemToItemAction runs OOT's
-        // item action for it), when Link is human and OOT's age rule allows it.
-        if ((Combo_MmOotItemAction(foreign) != PLAYER_IA_NONE) && (GET_PLAYER_FORM == PLAYER_FORM_HUMAN) &&
-            Combo_MmOotItemAgeOk(foreign)) {
+        // item action for it; Roc's Feather jumps in Player_ProcessItemButtons), when Link is human and OOT's age rule
+        // allows it.
+        const bool ported =
+            (Combo_MmOotItemAction(foreign) != PLAYER_IA_NONE) || (LiveOotItem(foreign) == COMBO_OOT_ITEM_ROCS_FEATHER);
+        if (ported && (GET_PLAYER_FORM == PLAYER_FORM_HUMAN) && Combo_MmOotItemAgeOk(foreign)) {
             return;
         }
         const int use = Combo_MmPauseUseItem(foreign);

@@ -30,6 +30,7 @@
 #include "soh/ShipInit.hpp"
 
 extern "C" {
+#include <soh_assets.h>
 #include "z64.h"
 #include "macros.h"
 #include "variables.h"
@@ -820,6 +821,8 @@ extern "C" COMBO_EXPORT const char* SOH_ComboPause_IconTex(int ootItem) {
 }
 
 extern "C" COMBO_EXPORT const char* SOH_ComboPause_NameTex(int ootItem) {
+    if (ootItem == ITEM_ROCS_FEATHER) // SoH's own plate (RocsFeather.cpp VB_DRAW_CUSTOM_ITEM_NAME)
+        return gRocsFeatherItemNameENGTex;
     if (ootItem < 0 || ootItem > ITEM_SWORD_KNIFE) // the item page and the equipment page's names
         return nullptr;
     return KaleidoScope_ComboItemNameTex(ootItem);

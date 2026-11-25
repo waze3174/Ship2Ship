@@ -23,6 +23,7 @@ struct PlayState;
 #define COMBO_OOT_ITEM_MASK_SKULL 0x25
 #define COMBO_OOT_ITEM_MASK_SPOOKY 0x26
 #define COMBO_OOT_ITEM_MASK_GERUDO 0x2A
+#define COMBO_OOT_ITEM_ROCS_FEATHER 0x9D // SoH's randomizer item, in OOT's Nayru's Love slot
 
 // The item action an OOT item (foreign id on an MM button) runs in Termina: one of PLAYER_IA_COMBO_OOT_* for an OOT
 // item with a Termina port, PLAYER_IA_NONE otherwise (masks with a Termina twin go through Combo_MmPauseUseItem).

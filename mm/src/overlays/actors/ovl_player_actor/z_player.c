@@ -74,6 +74,8 @@ s32 ComboOot_UseSpell(struct PlayState* play, struct Player* this, s32 itemActio
 s32 ComboOot_ActionHandlerSpell(struct Player* this, struct PlayState* play);
 void ComboOot_StartMode_FaroresWind(struct PlayState* play, struct Player* this);
 void ComboOot_PlayerInit(struct PlayState* play, struct Player* this);
+void ComboOot_UseRocsFeather(struct PlayState* play, struct Player* this);
+void ComboOot_UpdateRocsFeather(struct Player* this);
 void ComboOot_DebugTrace(struct Player* this, struct PlayState* play);
 s32 ComboOot_HammerSelectMwa(struct Player* this, s32* outMwa);
 struct AttackAnimInfo* ComboOot_MeleeInfo(struct Player* this, s32 mwa);
@@ -4116,6 +4118,11 @@ void Player_ProcessItemButtons(Player* this, PlayState* play) {
             if (Message_GetState(&play->msgCtx) == TEXT_STATE_NONE) {
                 Message_StartTextbox(play, 0xF7, NULL);
             }
+#ifdef COMBO_BUILD
+        } else if (Combo_MmOotItemOf(item) == COMBO_OOT_ITEM_ROCS_FEATHER) {
+            // ComboShip: OOT's Roc's Feather jumps instead of being taken out (SoH VB_CHANGE_HELD_ITEM_AND_USE_ITEM).
+            ComboOot_UseRocsFeather(play, this);
+#endif
         } else {
             this->heldItemButton = i;
             Player_UseItem(play, this, item);
@@ -13631,6 +13638,9 @@ void Player_Update(Actor* thisx, PlayState* play) {
 
     Player_UpdateCommon(this, play, &input);
 #ifdef COMBO_BUILD
+    if (this == GET_PLAYER(play)) {
+        ComboOot_UpdateRocsFeather(this); // SoH runs this on OnPlayerUpdate, at the end of Player_Update
+    }
     if (getenv("COMBO_DEBUG_FINS") != NULL) { // ComboShip debug: MM's Zora fins (upper action, boomerang, B)
         fprintf(stderr, "[ComboShip/MM] fins B %d upper %p act %p held %d mwa %d adc %d boom %p\n",
                 CHECK_BTN_ALL(input.cur.button, BTN_B), (void*)this->upperActionFunc, (void*)this->actionFunc,
