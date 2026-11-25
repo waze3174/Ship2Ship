@@ -3096,7 +3096,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
             if ((Combo_OotForm() == COMBO_FORM_HUMAN) && (this->actor.id == ACTOR_PLAYER)) {
                 const void* mmMask = Combo_PauseWornMmMaskDL();
                 if (mmMask != NULL) {
-                    if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_BUNNY) {
+                    if (Combo_PauseHeadMmMaskItem() == COMBO_MM_ITEM_MASK_BUNNY) {
                         Combo_DrawMmBunnyEars(play, this); // the ears' two matrices (segment 0x0B), as MM sets them
                     } else if (Combo_PauseWornMmMaskItem() == COMBO_MM_ITEM_MASK_GREAT_FAIRY) {
                         Combo_DrawMmGreatFairyHair(play, this); // the hair's six matrices (segment 0x0B)

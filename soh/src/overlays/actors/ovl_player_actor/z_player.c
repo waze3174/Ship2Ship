@@ -4367,6 +4367,15 @@ static void Combo_PlayerChangeAmmo(s32 ootItem, s32 n) {
 #endif
 
 #ifdef COMBO_BUILD
+// MM's sounds for a mask going on (CHANGE_ARMS) or off (TAKE_OUT_SHIELD), through MM's sfx player.
+static void Combo_PlayMaskSfx(Player* this, s32 on) {
+    const u16 maskSfx = on ? NA_SE_PL_CHANGE_ARMS : NA_SE_PL_TAKE_OUT_SHIELD;
+
+    if (!Combo_GuestPlaySfx(maskSfx)) {
+        func_808328EC(this, maskSfx);
+    }
+}
+
 // MM's mask branch of Player_UseItem for a wearable MM mask: on, or off when it is the one worn. Sound is the caller's.
 static void Combo_WearMmMask(Player* this, s32 item) {
     Combo_PauseToggleMmMask(item);
@@ -4452,8 +4461,12 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
         Combo_PauseLogUse(item, "-> OOT's action for the same item, on MM's bag");
     } else if (Combo_PauseIsForeign(item)) {
         const s32 comboForm = Combo_PauseForeignForm(item);
-        if (((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) &&
-            !Combo_WaterAllowsUse(this, comboForm == COMBO_FORM_ZORA)) {
+        if (Combo_PauseUsePersistentBunnyHood(item)) {
+            // 2S2H PersistentMasks.cpp VB_USE_ITEM_EQUIP_MASK: the hood's state flips, in any form; it is never worn
+            Combo_PlayMaskSfx(this, Combo_PauseBunnyHoodPersistent());
+            Combo_PauseLogUse(item, "Bunny Hood -> persistent state flipped");
+        } else if (((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) &&
+                   !Combo_WaterAllowsUse(this, comboForm == COMBO_FORM_ZORA)) {
             Sfx_PlaySfxCentered(NA_SE_SY_ERROR); // MM: only the Zora Mask works while swimming
             Combo_PauseLogUse(item, "mask refused in water (MM: Zora Mask only)");
             return;
@@ -4470,13 +4483,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
             // MM Player_UseItem "Handle wearable masks": on at once with CHANGE_ARMS, off with TAKE_OUT_SHIELD (MM's
             // samples through MM's sfx player).
             Combo_WearMmMask(this, item);
-            {
-                const u16 maskSfx =
-                    (Combo_PauseWornMmMaskItem() >= 0) ? NA_SE_PL_CHANGE_ARMS : NA_SE_PL_TAKE_OUT_SHIELD;
-                if (!Combo_GuestPlaySfx(maskSfx)) {
-                    func_808328EC(this, maskSfx);
-                }
-            }
+            Combo_PlayMaskSfx(this, Combo_PauseWornMmMaskItem() >= 0);
             Combo_PauseLogUse(item, (Combo_PauseWornMmMaskItem() >= 0) ? "MM mask -> worn (MM model)"
                                                                        : "MM mask -> taken off");
         } else if ((Combo_OotForm() == COMBO_FORM_HUMAN) &&
@@ -10544,7 +10551,7 @@ void Player_Action_80842180(Player* this, PlayState* play) {
 
         if (!func_8083C484(this, &speedTarget, &yawTarget)) {
 #ifdef COMBO_BUILD
-            if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BUNNY)) {
+            if (Combo_MmMaskWorn(COMBO_MM_ITEM_MASK_BUNNY) || Combo_PauseBunnyHoodPersistent()) {
                 speedTarget *=
                     1.5f; // ComboShip: MM's Bunny Hood (MM Player_Action_13, VB_CONSIDER_BUNNY_HOOD_EQUIPPED)
             }

@@ -215,6 +215,8 @@ int sWornForeignId = 0;          // its foreign id (the button it was used from 
 bool sWornWithoutButton = false; // 2S2H Easy Mask Equip: worn from the pause menu, on no button
 int sEasyEquipItem = ITEM_NONE;  // 2S2H Easy Mask Equip: the foreign id picked in the pause menu, used once it closes
 constexpr const char* kEasyMaskEquipCVar = "gEnhancements.Masks.EasyMaskEquip";
+constexpr const char* kPersistentBunnyHoodCVar = "gEnhancements.Masks.PersistentBunnyHood.Enabled";
+bool sPersistentBunnyHood = false; // 2S2H Persistent Bunny Hood: the hood's state, kept for the session
 
 int LiveMmItem(int foreignId) {
     const int s = ComboPause_OotDecode(foreignId);
@@ -508,8 +510,30 @@ extern "C" int Combo_ChateauActive(void) {
     return sChateau;
 }
 
+// 2S2H's "Persistent Bunny Hood" (mm/2s2h/Enhancements/Masks/PersistentMasks.cpp, MM's own CVar): using the hood flips
+// a state instead of wearing it. The state outlives buttons, forms and scenes, and keeps the hood's speed.
+extern "C" int Combo_PauseBunnyHoodPersistent(void) {
+    return sPersistentBunnyHood && CVarGetInteger(kPersistentBunnyHoodCVar, 0);
+}
+
+extern "C" int Combo_PauseUsePersistentBunnyHood(int item) {
+    if (!CVarGetInteger(kPersistentBunnyHoodCVar, 0) || (LiveMmItem(item) != MM_ITEM_MASK_BUNNY)) {
+        return 0;
+    }
+    sPersistentBunnyHood = !sPersistentBunnyHood;
+    return 1;
+}
+
+// The MM mask drawn and sped up on Link's head: the one worn, else the persistent hood.
+extern "C" int Combo_PauseHeadMmMaskItem(void) {
+    if (sWornMmMask >= 0) {
+        return sWornMmMask;
+    }
+    return Combo_PauseBunnyHoodPersistent() ? MM_ITEM_MASK_BUNNY : -1;
+}
+
 extern "C" int Combo_MmMaskIs(int mmItem) {
-    return (sWornMmMask == mmItem) && (Combo_OotForm() == COMBO_FORM_HUMAN);
+    return (Combo_PauseHeadMmMaskItem() == mmItem) && (Combo_OotForm() == COMBO_FORM_HUMAN);
 }
 
 // ---- MM's B-button masks in Hyrule ------------------------------------------------------------------------------
@@ -564,6 +588,10 @@ extern "C" int Combo_BlastMaskCooldown(void) {
 // an MM mask in the pause menu picks it to go on, or come off, without a button; the pick is used once the menu closes
 // (Combo_PauseTakeEasyEquip), by the rules of any use. A second A on the same mask cancels. Returns 1 when A was taken.
 extern "C" int Combo_PauseMaskAPress(int item) {
+    if (Combo_PauseUsePersistentBunnyHood(item)) {
+        Sfx_PlaySfxCentered(Combo_PauseBunnyHoodPersistent() ? NA_SE_SY_CAMERA_ZOOM_DOWN : NA_SE_SY_CAMERA_ZOOM_UP);
+        return 1;
+    }
     if (!CVarGetInteger(kEasyMaskEquipCVar, 0) || !Combo_PauseIsForeignMask(item)) {
         return 0;
     }
@@ -581,6 +609,16 @@ extern "C" int Combo_PauseMaskAPress(int item) {
 
 extern "C" int Combo_PauseWornWithoutButtonItem(void) {
     return (sWornMmMask >= 0) && sWornWithoutButton ? sWornForeignId : ITEM_NONE;
+}
+
+extern "C" int Combo_PausePersistentBunnyHoodItem(void) {
+    for (int slot = 0; slot < 24; slot++) {
+        const int item = Combo_PauseSlotItem(slot);
+        if (Combo_PauseBunnyHoodPersistent() && (item != ITEM_NONE) && (LiveMmItem(item) == MM_ITEM_MASK_BUNNY)) {
+            return item;
+        }
+    }
+    return ITEM_NONE;
 }
 
 extern "C" int Combo_PauseTakeEasyEquip(void) {
@@ -847,15 +885,21 @@ extern "C" void Combo_PauseClearMmMask(void) {
 }
 
 extern "C" const void* Combo_PauseWornMmMaskDL(void) {
-    if (sWornMmMask < 0 || !MmResolved())
+    if (!MmResolved())
         return nullptr;
-    // OOT's rule for its own masks: a mask comes off once it is on no button. 2S2H's Easy Mask Equip wears one on none.
-    const bool held = sWornWithoutButton ? CVarGetInteger(kEasyMaskEquipCVar, 0) : Combo_PauseOnButton(sWornForeignId);
-    if (!held || LiveMmItem(sWornForeignId) != sWornMmMask) {
-        Combo_PauseClearMmMask();
-        return nullptr;
+    if (sWornMmMask >= 0) {
+        // OOT's rule for its own masks: a mask comes off once it is on no button. 2S2H's Easy Mask Equip wears one on
+        // none.
+        const bool held =
+            sWornWithoutButton ? CVarGetInteger(kEasyMaskEquipCVar, 0) : Combo_PauseOnButton(sWornForeignId);
+        if (!held || LiveMmItem(sWornForeignId) != sWornMmMask) {
+            Combo_PauseClearMmMask();
+        }
     }
-    const char* dl = sMmMaskDL(sWornMmMask);
+    const int head = Combo_PauseHeadMmMaskItem();
+    if (head < 0)
+        return nullptr;
+    const char* dl = sMmMaskDL(head);
     if (dl == nullptr || strncmp(dl, "__OTR__", 7) != 0)
         return nullptr;
     return Combo_MmDL(dl + 7);

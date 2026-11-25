@@ -20,8 +20,8 @@ Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, void** textures); //
 
 #define COMBO_GRID_X(slot) (-96 + ((slot) % 6) * 32 + 2)
 #define COMBO_GRID_Y(pauseCtx, slot) (58 - ((slot) / 6) * 32 + (pauseCtx)->offsetY - 2)
-// One outline quad per button (B has none), one for the mask worn without a button.
-#define COMBO_OUTLINE_QUADS ARRAY_COUNT(gSaveContext.equips.buttonItems)
+// One outline quad per button (B has none), one for the mask worn without a button, one for the persistent hood.
+#define COMBO_OUTLINE_QUADS (ARRAY_COUNT(gSaveContext.equips.buttonItems) + 1)
 
 static void Combo_SetQuad(Vtx* v, s16 x, s16 y, s16 w, s16 h, s16 texW, s16 texH) {
     s32 i;
@@ -312,6 +312,10 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
     // 2S2H's Easy Mask Equip: the mask worn from this menu sits on no button, and gets the same outline.
     Combo_DrawSlotOutline(pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems) - 1,
                           Combo_PauseWornWithoutButtonItem());
+    // 2S2H's Persistent Bunny Hood: its state shows as a blue outline (PersistentMasks.cpp).
+    gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 100, 200, 255, pauseCtx->alpha);
+    Combo_DrawSlotOutline(pauseCtx, extra, ARRAY_COUNT(gSaveContext.equips.buttonItems),
+                          Combo_PausePersistentBunnyHoodItem());
 
     gDPPipeSync(POLY_OPA_DISP++);
     gDPSetCombineMode(POLY_OPA_DISP++, G_CC_MODULATEIA_PRIM, G_CC_MODULATEIA_PRIM);

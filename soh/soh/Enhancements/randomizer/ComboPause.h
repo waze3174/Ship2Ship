@@ -60,6 +60,12 @@ int Combo_PauseIsForeignMask(int item);
 // from Combo_PauseTakeEasyEquip (ITEM_NONE for none). Combo_PauseEasyEquipPending only looks.
 int Combo_PauseMaskAPress(int item);
 int Combo_PauseTakeEasyEquip(void);
+// 2S2H's Persistent Bunny Hood: Combo_PauseUsePersistentBunnyHood flips the state when `item` is the hood (1 = it was),
+// the state is Combo_PauseBunnyHoodPersistent, and Combo_PausePersistentBunnyHoodItem is the hood's foreign id here.
+int Combo_PauseUsePersistentBunnyHood(int item);
+int Combo_PauseBunnyHoodPersistent(void);
+int Combo_PausePersistentBunnyHoodItem(void);
+int Combo_PauseHeadMmMaskItem(void); // the MM mask on Link's head: the one worn, else the persistent hood, -1 for none
 int Combo_PauseWornWithoutButtonItem(void); // the foreign id of the MM mask worn on no button, ITEM_NONE for none
 int Combo_PauseEasyEquipPending(void);
 int Combo_PauseIsForeignWearableMask(int item);   // an MM mask worn on the head (not a form's, not the Giant's)
