@@ -296,7 +296,8 @@ section and container size) and hands each game a getter (`SOH_`/`MM_SetContaine
 appear in the game's own line (2026-11-25). Also logged: the time MM takes to hand a foreign item to the launcher
 (`SendForeignCheck`), a line when one write stands for several save requests (see rando.md, "One write per pickup"),
 and every MM game frame of 100 ms to 2 s, with the live saves asked for and written since the previous frame and the
-reconcile's time, so a hitch without a save shows up too.
+reconcile's time, so a hitch without a save shows up too. `gCombo.Debug.MmSaveFullRead` switches MM's live save back
+to reading its whole section, to time it against the smaller read (rando.md, "Smaller read for the live MM save").
 `Combo_ReadGameSave` takes the container's `combo` object by reference (`ComboObjectOf`): it holds the baked seed,
 and it was deep-copied once or twice on every save read (twice for a dormant MM save).
 

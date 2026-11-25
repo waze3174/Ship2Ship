@@ -57,6 +57,14 @@ void SaveManager_SetContainerIoStatsGetter(ComboSaveTiming::FnGetContainerIoStat
     gComboContainerIoStats = get;
 }
 
+// ComboShip: the smaller read for the live save (see SaveManager_ReadForLiveCurrentSave); unset -> the whole section.
+static ComboRando::FnComboReadSaveForLiveWrite gComboReadGameSaveForLiveWrite = nullptr;
+void SaveManager_SetComboLiveWriteRead(ComboRando::FnComboReadSaveForLiveWrite read) {
+    gComboReadGameSaveForLiveWrite = read;
+}
+// A/B switch: 1 makes the live save read its whole stored section again, so one build can time both reads.
+static constexpr const char* kComboDebugMmSaveFullRead = "gCombo.Debug.MmSaveFullRead";
+
 // ComboShip: classify a save filename. Returns the 1-based slot N for a "file{N}.json" (main or
 // backup), 0 otherwise; isBackup/isGlobal flag the non-main forms that stay on disk.
 static int SaveManager_ClassifySaveFile(const std::filesystem::path& fileName, bool& isBackup, bool& isGlobal) {
@@ -243,6 +251,34 @@ static int SaveManager_ReadSaveFileForLiveWrite(const std::filesystem::path& fil
 // whether the blob is still current (refresh it) or has been overtaken by live state (drop it).
 extern "C" int gComboOwlBlobSlot = -1;
 
+// ComboShip: the live save's read. It overwrites newCycleSave.save and the owl blob, so the launcher leaves both out
+// (Combo_ReadGameSaveForLiveWrite) and keeps only the blob fields carried over, when gSaveContext descends from the
+// blob: the document built from it is the one the whole section gives. A section of an older version is read whole,
+// since its migrations work on the whole saves. Same return codes as SaveManager_ReadSaveFile.
+static int SaveManager_ReadForLiveCurrentSave(const std::filesystem::path& fileName, int mmFileNum, nlohmann::json& j) {
+    if (gComboReadGameSaveForLiveWrite != nullptr && !CVarGetInteger(kComboDebugMmSaveFullRead, 0)) {
+        {
+            LiveBottleShelfGuard liveShelf;
+            const char* section = gComboReadGameSaveForLiveWrite(ComboRando::GAME_MM, mmFileNum - 1,
+                                                                 (gComboOwlBlobSlot == mmFileNum) ? 1 : 0);
+            if (section == nullptr || section[0] == '\0') {
+                return -1;
+            }
+            try {
+                j = nlohmann::json::parse(section);
+            } catch (...) {
+                SPDLOG_ERROR("[ComboShip] Failed to parse MM container section for slot {}", mmFileNum);
+                return -2;
+            }
+        }
+        auto version = j.find("version");
+        if (version != j.end() && version->is_number_unsigned() && version->get<uint32_t>() == CURRENT_SAVE_VERSION) {
+            return 0;
+        }
+    }
+    return SaveManager_ReadSaveFileForLiveWrite(fileName, j);
+}
+
 // ComboShip: carry the OOT-entered file name over (same font codes in both games; anything
 // outside the shared 0x00-0x3F range, e.g. JP glyphs, becomes a space).
 static void SaveManager_CopyOotPlayerName(const unsigned char* ootName8) {
@@ -353,7 +389,7 @@ static void SaveManager_WriteCurrentSave() {
     ComboSaveTiming::Stopwatch timer;
     // ComboShip (#182): read-modify-write so an owl blob is either kept in step or dropped — never
     // left behind to shadow newer state. A read/migrate failure just starts from an empty document.
-    if (SaveManager_ReadSaveFileForLiveWrite(fileName, j) != 0 || SaveManager_MigrateSave(j) != 0) {
+    if (SaveManager_ReadForLiveCurrentSave(fileName, mmFileNum, j) != 0 || SaveManager_MigrateSave(j) != 0) {
         j = nlohmann::json{};
     }
     const double readMs = timer.Lap();

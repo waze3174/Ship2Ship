@@ -40,6 +40,9 @@ enum GameId : uint8_t { GAME_OOT = 0, GAME_MM = 1 };
 // 1-based mmFileNum via fileNum = mmFileNum - 1). Read returns the section JSON ("" if absent).
 typedef const char* (*FnComboReadSave)(int game, int fileNum);
 typedef void (*FnComboWriteSave)(int game, int fileNum, const char* json);
+// MM's live save only: the same read, minus the parts of the section that write replaces (pushed by
+// MM_SetComboLiveWriteRead; see Combo_ReadGameSaveForLiveWrite in combo/ComboShip.cpp).
+typedef const char* (*FnComboReadSaveForLiveWrite)(int game, int fileNum, int keepOwlBlobFields);
 
 // Sentinel item names written into each game's own APPLY payload (not the persisted spoiler) for a
 // foreign check; each game resolves its own sentinel to the RG_/RI_COMBO_FOREIGN item.

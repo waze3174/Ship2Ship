@@ -2368,6 +2368,32 @@ first. MM writes on the calling thread, and OOT's save runs on OOT's save thread
 Each batch ends within the same call, so no write moves to a later frame or another thread. The reconcile itself still
 runs at the end of the frame, never from inside a give.
 
+What the owner's v0.1.2 Deck log shows (2026-11-25; measured from log timestamps):
+- Back-to-back pickups in Termina are 2 game frames apart (100 ms) when nothing stalls.
+- After an MM item, the next pickup landed on the 50 ms frame grid 64 times out of 69.
+- After an OOT item found in Termina, it was off the grid 58 times out of 63. The stall was 74-171 ms (median 111,
+  n=14 back-to-back pairs). The only code between that log line ("MM delivered foreign item") and the end of the
+  pickup is `SaveManager_SaveCurrentForCombo`.
+- In v0.1.0, MM items stalled too (110 of 119 off the grid), from the bottle-reconcile save fixed above.
+
+**Smaller read for the live MM save (2026-11-25):** `SaveManager_SaveCurrentForCombo` read the whole stored section
+(the launcher dumped it, MM parsed it), and then overwrote the two big parts of it:
+- `newCycleSave.save` with the live save
+- `owlSave` with the live state, or dropped it
+
+The owner's slot loads from an owl save, so the section holds two whole saves.
+
+The live save now reads through `Combo_ReadGameSaveForLiveWrite` (pushed by the optional `MM_SetComboLiveWriteRead`).
+The launcher leaves both parts out and keeps only the three owl-blob fields the write carries over
+(`isOwlSave`, `shipSaveInfo.pauseSaveEntrance`, `shipSaveInfo.respawn`), and only when `gComboOwlBlobSlot` says
+gSaveContext descends from the blob. The write builds the same document from that as from the whole section:
+- A blob shaped differently is handed over whole, so it fails the same way.
+- A section of another version is read whole, for its migrations.
+- The bottle-shelf and shared-health side effects of the read are unchanged.
+
+`gCombo.Debug.MmSaveFullRead` (off by default) brings back the whole read, so one build can time both with
+`gCombo.Debug.SaveTiming`.
+
 **Vendored seams (`COMBO_BUILD`, only while the seed shares bottles):**
 - `soh/.../randomizer.cpp`: bottle obtainability stays `CAN_OBTAIN` with full slots (otherwise the randomizer
   substitutes the bottle with junk), and `Randomizer_Item_Give` shelves a bottle that arrives with no free slot.
