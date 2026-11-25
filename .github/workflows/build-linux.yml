@@ -54,6 +54,13 @@ jobs:
           cmake -B build-cmake -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
           -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
+      # Co-op rules (combo/net: outbox, packet ids and dedup, MM flag masks) are header-only with no game
+      # code, so they build in seconds. They run before the long game build; the exit code is the verdict.
+      - name: Co-op unit tests (combo_anchor_tests)
+        run: |
+          cmake --build build-cmake --target combo_anchor_tests -j 4
+          ./build-cmake/combo/combo_anchor_tests
+
       # Same order as the Windows pipeline: libultraship -> soh (Torch) -> 2ship (OTRExporter/ZAPD),
       # then the combo targets. -j 4 caps peak memory: some soh/2ship TUs are
       # >1 GB each at peak, and the 16 GB standard runner OOMs before Ninja's default parallelism
