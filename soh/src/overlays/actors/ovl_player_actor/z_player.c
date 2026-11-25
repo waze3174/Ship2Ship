@@ -1352,6 +1352,7 @@ void Combo_TransformBegin(PlayState* play, Player* this, s32 target); // MM's ma
 void Combo_TransformInterrupted(PlayState* play, Player* this);
 void Combo_TransformFlashUpdate(PlayState* play);
 void Combo_TransformClear(void);
+s32 Combo_TransformRunning(void); // a slow transformation is under way (below)
 // MM's transformation targets: the same transformation mask again takes it off; another one changes straight to that
 // form (MM Player_ActionHandler_13: currentMask != maskId -> func_808388B8(form)); any other mask turns him human.
 static s32 Combo_TransformTarget(s32 maskForm) {
@@ -4412,17 +4413,53 @@ static void Combo_WearPendingMask(Player* this) {
     sComboPendingMask = ITEM_NONE;
 }
 
-// 2S2H Easy Mask Equip: the mask picked in the pause menu is used once the menu has closed (ProcessPendingMaskEquip).
+// The mask to wear once Link is human again is wanted only while a transformation (or the fast one) is in progress.
+static void Combo_DropPendingMaskIfIdle(s32 formBefore) {
+    if ((Combo_OotForm() == formBefore) && !Combo_TransformRunning()) {
+        sComboPendingMask = ITEM_NONE;
+    }
+}
+
+// What a button press needs before it uses an item (Player_UpdateItems, MM's Player_ActionHandler_13), for a mask used
+// with no button: Link is free to act, the scene allows masks (the trade-item restriction, the one that greys a mask
+// button out), and a form change happens on the ground or in the water (2S2H EasyMaskEquip.cpp
+// PlayerCanProcessFormChangingMaskAction).
+static s32 Combo_EasyEquipUsable(PlayState* play, Player* this, s32 item) {
+    const u32 blockedState1 = PLAYER_STATE1_CARRYING_ACTOR | PLAYER_STATE1_IN_CUTSCENE | PLAYER_STATE1_IN_ITEM_CS |
+                              PLAYER_STATE1_TALKING | PLAYER_STATE1_GETTING_ITEM | PLAYER_STATE1_DEAD |
+                              PLAYER_STATE1_ON_HORSE | PLAYER_STATE1_HANGING_OFF_LEDGE | PLAYER_STATE1_CLIMBING_LEDGE |
+                              PLAYER_STATE1_CLIMBING_LADDER | PLAYER_STATE1_FIRST_PERSON;
+    const u32 blockedState2 = PLAYER_STATE2_CRAWLING | PLAYER_STATE2_GRABBING_DYNAPOLY |
+                              PLAYER_STATE2_GRABBED_BY_ENEMY | PLAYER_STATE2_OCARINA_PLAYING;
+
+    if ((this->stateFlags1 & blockedState1) || (this->stateFlags2 & blockedState2) || func_8008F128(this) ||
+        (play->interfaceCtx.restrictions.tradeItems != 0)) {
+        return false;
+    }
+    const s32 changesForm = (Combo_PauseForeignForm(item) >= 0) || (Combo_OotForm() != COMBO_FORM_HUMAN);
+    return !changesForm || (this->actor.bgCheckFlags & BGCHECKFLAG_GROUND) ||
+           (this->stateFlags1 & PLAYER_STATE1_IN_WATER);
+}
+
+// 2S2H Easy Mask Equip: the mask picked in the pause menu is used on the first update after the menu has closed
+// (ProcessPendingMaskEquip), when a button press could use it; if not, it is dropped with the error sound.
 static void Combo_UseEasyEquipMask(PlayState* play, Player* this) {
-    if ((Combo_PauseEasyEquipPending() == ITEM_NONE) || (play->pauseCtx.state != 0) || Player_InCsMode(play)) {
+    if ((Combo_PauseEasyEquipPending() == ITEM_NONE) || (play->pauseCtx.state != 0)) {
         return;
     }
     const s32 item = Combo_PauseTakeEasyEquip();
 
-    if ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignWearableMask(item)) {
+    if (Player_InCsMode(play) || !Combo_EasyEquipUsable(play, this, item)) {
+        Sfx_PlaySfxCentered(NA_SE_SY_ERROR);
+        return;
+    }
+    const s32 formBefore = Combo_OotForm();
+
+    if ((formBefore != COMBO_FORM_HUMAN) && Combo_PauseIsForeignWearableMask(item)) {
         sComboPendingMask = item; // MM QueueReturnToHumanThenRegular: back to human first, then the mask
     }
     Player_UseItem(play, this, item);
+    Combo_DropPendingMaskIfIdle(formBefore);
 }
 #endif
 
@@ -4489,6 +4526,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
             return;
         } else if ((comboForm >= 0) || ((Combo_OotForm() != COMBO_FORM_HUMAN) && Combo_PauseIsForeignMask(item))) {
             const s32 target = Combo_TransformTarget(comboForm);
+            const s32 formBefore = Combo_OotForm();
             if ((comboForm < 0) && Combo_PauseIsForeignWearableMask(item) &&
                 CVarGetInteger("gEnhancements.Masks.3DSMaskEquip", 0)) {
                 sComboPendingMask = item; // 2S2H 3DSMaskEquipping.cpp VB_USE_ITEM_CONSIDER_LINK_HUMAN
@@ -4496,6 +4534,7 @@ void Player_UseItem(PlayState* play, Player* this, s32 item) {
             Combo_PauseLogUse(item, target != COMBO_FORM_HUMAN ? "transformation mask -> form"
                                                                : "mask while transformed -> human");
             Combo_TransformBegin(play, this, target); // MM's transformation (or 2S2H's fast one)
+            Combo_DropPendingMaskIfIdle(formBefore);
         } else if (Combo_PauseIsForeignMask(item)) {
             // MM Player_UseItem "Handle wearable masks": on at once with CHANGE_ARMS, off with TAKE_OUT_SHIELD (MM's
             // samples through MM's sfx player).
@@ -12388,6 +12427,10 @@ void Combo_TransformInterrupted(PlayState* play, Player* this) {
     }
     this->stateFlags1 &= ~(PLAYER_STATE1_IN_ITEM_CS | PLAYER_STATE1_IN_CUTSCENE);
     Combo_TfFinish(play);
+}
+
+s32 Combo_TransformRunning(void) {
+    return sTf.active != 0;
 }
 
 void Combo_TransformClear(void) {
