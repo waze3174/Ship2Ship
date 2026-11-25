@@ -62,6 +62,8 @@ struct PresenceState {
 
 // The one place a slot's mode becomes a label. A new mode is a new case here.
 inline std::string ModeLabel(const ComboRando::ComboMode& mode) {
+    if (mode.IsBackToBack())
+        return "Back to back";
     if (mode.IsVanillaMm())
         return "Majora's Mask";
     if (mode.IsVanillaOot())

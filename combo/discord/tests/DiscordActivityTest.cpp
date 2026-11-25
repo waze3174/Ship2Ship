@@ -217,6 +217,8 @@ void TestModeLabels() {
     CHECK(ModeLabel(ComboMode::VanillaOot(ComboRando::OOT_QUEST_NORMAL)) == "Ocarina of Time");
     CHECK(ModeLabel(ComboMode::VanillaOot(ComboRando::OOT_QUEST_MQ)) == "Ocarina of Time");
     CHECK(ModeLabel(ComboMode::VanillaMm()) == "Majora's Mask");
+    CHECK(ModeLabel(ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL)) == "Back to back");
+    CHECK(ModeLabel(ComboMode::BackToBack(ComboRando::OOT_QUEST_MQ)) == "Back to back");
 }
 
 void TestFrames() {
