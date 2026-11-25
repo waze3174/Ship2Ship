@@ -38,6 +38,7 @@ struct PlayState;
 #define COMBO_SOH_CVAR_NUTS_EXPLODE_BOMBS "gEnhancements.NutsExplodeBombs"
 #define COMBO_SOH_CVAR_REMOVE_EXPLOSIVE_LIMIT "gEnhancements.RemoveExplosiveLimit"
 #define COMBO_SOH_CVAR_DISABLE_FIRST_PERSON_CHUS "gEnhancements.DisableFirstPersonChus"
+#define COMBO_SOH_CVAR_REMOTE_BOMBCHU "gEnhancements.RemoteBombchu"
 #define COMBO_SOH_CVAR_HOOKSHOTABLE_RETICLE "gEnhancements.HookshotableReticle"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_TARGET_COLOR "gCosmetics.HookshotReticle.Target.Value"
 #define COMBO_SOH_CVAR_HOOKSHOT_RETICLE_NON_TARGET_COLOR "gCosmetics.HookshotReticle.NonTarget.Value"
