@@ -23,6 +23,9 @@ extern int gComboNewSaveQuest;
 // ComboShip: fired before questType is read so the combo generator can run and call
 // SOH_ApplyRandoPlacements before Randomizer_InitSaveFile consumes the placements.
 extern void (*gComboGenerateCallback)(int fileNum);
+// ComboShip: nonzero when the loaded save is child Link arriving at the Temple of Time after OoT's ending in a
+// back-to-back slot (ComboBackToBackEnding.cpp).
+int Combo_BackToBack_KeepsSavedArrival(void);
 #endif
 
 void Save_LoadFile(void);
@@ -141,6 +144,12 @@ void Sram_OpenSave() {
             break;
 
         default:
+#ifdef COMBO_BUILD
+            // ComboShip: that arrival loads where it was saved.
+            if (Combo_BackToBack_KeepsSavedArrival()) {
+                break;
+            }
+#endif
             // Use the saved entrance value with remember save location, except when in grottos/fairy fountains
             if (CVarGetInteger(CVAR_ENHANCEMENT("RememberSaveLocation"), 0) &&
                 gSaveContext.savedSceneNum != SCENE_FAIRYS_FOUNTAIN && gSaveContext.savedSceneNum != SCENE_GROTTOS) {

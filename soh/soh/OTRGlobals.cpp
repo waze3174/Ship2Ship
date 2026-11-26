@@ -3881,10 +3881,6 @@ extern "C" int Combo_CrossToTerminaOpen(void) {
 extern "C" int Combo_LostWoodsToTerminaOpen(void) {
     return ComboRando::CrossGate::LostWoodsToTerminaOpen(gComboCrossGate, LINK_IS_CHILD) ? 1 : 0;
 }
-// The credits of OoT's half of a back-to-back slot have ended: the slot goes on in the Temple of Time, as child Link.
-extern "C" int Combo_OotCreditsContinueInTemple(void) {
-    return ComboRando::CrossGate::OotCreditsContinueInTemple(gComboCrossGate) ? 1 : 0;
-}
 // The Back to back page's choices (combo/rando/ComboBackToBackSettings.h) for the loaded slot, pushed by the launcher;
 // 0 outside a back-to-back slot.
 static int sComboBackToBackOptions = 0;

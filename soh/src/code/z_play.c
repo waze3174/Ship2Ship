@@ -15,12 +15,6 @@
 #include "soh/framebuffer_effects.h"
 #ifdef COMBO_BUILD
 #include "soh/Enhancements/randomizer/ComboPicto.h" // ComboShip: MM's Pictograph Box in Hyrule
-// ComboShip: the credits of a back-to-back slot's OoT half end in the Temple of Time, not at the title: 1 when the
-// invalid entrance that ends the game was turned into that arrival (ComboBackToBackEnding.cpp).
-int Combo_BackToBack_ResumeAfterCredits(void);
-#define COMBO_RESUME_AFTER_CREDITS() Combo_BackToBack_ResumeAfterCredits()
-#else
-#define COMBO_RESUME_AFTER_CREDITS() 0
 #endif
 
 #include <time.h>
@@ -382,7 +376,7 @@ void Play_Init(GameState* thisx) {
     }
 
     // Invalid entrance, so immediately exit the game to opening title
-    if (gSaveContext.entranceIndex == ENTR_LOAD_OPENING && !COMBO_RESUME_AFTER_CREDITS()) {
+    if (gSaveContext.entranceIndex == ENTR_LOAD_OPENING) {
         gSaveContext.entranceIndex = 0;
         play->state.running = false;
         SET_NEXT_GAMESTATE(&play->state, Opening_Init, OpeningContext);

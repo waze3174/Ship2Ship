@@ -48,6 +48,8 @@ static ComboRando::FnComboWriteSave gComboWriteGameSave = nullptr;
 static ComboSaveTiming::FnGetContainerIoStats gComboContainerIoStats = nullptr;
 // ComboShip: whole-slot copy (both games + rando) for file-select "copy file"; launcher owns it.
 static void (*gComboCopyContainer)(int from, int to) = nullptr;
+// ComboShip: nonzero while OoT's ending plays in a back-to-back slot (ComboBackToBackEnding.cpp).
+extern "C" int Combo_BackToBack_HoldsSave(void);
 #endif
 
 #if defined(__WIIU__) || defined(__SWITCH__)
@@ -1442,6 +1444,13 @@ void SaveManager::SaveSection(int fileNum, int sectionID, bool threaded) {
         SPDLOG_ERROR("SaveSection: Section ID not registered.");
         return;
     }
+#ifdef COMBO_BUILD
+    // ComboShip: the save made at Ganon's final blow stands until OoT's ending is over.
+    if (sectionID == SECTION_ID_BASE && Combo_BackToBack_HoldsSave()) {
+        SPDLOG_INFO("[ComboBackToBack] save of OOT slot {} held: OoT's ending plays", fileNum);
+        return;
+    }
+#endif
 
     auto saveContext = std::make_shared<SaveContext>(gSaveContext);
     if (threaded) {
