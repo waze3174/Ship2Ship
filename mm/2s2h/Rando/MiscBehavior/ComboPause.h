@@ -50,6 +50,7 @@ int Combo_MmPauseIsForeignName(int item);
 // SoH's "Assignable Tunics and Boots": OOT's tunics and boots on Termina's C buttons and D-pad.
 int Combo_MmPauseGearOnButtons(void);       // the setting is on
 int Combo_MmPauseEquipGearId(int gridSlot); // that tunic / boots as a button's foreign id, 0xFF = can't go on one
+int Combo_MmPauseEquipUsable(int gridSlot); // 1 = Link may put that piece on in Termina (never a sword or shield)
 
 int Combo_MmPauseIsForeign(int item);
 unsigned char Combo_MmPauseSlotItem(int ootSlot); // foreign id of a Hyrule-tab slot, ITEM_NONE when empty
@@ -71,6 +72,16 @@ int Combo_MmPauseSetForeignBottle(struct PlayState* play, int heldItemButton, in
 int Combo_MmPauseUseItem(int item);      // the MM item a foreign item runs as in Termina, 0xFF = none (can't use)
 int Combo_MmPauseForeignSlot(int item);  // OOT slot behind a foreign id, -1 = not foreign
 int Combo_MmPauseOotItemAt(int ootSlot); // OOT's item in that OOT slot (live, 24-29 = gear), 0xFF = empty
+int Combo_MmPauseOotHolds(int ootItem);  // 1 = OOT's save holds that OOT item where Termina may use it now
+// OOT's magic arrows in Termina, as MM's bow with that arrow (Combo_MmPauseForeignHostItem).
+int Combo_MmPauseForeignAmmoItem(int item);       // the OOT item whose bag a host-run item spends, -1 = MM's own
+int Combo_MmPauseIsForeignMagicArrow(int item);   // 1 = OOT's Fire, Ice or Light Arrow
+int Combo_MmPauseEquipAllowed(int item);          // 0 = may not go on a button (a magic arrow with no bow)
+const char* Combo_MmPauseButtonIconTex(int item); // OOT's HUD button icon (the bow with that arrow for an arrow)
+// A back-to-back slot's Termina pages: MM's empty ocarina or mask slot shows OOT's same item while Termina may use it.
+int Combo_MmPauseSlotShownItem(int mmSlot); // the MM item to show in MM's slot (items[] index), 0xFF = empty
+// Equipping from that slot: an OOT item shown there goes on as its foreign id (item and slot byte), else unchanged.
+void Combo_MmPauseStandInEquip(int mmSlot, unsigned short* item, unsigned short* slot);
 
 #ifdef __cplusplus
 }

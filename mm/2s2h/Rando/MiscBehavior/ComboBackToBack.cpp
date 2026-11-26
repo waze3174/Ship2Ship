@@ -5,8 +5,9 @@
 //                    whenever the slot has not yet played the opening, so what MM saves from then on holds them.
 //   Once found       The rest waits for the MM item it belongs to, because MM's own give code reads some of these as
 //                    ownership. The magic meter carries once MM's Great Fairy has given magic, the songs once Link has
-//                    MM's Ocarina, and the quiver, bomb bag, Deku stick and Deku nut levels once Link has the bow, the
-//                    bombs, the sticks or the nuts. The tick below applies each the frame it can.
+//                    an ocarina to play in Termina (Combo_MM_LinkHasUsableOcarina), and the quiver, bomb bag, Deku
+//                    stick and Deku nut levels once Link has the bow, the bombs, the sticks or the nuts. The tick
+//                    below applies each the frame it can.
 // Ocarina of Time's numbers come from its resident save (SOH_ComboCarry_Get).
 #ifdef COMBO_BUILD
 
@@ -15,7 +16,9 @@
 #include <spdlog/spdlog.h>
 
 #include "ComboResolve.h"
+#include "ComboPause.h"
 #include "rando/ComboBackToBackCarry.h"
+#include "rando/ComboBackToBackLocks.h"
 #include "rando/ComboBackToBackSettings.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include "2s2h/ShipInit.hpp"
@@ -28,6 +31,8 @@ extern "C" {
 int Combo_MM_BackToBackOpeningPending(void); // BenPort.cpp
 int Combo_MM_BackToBackLocksActive(void);    // BenPort.cpp
 int Combo_MM_BackToBackOptions(void);        // BenPort.cpp
+extern int gMMComboCrossGate;                // BenPort.cpp: the loaded slot's ways between the games
+int Combo_MM_LinkHasUsableOcarina(void);     // below
 }
 
 namespace {
@@ -115,9 +120,10 @@ void CarryCapacities() {
     }
 }
 
-// The songs OoT has learned, once Link has MM's Ocarina to play them on.
+// The songs OoT has learned, once Link has an ocarina to play them on in Termina: MM's, or OoT's when the slot lets it
+// in early. MM's own lessons and the Song of Time's flashback set the same bits again, which changes nothing.
 void CarrySongs() {
-    if (!OptionOn(B2B::kSongsCarry) || INV_CONTENT(ITEM_OCARINA_OF_TIME) != ITEM_OCARINA_OF_TIME)
+    if (!OptionOn(B2B::kSongsCarry) || !Combo_MM_LinkHasUsableOcarina())
         return;
     const int songs = CarriedFromOot(B2B::kCarrySongs);
     if ((songs & B2B::kCarrySongTime) && !CHECK_QUEST_ITEM(QUEST_SONG_TIME))
@@ -143,6 +149,21 @@ void RegisterComboBackToBack() {
 RegisterShipInitFunc sBackToBackCarryInit(RegisterComboBackToBack, {});
 
 } // namespace
+
+// Link has an ocarina he can play in Termina: MM's own, or in a back-to-back slot Ocarina of Time's, once the slot lets
+// it into Termina (its early-use switch, or MM's own found; Combo_MmPauseOotHolds applies the locks). MM's story code
+// that asks for this (the Happy Mask Salesman's Song of Healing, the songs carried over) reads it instead of MM's
+// ocarina slot; the code that means "the Skull Kid still has MM's ocarina" keeps reading the slot. Every other slot:
+// MM's own only, as before.
+extern "C" int Combo_MM_LinkHasUsableOcarina(void) {
+    if (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME)
+        return 1;
+    namespace Oot = ComboRando::BackToBack::OotItem;
+    return ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) &&
+                   (Combo_MmPauseOotHolds(Oot::kOotOcarinaFairy) || Combo_MmPauseOotHolds(Oot::kOotOcarinaTime))
+               ? 1
+               : 0;
+}
 
 // Called as MM's opening starts in a back-to-back slot's first entry (title_setup.c): the carried hearts and wallet.
 extern "C" void Combo_MM_ApplyBackToBackStart(void) {

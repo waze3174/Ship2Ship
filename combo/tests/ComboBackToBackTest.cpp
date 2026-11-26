@@ -196,6 +196,17 @@ void TestLocksActive() {
     CHECK(!B2B::LocksActive(Gate::kAllOpen));
 }
 
+// Bug #36/#37 (2026-11-25): the Megaton Hammer, the Longshot, the tunics and the boots greyed out for child Link in a
+// back-to-back slot's Termina, by OoT's age rule, with their switches on.
+void TestTerminaAgeRule() {
+    const ComboMode backToBack = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, B2B::DefaultOptions());
+    CHECK(!B2B::TerminaAgeRuleApplies(Gate::Mask(backToBack, false, false)));
+    CHECK(!B2B::TerminaAgeRuleApplies(Gate::Mask(backToBack, true, false)));
+    CHECK(!B2B::TerminaAgeRuleApplies(Gate::Mask(backToBack, true, true))); // both beaten: as before
+    CHECK(B2B::TerminaAgeRuleApplies(Gate::Mask(ComboMode::Rando(ComboRando::COMBO_GAMES_BOTH), false, false)));
+    CHECK(B2B::TerminaAgeRuleApplies(Gate::kAllOpen));
+}
+
 void TestItemsWithAnMmCounterpart() {
     using namespace B2B::OotItem;
     struct Row {
@@ -307,6 +318,7 @@ int main() {
     TestOptionsFromCVars();
     TestModeStoresOptions();
     TestLocksActive();
+    TestTerminaAgeRule();
     TestStoredOptionsFromTheFirstLayout();
     TestItemsWithAnMmCounterpart();
     TestBottles();

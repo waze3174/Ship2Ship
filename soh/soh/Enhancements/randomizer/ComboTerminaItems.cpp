@@ -16,6 +16,7 @@
 #include "soh/SaveManager.h"
 #include "soh/Enhancements/AdultMasks.h"
 #include "soh/Enhancements/randomizer/SeedContext.h"
+#include "rando/ComboBackToBackLocks.h"
 
 extern "C" {
 #include "z64.h"
@@ -24,6 +25,7 @@ extern "C" {
 #include "functions.h"
 extern u8 gItemAgeReqs[];
 int Combo_BackToBackGearLocked(int equipType); // OTRGlobals.cpp: a back-to-back slot keeps this gear out of Termina
+extern int gComboCrossGate;                    // OTRGlobals.cpp: the loaded slot's ways between the games
 }
 
 namespace {
@@ -45,7 +47,8 @@ bool NayrusLoveRuleOn() {
 
 // OOT's own age rule for an item (gItemAgeReqs, the table OOT's pause menu greys items with), lifted by the same
 // switches as in Hyrule (Combo_AgeRulesLifted: Unified Inventory, Timeless Equipment, Unrestricted Items) and by
-// Masks as Adult for masks. adult: Link's age in Termina.
+// Masks as Adult for masks, and not applied in a back-to-back slot (TerminaAgeRuleApplies). adult: Link's age in
+// Termina.
 extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     if (ootItem < 0 || ootItem >= ITEM_NONE)
         return 0;
@@ -53,7 +56,7 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_ItemAgeOk(int ootItem, int adult) {
     // played in Termina first; until then the table's unset entry reads adult-only.
     if (ootItem == ITEM_ROCS_FEATHER)
         return 1;
-    if (Combo_AgeRulesLifted())
+    if (Combo_AgeRulesLifted() || !ComboRando::BackToBack::TerminaAgeRuleApplies(gComboCrossGate))
         return 1;
     // OOT's masks as adult (SoH enhancement / rando "Masks as Adult"): the same switch OOT's own pause honours.
     if ((ootItem >= ITEM_MASK_KEATON) && (ootItem <= ITEM_MASK_TRUTH) && Ship_MasksEquippableAsAdult())

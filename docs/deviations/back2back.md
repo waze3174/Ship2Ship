@@ -225,7 +225,7 @@ The carries (default in brackets):
 | Double magic meter (off) | OoT's double magic meter carries once MM's Great Fairy has given magic (tick in `ComboBackToBack.cpp`) |
 | Bottles (on) | OoT's bottles are usable in Termina; off: they stay in Hyrule |
 | Wallet and rupees (on) | the wallet tier (capped at MM's 500) and the rupees (capped to the wallet) go in as the opening starts |
-| Songs (off) | the songs (Time, Epona's, Storms) are learned once Link has MM's Ocarina |
+| Songs (off) | the songs (Time, Epona's, Storms) are learned once Link has an ocarina he can play in Termina (MM's, or OoT's with its early switch on) |
 
 "Ocarina of Time items usable in Termina": one switch each for Din's Fire, Farore's Wind, Nayru's Love, Boomerang,
 Slingshot, Megaton Hammer, Iron and Hover Boots, and the Goron and Zora tunics. All on by default; off, the item stays in
@@ -253,8 +253,11 @@ The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/Co
 - The double magic meter waits for MM's Great Fairy: the meter needs `isMagicAcquired`, and MM's code reads that flag as
   "magic not given yet" (the Great Fairy gift in `SkipGreatFairyCutscene.cpp`, Tatl's hint in `z_elf_message.c`), so
   setting it earlier would stop MM giving magic.
-- The songs wait for MM's Ocarina: they can only be played on an ocarina, and MM's own lessons (Song of Time, Epona's
-  Song, Song of Storms) are not skipped by an early flag.
+- The songs wait for an ocarina Link can play in Termina (`Combo_MM_LinkHasUsableOcarina`, `ComboBackToBack.cpp`):
+  MM's, or OoT's once the slot lets it in (the ocarina's early-use switch). MM's own lessons (Song of Time, Epona's
+  Song, Song of Storms) are not skipped by an early flag, and no MM code branches on the Song of Time bit but the
+  ocarina's song list (`z_message.c`), so MM's flashback grant just sets the bit again. Before 2026-11-25 (bug #32)
+  they waited for MM's own ocarina only, so with OoT's ocarina in early they never carried.
 
 **The Goron and Zora masks in Termina.** In a slot with the locks in force, OoT's Goron and Zora masks are worn as plain
 masks (OoT's model, no transformation) until Link holds MM's own Goron Mask (Darmani) or Zora Mask (Mikau), unless the
@@ -271,6 +274,60 @@ for the tunic and boots rows of the Hyrule equipment face; and `SOH_ComboTermina
 `ToggleEquipValue` (`ComboTerminaItems.cpp`), which make Termina's boots and tunic physics read the Kokiri pieces while
 locked. They are in force only while `LocksActive(mask)`: a back-to-back slot that has not beaten both games. Every other
 mode has `kAllOpen`.
+
+### OoT's items in MM's story and pages (bugs #31 to #37, 2026-11-25)
+
+**OoT's age rule does not apply in Termina** (`TerminaAgeRuleApplies` in `ComboBackToBackLocks.h`, read by
+`SOH_ComboTermina_ItemAgeOk`, soh `ComboTerminaItems.cpp`). Only child Link goes to Termina until both games are beaten,
+and OoT's rule would have greyed every adult item the page lets in: the Megaton Hammer, the Hookshot and Longshot, the
+Goron and Zora tunics and the Iron and Hover Boots (bugs #36 and #37: greyed on the buttons, refused on the equipment
+face). The rule is lifted for the whole slot, so nothing goes grey again once both games are beaten. Hyrule keeps
+OoT's own rule. Every other slot keeps it in Termina too (randomizer: Unified Inventory and the other lifts).
+
+**OoT's ocarina in MM's story** (bug #31). `Combo_MM_LinkHasUsableOcarina` (`ComboBackToBack.cpp`): MM's own
+ocarina, or in a back-to-back slot OoT's while Termina may use it (`Combo_MmPauseOotHolds`, which applies the locks).
+Changed to read it:
+- the Happy Mask Salesman (`ovl_En_Osn`, five checks behind `OSN_LINK_HAS_OCARINA()`): his talk offer, his
+  "you have the ocarina" lines and the cutscene picked at the Song of Time's first return, so with OoT's ocarina he
+  teaches the Song of Healing at once (the lesson's cutscene plays the ocarina without an item check). The
+  randomizer's own override (`EnOsn.cpp`, `VB_OSN_CONSIDER_ELIGIBLE_FOR_SONG_OF_HEALING`) still runs after;
+- the songs carried over (above).
+
+Left reading MM's ocarina slot, because they mean "the Skull Kid still has MM's ocarina" (the first cycle's story),
+not "Link can play": the Clock Tower opening's first-cycle rule (`z_en_test4.c`), the faster first cycle (`z_scene.c`,
+`z_scene_2SH.cpp`), the clock tower (`z_obj_tokeidai.c`), the Skull Kid's ocarina and hands (`z_dm_stk.c`), the
+falling ocarina (`z_dm_char02.c`), the empty Termina Field (`z_play.c`), Tatl's first-cycle hints (`z_elf_message.c`,
+`z_elf_msg6.c`); also 2S2H's song items (`SongItems.cpp`), the pause owl warp (Soaring is not carried), the Curiosity
+Shop refills and the randomizer's own checks (`BenPort.cpp`). So the Skull Kid still has MM's ocarina, the retrieval
+and the Song of Time flashback play as in MM, and MM's own ocarina is never given early. With the Songs switch on as
+well, a carried Song of Time can end the first cycle early: the first return then has the Mask Salesman teach the Song
+of Healing, and the next cycle still reads as the first until Link takes MM's ocarina back at the top of the Clock
+Tower (Termina Field empty, the faster clock). Not tested in game.
+
+**MM's own slots show OoT's same item** (bug #33). On the Termina item and mask pages, MM's empty ocarina slot and its
+empty Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask slots show OoT's same item while Termina may use
+it (the Goron and Zora masks only while they transform, not while worn plain), drawn as MM's item with MM's name and
+description (`Combo_MmPauseSlotShownItem`, through `ITEM_SLOT_ITEM` / `MASK_SLOT_ITEM` in `z_kaleido_item.c` /
+`z_kaleido_mask.c`). Equipping it there puts OoT's item on the button as its foreign id, as the Hyrule face does
+(`Combo_MmPauseStandInEquip`). MM's item is never given and no get-item flag is set, so Grog, the Curiosity Shop, Kafei
+and the Swamp Spider House still give MM's own, and once found MM's shows in its slot. Back-to-back slots only.
+
+**OoT's magic arrows** (bug #34). OoT's Fire, Ice and Light Arrows run in Termina as MM's bow with that arrow
+(`Combo_MmPauseForeignHostItem`: `ITEM_BOW_FIRE` / `_ICE` / `_LIGHT`) when Link has a bow Termina may use (MM's own, or
+OoT's), so MM's own code shoots them and spends MM's magic, or shoots a plain arrow without enough, as for MM's own
+magic arrows. The arrows come from OoT's quiver while OoT has a bow Termina may use, else MM's
+(`Combo_MmPauseForeignAmmoItem`, `Combo_ChooseAmmoBag`), and the button shows OoT's bow-with-arrow icon and that
+quiver's count. Without a usable bow the Hyrule face refuses to put them on a button. Their early-use switches still
+gate them (the locks), and the same rule holds in every slot (a randomizer seed's OoT arrows in Termina too). Before
+2026-11-25 they ran as nothing (the error sound) and OoT's age rule greyed them.
+
+**The Hyrule equipment face greys what Termina doesn't use** (bug #37): OoT's swords and shields (MM's own are worn
+in Termina, by design in every mode) and a tunic or boots Link's age may not wear (`Combo_MmPauseEquipUsable`). A
+locked item is not greyed: it isn't shown at all (the locks above).
+
+**The slot's options in the log.** At every load of a back-to-back slot, MM logs the options the file was made with:
+`[ComboBackToBack] slot options 0x... (cross gate 0x...), on: ...` (`MM_SetComboBackToBackOptions`, `BenPort.cpp`).
+The page itself shows what the next new file would get.
 
 ## Stage D: capacities carry over once MM has the item
 

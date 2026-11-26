@@ -277,14 +277,25 @@ static void KaleidoScope_ComboDrawEquip(PlayState* play) {
             const char* tex = Combo_MmPauseOotIconTex(item);
             s16 grow = (pauseCtx->mainState == PAUSE_MAIN_STATE_IDLE) && (pauseCtx->pageIndex == PAUSE_ITEM) &&
                        (pauseCtx->cursorSpecialPos == 0) && (slot == pauseCtx->cursorSlot[PAUSE_ITEM]);
+            s32 unusable;
             if ((item == 0xFF) || (tex == NULL)) {
                 continue;
             }
             Combo_EquipQuad(&v[slot * 4], sComboEquipColX[col] + 2 - (grow ? 2 : 0),
                             58 - row * 32 + pauseCtx->offsetY - 2 + (grow ? 2 : 0), grow ? 32 : 28);
             gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
+            // Greyed as MM greys what Link can't use: the swords and shields (MM's own are worn in Termina), and a
+            // tunic or boots Link's age may not wear (Combo_MmPauseEquipUse refuses both).
+            unusable = (col >= 1) && !Combo_MmPauseEquipUsable(slot);
+            if (unusable) {
+                gDPSetGrayscaleColor(POLY_OPA_DISP++, 109, 109, 109, 255);
+                gSPGrayscale(POLY_OPA_DISP++, true);
+            }
             gSPVertex(POLY_OPA_DISP++, &v[slot * 4], 4, 0);
             KaleidoScope_DrawTexQuadRGBA32(play->state.gfxCtx, (TexturePtr)tex, 32, 32, 0);
+            if (unusable) {
+                gSPGrayscale(POLY_OPA_DISP++, false);
+            }
         }
     }
     gSPComboRMPop(POLY_OPA_DISP++);
@@ -495,7 +506,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                 u8 equipSlot;
                 u16 vtxIndex = pauseCtx->cursorSlot[PAUSE_ITEM] * 4;
 
-                if (Combo_EquipTargetLocked(play, target)) {
+                if (Combo_EquipTargetLocked(play, target) || !Combo_MmPauseEquipAllowed(cursorItem)) {
                     Audio_PlaySfx(NA_SE_SY_ERROR);
                     return;
                 }

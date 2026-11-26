@@ -7,6 +7,14 @@
 #include "z_en_osn.h"
 #include "objects/object_osn/object_osn.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#ifdef COMBO_BUILD
+#include "BenPort.h"
+// ComboShip: Link has an ocarina for the Song of Healing when he can play one in Termina: MM's, or in a back-to-back
+// slot Ocarina of Time's, once the slot lets it in (Combo_MM_LinkHasUsableOcarina).
+#define OSN_LINK_HAS_OCARINA() Combo_MM_LinkHasUsableOcarina()
+#else
+#define OSN_LINK_HAS_OCARINA() (gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] != ITEM_NONE)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -442,12 +450,10 @@ s32 EnOsn_GetInitialMaskText(EnOsn* this, PlayState* play) {
 s32 EnOsn_GetInitialText(EnOsn* this, PlayState* play) {
     Player* player = GET_PLAYER(play);
 
-    if ((gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] != ITEM_NONE) &&
-        CHECK_QUEST_ITEM(QUEST_SONG_HEALING)) {
+    if (OSN_LINK_HAS_OCARINA() && CHECK_QUEST_ITEM(QUEST_SONG_HEALING)) {
         if (this->stateFlags & OSN_STATE_SPECIAL_CONVERSTATION) {
             this->stateFlags |= OSN_STATE_END_CONVERSATION;
-            if ((gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] != ITEM_NONE) &&
-                (INV_CONTENT(ITEM_MASK_DEKU) == ITEM_MASK_DEKU)) {
+            if (OSN_LINK_HAS_OCARINA() && (INV_CONTENT(ITEM_MASK_DEKU) == ITEM_MASK_DEKU)) {
                 if ((gSaveContext.save.day == 3) && (CURRENT_TIME >= CLOCK_TIME(5, 0)) &&
                     (CURRENT_TIME < CLOCK_TIME(6, 0))) {
                     return 0x2006;
@@ -691,12 +697,10 @@ void EnOsn_HandleConversation(EnOsn* this, PlayState* play) {
 
 void EnOsn_InitCutscene(EnOsn* this) {
     this->csId = this->actor.csId;
-    if ((gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] == ITEM_NONE) ||
-        (INV_CONTENT(ITEM_MASK_DEKU) == ITEM_MASK_DEKU)) {
+    if (!OSN_LINK_HAS_OCARINA() || (INV_CONTENT(ITEM_MASK_DEKU) == ITEM_MASK_DEKU)) {
         this->csId = CutsceneManager_GetAdditionalCsId(this->csId);
 
-        if ((gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] != ITEM_NONE) ||
-            (INV_CONTENT(ITEM_MASK_DEKU) == ITEM_MASK_DEKU)) {
+        if (OSN_LINK_HAS_OCARINA() || (INV_CONTENT(ITEM_MASK_DEKU) == ITEM_MASK_DEKU)) {
             this->csId = CutsceneManager_GetAdditionalCsId(this->csId);
         }
     }
@@ -719,9 +723,7 @@ void EnOsn_Idle(EnOsn* this, PlayState* play) {
     s16 yaw = this->actor.yawTowardsPlayer - this->actor.shape.rot.y;
 
     if (GameInteractor_Should(VB_OSN_CONSIDER_ELIGIBLE_FOR_SONG_OF_HEALING,
-                              (gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] != ITEM_NONE) &&
-                                  !CHECK_QUEST_ITEM(QUEST_SONG_HEALING),
-                              this)) {
+                              OSN_LINK_HAS_OCARINA() && !CHECK_QUEST_ITEM(QUEST_SONG_HEALING), this)) {
         if (Actor_TalkOfferAccepted(&this->actor, &play->state)) {
             if (GameInteractor_Should(VB_OSN_TEACH_SONG_OF_HEALING, true, this)) {
                 this->actionFunc = EnOsn_StartCutscene;

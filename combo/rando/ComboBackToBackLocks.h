@@ -148,4 +148,12 @@ inline bool LockedInTermina(int crossGateMask, int options, ItemLock lock, bool 
     return LocksActive(crossGateMask) && Locked(options, lock, mmHoldsCounterpart);
 }
 
+// Whether Ocarina of Time's age rule (an item for adult Link or child Link only) keeps an OoT item from Link in
+// Termina. Not in a back-to-back slot: only child Link goes to Termina until both games are beaten, so the rule would
+// void the page's switches for every adult item (the Megaton Hammer, the Hookshot and Longshot, the Goron and Zora
+// tunics, the Iron and Hover Boots), and after both games the items stay as they were.
+inline bool TerminaAgeRuleApplies(int crossGateMask) {
+    return !CrossGate::IsBackToBack(crossGateMask);
+}
+
 } // namespace ComboRando::BackToBack

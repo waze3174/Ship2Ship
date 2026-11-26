@@ -228,6 +228,9 @@ int Combo_MM_BackToBackOptions(void);
 int Combo_MM_BackToBackLocksActive(void);
 // What a back-to-back slot carries into MM as its opening starts (see ComboBackToBack.cpp).
 void Combo_MM_ApplyBackToBackStart(void);
+// Link has an ocarina he can play in Termina: MM's, or a back-to-back slot's Ocarina of Time one when the slot lets it
+// in (see ComboBackToBack.cpp).
+int Combo_MM_LinkHasUsableOcarina(void);
 COMBO_EXPORT void MM_PrepareForTransition(void);
 COMBO_EXPORT void MM_ResumeGame(int fileNum);
 #endif
