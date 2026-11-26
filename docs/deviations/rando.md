@@ -2809,6 +2809,13 @@ Features that change the rules of play are off until the player turns them on in
   it in both games and drops `combo.health` from its container (`Combo_OnOOTSaveInit`, as for the Bottle Shelf);
   without that a file made in an erased slot took over the erased file's hearts (#30). Off in a back-to-back slot
   (`docs/deviations/back2back.md`).
+  The state each game holds belongs to the slot it came from (`combo/ComboSharedHealthSlots.h`, tested by
+  `comboSharedHealthSlotsTest`). A save read keeps the live state, and refreshes the container from it, only when the
+  slot read is the one the game in play took it from (the magic-desync rule: MM reads its save during play). A read of
+  any other slot hands the reader that slot's own `combo.health`, and a write or a game switch stores the state only
+  into its own slot. An erase or a copy onto a slot forgets it. Before this, the boot reads gave slots 1 and 2 slot 0's
+  hearts in the cache, and a slot loaded after another was read, or after an MM session ended on the file select,
+  played with that other slot's hearts.
   The other game's ammo items (on this game's buttons and its face of this game's pause menu) show the shared count
   as that game will show it on arrival, `ComboHealth::DormantAmmo`; OOT's Slingshot fired in Termina spends from the
   shared seeds (`SpendDormantAmmo`). With it off they show, and the Slingshot spends, OOT's own save, written at the
