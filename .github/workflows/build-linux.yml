@@ -11,6 +11,22 @@ name: Build (Linux)
 
 on:
   workflow_call:
+    inputs:
+      # ap-fill-rate.yml sets these: the Archipelago fill failure rate over many seeds per option preset.
+      ap_fill_rate:
+        type: boolean
+        default: false
+      ap_fill_count:
+        type: number
+        default: 50
+      ap_fill_presets:
+        type: string
+        default: all
+
+env:
+  # The Archipelago core the apworld is generated against. Move it on purpose: a new core can change generation.
+  AP_CORE_REPO: ArchipelagoMW/Archipelago
+  AP_CORE_REF: 2c64ef42af2389280d06ad2058e5b4c73d44f981
 
 jobs:
   build:
@@ -41,6 +57,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-linux-ccache-${{ github.ref }}
             ${{ runner.os }}-linux-ccache
+
+      # The apworld's own modules and the oracle client, against a fake oracle: no Archipelago, no comborando.
+      - name: Ship2Ship apworld unit tests
+        run: python3 -I scripts/ap/test_apworld.py
 
       # Python3: Generate2ShipOtr (OTRExporter/extract_assets.py) and the asset-collision gate. soh packs
       # with Torch (soh-o2r-packer), whose configure step fetches tinyxml2/zlib/yaml-cpp (needs network).
@@ -141,6 +161,44 @@ jobs:
           FILL_LOG: ${{ github.workspace }}/fill.log
         run: ./comborando --seed ci-linux-smoke --count 1 2>&1 | tee -a "$FILL_LOG"
 
+      # The Archipelago world: Archipelago's own Generate.py (pinned core) runs Ship2Ship slots whose access rules are
+      # comborando's oracle. Solo, beside another game, two slots, an item link, start inventory from pool and item
+      # plando. Every slot's seed must equal its slot_data, and a solo slot must pass comborando --playthrough, which
+      # is our own check, independent of Archipelago's fill. Nothing here needs ROMs.
+      - name: Check out the Archipelago core (pinned)
+        uses: actions/checkout@v5
+        with:
+          repository: ${{ env.AP_CORE_REPO }}
+          ref: ${{ env.AP_CORE_REF }}
+          path: archipelago-core
+      - name: Install the Archipelago core's requirements and the apworld
+        run: |
+          # kivy and its relatives are for the clients; generating never imports them.
+          grep -viE '^(kivy|kivymd|pyshortcuts|pymem)' archipelago-core/requirements.txt > ap-requirements.txt
+          python3 -m pip install -r ap-requirements.txt
+          python3 -I scripts/ap/pack_apworld.py --out ap-build/ship2ship.apworld
+          mkdir -p archipelago-core/custom_worlds
+          cp ap-build/ship2ship.apworld archipelago-core/custom_worlds/
+          echo "ship2ship_options:" > archipelago-core/host.yaml
+          echo "  comborando_path: $PWD/build-cmake/combo/comborando" >> archipelago-core/host.yaml
+          cat archipelago-core/host.yaml
+      - name: Generate Ship2Ship slots in Archipelago
+        timeout-minutes: 45
+        run: >
+          python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
+          --comborando "$PWD/build-cmake/combo/comborando" --work ap-run
+      - name: Upload the Archipelago generation logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-generation
+          path: |
+            ap-run/**/generate.log
+            ap-run/**/players/*.yaml
+            ap-run/**/out/*.zip
+            ap-run/fill-rate.json
+          if-no-files-found: ignore
+
       # Stages the runnable tree (binaries + assets + port o2rs; game archives oot.o2r / mm.o2r
       # are ROM-extracted by the user and never built or shipped here) and packages it as a
       # self-contained AppImage — linuxdeploy bundles the system .so deps and combo/linux/AppRun
@@ -222,7 +280,25 @@ jobs:
           path: |
             ${{ runner.temp }}/ap-tables.json
             ${{ runner.temp }}/ids-regenerated.json
+            ${{ runner.temp }}/groups.json
           if-no-files-found: warn
+
+      # Only the manual fill-rate run (ap-fill-rate.yml): how often Archipelago's fill fails on Ship2Ship slots, per option
+      # preset. The target is under 2%; the step fails above it.
+      - name: Archipelago fill failure rate
+        if: inputs.ap_fill_rate
+        timeout-minutes: 330
+        run: >
+          python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
+          --comborando "$PWD/build-cmake/combo/comborando" --work ap-run --fill-rate
+          --count ${{ inputs.ap_fill_count }} --presets ${{ inputs.ap_fill_presets }}
+      - name: Upload the fill-rate result
+        if: inputs.ap_fill_rate && always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-fill-rate
+          path: ap-run/fill-rate.json
+          if-no-files-found: ignore
 
       # The oracle (`comborando --oracle`) against the game's own fill and playthrough: parity sphere by sphere,
       # monotonicity under random item chains, determinism, finalize, and per-call times. Generate mode writes
