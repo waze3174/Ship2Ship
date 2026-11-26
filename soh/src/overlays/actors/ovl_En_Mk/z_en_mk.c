@@ -7,6 +7,9 @@
 #include "z_en_mk.h"
 #include "objects/object_mk/object_mk.h"
 #include "soh/Enhancements/game-interactor/GameInteractor_Hooks.h"
+#ifdef COMBO_BUILD
+#include "soh/Enhancements/randomizer/ComboForms.h" // ComboShip: the Zora's dive counts (EnMk_Update)
+#endif
 
 #define FLAGS (ACTOR_FLAG_ATTENTION_ENABLED | ACTOR_FLAG_FRIENDLY | ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -320,7 +323,13 @@ void EnMk_Update(Actor* thisx, PlayState* play) {
             this->flags &= ~8;
         }
     } else {
-        if (player->currentBoots == PLAYER_BOOTS_IRON) {
+        // ComboShip: the sunk Zora stands on OOT's iron boots (z_player.c Combo_FormBoots), but sinking is his own
+        // swim, so his depth counts as a scale dive's (#43).
+        if ((player->currentBoots == PLAYER_BOOTS_IRON)
+#ifdef COMBO_BUILD
+            && (Combo_OotForm() != COMBO_FORM_ZORA)
+#endif
+        ) {
             this->flags |= 8;
         } else if (player->stateFlags2 & PLAYER_STATE2_UNDERWATER) {
             swimFlag = player->actor.yDistToWater;

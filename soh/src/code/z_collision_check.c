@@ -1512,6 +1512,10 @@ static const CrossObjRow sCrossObjects[] = {
     { ACTOR_BG_HIDAN_HAMSTEP, 0, 0, 0x00000500, 0x00000500, 0x40000040, 0 }, // Fire Temple hammer stairs
     { ACTOR_BG_HIDAN_HROCK, 0, 0, 0x00000500, 0x00000500, 0x40000040, 0 },   // Fire Temple hammer pillars
     { ACTOR_BG_HIDAN_DALM, 0, 0, 0x00000100, 0x00000100, 0x40000040, 0 },    // totem (a swing: the punch only)
+    // Owner request #42 (2026-11-26): the Zora's fins (MM 0x10) pull the Water Temple entrance's fish lock, delivered
+    // as the hookshot it takes (0x80). No MM counterpart. Params 1 is the lock (BgSpot06Objects_Init leaves only the
+    // type there). From MergeShip (sonsegajp/mergeship 32cb5880b536, BUG-0032).
+    { ACTOR_BG_SPOT06_OBJECTS, 0xFF, 1, 0x00000010, 0x00000010, 0x00000080, 0 },
 };
 
 static const CrossObjRow* Combo_CrossObjRow(Actor* actor, ColliderInfo* atInfo) {

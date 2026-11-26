@@ -335,12 +335,15 @@ then receives the OOT flag it reads as that outcome. B = breaks/cuts/triggers, C
 | Bomb flower | – | – | – | – | – | B (detonates) | – | – | – |
 | Bombable walls (Bg_Breakwall / Bg_Bombwall), grotto holes (Door_Ana) | – | – | – | – | – | – | – | – | – |
 | Fire Temple hammer stairs/pillars/totem | – | – | B | B | – | – | – | – | – |
+| Water Temple entrance lock (Bg_Spot06_Objects, Lake Hylia) | – | – | – | – | – | – | – | B (as the hookshot) | – |
 
 **Owner rulings (2026-11-14, revised B-M47):**
 - Bombable walls and grotto holes: every MM counterpart accepts explosives only (0x08), so no form move opens them.
   Powder Keg and Blast Mask blasts do (MM's keg is 0x80000008), as do OOT's own bombs and hammer.
 - Fire Temple hammer obstacles: these are Hyrule's counterpart of MM's Goron-only giant snowballs, so the punch and
   pound count as the hammer on them.
+- Water Temple entrance lock (owner request #42, 2026-11-26): the Zora's fins pull it, as the hookshot does. It has
+  no MM counterpart. The idea is MergeShip's (sonsegajp/mergeship `32cb5880b536`, BUG-0032).
 - Goron strength: he lifts what the Golden Gauntlets lift, at either age.
 - Termina: B swings OOT's Megaton Hammer, so it breaks MM's snowballs and boulders through MM's punch and pound bits.
 - Seed checker:
