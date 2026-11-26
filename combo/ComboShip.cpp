@@ -4669,11 +4669,16 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         // Each game still holds the Bottle Shelf of the save it last read, and OOT's new save was just written with
         // it. A new save starts with an empty shelf in both games.
         c["combo"].erase("bottleShelf");
+        // The same holds for the shared health bar (combo.health). The save last read can be another file's: the
+        // file select reads every slot at boot, and erasing a slot leaves the games' state as it was, so a new file
+        // made in its place started with that file's hearts (#30: 20 heart containers, 3 filled).
+        c["combo"].erase("health");
         FlushContainer(fileNum);
     }
-    for (FnShelfSet setShelf : { SOH_BottleShelfSetState, MM_BottleShelfSetState }) {
-        if (setShelf)
-            setShelf("{}");
+    for (FnShelfSet setState :
+         { SOH_BottleShelfSetState, MM_BottleShelfSetState, SOH_ComboHealthSetState, MM_ComboHealthSetState }) {
+        if (setState)
+            setState("{}");
     }
     const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
     if (quest == ComboRando::kSohQuestComboMm) {
