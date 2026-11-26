@@ -20,7 +20,7 @@ set(COMBO_RELEASE_VERSION "0.4.0" CACHE STRING "Combo release version (manual; g
 
 # Ship2Ship product version: display only (the in-game banner and the AppImage file name). Not tied to the
 # combosave gate above or to the o2r archive version (the project VERSION).
-set(SHIP2SHIP_VERSION "0.2.2" CACHE STRING "Ship2Ship release version (display only)" FORCE)
+set(SHIP2SHIP_VERSION "0.2.3" CACHE STRING "Ship2Ship release version (display only)" FORCE)
 
 set(COMBO_PINS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-pins.json")
 # Reconfigure whenever the pins change so the derived version stays in sync.
