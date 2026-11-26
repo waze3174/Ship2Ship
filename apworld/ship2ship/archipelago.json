@@ -1,0 +1,6 @@
+{
+  "game": "Ship2Ship",
+  "minimum_ap_version": "0.6.9",
+  "world_version": "0.3.0",
+  "authors": ["Ship2Ship"]
+}
