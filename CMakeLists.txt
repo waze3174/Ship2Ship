@@ -12,7 +12,7 @@ set(CMAKE_OSX_DEPLOYMENT_TARGET "11.0" CACHE STRING "Minimum OS X deployment ver
 # ── ComboShip version ─────────────────────────────────────────────────────────
 # Pin-derived major.minor.patch: diagnostics/banner only (the o2r gate is MAJOR-only).
 # See docs/UPSTREAM_MERGES.md.
-set(COMBO_EPOCH 1)  # ← bump for ComboShip-owned breaks / o2r-forcing releases
+set(COMBO_EPOCH 2)  # ← bump for ComboShip-owned breaks / o2r-forcing releases (scripts/check-rom-archive-epoch.py)
 
 # Manual release identity; SOLE authority for combosave compat (gated in combo/ComboShip.cpp).
 # See docs/UPSTREAM_MERGES.md for the bump rule.
@@ -20,7 +20,7 @@ set(COMBO_RELEASE_VERSION "0.4.0" CACHE STRING "Combo release version (manual; g
 
 # Ship2Ship product version: display only (the in-game banner and the AppImage file name). Not tied to the
 # combosave gate above or to the o2r archive version (the project VERSION).
-set(SHIP2SHIP_VERSION "0.2.1" CACHE STRING "Ship2Ship release version (display only)" FORCE)
+set(SHIP2SHIP_VERSION "0.2.2" CACHE STRING "Ship2Ship release version (display only)" FORCE)
 
 set(COMBO_PINS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-pins.json")
 # Reconfigure whenever the pins change so the derived version stays in sync.

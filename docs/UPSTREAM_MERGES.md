@@ -178,10 +178,20 @@ So a routine merge does NOT force the player to re-extract their ROM, but it DOE
 > Decision (2026-06-21): we keep the port check at upstream's full-triple rather than weakening it to
 > MAJOR-only, and regenerate each merge.
 
-**What still needs a manual `COMBO_EPOCH` (MAJOR) bump** (`CMakeLists.txt`): a ComboShip-**owned** save
-or protocol break (save fields we add, Anchor wire format) — the pins won't move for those, so MAJOR
-is the only knob that changes the version. (MAJOR also invalidates the ROM archives, forcing a full
-re-extract — reserve it for when that's actually warranted.)
+**What still needs a manual `COMBO_EPOCH` (MAJOR) bump** (`CMakeLists.txt`):
+- a ComboShip-**owned** save or protocol break (save fields we add, Anchor wire format). The pins won't
+  move for those, so MAJOR is the only knob that changes the version.
+- **an upstream merge that changes the ROM extractors' asset definitions** (`soh/assets/yml`,
+  `mm/assets/xml`, `mm/assets/extractor`). Upstream renames assets there (2S2H renamed 470 object files
+  between our 0.1.x and 0.2.x pins, SoH the Business Scrub animations). The ROM archive check is
+  MAJOR-only, so without a bump a player's old `oot.o2r` / `mm.o2r` loads as current, and the game
+  crashes on the first lookup of a renamed resource (0.2.0 and 0.2.1 at boot: `PatchFreezardBodyTexture`).
+  The CI gate runs `scripts/check-rom-archive-epoch.py`, which fails until COMBO_EPOCH is bumped and
+  `scripts/rom-archive-inputs.json` is re-recorded with `--update`.
+
+MAJOR invalidates the ROM archives, so players redo ROM Setup once. Combo saves are unaffected: they
+are gated by `COMBO_RELEASE_VERSION` alone, and SoH's own version gate on rando saves skips the combo
+container path.
 
 ## Standing policy: custom asset path collisions are gated
 

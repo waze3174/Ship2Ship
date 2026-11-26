@@ -1,0 +1,8 @@
+{
+  "comboEpoch": 2,
+  "inputs": {
+    "soh/assets/yml": "632526ef82144e66bd5a8cf2a36060ae3a6aa23ff7648df7cfa7e855b47f1e9e",
+    "mm/assets/xml": "d41affa74d7a04b41d46510149ac658dfcb60f88a9c60781e0fa6744898b31aa",
+    "mm/assets/extractor": "e9726fcde994a898189b0dc21dbb3c7f046507dd74120de6c1cde71e3a47118f"
+  }
+}

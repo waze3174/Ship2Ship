@@ -21,7 +21,7 @@ copyrighted ships in the artifacts.
 
 ```sh
 chmod +x Ship2Ship-*-linux-x86_64.AppImage   # the exec bit is lost in the artifact zip
-./Ship2Ship-0.2.1-linux-x86_64.AppImage
+./Ship2Ship-0.2.2-linux-x86_64.AppImage
 ```
 
 On first run it creates a writable `Ship2Ship-data/` directory next to the

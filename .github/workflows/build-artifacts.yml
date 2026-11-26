@@ -97,6 +97,9 @@ jobs:
       - name: Check custom asset trees for new path collisions
         run: python3 scripts/check-asset-collisions.py
 
+      - name: Check that ROM extractor changes bump COMBO_EPOCH
+        run: python3 scripts/check-rom-archive-epoch.py
+
       - name: clang-format (clang-format-14)
         run: |
           sudo apt-get update && sudo apt-get install -y clang-format-14
