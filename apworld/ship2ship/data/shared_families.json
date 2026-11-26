@@ -1,0 +1,113 @@
+{
+ "version": 1,
+ "families": {
+  "bows": {
+   "oot": "Progressive Bow",
+   "mm": "Progressive Bow"
+  },
+  "bombBags": {
+   "oot": "Progressive Bomb Bag",
+   "mm": "Progressive Bomb Bag"
+  },
+  "bombchuBags": {
+   "oot": "Bombchu Bag",
+   "mm": null
+  },
+  "magic": {
+   "oot": "Progressive Magic Meter",
+   "mm": "Progressive Magic"
+  },
+  "wallets": {
+   "oot": "Progressive Wallet",
+   "mm": "Progressive Wallet"
+  },
+  "hookshot": {
+   "oot": "Progressive Hookshot",
+   "mm": "Hookshot"
+  },
+  "fireArrows": {
+   "oot": "Fire Arrows",
+   "mm": "Fire Arrows"
+  },
+  "iceArrows": {
+   "oot": "Ice Arrows",
+   "mm": "Ice Arrows"
+  },
+  "lightArrows": {
+   "oot": "Light Arrows",
+   "mm": "Light Arrows"
+  },
+  "lens": {
+   "oot": "Lens of Truth",
+   "mm": "Lens of Truth"
+  },
+  "eponasSong": {
+   "oot": "Epona's Song",
+   "mm": "Epona's Song"
+  },
+  "songOfStorms": {
+   "oot": "Song of Storms",
+   "mm": "Song of Storms"
+  },
+  "goronMask": {
+   "oot": "Goron Mask",
+   "mm": "Goron Mask"
+  },
+  "zoraMask": {
+   "oot": "Zora Mask",
+   "mm": "Zora Mask"
+  },
+  "keatonMask": {
+   "oot": "Keaton Mask",
+   "mm": "Keaton Mask"
+  },
+  "bunnyHood": {
+   "oot": "Bunny Hood",
+   "mm": "Bunny Hood"
+  },
+  "maskOfTruth": {
+   "oot": "Mask of Truth",
+   "mm": "Mask of Truth"
+  },
+  "songOfSoaring": {
+   "oot": "Song of Soaring",
+   "mm": "Song of Soaring"
+  },
+  "minuetOfForest": {
+   "oot": "Minuet of Forest",
+   "mm": "Minuet of Forest"
+  },
+  "boleroOfFire": {
+   "oot": "Bolero of Fire",
+   "mm": "Bolero of Fire"
+  },
+  "serenadeOfWater": {
+   "oot": "Serenade of Water",
+   "mm": "Serenade of Water"
+  },
+  "requiemOfSpirit": {
+   "oot": "Requiem of Spirit",
+   "mm": "Requiem of Spirit"
+  },
+  "nocturneOfShadow": {
+   "oot": "Nocturne of Shadow",
+   "mm": "Nocturne of Shadow"
+  },
+  "preludeOfLight": {
+   "oot": "Prelude of Light",
+   "mm": "Prelude of Light"
+  },
+  "bottles": {
+   "oot": "Empty Bottle",
+   "mm": "Empty Bottle"
+  },
+  "ocarina": {
+   "oot": "Progressive Ocarina",
+   "mm": "Ocarina of Time"
+  },
+  "songOfTime": {
+   "oot": "Song of Time",
+   "mm": "Song of Time"
+  }
+ }
+}

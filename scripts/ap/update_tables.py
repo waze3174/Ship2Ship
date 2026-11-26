@@ -5,6 +5,10 @@ table apworld/ship2ship/data/ids.json maps each name to a number, forever: OoT i
 2,000,000 + n, counted separately for items and locations. New names get the next number; a name that leaves the
 libraries keeps its id (a rename needs an entry under "aliases": {old name: new name}).
 
+The same dump also gives apworld/ship2ship/data/groups.json: each item's category, whether the game's logic needs it and
+whether it is a trap (what the apworld classifies an item by when no seed is open, as in an item link), and each
+location's area. That file is rewritten whole on every --write; only the ids are append-only.
+
   update_tables.py --comborando ./comborando --check     fail on a stale table or a conflicting name (CI)
   update_tables.py --comborando ./comborando --write     add the new names
   update_tables.py --tables tables.json --check          the same from a dump made earlier
@@ -21,7 +25,10 @@ import tempfile
 GAME_BASE = {"oot": 1_000_000, "mm": 2_000_000}
 TABLES = ("items", "locations")
 IDS_VERSION = 1
-DEFAULT_IDS = pathlib.Path(__file__).resolve().parent.parent.parent / "apworld" / "ship2ship" / "data" / "ids.json"
+GROUPS_VERSION = 1
+DATA_FOLDER = pathlib.Path(__file__).resolve().parent.parent.parent / "apworld" / "ship2ship" / "data"
+DEFAULT_IDS = DATA_FOLDER / "ids.json"
+GROUPS_FILE = "groups.json"
 
 
 def dump_tables(comborando, cwd):
@@ -65,6 +72,22 @@ def add_missing(ids, missing):
                 ids[table][name] = next_id(ids[table], game)
 
 
+def build_groups(tables):
+    """The static facts the apworld needs about every name, whatever seed is open."""
+    by_name = lambda entries: sorted(entries, key=lambda e: e["apName"])
+    return {
+        "version": GROUPS_VERSION,
+        "items": {e["apName"]: {"category": e["category"], "advancement": e["advancement"], "trap": e["trap"]}
+                  for e in by_name(tables["items"])},
+        "locations": {e["apName"]: e["area"] for e in by_name(tables["locations"])},
+    }
+
+
+def write_json(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(data, indent=1, sort_keys=True) + "\n", encoding="utf-8")
+
+
 def problems_of(tables, ids):
     problems = [f"{c['table']}: '{c['apName']}' is listed twice with different data" for c in tables.get("conflicts", [])]
     for table in TABLES:
@@ -81,13 +104,16 @@ def main():
     source.add_argument("--tables", type=pathlib.Path)
     parser.add_argument("--cwd", default=".")
     parser.add_argument("--ids", type=pathlib.Path, default=DEFAULT_IDS)
+    parser.add_argument("--groups", type=pathlib.Path, help="default: groups.json next to --ids")
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--check", action="store_true")
     mode.add_argument("--write", action="store_true")
     args = parser.parse_args()
 
+    groups_path = args.groups or args.ids.parent / GROUPS_FILE
     tables = (json.loads(args.tables.read_text(encoding="utf-8")) if args.tables
               else dump_tables(args.comborando, args.cwd))
+    groups = build_groups(tables)
     ids = load_ids(args.ids)
     problems = problems_of(tables, ids)
     missing = missing_names(tables, ids)
@@ -103,10 +129,13 @@ def main():
         add_missing(ids, missing)
         ids["version"] = IDS_VERSION
         ids.setdefault("aliases", {})
-        args.ids.parent.mkdir(parents=True, exist_ok=True)
-        args.ids.write_text(json.dumps(ids, indent=1, sort_keys=True) + "\n", encoding="utf-8")
-        print(f"{total} new name(s); {args.ids} has {len(ids['items'])} items and {len(ids['locations'])} locations")
+        write_json(args.ids, ids)
+        write_json(groups_path, groups)
+        print(f"{total} new name(s); {args.ids} has {len(ids['items'])} items and {len(ids['locations'])} locations; "
+              f"{groups_path} written")
         return
+    if not groups_path.exists() or json.loads(groups_path.read_text(encoding="utf-8")) != groups:
+        problems.append(f"{groups_path.name} is stale. Run update_tables.py --write and commit it.")
     if total:
         problems.append(f"ids.json is stale: {total} name(s) have no id. Run update_tables.py --write and commit it. "
                         + "; ".join(f"{t}/{g}: {n[:3]}" for t, per in missing.items() for g, n in per.items() if n))
