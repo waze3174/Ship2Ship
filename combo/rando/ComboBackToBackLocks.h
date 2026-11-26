@@ -4,8 +4,8 @@
 // docs/deviations/back2back.md.
 //
 // While the locks are in force (a back-to-back slot, before both games are beaten) an OoT item that Majora's Mask has
-// too stays out of Termina until Link has found MM's own copy, and an OoT-only item stays out unless its switch on the
-// Back to back page is on. Once both games are beaten nothing is locked.
+// too stays out of Termina until Link has found MM's own copy, unless its switch on the Back to back page lets it in
+// early; an OoT-only item stays out unless its switch is on. Once both games are beaten nothing is locked.
 #pragma once
 
 #include "ComboBackToBackSettings.h"
@@ -14,16 +14,16 @@
 namespace ComboRando::BackToBack {
 
 enum class LockKind {
-    UntilMmHolds, // MM has the item too: locked until MM's own copy is found
-    Bottle,       // an OoT bottle or what is in it: needs the Bottles setting and MM's first bottle
-    Mask,         // an OoT mask MM has too: locked until MM's copy is found, unless songs and masks are shared
+    UntilMmHolds, // MM has the item too: locked until MM's own copy is found, unless its early-use switch is on
+    Bottle,       // an OoT bottle or what is in it: needs the Bottles switch, and waits for MM's first bottle
     Option,       // OoT only: locked unless its switch is on
+    Free,         // never locked (the Goron and Zora masks: worn as plain masks until MM's own is found)
     Closed,       // OoT only and no switch: locked until both games are beaten
 };
 
 struct ItemLock {
     LockKind kind;
-    int option; // the Option bit, for LockKind::Option
+    int option; // the Option bit: the early-use switch for UntilMmHolds, the item's switch for Option
 };
 
 // OoT item ids (soh/include/z64item.h).
@@ -61,26 +61,40 @@ inline constexpr int kOotMaskTruth = 0x2B;
 inline ItemLock ClassifyOotItem(int ootItem) {
     switch (ootItem) {
         case OotItem::kOotStick:
+            return { LockKind::UntilMmHolds, kEarlySticks };
         case OotItem::kOotNut:
+            return { LockKind::UntilMmHolds, kEarlyNuts };
         case OotItem::kOotBomb:
+            return { LockKind::UntilMmHolds, kEarlyBombs };
         case OotItem::kOotBow:
+            return { LockKind::UntilMmHolds, kEarlyBow };
         case OotItem::kOotArrowFire:
+            return { LockKind::UntilMmHolds, kEarlyFireArrows };
+        case OotItem::kOotArrowIce:
+            return { LockKind::UntilMmHolds, kEarlyIceArrows };
+        case OotItem::kOotArrowLight:
+            return { LockKind::UntilMmHolds, kEarlyLightArrows };
         case OotItem::kOotOcarinaFairy:
         case OotItem::kOotOcarinaTime:
+            return { LockKind::UntilMmHolds, kEarlyOcarina };
         case OotItem::kOotBombchu:
+            return { LockKind::UntilMmHolds, kEarlyBombchus };
         case OotItem::kOotHookshot:
         case OotItem::kOotLongshot:
-        case OotItem::kOotArrowIce:
+            return { LockKind::UntilMmHolds, kEarlyHookshot };
         case OotItem::kOotLens:
+            return { LockKind::UntilMmHolds, kEarlyLens };
         case OotItem::kOotBean:
-        case OotItem::kOotArrowLight:
-            return { LockKind::UntilMmHolds, 0 };
+            return { LockKind::UntilMmHolds, kEarlyBeans };
         case OotItem::kOotMaskKeaton:
+            return { LockKind::UntilMmHolds, kEarlyKeatonMask };
         case OotItem::kOotMaskBunny:
+            return { LockKind::UntilMmHolds, kEarlyBunnyHood };
+        case OotItem::kOotMaskTruth:
+            return { LockKind::UntilMmHolds, kEarlyMaskOfTruth };
         case OotItem::kOotMaskGoron:
         case OotItem::kOotMaskZora:
-        case OotItem::kOotMaskTruth:
-            return { LockKind::Mask, 0 };
+            return { LockKind::Free, 0 };
         case OotItem::kOotDinsFire:
             return { LockKind::Option, kDinsFire };
         case OotItem::kOotSlingshot:
@@ -110,13 +124,13 @@ inline ItemLock GearLock(bool boots) {
 inline bool Locked(int options, ItemLock lock, bool mmHoldsCounterpart) {
     switch (lock.kind) {
         case LockKind::UntilMmHolds:
-            return !mmHoldsCounterpart;
+            return (options & lock.option) == 0 && !mmHoldsCounterpart;
         case LockKind::Bottle:
-            return (options & kBottlesCarry) == 0 || !mmHoldsCounterpart;
-        case LockKind::Mask:
-            return (options & kSongsMasksShared) == 0 && !mmHoldsCounterpart;
+            return (options & kBottlesCarry) == 0 || ((options & kEarlyBottles) == 0 && !mmHoldsCounterpart);
         case LockKind::Option:
             return (options & lock.option) == 0;
+        case LockKind::Free:
+            return false;
         case LockKind::Closed:
             return true;
     }

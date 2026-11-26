@@ -571,11 +571,14 @@ extern "C" int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsig
 }
 
 // What a foreign item runs as when used in Termina: OOT's masks are MM's own masks (Keaton, Bunny Hood, Mask of
-// Truth; Goron and Zora transform), and OOT's ocarina and lens (only on a button while MM has none of its own) are
-// MM's Ocarina of Time and Lens of Truth: they spend nothing of OOT's, so MM's own code runs them under MM's id, with
-// MM's model, songs and magic. Everything else has no Termina version yet (ITEM_NONE).
+// Truth; Goron and Zora transform, except worn as plain masks, Combo_MmOotMaskIsPlain), and OOT's ocarina and lens
+// (only on a button while MM has none of its own) are MM's Ocarina of Time and Lens of Truth: they spend nothing of
+// OOT's, so MM's own code runs them under MM's id, with MM's model, songs and magic. Everything else has no Termina
+// version yet (ITEM_NONE).
 extern "C" int Combo_MmPauseUseItem(int item) {
     const int oot = LiveOotItem(item);
+    if (Combo_MmOotMaskIsPlain(oot))
+        return ITEM_NONE;
     switch (oot) {
         case OOT_ITEM_MASK_KEATON:
         case OOT_ITEM_MASK_BUNNY:

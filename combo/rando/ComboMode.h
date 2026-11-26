@@ -116,7 +116,8 @@ struct ComboMode {
         } else if (j.value(kSequentialKey, false)) {
             m.kind = COMBO_KIND_VANILLA;
             m.sequential = true;
-            m.options = j.value(kOptionsKey, ComboRando::BackToBack::DefaultOptions());
+            m.options = ComboRando::BackToBack::MigrateStoredOptions(
+                j.value(kOptionsKey, ComboRando::BackToBack::DefaultOptions()));
         }
         return m;
     }
