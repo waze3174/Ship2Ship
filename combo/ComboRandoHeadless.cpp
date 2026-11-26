@@ -174,6 +174,45 @@ FILE* ClaimProtocolStream() {
 #endif
 }
 
+// The headless init writes its config (ship2ship.json) into the working directory. The oracle is started from install
+// folders and must leave them as they were, so it works from a scratch directory of its own. Enter() comes after the
+// game modules are loaded (they are found relative to where the tool started) and before they are initialised.
+struct ScratchDirectory {
+    std::filesystem::path dir;
+
+    void Enter() {
+        std::error_code ec;
+        PurgeStale();
+#ifdef _WIN32
+        const unsigned long pid = GetCurrentProcessId();
+#else
+        const unsigned long pid = static_cast<unsigned long>(getpid());
+#endif
+        dir = std::filesystem::temp_directory_path(ec) / (std::string(kPrefix) + std::to_string(pid));
+        std::filesystem::create_directories(dir, ec);
+        std::filesystem::current_path(dir, ec);
+    }
+
+    // The config is written once more when the process exits, relative to the working directory, so the tool stays in
+    // the scratch directory. Where the system cannot delete a directory in use (Windows) it is left for the next
+    // run's PurgeStale.
+    void Leave() {
+        std::error_code ec;
+        std::filesystem::remove_all(dir, ec);
+    }
+
+  private:
+    static constexpr const char* kPrefix = "comborando-oracle-";
+
+    // Scratch directories that earlier runs could not delete. One still in use by a live run stays (the delete fails).
+    static void PurgeStale() {
+        std::error_code ec;
+        for (const auto& entry : std::filesystem::directory_iterator(std::filesystem::temp_directory_path(ec), ec))
+            if (entry.path().filename().string().rfind(kPrefix, 0) == 0)
+                std::filesystem::remove_all(entry.path(), ec);
+    }
+};
+
 // "sharedItems" in an open request: the key list a consolidated seed stores, or "all" / "none".
 uint32_t SharedMaskFromRequest(const nlohmann::json& v) {
     if (v.is_string())
@@ -563,6 +602,9 @@ static int Run(int argc, char** argv) {
         return 2;
     }
 
+    ScratchDirectory scratch;
+    if (oracleMode)
+        scratch.Enter();
     SOH_InitRandoHeadless();
     MM_InitRandoHeadless();
 
@@ -686,6 +728,7 @@ static int Run(int argc, char** argv) {
             std::fputc('\n', protocol);
             std::fflush(protocol);
         });
+        scratch.Leave();
         return 0;
     };
 

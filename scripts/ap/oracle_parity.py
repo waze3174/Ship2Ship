@@ -213,6 +213,17 @@ def sweep(world):
     raise Failure(f"the oracle sweep did not settle in {SPHERE_LIMIT} spheres")
 
 
+def reached_per_game(world, response):
+    """Checks reached per game over the locations and the confined (fixed and forced) checks."""
+    mask, credited = bits(response["mask"]), bits(response["fixedMask"])
+    per_game = {"oot": 0, MM_GAME: 0}
+    for i, (game, _) in enumerate(world.locations):
+        per_game[game] += bit_set(mask, i)
+    for i, (game, _) in enumerate(world.credited):
+        per_game[game] += bit_set(credited, i)
+    return per_game
+
+
 def check_parity(world, replay):
     reached, spheres, last = sweep(world)
     playthrough_by_sphere = []
@@ -228,21 +239,23 @@ def check_parity(world, replay):
         if missing:
             raise Failure(f"playthrough sphere {k} reached {sorted(missing)[:5]} that the oracle sweep had not by then")
         exact += 1 if k < len(spheres) and set(spheres[k]) == expected else 0
-    everything = world.reach(counts(world.location_items()))
-    mask, credited = bits(everything["mask"]), bits(everything["fixedMask"])
-    per_game = {"oot": 0, MM_GAME: 0}
-    for i, (game, _) in enumerate(world.locations):
-        per_game[game] += bit_set(mask, i)
-    for i, (game, _) in enumerate(world.credited):
-        per_game[game] += bit_set(credited, i)
+    # The playthrough's last pass owns every placed item, the confined ones too, whether or not their check is
+    # reachable; the oracle credits a confined item when its check is reached, as the fill does. Own the confined items
+    # as well for the comparison, and report how many checks the credited-on-reach rule costs.
+    confined = [(f["itemGame"], f["item"]) for f in world.opened["fixed"] + world.opened["forced"]]
+    everything = world.reach(counts(world.location_items() + confined))
+    strict = world.reach(counts(world.location_items()))
     expected = {"oot": replay["reachableOot"], MM_GAME: replay["reachableMm"]}
-    if per_game != expected:
-        raise Failure(f"the full inventory reaches {per_game} checks, the playthrough {expected}")
+    reached_by = lambda response: reached_per_game(world, response)
+    if reached_by(everything) != expected:
+        raise Failure(f"the full inventory reaches {reached_by(everything)} checks, the playthrough {expected}")
+    cost = {g: expected[g] - reached_by(strict)[g] for g in expected}
     if world.opened["win"]["condition"] == "ganon+majora":
         wins = replay["ganonReachable"] and replay["majoraReachable"]
         if bool(everything["win"]["won"]) != bool(wins):
             raise Failure(f"win flag: oracle {everything['win']['won']}, playthrough {wins}")
-    return f"{len(spheres)} oracle spheres vs {len(playthrough_by_sphere)} playthrough, {exact} identical"
+    return (f"{len(spheres)} oracle spheres vs {len(playthrough_by_sphere)} playthrough, {exact} identical, "
+            f"confined items on unreachable checks cost {cost['oot']} OoT and {cost['mm']} MM")
 
 
 def check_monotone(world, rng):
@@ -280,11 +293,18 @@ def check_determinism(world, rng):
     return "open and reach repeat"
 
 
+def normalized_foreign(markers):
+    """By check, without the trap disguises: those are drawn in placement order, which the oracle does not share."""
+    kept = [{k: v for k, v in m.items() if not k.startswith("fake")} for m in markers]
+    return sorted(kept, key=lambda m: (m["checkGame"], m["checkName"]))
+
+
 def check_finalize(world):
     placements = [{"game": game, "check": check, "item": {"game": item_game, "name": name}}
                   for (game, check), (item_game, name) in zip(world.locations, world.location_items())]
     seed = world.oracle.call({"cmd": "finalize", "placements": placements})["seed"]
     wanted = {k: v for k, v in world.spoiler.items() if k != "hints"}
+    wanted["foreign"], seed["foreign"] = normalized_foreign(wanted["foreign"]), normalized_foreign(seed["foreign"])
     differing = sorted(k for k in set(wanted) | set(seed) if wanted.get(k) != seed.get(k))
     if differing:
         details = []
