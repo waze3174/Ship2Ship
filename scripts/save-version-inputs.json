@@ -1,0 +1,14 @@
+{
+  "releaseMajor": 0,
+  "releaseMinor": 4,
+  "inputs": {
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerCheck.h": "a590d975e824a402a7862046390ac6ab0b4e2fa81782a49d9a2c8c8288897250",
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerGet.h": "2337bca8b202dbb5ca49bf72e8a0c70afa55ab7c80fe9ebfa1f79b90fc439d69",
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerInf.h": "c11285846f2076dc4acd79c54f1c6fd306e84db128be2da6bf145c84afccdae5",
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerSettingKey.h": "2caf2bbe4f3321a40728f4f8773d0a3a80de8d1bc8b854ecffc5b5404e7e0585",
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerTrick.h": "0350e09be316bcb141685a6621be9ff97f040fb2fcfd1482da4142518589ba87",
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerMiscEnums.h": "ed8d6fa5d96c62b22d39ec05d514dc5e73cf7029cfad881368c056c03dabe5e2",
+    "soh/soh/Enhancements/randomizer/randomizerEnums/RandomizerOptions.h": "799b34d3d5ea57e7fd20845210a998d4f3421b576b73a52a2dfac9b8046a43c8",
+    "mm/2s2h/Rando/Types.h": "01acb436adb51bbce243dc0525df18133b88ab0d5471358fd16543455fd9673e"
+  }
+}
