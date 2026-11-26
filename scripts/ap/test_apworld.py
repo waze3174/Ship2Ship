@@ -6,7 +6,6 @@ Generation against the real Archipelago and comborando is the CI's job (scripts/
 
   python -I scripts/ap/test_apworld.py
 """
-import importlib.util
 import json
 import pathlib
 import re
@@ -26,22 +25,8 @@ CROSS_ENTRANCE_HEADER = ROOT / "combo" / "rando" / "CrossEntrance.h"
 LOST_WOODS_HEADER = ROOT / "combo" / "rando" / "ComboLostWoodsLink.h"
 
 
-def load_module(name, path):
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-    sys.modules[name] = module
-    spec.loader.exec_module(module)
-    return module
-
-
-def load_world_package():
-    """The world's package with an empty __init__: its modules import each other, not Archipelago."""
-    spec = importlib.util.spec_from_file_location("ship2ship", WORLD / "__init__.py",
-                                                  submodule_search_locations=[str(WORLD)])
-    sys.modules["ship2ship"] = importlib.util.module_from_spec(spec)
-    for name in ("tables", "oracle", "reach", "seedout"):
-        importlib.import_module(f"ship2ship.{name}")
-
+sys.path.insert(0, str(SCRIPTS))
+from world_modules import load_module, load_world_package  # noqa: E402
 
 load_world_package()
 from ship2ship import oracle, reach, seedout, tables  # noqa: E402

@@ -116,6 +116,7 @@ class Ship2ShipWorld(World):
             self.opened = parse_opened(self.oracle.call(request))
         except OracleError as error:
             raise OptionError(f"{self.player_name}: Ship2Ship could not set this slot up. {error}")
+        logger.info("%s: open request %s", self.player_name, json.dumps(request, sort_keys=True))
         self._index_opened(self.opened)
         self.pieces_required = settings.pieces_required if settings.triforce_hunt else 0
         self.reach_cache = ReachCache(self.oracle.call, self.item_name_to_id)

@@ -13,10 +13,10 @@ That last check is ours, independent of Archipelago's own fill and accessibility
 """
 import argparse
 import concurrent.futures
-import importlib.util
 import json
 import os
 import pathlib
+import re
 import statistics
 import subprocess
 import sys
@@ -26,7 +26,11 @@ import time
 import zipfile
 import zlib
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent.parent
+SCRIPTS = pathlib.Path(__file__).resolve().parent
+sys.path.insert(0, str(SCRIPTS))
+from world_modules import load_module  # noqa: E402
+
+ROOT = SCRIPTS.parent.parent
 SEEDOUT = ROOT / "apworld" / "ship2ship" / "seedout.py"
 SHARED_FAMILIES = ROOT / "apworld" / "ship2ship" / "data" / "shared_families.json"
 GAME = "Ship2Ship"
@@ -39,6 +43,7 @@ LOG_TAIL_LINES = 40
 MIDO_CHESTS = ["KF Mido Top Left Chest (OoT)", "KF Mido Top Right Chest (OoT)", "KF Mido Bottom Left Chest (OoT)"]
 FAILURE_MARKERS = ("FillError", "OptionError", "OracleError", "Exception", "Error:")
 ITEM_LINK = {"name": "Shared", "item_pool": ["Masks"], "replacement_item": "Blue Rupee (OoT)", "link_replacement": False}
+AFTERMATH = "EOF when reading a line"  # Archipelago waits for Enter after an error; stdin is closed here
 PLAYTHROUGH_LOCK = threading.Lock()  # --playthrough writes saves/combo/ beside comborando
 
 PRESETS = {
@@ -52,14 +57,7 @@ PRESETS = {
 }
 
 
-def load_seedout():
-    spec = importlib.util.spec_from_file_location("ship2ship_seedout", SEEDOUT)
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module
-
-
-seedout = load_seedout()
+seedout = load_module("ship2ship_seedout", SEEDOUT)
 
 
 def option_value(value):
@@ -105,6 +103,8 @@ def failure_summary(log_path):
     """The exception line a failed generation ended with."""
     text = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     for line in reversed(text):
+        if AFTERMATH in line:
+            continue
         if any(marker in line for marker in FAILURE_MARKERS) and not line.startswith(" "):
             return line.strip()[:300]
     return "failed without a recognizable error"
@@ -132,7 +132,8 @@ class Generation:
         started = time.perf_counter()
         with self.log.open("w", encoding="utf-8") as log:
             try:
-                code = subprocess.run(command, cwd=self.ap_root, stdout=log, stderr=subprocess.STDOUT,
+                code = subprocess.run(command, cwd=self.ap_root, stdin=subprocess.DEVNULL, stdout=log,
+                                      stderr=subprocess.STDOUT,
                                       timeout=GENERATE_TIMEOUT_SECONDS,
                                       env={**os.environ, "SKIP_REQUIREMENTS_UPDATE": "1"}).returncode
             except subprocess.TimeoutExpired:
@@ -224,6 +225,19 @@ def check_generation(gen, comborando, expect):
     return report
 
 
+def diagnose(comborando, log_path):
+    """Replays the failed slots against a fresh oracle (ap_diagnose.py) and prints what it finds."""
+    log = log_path.read_text(encoding="utf-8", errors="replace")
+    players = re.findall(r"^(.+?): open request \{", log, re.M)
+    if len(players) != 1:  # the placements of several players read differently in the log
+        return
+    for player in players:
+        result = subprocess.run([sys.executable, "-I", str(SCRIPTS / "ap_diagnose.py"), "--comborando", comborando,
+                                 "--log", str(log_path), "--player", player], capture_output=True, text=True,
+                                timeout=PLAYTHROUGH_TIMEOUT_SECONDS)
+        print(f"--- diagnosis of {player} ---\n{result.stdout}{result.stderr[-2000:]}")
+
+
 def run_short_suite(args):
     results = []
     for name, (files, expect) in short_suite().items():
@@ -242,6 +256,7 @@ def run_short_suite(args):
             print(f"[{name}] {line}")
         if gen.failure:
             print(f"[{name}] FAILED: {gen.failure}\n--- tail of {gen.log} ---\n{tail(gen.log)}")
+            diagnose(args.comborando, gen.log)
         print("::endgroup::")
         results.append((name, ok, gen.seconds))
     print("\nshort suite:")
