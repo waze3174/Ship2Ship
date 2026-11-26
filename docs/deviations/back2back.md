@@ -338,7 +338,7 @@ the decomp has no story flag for it. Retrieval writes only the item (`Item_Give`
 that marks the first cycle reads the slot: the faster clock (`VB_FASTER_FIRST_CYCLE`, `z_scene.c`), the empty Termina
 Field (`VB_TERMINA_FIELD_BE_EMPTY`), the Scrub in the field (`VB_SCOPENUTS_CONSIDER_FIRST_CYCLE`), the Clock Tower's
 opening on the last night (`VB_CLOCK_TOWER_OPENING_CONSIDER_THIS_FIRST_CYCLE`, `z_en_test4.c`, and
-`ObjTokeidai_IsPostFirstCycleFinalHours`) and Tatl's first-cycle hints (`z_elf_message.c`, `z_elf_msg6.c`). They now ask
+`ObjTokeidai_IsPostFirstCycleFinalHours` in `z_obj_tokeidai.c`, which includes `BenPort.h` for the call under COMBO_BUILD) and Tatl's first-cycle hints (`z_elf_message.c`, `z_elf_msg6.c`). They now ask
 `Combo_MM_FirstCycleOver` (`ComboBackToBack.cpp`): MM's ocarina is in the slot, or this is a back-to-back slot whose
 `threeDayResetCount` is above 0. That count is MM's own record that a reset happened (`Sram_SaveEndOfCycle`, the Song of
 Time's return) and persists in the save, so no new flag is stored. A reset needs a playable ocarina, so in a
