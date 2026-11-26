@@ -44,13 +44,12 @@ for d in mods presets randomizer; do
 done
 cp "$BUILD/soh/soh.o2r" "$BUILD/mm/2ship.o2r" "$STAGE/"
 
-# --- AppDir: the staged tree under usr/bin, minus comborando (headless validator; the
-# AppImage is the game — the validator ships in the plain Ship2Ship-linux artifact).
+# --- AppDir: the staged tree under usr/bin. comborando (the headless generator and the Archipelago oracle) rides
+# along; combo/linux/AppRun runs it for `Ship2Ship.AppImage --comborando <args>`.
 APPDIR="$OUT/AppDir"
 rm -rf "$APPDIR"
 mkdir -p "$APPDIR/usr/bin"
 cp -r "$STAGE"/. "$APPDIR/usr/bin/"
-rm -f "$APPDIR/usr/bin/comborando"
 
 # --- linuxdeploy: bundles every shared-library dependency (SDL2, tinyxml2, spdlog, ...)
 # except the AppImage exclude list (glibc, libGL, X11/Wayland client libs — host-provided).

@@ -50,4 +50,12 @@ export COMBO_HOST_LD_LIBRARY_PATH="${LD_LIBRARY_PATH:-}"
 export LD_LIBRARY_PATH="$BIN:$HERE/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
 cd "$DATA" || exit 1
+
+# `AppRun --comborando <args>` runs the headless generator / Archipelago oracle from the same data directory (it loads
+# the game libraries from the current directory, like the launcher). `--oracle` writes nothing there.
+if [ "${1:-}" = "--comborando" ]; then
+    shift
+    exec "$BIN/comborando" "$@"
+fi
+
 exec "$BIN/Ship2Ship" "$@"

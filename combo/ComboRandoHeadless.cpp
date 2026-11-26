@@ -26,12 +26,15 @@
 // failed; 2 = setup error.
 #ifdef _WIN32
 #define NOMINMAX // windows.h min/max macros clash with std::min/std::max in CrossWorldRando.h
+#include <io.h>
 #include <windows.h>
 #else
 #include <dlfcn.h>
+#include <unistd.h>
 #endif
 
 #include <algorithm>
+#include <cctype>
 #include <chrono>
 #include <cstdint>
 #include <cstdio>
@@ -43,8 +46,10 @@
 #include <string>
 #include <vector>
 
+#include "rando/ComboApTables.h"
 #include "rando/ComboAttempt.h"
 #include "rando/ComboLostWoodsLink.h"
+#include "rando/ComboOracleServer.h"
 #include "rando/CrossWorldRando.h"
 #include "rando/CrossEntrance.h"
 #include "rando/MasterQuestSeed.h"
@@ -52,6 +57,20 @@
 #include "rando/ComboPlaythrough.h"
 #include "rando/CrossForeign.h" // BuildForeignArray (foreign enrichment parity with RunComboFill)
 #include "rando/CrossHints.h"
+
+// Set by combo/CMakeLists.txt; the identity `hello` reports.
+#ifndef COMBO_SHIP2SHIP_VERSION
+#define COMBO_SHIP2SHIP_VERSION "unknown"
+#endif
+#ifndef COMBO_RELEASE_VERSION
+#define COMBO_RELEASE_VERSION "unknown"
+#endif
+#ifndef COMBO_SOH_PIN
+#define COMBO_SOH_PIN "unknown"
+#endif
+#ifndef COMBO_MM_PIN
+#define COMBO_MM_PIN "unknown"
+#endif
 
 namespace {
 
@@ -139,6 +158,35 @@ nlohmann::json PricesOf(const std::string& dump) {
     return nlohmann::json::parse(dump).value("prices", nlohmann::json::object());
 }
 
+// The oracle protocol owns stdout. Anything else the process or the game modules print (logs, the fill's progress
+// lines) would corrupt it, so fd 1 is pointed at stderr and the real stdout is kept for protocol lines only.
+FILE* ClaimProtocolStream() {
+    std::cout.flush();
+    std::fflush(stdout);
+#ifdef _WIN32
+    const int protocolFd = _dup(_fileno(stdout));
+    _dup2(_fileno(stderr), _fileno(stdout));
+    return _fdopen(protocolFd, "wb");
+#else
+    const int protocolFd = dup(STDOUT_FILENO);
+    dup2(STDERR_FILENO, STDOUT_FILENO);
+    return fdopen(protocolFd, "w");
+#endif
+}
+
+// "sharedItems" in an open request: the key list a consolidated seed stores, or "all" / "none".
+uint32_t SharedMaskFromRequest(const nlohmann::json& v) {
+    if (v.is_string())
+        return v.get<std::string>() == "all" ? ComboRando::SharedMaskAll() : 0u;
+    return ComboRando::SharedMaskFromKeys(v);
+}
+
+// "OOT" / "MM" / "random" (any case) as the starting-game config comborando uses: 0, 1 or 2.
+int StartingGameConfigFromName(std::string name) {
+    std::transform(name.begin(), name.end(), name.begin(), [](unsigned char c) { return std::tolower(c); });
+    return name == "mm" ? 1 : name == "random" ? 2 : 0;
+}
+
 // Render the spoiler's "seed" (string or number) as a label.
 std::string SeedLabel(const nlohmann::json& spoiler) {
     if (spoiler.contains("seed")) {
@@ -170,11 +218,14 @@ static int Run(int argc, char** argv) {
     std::string sharedItemsArg;
     // Games (ComboGames.h). Absent (-1) => the menu CVar, same as in-game.
     int gamesArg = -1;
-    std::string dumpEntrancesFile; // full-coop-sync §B1: write MM's entrance graph and exit
-    std::string mmEntrancesArg;    // §B1: "off" | "all" | csv of overworld,interior,dungeon,decoupled,mixed
-    int unifiedArg = -1;           // --unified / --no-unified (else the menu CVar)
-    int lostWoodsLinkArg = -1;     // --lost-woods-link / --no-lost-woods-link (else the menu CVar)
-    std::string crossArg;          // §B2: "off" | csv of overworld,interior,dungeon[,pct=N] (else the menu CVars)
+    bool oracleMode = false;         // --oracle: the Archipelago oracle protocol on stdin/stdout
+    std::string apTablesFile;        // --ap-tables <file>: every item and check, under the AP names
+    std::string playthroughJsonFile; // --playthrough-json <file>: pass 1's spheres and counts, for scripts
+    std::string dumpEntrancesFile;   // full-coop-sync §B1: write MM's entrance graph and exit
+    std::string mmEntrancesArg;      // §B1: "off" | "all" | csv of overworld,interior,dungeon,decoupled,mixed
+    int unifiedArg = -1;             // --unified / --no-unified (else the menu CVar)
+    int lostWoodsLinkArg = -1;       // --lost-woods-link / --no-lost-woods-link (else the menu CVar)
+    std::string crossArg;            // §B2: "off" | csv of overworld,interior,dungeon[,pct=N] (else the menu CVars)
     for (int i = 1; i < argc; ++i) {
         std::string a = argv[i];
         if (a == "--triforce-required" && i + 1 < argc)
@@ -211,6 +262,12 @@ static int Run(int argc, char** argv) {
             mmEntrancesArg = argv[++i];
         } else if (a == "--dump-mm-entrances" && i + 1 < argc) {
             dumpEntrancesFile = argv[++i];
+        } else if (a == "--playthrough-json" && i + 1 < argc) {
+            playthroughJsonFile = argv[++i];
+        } else if (a == "--oracle") {
+            oracleMode = true;
+        } else if (a == "--ap-tables" && i + 1 < argc) {
+            apTablesFile = argv[++i];
         } else if (a == "--seed" && i + 1 < argc)
             seed = argv[++i];
         else if (a == "--count" && i + 1 < argc)
@@ -398,6 +455,94 @@ static int Run(int argc, char** argv) {
         return ComboRando::AttemptStatus::Ready;
     };
 
+    // The consolidated seed (settings, placements, entrances) as the in-game generator writes it, from a finished
+    // fill spoiler. The caller adds the hints: they need the fill's requiredness result.
+    auto buildConsolidated = [&](const std::string& seed, uint32_t masterSeed, const ComboRando::AttemptConfig& cfg,
+                                 bool resolvedMmStart, const ComboRando::AttemptSetup& setup,
+                                 const nlohmann::json& fillSpoiler) {
+        const ComboRando::CwGoal& goal = cfg.goal;
+        const ComboRando::ComboGames games = cfg.games;
+        const bool unified = cfg.unified, formLogicCredit = cfg.formLogicCredit, lostWoodsLink = cfg.lostWoodsLink;
+        const ComboRando::EntranceSettings& entMm = cfg.entMm;
+        const ComboRando::CrossSettings& entCross = cfg.entCross;
+        const std::string& sohDump = setup.sohDump;
+        const std::string& mmDump = setup.mmDump;
+        // OOT's curated ice-trap disguise set (parity with RunComboFill's writer).
+        auto iceTrapModelsOf = [](const std::string& dump) {
+            return nlohmann::json::parse(dump).value("iceTrapModels", nlohmann::json::array());
+        };
+        nlohmann::json consolidated;
+        consolidated["fileType"] = ComboRando::kSeedFileType;
+        consolidated["seed"] = seed;
+        consolidated["masterSeed"] = masterSeed;
+        consolidated["goal"] = { { "type", goal.hunt ? "triforceHunt" : "bosses" },
+                                 { "requiredPieces", goal.required },
+                                 { "totalPieces", goal.total } };
+        consolidated["startingGame"] = resolvedMmStart ? "MM" : "OOT"; // #135
+        consolidated["games"] = ComboRando::ComboGamesKey(games);
+        // Shared Items: the EFFECTIVE mask (families actually trimmed this fill), not the
+        // requested one — a family with no OOT copies was left alone (see CrossWorldRando.h).
+        nlohmann::json sharedItemsJson = fillSpoiler.value("sharedItems", nlohmann::json::array());
+        const uint32_t effectiveSharedMask = ComboRando::SharedMaskFromKeys(sharedItemsJson);
+        consolidated["sharedItems"] = sharedItemsJson;
+        if (unified)
+            consolidated["unifiedInventory"] = true;
+        if (formLogicCredit)
+            consolidated["formLogicCredit"] = true;
+        consolidated[ComboRando::LostWoodsLink::kSeedKey] = lostWoodsLink;
+        if (SOH_DumpComboMasterQuestDungeons) {
+            auto mq = ComboRando::MasterQuestFromDump(SOH_DumpComboMasterQuestDungeons());
+            if (mq.is_array())
+                consolidated[ComboRando::kMasterQuestKey] = mq;
+        }
+        if (fillSpoiler.contains("sharedStartingMm"))
+            consolidated["sharedStartingMm"] = fillSpoiler["sharedStartingMm"];
+        // ComboShip: suffix cross-game item-name collisions in the placements (parity with
+        // RunComboFill's consolidated writer) so the headless spoiler shows "(OOT)"/"(MM)".
+        nlohmann::json ootPl = fillSpoiler.value("oot", nlohmann::json::object());
+        nlohmann::json mmPl = fillSpoiler.value("mm", nlohmann::json::object());
+        ComboRando::SuffixCrossGameItems(ootPl, mmPl, fillSpoiler.value("foreign", nlohmann::json::array()), sohDump,
+                                         mmDump, ComboRando::SharedUntaggedNames(effectiveSharedMask));
+        consolidated["oot"] = { { "settings", nlohmann::json::parse(SOH_DumpSettings()) },
+                                { "enabledTricks", SOH_DumpEnabledTricks
+                                                       ? nlohmann::json::parse(SOH_DumpEnabledTricks())
+                                                       : nlohmann::json::array() },
+                                { "placements", ootPl },
+                                { "prices", PricesOf(sohDump) },
+                                { "iceTrapModels", iceTrapModelsOf(sohDump) } };
+        consolidated["mm"] = { { "settings", nlohmann::json::parse(MM_DumpSettings()) },
+                               { "placements", mmPl },
+                               { "prices", PricesOf(mmDump) } };
+        // ComboShip: enrich the foreign array exactly like RunComboFill (displayName game
+        // suffix) so the headless consolidated file matches the in-game one.
+        auto foreignArr = fillSpoiler.value("foreign", nlohmann::json::array());
+        ComboRando::AssignTrapDisguises(foreignArr, fillSpoiler.value("oot", nlohmann::json::object()),
+                                        fillSpoiler.value("mm", nlohmann::json::object()), sohDump, mmDump, masterSeed);
+        consolidated["foreign"] = ComboRando::BuildForeignArray(foreignArr, effectiveSharedMask);
+        // OOT entrance layout (parity with ComboShip.cpp's consolidated writer) — this is
+        // what --playthrough installs into the region graph before walking.
+        {
+            nlohmann::json ootEnt = nlohmann::json::array();
+            if (SOH_DumpEntranceOverrides) {
+                try {
+                    ootEnt = nlohmann::json::parse(SOH_DumpEntranceOverrides());
+                } catch (...) {}
+            }
+            consolidated["entrances"] = { { "oot", std::move(ootEnt) } };
+            if (entMm.Any()) { // §B1: stored, applied from the seed (never re-derived)
+                consolidated["entrances"]["mm"] = setup.entResult.overrides;
+                consolidated["entranceSettings"]["mm"] = entMm.ToJson();
+                consolidated["entranceSpoiler"]["mm"] = setup.entResult.spoiler;
+            }
+            if (entCross.Any()) { // §B2
+                consolidated["entrances"]["cross"] = setup.crossResult.runtime;
+                consolidated["entranceSettings"]["cross"] = entCross.ToJson();
+                consolidated["entranceSpoiler"]["cross"] = setup.crossResult.spoiler;
+            }
+        }
+        return consolidated;
+    };
+
     ComboRando::OracleFns oot{ Sym<FnOracleVoid>(soh, "Combo_SOH_Rando_Reset"),
                                Sym<FnOracleSetItems>(soh, "Combo_SOH_Rando_SetOwnedItems"),
                                Sym<FnOracleGetChecks>(soh, "Combo_SOH_Rando_GetReachableChecks"),
@@ -433,6 +578,149 @@ static int Run(int argc, char** argv) {
         std::cout << "[comborando] MM entrance graph -> " << dumpEntrancesFile << "\n";
         return 0;
     }
+
+    // ---- Archipelago modes (--ap-tables, --oracle): see ComboApTables.h and ComboOracleServer.h. ----
+    // `open`: the seed's own choices (the consolidated seed's keys, never the menu CVars) into both games, then the
+    // setup a fill attempt runs, then a session over the result.
+    auto openWorld = [&](const nlohmann::json& req, ComboRando::OracleWorld& world) -> std::string {
+        if (!SOH_RestoreSettings || !MM_RestoreSettings || !SOH_SetEnabledTricks)
+            return "settings-restore exports unavailable: rebuild soh.dll / 2ship.dll";
+        if (!req.contains("masterSeed") || !req["masterSeed"].is_number_unsigned())
+            return "open needs \"masterSeed\", an unsigned number";
+        const uint32_t masterSeed = req["masterSeed"].get<uint32_t>();
+        if (MM_Restore)
+            MM_Restore();
+        const nlohmann::json settings = req.value("settings", nlohmann::json::object());
+        const nlohmann::json ootBlock = settings.value("oot", nlohmann::json::object());
+        const nlohmann::json mmBlock = settings.value("mm", nlohmann::json::object());
+        SOH_RestoreSettings(ootBlock.value("settings", nlohmann::json::object()).dump().c_str());
+        MM_RestoreSettings(mmBlock.value("settings", nlohmann::json::object()).dump().c_str());
+        SOH_SetEnabledTricks(ootBlock.value("enabledTricks", nlohmann::json::array()).dump().c_str());
+
+        ComboRando::AttemptConfig cfg;
+        cfg.games = ComboRando::ComboGamesFromKey(req.value("games", std::string("ootmm")));
+        const bool solo = ComboRando::ComboGamesSolo(cfg.games);
+        const nlohmann::json goalJson = req.value("goal", nlohmann::json::object());
+        cfg.goal.hunt = goalJson.value("type", std::string("bosses")) == "triforceHunt";
+        cfg.goal.required =
+            cfg.goal.hunt ? std::min(goalJson.value("requiredPieces", 0), ComboRando::kMaxComboTriforcePieces) : 0;
+        cfg.goal.total =
+            std::clamp(goalJson.value("totalPieces", -1), cfg.goal.required, ComboRando::kMaxComboTriforcePieces);
+        // A solo seed shares nothing, so Unified Inventory (which shares every family) is inert there too.
+        cfg.unified = !solo && req.value("unifiedInventory", false);
+        cfg.sharedMask = solo          ? 0u
+                         : cfg.unified ? ComboRando::SharedMaskAll()
+                                       : SharedMaskFromRequest(req.value("sharedItems", nlohmann::json::array()));
+        cfg.formLogicCredit = req.value("formLogicCredit", false);
+        cfg.lostWoodsLink =
+            !solo && req.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kDefault != 0);
+        const nlohmann::json entranceSettings = req.value("entranceSettings", nlohmann::json::object());
+        cfg.entMm = ComboRando::EntranceSettings::FromJson(entranceSettings.value("mm", nlohmann::json::object()));
+        cfg.entCross = ComboRando::CrossSettings::FromJson(entranceSettings.value("cross", nlohmann::json::object()));
+        if (req.contains(ComboRando::kMasterQuestKey))
+            cfg.storedMasterQuest = { { ComboRando::kMasterQuestKey, req[ComboRando::kMasterQuestKey] } };
+
+        const int startCfg = ComboRando::ComboGamesStartingGameCfg(
+            cfg.games, StartingGameConfigFromName(req.value("startingGame", std::string("OOT"))));
+        const bool mmStart = ResolveStartingGameMM(startCfg, masterSeed);
+
+        const ComboRando::AttemptStatus status = beginAttempt(cfg, masterSeed, mmStart, world.setup);
+        if (status == ComboRando::AttemptStatus::Fatal)
+            return "the Triforce Hunt needs more pieces than the combined pool holds";
+        if (status == ComboRando::AttemptStatus::OotShuffleFailed)
+            return "OOT's entrance shuffle found no valid layout for this seed";
+        if (status == ComboRando::AttemptStatus::EntranceShuffleFailed)
+            return !world.setup.entResult.ok ? world.setup.entResult.error : world.setup.crossResult.error;
+
+        world.config = cfg;
+        world.masterSeed = masterSeed;
+        world.mmStart = mmStart;
+        world.ootAccess = ComboRando::OotAccessFromDump(world.setup.sohDump);
+        if (world.ootAccess == ComboRando::OotAccess::NO_LOGIC)
+            return "OoT No Logic is not supported by the oracle";
+        world.seedLabel = req.contains("seed") && req["seed"].is_string() ? req["seed"].get<std::string>()
+                                                                          : std::to_string(masterSeed);
+        world.session = std::make_unique<ComboRando::CrossWorldSession>(
+            oot, mmO, masterSeed, world.ootAccess, cfg.goal, mmStart ? ComboRando::GAME_MM : ComboRando::GAME_OOT,
+            cfg.sharedMask, cfg.games);
+        return world.session->Prepare(world.setup.sohDump, world.setup.mmDump, world.setup.forced);
+    };
+
+    // `finalize`: the placements (confined and forced ones included) into our consolidated seed. Another player's item
+    // is written as native junk at its check and listed under "archipelago" for the client to overlay.
+    auto finalizeWorld = [&](ComboRando::OracleWorld& world, std::vector<ComboRando::CwPlacement>& placements,
+                             const nlohmann::json& otherPlayersItems, nlohmann::json& seedOut) -> std::string {
+        if (!SOH_DumpSettings || !MM_DumpSettings)
+            return "settings dump exports unavailable: rebuild soh.dll / 2ship.dll";
+        ComboRando::BakeCrossPlacedMmJunk(*world.session, placements);
+        const nlohmann::json fillSpoiler =
+            ComboRando::BuildFillSpoiler(*world.session, placements, 0, "archipelago oracle");
+        seedOut =
+            buildConsolidated(world.seedLabel, world.masterSeed, world.config, world.mmStart, world.setup, fillSpoiler);
+        if (!otherPlayersItems.empty())
+            seedOut["archipelago"] = { { "otherPlayersItems", otherPlayersItems } };
+        return "";
+    };
+
+    auto serveOracle = [&]() {
+        ComboRando::OracleBackend backend;
+        backend.identity = { { "ship2ship", COMBO_SHIP2SHIP_VERSION },
+                             { "comboRelease", COMBO_RELEASE_VERSION },
+                             { "sohPin", COMBO_SOH_PIN },
+                             { "mmPin", COMBO_MM_PIN } };
+        backend.open = openWorld;
+        backend.finalize = finalizeWorld;
+        backend.close = [&]() {
+            if (MM_Restore)
+                MM_Restore();
+            undoCross();
+        };
+        FILE* protocol = ClaimProtocolStream();
+        if (!protocol) {
+            std::cerr << "[comborando] --oracle could not take over stdout\n";
+            return 2;
+        }
+        ComboRando::OracleServer server(std::move(backend));
+        server.Serve(std::cin, [protocol](const std::string& line) {
+            std::fputs(line.c_str(), protocol);
+            std::fputc('\n', protocol);
+            std::fflush(protocol);
+        });
+        return 0;
+    };
+
+    // Both games at their defaults, so the tables do not depend on this machine's menu choices.
+    auto writeApTables = [&](const std::string& path) {
+        if (!SOH_RestoreSettings || !MM_RestoreSettings || !SOH_DumpRandoHintData) {
+            std::cerr << "[comborando] --ap-tables needs the settings-restore and hint-data exports: rebuild soh.dll "
+                         "/ 2ship.dll\n";
+            return 2;
+        }
+        SOH_RestoreSettings("{}");
+        MM_RestoreSettings("{}");
+        if (SOH_SetSeed)
+            SOH_SetSeed(1);
+        if (MM_SetSeed)
+            MM_SetSeed(1);
+        const std::string sohDump = SOH_Dump();
+        const std::string mmDump = MM_Dump();
+        const std::string hintDump = SOH_DumpRandoHintData();
+        try {
+            const nlohmann::json tables = ComboRando::BuildApTables(sohDump, hintDump, mmDump);
+            std::ofstream(path, std::ios::trunc) << tables.dump(2);
+            std::cout << "[comborando] AP tables: " << tables["items"].size() << " items, "
+                      << tables["locations"].size() << " locations -> " << path << "\n";
+        } catch (const std::exception& e) {
+            std::cerr << "[comborando] --ap-tables failed: " << e.what() << "\n";
+            return 2;
+        }
+        return 0;
+    };
+
+    if (!apTablesFile.empty())
+        return writeApTables(apTablesFile);
+    if (oracleMode)
+        return serveOracle();
 
     // ---- Playthrough mode: replay a finished seed and judge beatability. ----
     if (!playthroughFile.empty()) {
@@ -716,6 +1004,18 @@ static int Run(int argc, char** argv) {
                   << " enabled trick(s), starts in " << (mmStart ? "MM" : "OOT") << ")\n";
         nlohmann::json pt1 = nlohmann::json::array();
         auto r1 = runPass(false, &pt1);
+        if (!playthroughJsonFile.empty()) {
+            const nlohmann::json out = { { "spheres", pt1 },
+                                         { "beatable", r1.beatable },
+                                         { "beatableSphere", r1.beatableSphere },
+                                         { "reachableOot", r1.reachableOot },
+                                         { "unreachableOot", r1.unreachableOot },
+                                         { "reachableMm", r1.reachableMm },
+                                         { "unreachableMm", r1.unreachableMm },
+                                         { "ganonReachable", r1.ganonReachable },
+                                         { "majoraReachable", r1.majoraReachable } };
+            std::ofstream(playthroughJsonFile, std::ios::trunc) << out.dump();
+        }
         if (entranceRestoreFailed) {
             std::cerr << "[playthrough] could not restore the seed's entrance layout — no verdict\n";
             return 2;
@@ -1017,81 +1317,8 @@ static int Run(int argc, char** argv) {
             if (count == 1 && SOH_DumpSettings && MM_DumpSettings) {
                 try {
                     auto fillSpoiler = nlohmann::json::parse(r.spoilerJson);
-                    // OOT's curated ice-trap disguise set (parity with RunComboFill's writer).
-                    auto iceTrapModelsOf = [](const std::string& dump) {
-                        return nlohmann::json::parse(dump).value("iceTrapModels", nlohmann::json::array());
-                    };
-                    nlohmann::json consolidated;
-                    consolidated["fileType"] = ComboRando::kSeedFileType;
-                    consolidated["seed"] = seed;
-                    consolidated["masterSeed"] = masterSeed;
-                    consolidated["goal"] = { { "type", goal.hunt ? "triforceHunt" : "bosses" },
-                                             { "requiredPieces", goal.required },
-                                             { "totalPieces", goal.total } };
-                    consolidated["startingGame"] = resolvedMmStart ? "MM" : "OOT"; // #135
-                    consolidated["games"] = ComboRando::ComboGamesKey(games);
-                    // Shared Items: the EFFECTIVE mask (families actually trimmed this fill), not the
-                    // requested one — a family with no OOT copies was left alone (see CrossWorldRando.h).
-                    nlohmann::json sharedItemsJson = fillSpoiler.value("sharedItems", nlohmann::json::array());
-                    const uint32_t effectiveSharedMask = ComboRando::SharedMaskFromKeys(sharedItemsJson);
-                    consolidated["sharedItems"] = sharedItemsJson;
-                    if (unified)
-                        consolidated["unifiedInventory"] = true;
-                    if (formLogicCredit)
-                        consolidated["formLogicCredit"] = true;
-                    consolidated[ComboRando::LostWoodsLink::kSeedKey] = lostWoodsLink;
-                    if (SOH_DumpComboMasterQuestDungeons) {
-                        auto mq = ComboRando::MasterQuestFromDump(SOH_DumpComboMasterQuestDungeons());
-                        if (mq.is_array())
-                            consolidated[ComboRando::kMasterQuestKey] = mq;
-                    }
-                    if (fillSpoiler.contains("sharedStartingMm"))
-                        consolidated["sharedStartingMm"] = fillSpoiler["sharedStartingMm"];
-                    // ComboShip: suffix cross-game item-name collisions in the placements (parity with
-                    // RunComboFill's consolidated writer) so the headless spoiler shows "(OOT)"/"(MM)".
-                    nlohmann::json ootPl = fillSpoiler.value("oot", nlohmann::json::object());
-                    nlohmann::json mmPl = fillSpoiler.value("mm", nlohmann::json::object());
-                    ComboRando::SuffixCrossGameItems(ootPl, mmPl, fillSpoiler.value("foreign", nlohmann::json::array()),
-                                                     sohDump, mmDump,
-                                                     ComboRando::SharedUntaggedNames(effectiveSharedMask));
-                    consolidated["oot"] = { { "settings", nlohmann::json::parse(SOH_DumpSettings()) },
-                                            { "enabledTricks", SOH_DumpEnabledTricks
-                                                                   ? nlohmann::json::parse(SOH_DumpEnabledTricks())
-                                                                   : nlohmann::json::array() },
-                                            { "placements", ootPl },
-                                            { "prices", PricesOf(sohDump) },
-                                            { "iceTrapModels", iceTrapModelsOf(sohDump) } };
-                    consolidated["mm"] = { { "settings", nlohmann::json::parse(MM_DumpSettings()) },
-                                           { "placements", mmPl },
-                                           { "prices", PricesOf(mmDump) } };
-                    // ComboShip: enrich the foreign array exactly like RunComboFill (displayName game
-                    // suffix) so the headless consolidated file matches the in-game one.
-                    auto foreignArr = fillSpoiler.value("foreign", nlohmann::json::array());
-                    ComboRando::AssignTrapDisguises(foreignArr, fillSpoiler.value("oot", nlohmann::json::object()),
-                                                    fillSpoiler.value("mm", nlohmann::json::object()), sohDump, mmDump,
-                                                    masterSeed);
-                    consolidated["foreign"] = ComboRando::BuildForeignArray(foreignArr, effectiveSharedMask);
-                    // OOT entrance layout (parity with ComboShip.cpp's consolidated writer) — this is
-                    // what --playthrough installs into the region graph before walking.
-                    {
-                        nlohmann::json ootEnt = nlohmann::json::array();
-                        if (SOH_DumpEntranceOverrides) {
-                            try {
-                                ootEnt = nlohmann::json::parse(SOH_DumpEntranceOverrides());
-                            } catch (...) {}
-                        }
-                        consolidated["entrances"] = { { "oot", std::move(ootEnt) } };
-                        if (entMm.Any()) { // §B1: stored, applied from the seed (never re-derived)
-                            consolidated["entrances"]["mm"] = setup.entResult.overrides;
-                            consolidated["entranceSettings"]["mm"] = entMm.ToJson();
-                            consolidated["entranceSpoiler"]["mm"] = setup.entResult.spoiler;
-                        }
-                        if (entCross.Any()) { // §B2
-                            consolidated["entrances"]["cross"] = setup.crossResult.runtime;
-                            consolidated["entranceSettings"]["cross"] = entCross.ToJson();
-                            consolidated["entranceSpoiler"]["cross"] = setup.crossResult.spoiler;
-                        }
-                    }
+                    nlohmann::json consolidated =
+                        buildConsolidated(seed, masterSeed, attemptCfg, resolvedMmStart, setup, fillSpoiler);
                     // Cross-hint generation (mirrors RunComboFill) — enables the headless determinism check.
                     consolidated["hints"] =
                         ComboRando::Generate(masterSeed, sohDump, sohHintDump, mmDump, consolidated["foreign"],

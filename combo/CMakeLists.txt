@@ -159,6 +159,12 @@ add_dependencies(Ship2Ship
 add_executable(comborando EXCLUDE_FROM_ALL ComboRandoHeadless.cpp)
 target_include_directories(comborando PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(comborando PRIVATE nlohmann_json::nlohmann_json ${CMAKE_DL_LIBS})
+# The identity `comborando --oracle` reports in hello.
+target_compile_definitions(comborando PRIVATE
+    COMBO_SHIP2SHIP_VERSION="${SHIP2SHIP_VERSION}"
+    COMBO_RELEASE_VERSION="${COMBO_RELEASE_VERSION}"
+    COMBO_SOH_PIN="${COMBO_SOH_SHORT}"
+    COMBO_MM_PIN="${COMBO_MM_SHORT}")
 add_dependencies(comborando soh 2ship)
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     set_target_properties(comborando PROPERTIES
@@ -359,4 +365,7 @@ endif()
 # drop a duplicate copy into Contents/Resources (CPack's Bundle install prefix).
 if(NOT APPLE)
     install(TARGETS Ship2Ship DESTINATION . COMPONENT combo)
+    # The Archipelago world's oracle (`comborando --oracle`) runs from the install folder. OPTIONAL: it is built on
+    # request (EXCLUDE_FROM_ALL), and a package made without it is the game as before.
+    install(TARGETS comborando DESTINATION . COMPONENT combo OPTIONAL)
 endif()
