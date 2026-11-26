@@ -29,7 +29,7 @@ sys.path.insert(0, str(SCRIPTS))
 from world_modules import load_module, load_world_package  # noqa: E402
 
 load_world_package()
-from ship2ship import oracle, reach, relevance, seedout, tables  # noqa: E402
+from ship2ship import layout, oracle, reach, relevance, seedout, tables  # noqa: E402
 
 pack_apworld = load_module("pack_apworld", SCRIPTS / "pack_apworld.py")
 update_tables = load_module("update_tables", SCRIPTS / "update_tables.py")
@@ -223,6 +223,52 @@ class RelevanceTest(unittest.TestCase):
             return items.get("A", 0) >= 1 and items.get("B", 0) >= 1
 
         self.assertEqual(relevance.logic_relevant_names({"A": 1, "B": 1, "C": 1}, ["C", "B", "A"], both), ["A", "B"])
+
+
+class LayoutTest(unittest.TestCase):
+    @staticmethod
+    def opened(never=(), win=oracle.WIN_BOSSES, required=0):
+        pool = (oracle.PoolEntry("oot", "Key", 2, "progression", "major", True),)
+        return oracle.OpenedWorld(locations=(("oot", "L0"),), never_reachable=frozenset(never), pool=pool,
+                                  win_condition=win, required_pieces=required, effective={})
+
+    @staticmethod
+    def answers(first_sphere_mask, everything):
+        return lambda owned: everything if owned else oracle.ReachAnswer(first_sphere_mask, False, False)
+
+    def test_a_layout_that_can_be_won_and_started_is_acceptable(self):
+        report = layout.assess_layout(self.opened(), {"Key (OoT)": 2},
+                                      self.answers(0b11, oracle.ReachAnswer(0b111, True, True)))
+        self.assertEqual((report.winnable, report.first_sphere, report.never_reachable), (True, 2, 0))
+        self.assertTrue(report.acceptable)
+
+    def test_an_empty_first_sphere_or_unreachable_checks_or_no_win_is_not_acceptable(self):
+        everything = oracle.ReachAnswer(0b111, True, True)
+        empty_start = layout.assess_layout(self.opened(), {"Key (OoT)": 2}, self.answers(0, everything))
+        cut_off = layout.assess_layout(self.opened(never=[3, 4]), {"Key (OoT)": 2}, self.answers(1, everything))
+        no_win = layout.assess_layout(self.opened(), {"Key (OoT)": 2},
+                                      self.answers(1, oracle.ReachAnswer(0b111, True, False)))
+        self.assertFalse(empty_start.acceptable)
+        self.assertFalse(cut_off.acceptable)
+        self.assertFalse(no_win.acceptable)
+        self.assertLess(cut_off.rank, no_win.rank)
+        self.assertLess(cut_off.rank, empty_start.rank)
+
+    def test_a_hunt_is_won_by_the_pieces_in_the_pool(self):
+        opened = self.opened(win=oracle.WIN_PIECES, required=2)
+        everything = oracle.ReachAnswer(1, False, False)
+        enough = layout.assess_layout(opened, {"Triforce Piece (OoT)": 2}, self.answers(1, everything))
+        short = layout.assess_layout(opened, {"Triforce Piece (OoT)": 1}, self.answers(1, everything))
+        self.assertTrue(enough.winnable)
+        self.assertFalse(short.winnable)
+
+    def test_pool_counts_use_ap_names_and_add_up_entries(self):
+        opened = oracle.OpenedWorld(
+            locations=(), never_reachable=frozenset(), effective={}, win_condition=oracle.WIN_BOSSES, required_pieces=0,
+            pool=(oracle.PoolEntry("oot", "Key", 1, "progression", "major", True),
+                  oracle.PoolEntry("oot", "Key", 2, "filler", "junk", False),
+                  oracle.PoolEntry("mm", "Key", 1, "progression", "major", True)))
+        self.assertEqual(layout.pool_counts(opened), {"Key (OoT)": 3, "Key (MM)": 1})
 
 
 class OracleProcessTest(unittest.TestCase):

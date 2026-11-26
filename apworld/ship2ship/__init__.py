@@ -3,6 +3,7 @@ import logging
 import os
 import threading
 import weakref
+from dataclasses import dataclass
 from typing import Any, ClassVar, Dict, List, Mapping, Optional, Set, Tuple
 
 from BaseClasses import CollectionState, Item, ItemClassification, Location, Region, Tutorial
@@ -13,6 +14,7 @@ from .host_settings import Ship2ShipSettings
 from .options import OPTION_GROUPS, Ship2ShipOptions
 from .oracle import (MASTER_SEED_BITS, PROTOCOL, OpenedWorld, OpenSettings, OracleError, OracleProcess, PoolEntry,
                      ReachAnswer, is_won, parse_opened)
+from .layout import MAX_OPEN_ATTEMPTS, LayoutReport, assess_layout, pool_counts
 from .reach import ReachCache, count_pieces
 from .relevance import logic_relevant_names
 from .seedout import (SEED_FILE_EXTENSION, finalize_request, other_placement, own_placement, slot_data_for)
@@ -35,6 +37,14 @@ JUNK_CLASSES = (CLASS_FILLER, CLASS_USEFUL)
 
 logger = logging.getLogger(GAME_NAME)
 TABLES = static_tables()
+
+
+@dataclass(frozen=True)
+class OpenAttempt:
+    master_seed: int
+    opened: OpenedWorld
+    cache: ReachCache
+    report: LayoutReport
 
 
 class Ship2ShipItem(Item):
@@ -110,25 +120,56 @@ class Ship2ShipWorld(World):
         comborando = self._comborando_path()
         self.oracle = OracleProcess.start(comborando, os.path.dirname(comborando))
         weakref.finalize(self, self.oracle.close)
-        self.master_seed = self.random.getrandbits(MASTER_SEED_BITS)
-        try:
-            request = settings.to_request(self.master_seed, self.multiworld.seed_name)
-        except ValueError as error:
-            raise OptionError(f"{self.player_name}: {error}")
-        try:
-            self.opened = parse_opened(self.oracle.call(request))
-        except OracleError as error:
-            raise OptionError(f"{self.player_name}: Ship2Ship could not set this slot up. {error}")
-        logger.info("%s: open request %s", self.player_name, json.dumps(request, sort_keys=True))
+        attempt = self._open_playable_layout(settings)
+        self.master_seed, self.opened, self.reach_cache = attempt.master_seed, attempt.opened, attempt.cache
         self._index_opened(self.opened)
         self.pieces_required = settings.pieces_required if settings.triforce_hunt else 0
-        self.reach_cache = ReachCache(self.oracle.call, self.item_name_to_id)
         self._promote_junk_the_logic_reads()
-        first_sphere = self.reach_cache.answer({}).mask
-        logger.info("%s: %d checks reachable with nothing owned", self.player_name, bin(first_sphere).count("1"))
+        logger.info("%s: layout: %s", self.player_name, attempt.report.describe())
         logger.info("%s: %d checks, %d never reachable, %d pool entries, effective %s", self.player_name,
                     len(self.opened.locations), len(self.opened.never_reachable), len(self.opened.pool),
                     json.dumps(self.opened.effective, sort_keys=True))
+
+    def _open_playable_layout(self, settings: OpenSettings) -> "OpenAttempt":
+        """Opens the world with fresh master seeds until the layout is playable (layout.py), like the generator's own
+        attempts. When none is, the best one seen is opened again, or the slot fails if none can be won."""
+        best: Optional[OpenAttempt] = None
+        last_error = ""
+        for number in range(1, MAX_OPEN_ATTEMPTS + 1):
+            master_seed = self.random.getrandbits(MASTER_SEED_BITS)
+            try:
+                attempt = self._open_attempt(settings, master_seed)
+            except OracleError as error:
+                last_error = str(error)
+                logger.info("%s: attempt %d (master seed %d) could not open: %s", self.player_name, number,
+                            master_seed, last_error)
+                continue
+            logger.info("%s: attempt %d (master seed %d): %s", self.player_name, number, master_seed,
+                        attempt.report.describe())
+            if attempt.report.acceptable:
+                return attempt
+            if best is None or attempt.report.rank < best.report.rank:
+                best = attempt
+        if best is None:
+            raise OptionError(f"{self.player_name}: Ship2Ship could not set this slot up in {MAX_OPEN_ATTEMPTS} "
+                              f"attempts. The last answer was: {last_error}")
+        if not best.report.winnable:
+            raise OptionError(f"{self.player_name}: none of {MAX_OPEN_ATTEMPTS} Ship2Ship layouts could be won with "
+                              "every item; these settings may not be playable")
+        logger.warning("%s: no layout in %d attempts was fully playable; using the best (%s)", self.player_name,
+                       MAX_OPEN_ATTEMPTS, best.report.describe())
+        return self._open_attempt(settings, best.master_seed)
+
+    def _open_attempt(self, settings: OpenSettings, master_seed: int) -> "OpenAttempt":
+        try:
+            request = settings.to_request(master_seed, self.multiworld.seed_name)
+        except ValueError as error:
+            raise OptionError(f"{self.player_name}: {error}")
+        opened = parse_opened(self.oracle.call(request))
+        logger.info("%s: open request %s", self.player_name, json.dumps(request, sort_keys=True))
+        cache = ReachCache(self.oracle.call, self.item_name_to_id)
+        self._require_known_names(opened)
+        return OpenAttempt(master_seed, opened, cache, assess_layout(opened, pool_counts(opened), cache.answer))
 
     def _open_settings(self) -> OpenSettings:
         opts = self.options
@@ -162,12 +203,15 @@ class Ship2ShipWorld(World):
                 f"comborando executable of a Ship2Ship install or the generator pack (now: '{path}').")
         return os.path.abspath(path)
 
-    def _index_opened(self, opened: OpenedWorld) -> None:
+    def _require_known_names(self, opened: OpenedWorld) -> None:
         for game, native in opened.locations:
             self._require_known(self.location_name_to_id, ap_name(game, native), "location")
         for entry in opened.pool:
+            self._require_known(self.item_name_to_id, ap_name(entry.game, entry.name), "item")
+
+    def _index_opened(self, opened: OpenedWorld) -> None:
+        for entry in opened.pool:
             name = ap_name(entry.game, entry.name)
-            self._require_known(self.item_name_to_id, name, "item")
             known = self.class_by_name.get(name)
             self.class_by_name[name] = entry.item_class if known is None else strongest_class(known, entry.item_class)
             self.pool_items.add((entry.game, entry.name))
@@ -180,10 +224,7 @@ class Ship2ShipWorld(World):
     def _promote_junk_the_logic_reads(self) -> None:
         """Items the generator calls junk but its logic reads count as progression here, or Archipelago's accessibility
         check finds locations behind them unreachable."""
-        pool: Dict[str, int] = {}
-        for entry in self.opened.pool:
-            name = ap_name(entry.game, entry.name)
-            pool[name] = pool.get(name, 0) + entry.count
+        pool = pool_counts(self.opened)
         candidates = [name for name, item_class in self.class_by_name.items() if item_class in JUNK_CLASSES]
         self.logic_relevant = set(logic_relevant_names(pool, candidates, self.reach_cache.answer))
         for name in self.logic_relevant:
@@ -194,8 +235,8 @@ class Ship2ShipWorld(World):
     @staticmethod
     def _require_known(table: Mapping[str, int], name: str, kind: str) -> None:
         if name not in table:
-            raise OracleError(f"comborando knows the {kind} '{name}', but this apworld's id table does not: the "
-                              "apworld and comborando are from different Ship2Ship versions")
+            raise RuntimeError(f"comborando knows the {kind} '{name}', but this apworld's id table does not: the "
+                               "apworld and comborando are from different Ship2Ship versions")
 
     def create_regions(self) -> None:
         menu = Region("Menu", self.player, self.multiworld)

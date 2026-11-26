@@ -6,7 +6,7 @@ import pathlib
 import sys
 
 WORLD = pathlib.Path(__file__).resolve().parent.parent.parent / "apworld" / "ship2ship"
-PURE_MODULES = ("tables", "oracle", "reach", "relevance", "seedout")
+PURE_MODULES = ("tables", "oracle", "reach", "layout", "relevance", "seedout")
 
 
 def load_module(name, path):
