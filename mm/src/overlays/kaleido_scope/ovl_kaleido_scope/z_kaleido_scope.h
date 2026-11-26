@@ -36,6 +36,17 @@ typedef enum {
 } PauseEquipDButton;
 // #endregion
 
+#ifdef COMBO_BUILD
+// ComboShip (merged pause menus): an OOT item on a button keeps its foreign id as the slot byte (0xD0-0xED,
+// combo/menu/ComboPauseABI.h), which no MM page holds. The item and mask pages place a button's equipped box from the
+// MM slot that shows its item instead (Combo_MmPauseButtonShownSlot, ComboPause.h, which the pages include).
+#define KALEIDO_BTN_SHOWN_SLOT(slotByte) ((u8)Combo_MmPauseButtonShownSlot(slotByte))
+#define KALEIDO_SLOT_ON_MASK_PAGE(slot) (((slot) >= ITEM_NUM_SLOTS) && ((slot) < ITEM_NUM_SLOTS + MASK_NUM_SLOTS))
+#else
+#define KALEIDO_BTN_SHOWN_SLOT(slotByte) (slotByte)
+#define KALEIDO_SLOT_ON_MASK_PAGE(slot) ((slot) >= ITEM_NUM_SLOTS)
+#endif
+
 typedef enum EquipState {
     /* 0 */ EQUIP_STATE_MAGIC_ARROW_GROW_ORB,
     /* 1 */ EQUIP_STATE_MAGIC_ARROW_MOVE_TO_BOW_SLOT,

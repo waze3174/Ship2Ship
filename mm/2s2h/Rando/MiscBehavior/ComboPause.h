@@ -82,6 +82,9 @@ const char* Combo_MmPauseButtonIconTex(int item); // OOT's HUD button icon (the 
 int Combo_MmPauseSlotShownItem(int mmSlot); // the MM item to show in MM's slot (items[] index), 0xFF = empty
 // Equipping from that slot: an OOT item shown there goes on as its foreign id (item and slot byte), else unchanged.
 void Combo_MmPauseStandInEquip(int mmSlot, unsigned short* item, unsigned short* slot);
+// The MM slot (items[] index) whose equipped box a button's slot byte gets on MM's own pages: an MM slot is itself; a
+// foreign id (never an MM slot) is the slot showing that OOT item as a stand-in, else 0xFF (on neither page).
+int Combo_MmPauseButtonShownSlot(int slotByte);
 
 #ifdef __cplusplus
 }

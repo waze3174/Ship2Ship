@@ -21,7 +21,9 @@
  *             OOT slot s (0..23) -> 0xD0 + s                     => 0xD0..0xE7.
  *             OOT's tunics and boots (SoH's "Assignable Tunics and Boots") have no item slot, so they go on as the
  *             button slots OOT itself stores for them, SLOT_TUNIC_KOKIRI 24 .. SLOT_BOOTS_HOVER 29 => 0xE8..0xED.
- * The host's cButtonSlots / slot byte for a foreign button is SLOT_NONE: the foreign id alone names the slot. */
+ * The host's cButtonSlots / slot byte for a foreign button is the foreign id itself (unique, never a real host slot),
+ * so the host's "same slot on another button -> swap" rule works for it. Host code that indexes by that byte (the
+ * pause pages' equipped boxes, bottle writes) must check it is a real slot first. */
 #ifndef COMBO_PAUSE_ABI_H
 #define COMBO_PAUSE_ABI_H
 
