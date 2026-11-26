@@ -44,7 +44,7 @@ LOG_TAIL_LINES = 40
 MIDO_CHESTS = ["KF Mido Top Left Chest (OoT)", "KF Mido Top Right Chest (OoT)", "KF Mido Bottom Left Chest (OoT)"]
 FAILURE_MARKERS = ("FillError", "OptionError", "OracleError", "Exception", "Error:")
 ITEM_LINK = {"name": "Shared", "item_pool": ["Masks"], "replacement_item": "Blue Rupee (OoT)", "link_replacement": False}
-AFTERMATH = "EOF when reading a line"  # Archipelago waits for Enter after an error; stdin is closed here
+AFTERMATH = ("EOF when reading a line", "Press enter to close")  # Archipelago waits for Enter after an error
 PLAYTHROUGH_LOCK = threading.Lock()  # --playthrough writes saves/combo/ beside comborando
 
 PRESETS = {
@@ -104,7 +104,7 @@ def failure_summary(log_path):
     """The exception line a failed generation ended with."""
     text = log_path.read_text(encoding="utf-8", errors="replace").splitlines()
     for line in reversed(text):
-        if AFTERMATH in line:
+        if any(aftermath in line for aftermath in AFTERMATH):
             continue
         if any(marker in line for marker in FAILURE_MARKERS) and not line.startswith(" "):
             return line.strip()[:300]

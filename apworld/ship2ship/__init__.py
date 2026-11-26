@@ -124,6 +124,8 @@ class Ship2ShipWorld(World):
         self.pieces_required = settings.pieces_required if settings.triforce_hunt else 0
         self.reach_cache = ReachCache(self.oracle.call, self.item_name_to_id)
         self._promote_junk_the_logic_reads()
+        first_sphere = self.reach_cache.answer({}).mask
+        logger.info("%s: %d checks reachable with nothing owned", self.player_name, bin(first_sphere).count("1"))
         logger.info("%s: %d checks, %d never reachable, %d pool entries, effective %s", self.player_name,
                     len(self.opened.locations), len(self.opened.never_reachable), len(self.opened.pool),
                     json.dumps(self.opened.effective, sort_keys=True))
