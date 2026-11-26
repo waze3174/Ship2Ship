@@ -161,12 +161,25 @@ set for the slot: a later child return through the pedestal, saved before leavin
 
 The player then walks to the Lost Woods and takes the path.
 
-MM (`BenPort.cpp`, `mm/src/code/z_play.c`): Majora's last cutscene (`z_boss_07.c`) asks the same callback, which records
-Majora as beaten (opening the way back, and both ways once Ganon is beaten too) and answers 1: Majora's real credits
-play. MM then reaches `Play_Init` with entrance -1, which in vanilla loads MM's own title. In the launcher that is
-unreachable (MM's boot would wipe the save through MM's file select), so for a back-to-back slot `Combo_MM_CreditsEnded`
-asks for the owl-save quit: the slot returns to OoT's title. The slot is not saved again there, so MM resumes from its last
-save, with the gate open from the completion record.
+MM (`mm/2s2h/Rando/MiscBehavior/ComboBackToBackEnding.cpp`, with a seam in `mm/src/code/z_demo.c`; read from the code,
+not run):
+
+1. **Majora's death records him.** Majora's last cutscene (`z_boss_07.c`) asks the same callback, which saves Majora as
+   beaten in the completion record (opening the way back, and both ways once Ganon is beaten too) and answers 1:
+   Majora's real ending and credits play. The same cutscene fires `OnGameCompletion`, which marks MM's ending as playing
+   in a back-to-back slot. Each scene of the ending is logged (`[ComboBackToBack] MM's ending: scene ...`).
+2. **MM's ending never ends by itself.** The credits go from scene to scene (`CutsceneCmd_ChooseCreditsScenes`, on the
+   credits music's cues) and never reach the title: their last shot holds its cutscene on one frame for good. MM has two
+   commands that hold a cutscene that way, `CS_MISC_FINALE` and `CS_MISC_LONG_SCARECROW_SONG` (`z_demo.c`), and none of
+   MM's code leaves either. No code in MM makes the invalid entrance (-1) on which `Play_Init` would load MM's own title,
+   so the `Play_Init` seam (`z_play.c`) is never reached; it stays as a harmless fallback. Which of the two commands the
+   last shot uses is in the scene data, not the code: the log line at the hold names it, with the scene, layer, script,
+   frame, whether the credits' stump (`Obj_Ending`) is in the scene, and the music playing.
+3. **The last shot moves on.** While MM's ending plays, once a hold has lasted 5 seconds, or at once on A, B or Start, and
+   no transition is running, `Combo_MM_CreditsEnded` asks for the owl-save quit: the slot returns to OoT's title (MM's
+   own title and file select are unreachable in the launcher: MM's boot would wipe the save through MM's file select).
+   The slot is not saved again, so MM resumes from its last save, with the gate open from the completion record. Every
+   other slot keeps MM's vanilla hold.
 
 ## Stage B: Majora's Mask's real opening on the first crossing
 

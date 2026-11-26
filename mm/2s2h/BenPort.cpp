@@ -4534,9 +4534,10 @@ extern "C" int Combo_MM_BackToBackLocksActive(void) {
 extern "C" int Combo_MM_BackToBackOpeningPending(void) {
     return (ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) && !gSaveContext.save.isFirstCycle) ? 1 : 0;
 }
-// MM's credits have ended (Play_Init reached the invalid entrance that returns to MM's own title). In a back-to-back
-// slot MM's title and file select are unreachable inside the launcher, so the slot goes back to OoT's title, as an owl
-// save quit does; the slot's save is not written again.
+// MM's credits are over: their last shot has been held (ComboBackToBackEnding.cpp), or Play_Init has reached the
+// invalid entrance that returns to MM's own title (z_play.c; no code in MM makes that entrance). In a back-to-back slot
+// MM's title and file select are unreachable inside the launcher, so the slot goes back to OoT's title, as an owl save
+// quit does; the slot's save is not written again.
 extern "C" void Combo_MM_CreditsEnded(void) {
     if (ComboRando::CrossGate::MmCreditsReturnToOot(gMMComboCrossGate)) {
         Combo_RequestOwlSaveQuit();
