@@ -53,6 +53,21 @@ jobs:
           VCPKG_ROOT: ${{ github.workspace }}/build/x64/vcpkg
         run: cmake -B build/x64 -S . -G "Visual Studio 17 2022" -A x64
 
+      # The combo unit tests are header-only code with no game DLL, so they build in seconds; they run before the long
+      # game build and their exit code is the verdict. Same set as the Linux job. They land in build/x64/combo/Release
+      # (the multi-config generator), not in x64/Release with the game.
+      - name: Unit tests
+        shell: pwsh
+        run: |
+          $tests = 'combo_anchor_tests', 'comboDiscordTest', 'comboBackToBackTest', 'comboSharedHealthSlotsTest',
+                   'comboSharedHealthTest', 'comboLauncherLogTest'
+          foreach ($test in $tests) {
+            cmake --build build/x64 --target $test --config Release
+            if ($LASTEXITCODE -ne 0) { throw "Building $test failed" }
+            & "build/x64/combo/Release/$test.exe"
+            if ($LASTEXITCODE -ne 0) { throw "$test failed" }
+          }
+
       # Order matters: libultraship -> soh -> 2ship (2ship builds ZAPD/OTRExporter; soh builds Torch).
       # comboui + Ship2Ship pull the rest of the runtime in as dependencies.
       - name: Build libultraship
@@ -61,12 +76,29 @@ jobs:
         run: cmake --build build/x64 --target soh --config Release
       - name: Build 2ship
         run: cmake --build build/x64 --target 2ship --config Release
-      # Headless seed validator (pulls libultraship/soh/2ship as deps, already built above). Uploaded
-      # below so validate-seed.yml can download it from develop instead of doing its own build.
-      # Nothing else depends on it, so it is skipped unless a caller asks for the validator.
+      # Headless seed validator (pulls libultraship/soh/2ship as deps, already built above). Run below on every build,
+      # and uploaded when a caller asks for the validator so validate-seed.yml can download it from develop instead of
+      # doing its own build.
       - name: Build comborando
-        if: inputs.validator
         run: cmake --build build/x64 --target comborando --config Release
+      # Windows loads the game modules by file name and resolves each export in the module it names, which Linux and
+      # macOS do not check. A few seeds of each kind the Linux job runs prove both DLLs load and answer.
+      - name: Seed checks (comborando)
+        working-directory: x64/Release
+        shell: pwsh
+        run: |
+          $runs = @(
+            @('--seed', 'ci-win-smoke', '--count', '2'),
+            @('--seed', 'ci-win-solo-oot', '--count', '1', '--games', 'oot'),
+            @('--seed', 'ci-win-solo-mm', '--count', '1', '--games', 'mm'),
+            @('--seed', 'ci-win-unified', '--count', '1', '--unified'),
+            @('--seed', 'ci-win-cross', '--count', '1', '--cross', 'all,pct=25'),
+            @('--seed', 'ci-win-shared', '--count', '1', '--shared-items', 'all')
+          )
+          foreach ($run in $runs) {
+            & ./comborando.exe @run
+            if ($LASTEXITCODE -ne 0) { throw "comborando $($run -join ' ') exited with $LASTEXITCODE" }
+          }
       - name: Build comboui
         run: cmake --build build/x64 --target comboui --config Release
       - name: Build Ship2Ship

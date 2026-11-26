@@ -49,9 +49,11 @@ jobs:
         with:
           python-version: '3.12'
 
+      # LUS_BUILD_TESTS adds libultraship's lus_tests target (gtest, fetched at configure); nothing builds it
+      # until the lus_tests step below.
       - name: Configure
         run: >
-          cmake -B build-cmake -S . -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake -B build-cmake -S . -G Ninja -DCMAKE_BUILD_TYPE=Release -DLUS_BUILD_TESTS=ON
           -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       # Co-op rules (combo/net: outbox, packet ids and dedup, MM flag masks) are header-only with no game
@@ -85,12 +87,24 @@ jobs:
           cmake --build build-cmake --target comboSharedHealthTest -j 4
           ./build-cmake/combo/comboSharedHealthTest
 
+      # The launcher's log buffer (lines wait for the game's logger, the buffer is bounded): pure header code.
+      - name: Launcher log unit tests (comboLauncherLogTest)
+        run: |
+          cmake --build build-cmake --target comboLauncherLogTest -j 4
+          ./build-cmake/combo/comboLauncherLogTest
+
       # Same order as the Windows pipeline: libultraship -> soh (Torch) -> 2ship (OTRExporter/ZAPD),
       # then the combo targets. -j 4 caps peak memory: some soh/2ship TUs are
       # >1 GB each at peak, and the 16 GB standard runner OOMs before Ninja's default parallelism
       # helps (locally 20 jobs OOM'd a 21 GB machine).
       - name: Build libultraship
         run: cmake --build build-cmake --target libultraship -j 4
+      # libultraship's own tests: archives, paths, the resource-manager scope and the combo menu serializer. ctest runs
+      # each test from the folder where lus_tests was built.
+      - name: libultraship unit tests (lus_tests)
+        run: |
+          cmake --build build-cmake --target lus_tests -j 4
+          ctest --test-dir build-cmake/libultraship --output-on-failure
       - name: Build soh
         run: cmake --build build-cmake --target soh -j 4
       - name: Build 2ship
@@ -138,6 +152,19 @@ jobs:
           name: Ship2Ship-linux-appimage
           path: _packages/Ship2Ship-*-linux-x86_64.AppImage
           if-no-files-found: error
+
+      # The seed kinds the default runs never reach: one game alone (each ROM's own logic and pool), Unified Inventory,
+      # cross-game entrances, and Shared Items. A few seeds each keeps this to a minute or two; every run exits non-zero
+      # when a seed is unbeatable or cannot be generated.
+      - name: Seed checks, solo games, unified, cross entrances, shared items (comborando)
+        working-directory: build-cmake/combo
+        run: |
+          ./comborando --seed ci-solo-oot --count 3 --games oot
+          ./comborando --seed ci-solo-mm --count 3 --games mm
+          ./comborando --seed ci-unified --count 3 --unified
+          ./comborando --seed ci-cross --count 3 --cross all,pct=25
+          ./comborando --seed ci-shared --count 3 --shared-items all
+          ./comborando --seed ci-shared-unified --count 2 --shared-items all --unified --lost-woods-link
 
       # The Lost Woods link changes the cross-game crossing the logic uses (Lost Woods hub instead of the Mask
       # Shop), and with the Majora's Mask start it changes the forced settings. Generate a handful of seeds each
