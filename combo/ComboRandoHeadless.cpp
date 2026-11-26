@@ -741,15 +741,28 @@ static int Run(int argc, char** argv) {
         }
         SOH_RestoreSettings("{}");
         MM_RestoreSettings("{}");
-        if (SOH_SetSeed)
-            SOH_SetSeed(1);
-        if (MM_SetSeed)
-            MM_SetSeed(1);
-        const std::string sohDump = SOH_Dump();
-        const std::string mmDump = MM_Dump();
+        // OOT's hint data reads the context a finished fill leaves behind, so the tables come after one default seed,
+        // like the generator reads it. It is the only way to list every OOT check with its area.
+        constexpr uint32_t kTablesSeed = 1;
+        ComboRando::AttemptConfig cfg;
+        cfg.goal.total = 0;
+        ComboRando::AttemptSetup setup;
+        if (beginAttempt(cfg, kTablesSeed, false, setup) != ComboRando::AttemptStatus::Ready) {
+            std::cerr << "[comborando] --ap-tables: the default seed could not be set up\n";
+            return 2;
+        }
+        const ComboRando::CombinedFillResult fill = ComboRando::CrossWorldCombinedFill(
+            setup.sohDump, setup.mmDump, kTablesSeed, oot, mmO, nullptr, setup.forced,
+            ComboRando::OotAccessFromDump(setup.sohDump), cfg.goal, ComboRando::GAME_OOT, cfg.sharedMask, cfg.games);
+        if (!fill.success) {
+            std::cerr << "[comborando] --ap-tables: the default seed did not generate: " << fill.error << "\n";
+            return 2;
+        }
         const std::string hintDump = SOH_DumpRandoHintData();
+        if (MM_Restore)
+            MM_Restore();
         try {
-            const nlohmann::json tables = ComboRando::BuildApTables(sohDump, hintDump, mmDump);
+            const nlohmann::json tables = ComboRando::BuildApTables(setup.sohDump, hintDump, setup.mmDump);
             std::ofstream(path, std::ios::trunc) << tables.dump(2);
             std::cout << "[comborando] AP tables: " << tables["items"].size() << " items, "
                       << tables["locations"].size() << " locations -> " << path << "\n";

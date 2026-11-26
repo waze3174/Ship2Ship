@@ -76,7 +76,8 @@ inline nlohmann::json BuildApTables(const std::string& sohDump, const std::strin
     AddApItems(items, "mm", kApTagMm, mm);
     for (const auto& c : hints.value("checks", nlohmann::json::array()))
         AddApLocation(locations, "oot", kApTagOot, c.value("name", std::string()), c.value("area", std::string()));
-    for (const auto& [name, area] : mm.value("locationHints", nlohmann::json::object()).items())
+    const nlohmann::json mmAreas = mm.value("locationHints", nlohmann::json::object());
+    for (const auto& [name, area] : mmAreas.items())
         AddApLocation(locations, "mm", kApTagMm, name, area.is_string() ? area.get<std::string>() : std::string());
 
     nlohmann::json conflicts = nlohmann::json::array();
