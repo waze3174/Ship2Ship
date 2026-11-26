@@ -26,3 +26,17 @@ the tests against a different `Context` layout.
 builds, that `Callers` stays empty (the Release contract).
 
 **The game:** not affected. Release builds never had caller metadata, upstream included.
+
+## Duplicate factory key: test the combo behaviour (2026-11-26)
+
+**Fixed:** `ResourceLoader.RegisterDuplicateKeyRejected` (now `RegisterDuplicateKeyReplacesFactory` in `COMBO_BUILD`).
+
+**Why:** the test expected upstream's rejection of a duplicate `(format, type, version)` key, which our `COMBO_BUILD`
+deviation in `ResourceLoader::RegisterResourceFactory` changes on purpose: the new factory replaces the old one (see
+[`resource-mgmt.md`](resource-mgmt.md), "A duplicate resource-factory key replaces the factory").
+
+**`libultraship/tests/resource_type_tests.cpp`:** under `#ifdef COMBO_BUILD`, `RegisterDuplicateKeyReplacesFactory`
+checks that the call succeeds and that the key now resolves to the new factory (through a test subclass that exposes the
+protected `GetFactory`). Upstream's test is kept unchanged in the `#else` branch.
+
+**The game:** not affected; the test now checks what the game relies on.

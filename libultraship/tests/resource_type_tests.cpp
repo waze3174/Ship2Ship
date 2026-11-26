@@ -376,6 +376,26 @@ TEST(ResourceLoader, RegisterNewFactorySucceeds) {
     EXPECT_EQ(loader.GetResourceType("Blob"), static_cast<uint32_t>(Ship::ResourceType::Blob));
 }
 
+#ifdef COMBO_BUILD
+namespace {
+class InspectableResourceLoader : public Ship::ResourceLoader {
+  public:
+    using Ship::ResourceLoader::GetFactory;
+};
+} // namespace
+
+// ComboShip: in COMBO_BUILD a duplicate key replaces the registered factory instead of being rejected, so the game
+// registering last owns the key (ResourceLoader::RegisterResourceFactory).
+TEST(ResourceLoader, RegisterDuplicateKeyReplacesFactory) {
+    InspectableResourceLoader loader;
+    // Json already registered by constructor with version 0
+    auto factory = std::make_shared<Ship::ResourceFactoryBinaryJsonV0>();
+    bool ok = loader.RegisterResourceFactory(factory, RESOURCE_FORMAT_BINARY, "Json",
+                                             static_cast<uint32_t>(Ship::ResourceType::Json), 0);
+    EXPECT_TRUE(ok);
+    EXPECT_EQ(loader.GetFactory(RESOURCE_FORMAT_BINARY, static_cast<uint32_t>(Ship::ResourceType::Json), 0), factory);
+}
+#else
 TEST(ResourceLoader, RegisterDuplicateKeyRejected) {
     Ship::ResourceLoader loader;
     // Json already registered by constructor with version 0
@@ -384,6 +404,7 @@ TEST(ResourceLoader, RegisterDuplicateKeyRejected) {
                                              static_cast<uint32_t>(Ship::ResourceType::Json), 0);
     EXPECT_FALSE(ok); // same format+type+version key already exists
 }
+#endif
 
 TEST(ResourceLoader, RegisterConflictingTypeNameRejected) {
     Ship::ResourceLoader loader;

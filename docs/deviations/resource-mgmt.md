@@ -324,3 +324,21 @@ not be told apart from the log. The sibling `G_SETTIMG_OTR_HASH` message already
 upstream names the path):** `ReportNullTextureOnce(handler, fileName)` logs `<handler>: Texture is null (<path>)` once per
 path, and both `gfx_set_timg_otr_hash_handler_custom` and `gfx_set_timg_otr_filepath_handler_custom` call it. The first
 copy of the once-per-path set in the hash handler became this helper.
+
+## A duplicate resource-factory key replaces the factory (2026-06-01; documented 2026-11-26)
+
+**Why:** written when both games shared one `ResourceLoader`: on the OOT -> MM transition the loader still held OOT's
+factory for a key MM also registers (scenes, rooms), so MM's data would have been parsed by OOT's factory and thrown.
+Introduced by `101635814` ("Combo transition: MM factories take over"); until now it was only named in
+`docs/merges/2026-08-01.md`'s audit list.
+
+**`libultraship/src/ship/resource/ResourceLoader.cpp` (`#ifdef COMBO_BUILD`, marked `// ComboShip:` — preserve on future
+LUS merges):** in `RegisterResourceFactory`, a key that is already registered is overwritten and the call returns `true`.
+Upstream logs an error, keeps the first factory and returns `false`. A conflicting *type name* is still rejected.
+
+Since each game got its own `ResourceManager` (and with it its own `ResourceLoader`, see `OTRGlobals::OTRGlobals` in
+`mm/2s2h/BenPort.cpp`), the cross-game case above should no longer reach this code; re-registration onto the same loader
+still does. Keep it unless someone shows no key is ever registered twice on one loader.
+
+**Test:** `lus_tests` checks the combo behaviour in `ResourceLoader.RegisterDuplicateKeyReplacesFactory`; upstream's
+`RegisterDuplicateKeyRejected` stays for non-combo builds. See [`lus-tests.md`](lus-tests.md).
