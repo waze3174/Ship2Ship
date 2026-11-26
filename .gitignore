@@ -104,3 +104,7 @@ x64/
 *.v64
 *.AppImage
 *.appimage
+
+# Python bytecode (the apworld and its scripts are run, not built)
+__pycache__/
+*.pyc
