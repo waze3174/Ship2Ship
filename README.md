@@ -47,7 +47,7 @@ The file-select screen labels each slot with its mode: `S2S`, `COMBO`, `OOTR`, `
 - Ocarina of Time in Termina: OoT items such as the Boomerang, Slingshot and Megaton Hammer, and adult Link.
 - Each game's enhancements follow its items and forms into the other game. Examples: 2 Ship 2 Harkinian's Goron,
   Zora, Deku and mask options in Hyrule; Ship of Harkinian's hookshot, boomerang, bomb and spell options in Termina;
-  and Majora's Mask's bomb arrows on Ocarina of Time's bow.
+  and Majora's Mask's bomb arrows on either game's bow in Hyrule.
 - Pause menus that show both inventories.
 - Trackers for both games' items and checks.
 - **Optional:**
