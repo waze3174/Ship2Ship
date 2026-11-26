@@ -67,8 +67,6 @@ jobs:
       # game build and their exit code is the verdict. Same set as the Linux job. They land in build/x64/combo/Release
       # (the multi-config generator), not in x64/Release with the game.
       - name: Unit tests
-        # First run in CI: read the result by hand, and drop this flag once the step has passed once.
-        continue-on-error: true
         shell: pwsh
         run: |
           $tests = 'combo_anchor_tests', 'comboDiscordTest', 'comboBackToBackTest', 'comboSharedHealthSlotsTest',
@@ -96,8 +94,6 @@ jobs:
       # Windows loads the game modules by file name and resolves each export in the module it names, which Linux and
       # macOS do not check. A few seeds of each kind the Linux job runs prove both DLLs load and answer.
       - name: Seed checks (comborando)
-        # First run in CI: read the result by hand, and drop this flag once the step has passed once.
-        continue-on-error: true
         working-directory: x64/Release
         shell: pwsh
         run: |
