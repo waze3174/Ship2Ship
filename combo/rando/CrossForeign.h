@@ -90,6 +90,11 @@ struct ForeignItem {
     // Shared Items (OoTMM-style): itemName is an effective shared family's OOT name — no suffix, no
     // "(OOT)"/"(MM)" tag on any surface. Absent (old seed) -> false -> tagged exactly as before.
     bool shared = false;
+    // Archipelago: the check holds another player's item (ComboApSeed.h). itemGame is the check's own game, itemName
+    // is the item's Archipelago name and displayName already reads "<Player>'s <Item>". Never granted, never sent to
+    // the other game, never drawn as a model of either game.
+    bool ap = false;
+    std::string apPlayer;
     bool HasDisguise() const {
         return !fakeItemName.empty();
     }
@@ -358,6 +363,9 @@ inline const char* GameSuffix(GameId g) {
 
 // Text shown for a foreign check: the latched/live resolved tier (tagged), or the spoiler displayName.
 inline std::string ShownForeignName(const ForeignItem& fi, const char* resolved) {
+    if (fi.ap) {
+        return fi.displayName;
+    }
     if (resolved != nullptr && resolved[0] != '\0') {
         // Shared Items: once shared, the home-game qualifier is meaningless (decision 3).
         return fi.shared ? std::string(resolved) : std::string(resolved) + GameSuffix(fi.itemGame);
@@ -527,6 +535,9 @@ inline std::unordered_map<std::string, ForeignItem> LoadForeignForGame(int slot,
             fi.trap = fm.value("trap", false);
             // Absent in pre-Shared-Items saves -> false -> tagged exactly as before.
             fi.shared = fm.value("shared", false);
+            // Absent in every seed but an Archipelago slot's.
+            fi.ap = fm.value("ap", false);
+            fi.apPlayer = fm.value("apPlayer", "");
             // Absent in pre-category saves -> empty -> consumers fall back to advancement.
             fi.category = fm.value("category", "");
             // Absent in pre-disguise saves -> empty -> every consumer falls back to the true name.
@@ -560,8 +571,8 @@ inline std::unordered_map<std::string, ForeignPlacement> LoadForeignByItem(int s
         nlohmann::json j = nlohmann::json::parse(g_comboForeignJson);
         const std::string key = GameIdToKey(itemGame);
         for (const auto& fm : j.value("foreign", nlohmann::json::array())) {
-            if (fm.value("itemGame", "") != key)
-                continue;
+            if (fm.value("itemGame", "") != key || fm.value("ap", false))
+                continue; // another player's item is not this game's item
             ForeignPlacement fp;
             fp.checkGame = KeyToGameId(fm.value("checkGame", ""));
             fp.checkName = fm.value("checkName", "");

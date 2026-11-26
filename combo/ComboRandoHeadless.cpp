@@ -689,9 +689,9 @@ static int Run(int argc, char** argv) {
     };
 
     // `finalize`: the placements (confined and forced ones included) into our consolidated seed. Another player's item
-    // is written as native junk at its check and listed under "archipelago" for the client to overlay.
+    // is written as native junk at its check; the oracle server then stamps the Archipelago seed (ComboApSeed.h).
     auto finalizeWorld = [&](ComboRando::OracleWorld& world, std::vector<ComboRando::CwPlacement>& placements,
-                             const nlohmann::json& otherPlayersItems, nlohmann::json& seedOut) -> std::string {
+                             nlohmann::json& seedOut) -> std::string {
         if (!SOH_DumpSettings || !MM_DumpSettings)
             return "settings dump exports unavailable: rebuild soh.dll / 2ship.dll";
         ComboRando::BakeCrossPlacedMmJunk(*world.session, placements);
@@ -699,8 +699,6 @@ static int Run(int argc, char** argv) {
             ComboRando::BuildFillSpoiler(*world.session, placements, 0, "archipelago oracle");
         seedOut =
             buildConsolidated(world.seedLabel, world.masterSeed, world.config, world.mmStart, world.setup, fillSpoiler);
-        if (!otherPlayersItems.empty())
-            seedOut["archipelago"] = { { "otherPlayersItems", otherPlayersItems } };
         return "";
     };
 

@@ -23,9 +23,11 @@
 //   reach     items {oot: {name: count}, mm: {name: count}}. Returns mask (hex, locations[i] is bit i), fixedMask (the
 //             same over `fixed` then `forced`, for tests), win {ganon, majora, pieces, won} and unknown (names the pool
 //             does not hold, which the oracle still owned).
-//   finalize  placements [{game, check, item: {game, name}} or {game, check, other: {player, name, advancement}}].
-//             Every location that is not neverReachable needs one. Returns the consolidated seed ("seed"), or writes
-//             it to "out" when given. Nothing else is ever written to disk.
+//   finalize  placements [{game, check, item: {game, name}} or {game, check, other: {player, name, advancement}}], and
+//             archipelago {slotName, seedName}, which another player's item requires. Every location that is not
+//             neverReachable needs a placement. Returns the consolidated seed ("seed"), or writes it to "out" when
+//             given. Nothing else is ever written to disk. With "archipelago" the seed is the slot's Archipelago seed
+//             (ComboApSeed.h); without it, the plain one.
 //   close     drops the session. The process lives until stdin closes.
 #pragma once
 
@@ -45,6 +47,7 @@
 #include <vector>
 #include <nlohmann/json.hpp>
 
+#include "ComboApSeed.h"
 #include "ComboAttempt.h"
 #include "CrossWorldSession.h"
 
@@ -79,8 +82,7 @@ struct OracleBackend {
     // Fills `world` from the request (settings, setup, session); returns "" or why it cannot.
     std::function<std::string(const nlohmann::json& request, OracleWorld& world)> open;
     // Builds the consolidated seed from the placements (confined and forced ones included); returns "" or why not.
-    std::function<std::string(OracleWorld& world, std::vector<CwPlacement>& placements,
-                              const nlohmann::json& otherPlayersItems, nlohmann::json& seedOut)>
+    std::function<std::string(OracleWorld& world, std::vector<CwPlacement>& placements, nlohmann::json& seedOut)>
         finalize;
     std::function<void()> close; // restores the game-side state
 };
@@ -492,6 +494,14 @@ class OracleServer {
         return "";
     }
 
+    // The seed's identity on the file select: the slot and the room, so two slots of one room show different hashes.
+    static uint32_t ApDisplaySeed(const OracleWorld& world, const nlohmann::json& info) {
+        if (!info.is_object())
+            return 0; // StampApSeed refuses it
+        return CwHashName(info.value(kApSlotNameKey, std::string()) + ":" + info.value(kApSeedNameKey, std::string()) +
+                          ":" + std::to_string(world.masterSeed));
+    }
+
     nlohmann::json Finalize(const nlohmann::json& request) {
         if (!world_)
             return Fail("no seed is open: call open first");
@@ -500,11 +510,18 @@ class OracleServer {
         std::string error = CollectPlacements(request, placements, others);
         if (!error.empty())
             return Fail(error);
+        const bool archipelago = request.contains(kApKey);
+        if (!archipelago && !others.empty())
+            return Fail(std::string("another player's item needs \"") + kApKey + "\" in the request");
         nlohmann::json seed;
-        error =
-            backend_.finalize ? backend_.finalize(*world_, placements, others, seed) : "this oracle cannot finalize";
+        error = backend_.finalize ? backend_.finalize(*world_, placements, seed) : "this oracle cannot finalize";
         if (!error.empty())
             return Fail(error);
+        if (archipelago) {
+            error = StampApSeed(seed, request[kApKey], others, ApDisplaySeed(*world_, request[kApKey]));
+            if (!error.empty())
+                return Fail(error);
+        }
         if (!request.contains("out"))
             return { { "seed", std::move(seed) } };
         const std::string path = request["out"].get<std::string>();

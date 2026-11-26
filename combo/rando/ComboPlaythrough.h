@@ -107,6 +107,8 @@ inline std::vector<CwPlacedItem> ParseSpoilerPlacements(const std::string& spoil
     try {
         auto j = nlohmann::json::parse(spoilerJson);
         for (auto& fm : j.value("foreign", nlohmann::json::array())) {
+            if (fm.value("ap", false))
+                continue; // another player's item: nothing for this walk to credit, the check holds native junk
             std::string cg = fm.value("checkGame", ""), cn = fm.value("checkName", "");
             std::string ig = fm.value("itemGame", "");
             foreign[cg + ":" + cn] = { (ig == "mm") ? GAME_MM : GAME_OOT, stripSuffix(fm.value("itemName", "")),

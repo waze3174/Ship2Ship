@@ -345,7 +345,8 @@ class Ship2ShipWorld(World):
             if self._finalized_seed is None:
                 placements = [self._placement_at(location) for location in self.get_locations()
                               if location.address is not None]
-                self._finalized_seed = self.oracle.call(finalize_request(placements))["seed"]
+                request = finalize_request(placements, self.player_name, self.multiworld.seed_name)
+                self._finalized_seed = self.oracle.call(request)["seed"]
             return self._finalized_seed
 
     def _placement_at(self, location: Location) -> Mapping[str, Any]:

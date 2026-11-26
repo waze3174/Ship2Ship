@@ -6,7 +6,7 @@ The seed is the same file Ship2Ship's own generator writes. It goes into slot_da
 import base64
 import json
 import zlib
-from typing import Any, Dict, Iterable, List, Mapping
+from typing import Any, Dict, Iterable, List, Mapping, Optional
 
 SEED_ENCODING = "zlib+base64"
 COMPRESSION_LEVEL = 9
@@ -19,13 +19,19 @@ def own_placement(game: str, check: str, item_game: str, item: str) -> Dict[str,
 
 
 def other_placement(game: str, check: str, player: str, item: str, advancement: bool) -> Dict[str, Any]:
-    """Another player's item (or one the oracle's pool does not hold): the game shows native junk and the client
-    overlays the real item from the server."""
+    """Another player's item (or one the oracle's pool does not hold): the check holds native junk in the placements
+    and an Archipelago foreign entry in the seed; the game shows "<Player>'s <Item>" and grants nothing."""
     return {"game": game, "check": check, "other": {"player": player, "name": item, "advancement": advancement}}
 
 
-def finalize_request(placements: Iterable[Mapping[str, Any]]) -> Dict[str, Any]:
-    return {"cmd": "finalize", "placements": list(placements)}
+def finalize_request(placements: Iterable[Mapping[str, Any]], slot_name: Optional[str] = None,
+                     seed_name: Optional[str] = None) -> Dict[str, Any]:
+    """With the slot and the room's seed name the oracle writes the slot's Archipelago seed, which another player's
+    item requires; without them it writes the plain seed."""
+    request: Dict[str, Any] = {"cmd": "finalize", "placements": list(placements)}
+    if slot_name is not None:
+        request["archipelago"] = {"slotName": slot_name, "seedName": seed_name}
+    return request
 
 
 def encode_seed(seed: Mapping[str, Any]) -> str:
