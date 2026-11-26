@@ -3234,3 +3234,9 @@ The Fire Temple Goron shuffle and the new tricks and logic events needed nothing
   `DMG_BOOMERANG` while Link is the Zora). It goes through our table instead, so the actor file is untouched.
   Logic is unchanged: the entryway still needs the Hookshot, which the Zora keeps. The fins depend on the play-time
   "Form moves count as items" switch, which no seed stores, so logic must not credit them.
+- **The Lakeside Laboratory dive (#43).** The professor (`soh/src/overlays/actors/ovl_En_Mk/z_en_mk.c`,
+  `EnMk_Update`) scores a dive by `yDistToWater` while Link is underwater (355 or deeper wins the heart piece), and
+  voids the whole dive once Link wears the Iron Boots. A Zora sunk with B stands on OOT's iron boots
+  (`Combo_FormBoots` in `z_player.c`), so his dive to the bottom was voided. The iron-boots rule now skips the Zora
+  form, and his depth counts as a scale dive's. No fork had this fix. Logic already expected it: with "Logic counts
+  form abilities" on, the Zora is credited with the Golden Scale, which is what `RC_LH_LAB_DIVE` asks for.
