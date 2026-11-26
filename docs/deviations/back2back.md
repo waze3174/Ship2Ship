@@ -380,14 +380,25 @@ the carry tick at once and at every later load: everything OoT has is usable in 
 everything MM has in Hyrule through OoT's Termina faces, as in a randomizer file. No new mechanism: `LocksActive` is the one
 gate. Both ways are open for either age, as in stage A.
 
-## Shared health is off in this mode
+## Shared health waits for both games
 
-"Shared health, magic and ammo" (`gCombo.Shared.HealthMagicAmmo`) does nothing in a back-to-back slot, whatever the menu
-says, before or after both games are beaten: `ComboHealth::Enabled` reads `Combo_BackToBackSlot()` (each DLL, from the
-cross gate's `kBackToBack` bit). Each game keeps its own hearts, magic meter and ammo, and the page's carry settings
-decide what Termina takes from Hyrule, once. Before this, with the switch on, the shared bar overwrote the hearts the
-page chose, and a new file could take over the shared hearts of the file erased before it (#30, 0.2.2: 20 heart
-containers, 3 filled, on a new file).
+"Shared health, magic and ammo" (`gCombo.Shared.HealthMagicAmmo`) does nothing in a back-to-back slot until both games
+are beaten, then follows the switch like a randomizer file's: `ComboHealth::Enabled` reads
+`Combo_BackToBackLocksActive()` (each DLL, from the cross gate: a back-to-back slot that has not beaten both). Before that
+each game keeps its own hearts, magic meter and ammo, and the page's carry settings decide what Termina takes from
+Hyrule, once; with the switch on the shared bar used to overwrite the hearts the page chose, and a new file could take
+over the shared hearts of the file erased before it (#30, 0.2.2: 20 heart containers, 3 filled, on a new file; the second
+half was fixed in the slot ownership, not by the switch).
+
+Turning sharing on takes no heart from the game in play. A game's first sight in a shared file counts its native
+growth as its tally (`Tick`); a randomizer file's games start at 3 hearts, so they count it as it comes, at half value.
+A back-to-back file turns it on with the hearts already earned, so `Native::growthWeight` is 2 there
+(`ComboHealth::NativeGrowthWeight`): the game counts what it has in full, its capacity, heart pieces and current health
+stay as they are, and what it picks up afterwards counts at the shared rule (half a heart per container). The other
+game, first seen later in the same file, joins the same way, so the bar adds both games' hearts up to 20. Magic and ammo
+need no such care: the first game's own amount becomes the shared one, and a game that arrives takes the larger count
+(`JoinedAmmo`). `combo/tests/ComboSharedHealthTest.cpp` (`TestTurningSharingOnInABackToBackFileTakesNoHeart`) checks the
+tally.
 
 ## Not done yet
 

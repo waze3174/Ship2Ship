@@ -169,6 +169,7 @@ static void ComboSharedHealthTick() {
                            &gSaveContext.save.saveInfo.inventory.questItems,
                            &gSaveContext.save.saveInfo.playerData.doubleDefense,
                            &gSaveContext.save.saveInfo.inventory.defenseHearts };
+    n.growthWeight = ComboHealth::NativeGrowthWeight();
     n.magic = &gSaveContext.save.saveInfo.playerData.magic;
     n.magicLevel = &gSaveContext.save.saveInfo.playerData.magicLevel;
     n.isMagicAcquired = &gSaveContext.save.saveInfo.playerData.isMagicAcquired;

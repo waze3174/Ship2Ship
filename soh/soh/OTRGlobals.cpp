@@ -3893,6 +3893,10 @@ extern "C" COMBO_EXPORT void SOH_SetComboCrossGate(int mask) {
 extern "C" int Combo_BackToBackSlot(void) {
     return ComboRando::CrossGate::IsBackToBack(gComboCrossGate) ? 1 : 0;
 }
+// The loaded slot is a back-to-back one that has not yet beaten both games.
+extern "C" int Combo_BackToBackLocksActive(void) {
+    return ComboRando::BackToBack::LocksActive(gComboCrossGate) ? 1 : 0;
+}
 // Any way into Termina (the warp songs, the owl statues, the pause menu, the entrances shuffled across).
 extern "C" int Combo_CrossToTerminaOpen(void) {
     return ComboRando::CrossGate::ToTerminaOpen(gComboCrossGate) ? 1 : 0;
