@@ -1717,6 +1717,7 @@ void Inventory_SwapAgeEquipment(void) {
     u8 ownSlots[ARRAY_COUNT(gSaveContext.equips.cButtonSlots)];
     // Play_Destroy swaps before Player_Destroy commits play->linkAgeOnLoad: linkAge is still the age being left.
     const s32 newAge = LINK_IS_ADULT ? LINK_AGE_CHILD : LINK_AGE_ADULT;
+    const u8 bombArrowsBefore = gSaveContext.ship.bombArrowsEquipped;
     s32 i;
 
     if (!IS_RANDO) {
@@ -1741,6 +1742,7 @@ void Inventory_SwapAgeEquipment(void) {
     }
     ownItems[0] = ITEM_NONE; // B is the sword's, not part of the layout
     ComboEquipShare_KeepAgeRuleAtSwap(newAge, ownItems, ownSlots);
+    Combo_BombArrowsAfterAgeSwap(bombArrowsBefore); // a bomb-arrow button keeps its choice where the bow stays
 }
 
 static void Inventory_SwapAgeEquipmentImpl(void) {

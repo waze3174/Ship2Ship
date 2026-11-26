@@ -22,6 +22,11 @@ int Combo_BombArrowsFlag(int button);
 void Combo_BombArrowsSetFlag(int button, int on);
 // The option is on, the button holds a plain bow (OOT's or MM's) and its flag is set.
 int Combo_BombArrowsButtonActive(int button);
+// The age swap (randomizer saves) keeps the choice of a button that holds a bow in both ages. A button the bow gave way
+// on for the new age (the age rule) parks its choice until the next swap, which gives it back if the bow is on that
+// button again. `flagsBefore` is ship.bombArrowsEquipped before the swap; call once the buttons hold the new age's
+// items.
+void Combo_BombArrowsAfterAgeSwap(unsigned char flagsBefore);
 // A shot from a button holding `bowItem` (OOT's bow or MM's foreign bow) needs and spends a bomb of the same game.
 int Combo_BombArrowsButtonHasBombs(int button);
 int Combo_BombArrowsBombAmmo(int bowItem);

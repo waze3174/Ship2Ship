@@ -115,11 +115,25 @@ extern "C" void Combo_BombArrowsSetFlag(int button, int on) {
     if (!ValidButton(button)) {
         return;
     }
+    gSaveContext.ship.bombArrowsParked &= (u8) ~(1 << button); // a choice made now replaces a parked one
     if (on) {
         gSaveContext.ship.bombArrowsEquipped |= (u8)(1 << button);
     } else {
         gSaveContext.ship.bombArrowsEquipped &= (u8) ~(1 << button);
     }
+}
+
+extern "C" void Combo_BombArrowsAfterAgeSwap(unsigned char flagsBefore) {
+    u8 holdsBow = 0;
+    for (int button = 0; button < kButtonCount; button++) {
+        if (ButtonHoldsBow(button)) {
+            holdsBow |= (u8)(1 << button);
+        }
+    }
+    const u8 givenBack = gSaveContext.ship.bombArrowsParked & holdsBow;
+
+    gSaveContext.ship.bombArrowsEquipped = (flagsBefore & holdsBow) | givenBack;
+    gSaveContext.ship.bombArrowsParked = flagsBefore & ~holdsBow;
 }
 
 extern "C" int Combo_BombArrowsIsBowItem(int item) {
