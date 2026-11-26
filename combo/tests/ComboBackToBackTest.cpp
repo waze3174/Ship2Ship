@@ -376,6 +376,56 @@ void TestPostGameUnlocksEverything() {
     CHECK(B2B::LockedInTermina(ganonOnly, 0, B2B::GearLock(true), false));
 }
 
+// A loaded file lets the player change its item switches (the live rules) and nothing it was made with.
+void TestEditingALoadedFile() {
+    const B2B::OptionBits carries = B2B::kHeartsCarry | B2B::kMagicCarry | B2B::kBottlesCarry | B2B::kWalletCarry |
+                                    B2B::kSongsCarry | B2B::kEarlyMagic;
+    const B2B::OptionBits editable = B2B::EditableOptionsMask();
+    CHECK((editable & carries) == 0); // the carries and the one-time Magic carry stay as the file was made
+    for (const B2B::OptionDef& option : B2B::kOptions) {
+        const bool isCarry = (carries & option.bit) != 0;
+        CHECK(B2B::EditableOnLoadedFile(option) == !isCarry);
+        CHECK(((editable & option.bit) != 0) == !isCarry);
+    }
+    CHECK((editable & B2B::kEarlyBow) != 0);
+    CHECK((editable & B2B::kEarlyGoronMask) != 0);
+    CHECK((editable & B2B::kDinsFire) != 0);
+
+    const B2B::OptionBits made = B2B::kHeartsCarry | B2B::kEarlyMagic | B2B::kEarlyBow | B2B::kDinsFire;
+    // Asking for everything on changes the item switches only.
+    const B2B::OptionBits all = B2B::ApplyEditedOptions(made, ~B2B::OptionBits{ 0 });
+    CHECK((all & ~editable) == (made & ~editable));
+    CHECK((all & editable) == editable);
+    // Asking for nothing turns the item switches off and keeps the carries.
+    const B2B::OptionBits none = B2B::ApplyEditedOptions(made, 0);
+    CHECK((none & ~editable) == (made & ~editable));
+    CHECK((none & editable) == 0);
+    // Turning one on or off touches only that one.
+    const B2B::OptionBits plusHammer = B2B::ApplyEditedOptions(made, made | B2B::kHammer);
+    CHECK(plusHammer == (made | B2B::kHammer));
+    CHECK(B2B::ApplyEditedOptions(made, made & ~B2B::kEarlyBow) == (made & ~B2B::kEarlyBow));
+    // The edit survives the file's storage.
+    const ComboMode edited = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, plusHammer);
+    CHECK(ComboMode::FromJson(edited.ToJson()).options == plusHammer);
+}
+
+void TestQuickSets() {
+    const B2B::OptionBits purist = B2B::QuickSetOptions(B2B::QuickSet::Purist);
+    CHECK(purist == 0);
+    CHECK(B2B::QuickSetOptions(B2B::QuickSet::Default) == B2B::DefaultOptions());
+    const B2B::OptionBits everything = B2B::QuickSetOptions(B2B::QuickSet::Everything);
+    B2B::OptionBits every = 0;
+    for (const B2B::OptionDef& option : B2B::kOptions)
+        every |= option.bit;
+    CHECK(everything == every);
+    // Everything lets every item in from the start, and Purist keeps every one waiting.
+    for (int item : { B2B::OotItem::kOotBow, B2B::OotItem::kOotOcarinaTime, B2B::OotItem::kOotMaskBunny,
+                      B2B::OotItem::kOotHookshot, B2B::OotItem::kOotDinsFire, B2B::OotItem::kOotBottleFirst }) {
+        CHECK(!Locked(everything, item, false));
+        CHECK(Locked(purist, item, false));
+    }
+}
+
 } // namespace
 
 int main() {
@@ -387,6 +437,8 @@ int main() {
     TestStoredOptionsFromTheFirstLayout();
     TestStoredOptionsFromTheMarkedLayout();
     TestStoredOptionsFromLayoutTwo();
+    TestEditingALoadedFile();
+    TestQuickSets();
     TestItemsWithAnMmCounterpart();
     TestBottles();
     TestTransformationMasks();

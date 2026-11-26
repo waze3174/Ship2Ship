@@ -168,6 +168,45 @@ inline constexpr OptionBits DefaultOptions() {
     return options;
 }
 
+// The choices a loaded file lets the player change: the live rules, which are every item switch (the OoT-only items and
+// the early-use ones). The carries are applied once, as the file's first entry into Termina, and stay as the file was
+// made; so does Magic, which is a carry made at that moment.
+inline constexpr bool EditableOnLoadedFile(const OptionDef& option) {
+    return option.group != OptionGroup::Carry && option.bit != kEarlyMagic;
+}
+
+inline constexpr OptionBits EditableOptionsMask() {
+    OptionBits mask = 0;
+    for (const OptionDef& option : kOptions) {
+        if (EditableOnLoadedFile(option))
+            mask |= option.bit;
+    }
+    return mask;
+}
+
+// A loaded file's options after the player asked for `requested`: the editable choices follow the request, every other
+// bit stays as the file has it.
+inline constexpr OptionBits ApplyEditedOptions(OptionBits current, OptionBits requested) {
+    return (current & ~EditableOptionsMask()) | (requested & EditableOptionsMask());
+}
+
+// The Back to back page's quick-set buttons for new files.
+enum class QuickSet {
+    Purist,    // every carry off and every item switch off: Ocarina of Time stays in Hyrule, Majora's Mask is its own
+    Default,   // the page's defaults
+    Everything // every choice on
+};
+
+inline constexpr OptionBits QuickSetOptions(QuickSet set) {
+    OptionBits options = 0;
+    for (const OptionDef& option : kOptions) {
+        const bool on = set == QuickSet::Everything || (set == QuickSet::Default && option.defaultOn);
+        if (on)
+            options |= option.bit;
+    }
+    return options;
+}
+
 // The options a new file takes from the page. getInt(cvarName, fallback) reads one CVar (CVarGetInteger).
 template <typename GetInt> inline OptionBits OptionsFromCVars(GetInt getInt) {
     OptionBits options = 0;

@@ -61,8 +61,16 @@ the boss release (`Combo_OnFinalBossDefeated` queues it only for a non-vanilla s
 
 Settings > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
 the choices apply to new back-to-back files when they're created. Every setting on it is read once, when a file is
-created, and is fixed for that file from then on; the rest of the mode's settings are on the same page (stage C).
-The CVars live under `gCombo.BackToBack.` (`combo/rando/ComboBackToBackSettings.h`); each is a leaf, and no
+created and baked into it; the rest of the mode's settings are on the same page (stage C). The page has two views, "New
+files" and "This file". "New files" is the CVars above, with three quick-set buttons: Purist (every choice off), Default
+(`defaultOn`) and Everything (every choice on; `QuickSetOptions`). "This file" shows the loaded back-to-back file's
+choices (the launcher answers `Combo_GetLoadedBackToBackOptions`; with no such file loaded it says so). The item
+switches (the OoT-only items and the early-use ones) can be changed there while the file is loaded: the setter
+(`Combo_EditLoadedBackToBackOptions`, handed to comboui with `ComboUI_SetBackToBackStore`) applies
+`BackToBack::ApplyEditedOptions`, which changes only `EditableOptionsMask()` bits, writes the slot's `combo.mode`
+(`Combo_SetSlotMode`, the container's normal flush) and pushes the new value to both DLLs at once, so the locks follow
+it on the next frame. The carries (hearts, double magic, bottles, wallet, songs) and the Magic early switch were applied
+when Termina was first entered and stay greyed. The CVars live under `gCombo.BackToBack.` (`combo/rando/ComboBackToBackSettings.h`); each is a leaf, and no
 `gCombo.BackToBack` leaf exists to collide with that subtree. Presets carry them like any other `gCombo.` preference.
 
 **Master Quest** (`gCombo.BackToBack.MasterQuest`, 0 or unset = Normal Quest, 1 = Master Quest). The file's quest is

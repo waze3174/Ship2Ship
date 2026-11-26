@@ -1514,6 +1514,12 @@ static void Combo_PushCrossGate(int mask) {
     if (MM_SetComboCrossGate)
         MM_SetComboCrossGate(mask);
 }
+// The Back to back page's "This file" view reads and edits the loaded slot's choices through these (registered with
+// ComboUI_SetBackToBackStore). Only the editable choices change (BackToBack::ApplyEditedOptions); the slot's mode is
+// saved with the file and the new options are pushed to both DLLs at once.
+typedef int (*FnGetFileOptions)(ComboRando::BackToBack::OptionBits*);
+typedef void (*FnComboUISetBackToBackStore)(FnGetFileOptions, FnSetOptions);
+static FnComboUISetBackToBackStore ComboUI_SetBackToBackStore = nullptr;
 // The loaded slot's Back to back page choices (ComboBackToBackSettings.h), pushed to both DLLs. 0 for every other slot.
 static FnSetOptions SOH_SetComboBackToBackOptions = nullptr;
 static FnSetOptions MM_SetComboBackToBackOptions = nullptr;
@@ -1522,6 +1528,19 @@ static void Combo_PushBackToBackOptions(ComboRando::BackToBack::OptionBits optio
         SOH_SetComboBackToBackOptions(options);
     if (MM_SetComboBackToBackOptions)
         MM_SetComboBackToBackOptions(options);
+}
+static int Combo_GetLoadedBackToBackOptions(ComboRando::BackToBack::OptionBits* options) {
+    if (!g_activeMode.IsBackToBack())
+        return 0;
+    *options = g_activeMode.options;
+    return 1;
+}
+static void Combo_EditLoadedBackToBackOptions(ComboRando::BackToBack::OptionBits requested) {
+    if (!g_activeMode.IsBackToBack() || !ComboIsValidSlot(g_comboCompletionSlot))
+        return;
+    g_activeMode.options = ComboRando::BackToBack::ApplyEditedOptions(g_activeMode.options, requested);
+    Combo_SetSlotMode(g_comboCompletionSlot, g_activeMode);
+    Combo_PushBackToBackOptions(g_activeMode.options);
 }
 // Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
 // follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.
@@ -5705,6 +5724,9 @@ int main(int argc, char** argv) {
         ComboUI_SetNotesStore = (FnComboUISetNotesStore)GetSym(comboUIModule, "ComboUI_SetNotesStore");
         if (ComboUI_SetNotesStore)
             ComboUI_SetNotesStore(&Combo_GetNotes, &Combo_SetNotes);
+        ComboUI_SetBackToBackStore = (FnComboUISetBackToBackStore)GetSym(comboUIModule, "ComboUI_SetBackToBackStore");
+        if (ComboUI_SetBackToBackStore)
+            ComboUI_SetBackToBackStore(&Combo_GetLoadedBackToBackOptions, &Combo_EditLoadedBackToBackOptions);
         ComboUI_SyncRandomizedCosmetics = (FnVoidArgless)GetSym(comboUIModule, "ComboUI_SyncRandomizedCosmetics");
         ComboUI_CosmeticsSyncGateEnabled = (FnComboUIGate)GetSym(comboUIModule, "ComboUI_CosmeticsSyncGateEnabled");
         ComboUI_ClaimGenRollSeed = (FnClaimGenRollSeed)GetSym(comboUIModule, "ComboUI_ClaimGenRollSeed");
