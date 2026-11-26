@@ -9,9 +9,10 @@ each game's source close enough to upstream that updates can still be merged in.
 > **Status note:** This document describes what is *actually built* and stays high-level; the
 > per-feature deviation records live in [`deviations/`](deviations/). The headline cross-game
 > features — a shared **cross-world randomizer**, immediate **cross-game item delivery**, **Anchor**
-> online co-op, and **cross-game hints** — are implemented (see [Cross-Game Features](#cross-game-features)).
-> A single unified/merged save format is **not** built: the two saves are linked by slot. Earlier
-> revisions described an adapter/observer class architecture that was never built; it has been removed.
+> online co-op, **cross-game hints**, **vanilla and back-to-back save modes** and **Discord Rich Presence** — are
+> implemented (see [Cross-Game Features](#cross-game-features)). Each save slot is one launcher-owned container file
+> that holds both games' saves ([Save Linkage](#save-linkage)). Earlier revisions described an adapter/observer class
+> architecture that was never built; it has been removed.
 
 ## Design Goals
 
@@ -124,13 +125,34 @@ callbacks) is larger and lives in `combo/ComboShip.cpp`; see [`deviations/`](dev
 
 ### Save Linkage
 
-When a new OOT save is created, the launcher's `Combo_OnOOTSaveInit` calls `MM_InitRandoSaveFile` to
-create the matching MM save (**OOT slot N → MM file N+1**), deriving MM's placement payload fresh
-from the bound consolidated seed. The MM save is always `SAVETYPE_RANDO` — Ship2Ship has no vanilla
-mode, and a vanilla MM save would silently disable every `IS_RANDO` behavior. On the OOT→MM handoff, MM's
-`title_setup` loads that file and spawns the player in South Clock Town. This is save *linkage by
-slot*, not a unified/merged save format. Cross-game item grants are written directly into the linked
+Each file-select slot is one container file owned by the launcher (`ComboContainerPath`). It holds OoT's
+save section (`oot`), MM's (`mm`) and Ship2Ship's own state (`combo`: the slot's mode, the bound seed, shared health,
+the bottle shelf, notes). Both games read and write their saves through the launcher
+(`Combo_ReadGameSave` / `Combo_WriteGameSave`), which writes on a background thread (`combo/ComboContainerWriter.h`).
+The container carries `COMBO_RELEASE_VERSION`: a container from another major.minor is backed up to `.bak` and
+recreated, so the launcher is the one save-compatibility gate. Cross-game item grants are written directly into the
 save of whichever game is dormant (see [Cross-Game Features](#cross-game-features)).
+
+A slot has a **mode**, stored as `combo.mode` (`combo/rando/ComboMode.h`), and the file select offers five:
+
+| Mode | Games | Seed | Notes |
+|---|---|---|---|
+| Randomizer | OoT and MM, or one of them | yes | One cross-world seed; a solo seed has no other half. A new file derives MM's placement payload from the bound consolidated seed. |
+| Normal Quest | OoT | no | Vanilla OoT. |
+| Master Quest | OoT | no | Vanilla OoT, from `oot-mq.o2r`. |
+| Majora's Mask | MM | no | Vanilla MM. |
+| Back to back | OoT, then MM | no | Vanilla OoT, then vanilla MM in the same slot; Ganon's defeat opens the way into Termina and Majora's opens the way back. See [`deviations/back2back.md`](deviations/back2back.md). |
+
+A slot with no `combo.mode` (every save from before the modes existed) is a combo randomizer slot. A vanilla slot has
+no consolidated seed, so the randomizer-only behaviors (`IS_RANDO`) stay off in it.
+
+### The launcher's log and fatal errors
+
+The launcher has no logger of its own. Its messages go to the console and, tagged `[Launcher]`, to the game's log
+(`logs/Ship2Ship.log`) through `SOH_LauncherLog`; lines wait in a bounded buffer until the game's logger exists
+(`combo/ComboLauncherLog.h`). The Windows release build has no console, so a boot error the player must see (a
+library that fails to load, missing exports, an outdated ROM archive that cannot be removed) also shows a message box
+and keeps its lines in `logs/launcher-boot.log`.
 
 ## Cross-Game Features
 
@@ -150,6 +172,8 @@ details and merge-survival notes live in [`deviations/`](deviations/).
   connection survives OOT↔MM transitions. Each game redirects its Anchor transport through
   launcher-registered callbacks. Supports presence, remote-player puppets, shared-progression item
   sync, and late-join resync, cross-game. See [`deviations/anchor.md`](deviations/anchor.md).
+- **Discord Rich Presence** — the launcher's own client for Discord's local socket shows what is being played, in
+  either game. See [`deviations/discord.md`](deviations/discord.md).
 - **Cross-game hints & shared trackers** — hints can point across games; check/item trackers show
   both games. See [`deviations/rando.md`](deviations/rando.md) and
   [`deviations/tracker.md`](deviations/tracker.md).
@@ -166,9 +190,14 @@ Edits to decomp source (`soh/src/`, `mm/src/`) are kept minimal and fenced:
 #endif
 ```
 
-The combo footprint in game source is only a handful of lines per file (e.g. `title_setup.c`,
-`graph.c`, `main.c`, `z_sram.c`). Anything larger lives in the port/enhancement layers
-(`soh/soh/`, `mm/2s2h/`) or in the launcher.
+The unavoidable hooks (`title_setup.c`, `graph.c`, `main.c`, `z_sram.c`) are a few lines each, but the footprint
+as a whole is not small. Measured against the pristine upstream of the merge pins on 2026-11-26, 172 SoH files and 150
+2S2H files differ from upstream (about 37,000 lines added in `soh/` and 20,000 in `mm/`, including files only we have),
+and the biggest are not hooks: `z_player.c` carries about 5,400 added lines (the forms), `OTRGlobals.cpp` about 4,200
+and `BenPort.cpp` about 2,900. Where a feature can live in a file of its own it does (`soh/soh/Enhancements/combo/`,
+`mm/2s2h/Rando/MiscBehavior/Combo*.cpp`, `combo/`, and `z_player_combo_oot.inc` beside MM's `z_player.c`). Every deviation is
+logged in [`deviations/`](deviations/), and `scripts/check-vendor-deviations.py` fails CI on a new unlogged one
+(see [`UPSTREAM_MERGES.md`](UPSTREAM_MERGES.md)).
 
 ## Handling Upstream Updates
 
@@ -203,13 +232,19 @@ void SomeUpstreamFunction(void) {
   `build-2ship.ps1`, `build-comboship.ps1`). Build targets individually rather than rebuilding
   everything.
 
+## Checks before a release
+
+CI compiles all three platforms and runs the combo unit tests and `comborando` (headless seed generation and
+beatability, solo, unified, cross-entrance and shared-item seeds included); the `gate` job also fails on the drifts
+that stay silent at run time (`scripts/check-*.py`, listed in [`UPSTREAM_MERGES.md`](UPSTREAM_MERGES.md)). CI never
+boots the game. [`REGRESSION_CHECKLIST.md`](REGRESSION_CHECKLIST.md) lists what a person plays before a release.
+
 ## Future Direction
 
 Still **not implemented**, recorded as intent:
 
-- **Combined save format** — a single save containing both games' data plus shared state (today the
-  two saves are linked by slot number, with cross-game items written into each game's own save).
 - **Seamless transition polish** — masking load time, transition effects.
+- **Adult Link in Termina in back to back**, co-op in back-to-back files, and an Archipelago client.
 
 (Shared inventory and progression sync, once listed here as future work, now exist for randomizer
 items via cross-game delivery and for co-op via Anchor.)
