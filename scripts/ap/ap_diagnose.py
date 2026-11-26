@@ -5,7 +5,7 @@ it reads the open request and the placements out of generate.log, sweeps the way
 progression items at reachable locations until nothing new opens), and reports
 
   - which locations the sweep cannot reach, and whether owning every placed item (junk too) would reach them;
-  - which single non-progression item names open them, i.e. logic that depends on an item the apworld calls junk;
+  - which non-progression item names the logic reads, found by dropping names one at a time;
   - whether the oracle answers the same question the same way twice, and again after a finalize.
 
   ap_diagnose.py --comborando <comborando> --log <generate.log> [--player Solo]
@@ -15,12 +15,13 @@ import json
 import pathlib
 import re
 import sys
+from collections import Counter
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent))
 from world_modules import load_world_package  # noqa: E402
 
 MODULES = load_world_package()
-oracle, reach, seedout, tables = (MODULES[name] for name in ("oracle", "reach", "seedout", "tables"))
+oracle, relevance, seedout, tables = (MODULES[name] for name in ("oracle", "relevance", "seedout", "tables"))
 
 PLACEMENT_PATTERN = re.compile(r"\((.+?\((?:OoT|MM)\)), (.+?\((?:OoT|MM)\))\)")
 REPORT_LIMIT = 12
@@ -87,11 +88,10 @@ def report(replay, client):
     for name in missing[:REPORT_LIMIT]:
         print(f"  not reached: {name} (holds {replay.placed.get(name)}); reachable with every placed item owned: "
               f"{name in with_all}")
-    junk_names = sorted({item for item in everything if item not in replay.progression})
-    for name in missing[:REPORT_LIMIT]:
-        opening = [j for j in junk_names if name in replay.reachable(replay.mask(owned + [j]))]
-        if opening:
-            print(f"  {name} opens when this non-progression item is owned: {opening[:REPORT_LIMIT]}")
+    needed = relevance.logic_relevant_names(
+        Counter(everything), sorted(set(everything) - replay.progression),
+        lambda counts: replay.mask([name for name, count in counts.items() for _ in range(count)]))
+    print(f"non-progression items the logic reads (by drop-one elimination): {needed}")
     first = replay.mask(owned)
     print(f"same question twice gives the same answer: {replay.mask(owned) == first}")
     placements = [seedout.own_placement(g, n, *tables.split_ap_name(replay.placed[tables.ap_name(g, n)]))

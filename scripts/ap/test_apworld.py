@@ -29,7 +29,7 @@ sys.path.insert(0, str(SCRIPTS))
 from world_modules import load_module, load_world_package  # noqa: E402
 
 load_world_package()
-from ship2ship import oracle, reach, seedout, tables  # noqa: E402
+from ship2ship import oracle, reach, relevance, seedout, tables  # noqa: E402
 
 pack_apworld = load_module("pack_apworld", SCRIPTS / "pack_apworld.py")
 update_tables = load_module("update_tables", SCRIPTS / "update_tables.py")
@@ -197,6 +197,32 @@ class ReachCacheTest(unittest.TestCase):
         self.assertFalse(oracle.is_won(oracle.WIN_MAJORA, ganon_only, 0, 0))
         self.assertFalse(oracle.is_won(oracle.WIN_PIECES, both, 9, 10))
         self.assertTrue(oracle.is_won(oracle.WIN_PIECES, ganon_only, 10, 10))
+
+
+class RelevanceTest(unittest.TestCase):
+    @staticmethod
+    def toy_answer(items):
+        """Bit 1 needs an Arrow, bit 2 needs two Rupees and the Key; Junk matters to nothing."""
+        arrows, rupees, key = items.get("Arrow", 0), items.get("Rupee", 0), items.get("Key", 0)
+        return (True, arrows >= 1, rupees >= 2 and key >= 1)
+
+    def test_only_the_junk_the_logic_reads_is_reported(self):
+        pool = {"Key": 1, "Arrow": 3, "Rupee": 2, "Junk": 5}
+        self.assertEqual(relevance.logic_relevant_names(pool, ["Junk", "Rupee", "Arrow"], self.toy_answer),
+                         ["Arrow", "Rupee"])
+
+    def test_the_progression_item_is_never_a_candidate_unless_asked(self):
+        pool = {"Key": 1, "Arrow": 3, "Rupee": 2}
+        self.assertEqual(relevance.logic_relevant_names(pool, ["Arrow"], self.toy_answer), ["Arrow"])
+
+    def test_nothing_is_reported_when_junk_is_only_junk(self):
+        self.assertEqual(relevance.logic_relevant_names({"Key": 1, "Junk": 4}, ["Junk"], self.toy_answer), [])
+
+    def test_a_name_needed_only_together_with_another_is_found(self):
+        def both(items):
+            return items.get("A", 0) >= 1 and items.get("B", 0) >= 1
+
+        self.assertEqual(relevance.logic_relevant_names({"A": 1, "B": 1, "C": 1}, ["C", "B", "A"], both), ["A", "B"])
 
 
 class OracleProcessTest(unittest.TestCase):

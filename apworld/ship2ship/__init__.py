@@ -11,9 +11,10 @@ from worlds.AutoWorld import LogicMixin, WebWorld, World
 
 from .host_settings import Ship2ShipSettings
 from .options import OPTION_GROUPS, Ship2ShipOptions
-from .oracle import (MASTER_SEED_BITS, PROTOCOL, OpenedWorld, OpenSettings, OracleError, OracleProcess, ReachAnswer,
-                     is_won, parse_opened)
+from .oracle import (MASTER_SEED_BITS, PROTOCOL, OpenedWorld, OpenSettings, OracleError, OracleProcess, PoolEntry,
+                     ReachAnswer, is_won, parse_opened)
 from .reach import ReachCache, count_pieces
+from .relevance import logic_relevant_names
 from .seedout import (SEED_FILE_EXTENSION, finalize_request, other_placement, own_placement, slot_data_for)
 from .tables import (CLASS_FILLER, CLASS_PROGRESSION, CLASS_TRAP, CLASS_USEFUL, MM, OOT,
                      STATIC_FILLER_NAMES, ap_name, split_ap_name, static_tables, strongest_class)
@@ -28,8 +29,9 @@ CLASSIFICATIONS = {
     CLASS_FILLER: ItemClassification.filler,
     CLASS_TRAP: ItemClassification.trap,
 }
-# Pool items dropped first when the pool is larger than the locations. Never a progression item.
-DROPPABLE_CLASSES = (CLASS_FILLER, CLASS_USEFUL)
+# The classes of items that are neither progression nor a trap: dropped first when the pool is larger than the
+# locations, and the ones the logic might still read.
+JUNK_CLASSES = (CLASS_FILLER, CLASS_USEFUL)
 
 logger = logging.getLogger(GAME_NAME)
 TABLES = static_tables()
@@ -97,6 +99,7 @@ class Ship2ShipWorld(World):
         self.class_by_name: Dict[str, str] = {}
         self.pool_items: Set[Tuple[str, str]] = set()  # (game, native name) the oracle can place for this slot
         self.filler_names: List[str] = []
+        self.logic_relevant: Set[str] = set()  # junk-class names the logic reads, kept as progression
         self._finalize_lock = threading.Lock()
         self._finalized_seed: Optional[Mapping[str, Any]] = None
 
@@ -120,6 +123,7 @@ class Ship2ShipWorld(World):
         self._index_opened(self.opened)
         self.pieces_required = settings.pieces_required if settings.triforce_hunt else 0
         self.reach_cache = ReachCache(self.oracle.call, self.item_name_to_id)
+        self._promote_junk_the_logic_reads()
         logger.info("%s: %d checks, %d never reachable, %d pool entries, effective %s", self.player_name,
                     len(self.opened.locations), len(self.opened.never_reachable), len(self.opened.pool),
                     json.dumps(self.opened.effective, sort_keys=True))
@@ -165,8 +169,25 @@ class Ship2ShipWorld(World):
             known = self.class_by_name.get(name)
             self.class_by_name[name] = entry.item_class if known is None else strongest_class(known, entry.item_class)
             self.pool_items.add((entry.game, entry.name))
+        self._refresh_filler_names()
+
+    def _refresh_filler_names(self) -> None:
         self.filler_names = sorted(name for name, item_class in self.class_by_name.items()
                                    if item_class == CLASS_FILLER)
+
+    def _promote_junk_the_logic_reads(self) -> None:
+        """Items the generator calls junk but its logic reads count as progression here, or Archipelago's accessibility
+        check finds locations behind them unreachable."""
+        pool: Dict[str, int] = {}
+        for entry in self.opened.pool:
+            name = ap_name(entry.game, entry.name)
+            pool[name] = pool.get(name, 0) + entry.count
+        candidates = [name for name, item_class in self.class_by_name.items() if item_class in JUNK_CLASSES]
+        self.logic_relevant = set(logic_relevant_names(pool, candidates, self.reach_cache.answer))
+        for name in self.logic_relevant:
+            self.class_by_name[name] = CLASS_PROGRESSION
+        self._refresh_filler_names()
+        logger.info("%s: junk the logic reads, now progression: %s", self.player_name, sorted(self.logic_relevant))
 
     @staticmethod
     def _require_known(table: Mapping[str, int], name: str, kind: str) -> None:
@@ -223,7 +244,7 @@ class Ship2ShipWorld(World):
         return changed
 
     def create_items(self) -> None:
-        pool = [self.create_item_of_class(ap_name(entry.game, entry.name), entry.item_class)
+        pool = [self.create_item_of_class(ap_name(entry.game, entry.name), self._pool_class_of(entry))
                 for entry in self.opened.pool for _ in range(entry.count)]
         slots = len(self.location_origin)
         if len(pool) > slots:
@@ -235,7 +256,7 @@ class Ship2ShipWorld(World):
     def _without_surplus(self, pool: List[Item], surplus: int) -> List[Item]:
         """The pool holds a place for checks the oracle can never reach; those places hold junk, so drop junk."""
         dropped: Set[int] = set()
-        for droppable in DROPPABLE_CLASSES:
+        for droppable in JUNK_CLASSES:
             candidates = [i for i, item in enumerate(pool) if i not in dropped
                           and CLASSIFICATIONS[droppable] == item.classification]
             self.random.shuffle(candidates)
@@ -252,6 +273,9 @@ class Ship2ShipWorld(World):
 
     def create_item_of_class(self, name: str, item_class: str) -> Ship2ShipItem:
         return Ship2ShipItem(name, CLASSIFICATIONS[item_class], self.item_name_to_id[name], self.player)
+
+    def _pool_class_of(self, entry: PoolEntry) -> str:
+        return CLASS_PROGRESSION if ap_name(entry.game, entry.name) in self.logic_relevant else entry.item_class
 
     def _class_of(self, name: str) -> str:
         return self.class_by_name.get(name) or TABLES.item_facts[name].item_class
