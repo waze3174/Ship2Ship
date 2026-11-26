@@ -34,12 +34,14 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdint>
+#include <cstdio>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <vector>
 
 #include "rando/ComboLostWoodsLink.h"
 #include "rando/CrossWorldRando.h"
@@ -109,6 +111,31 @@ std::string ReadFile(const std::string& path) {
     std::ostringstream ss;
     ss << f.rdbuf();
     return ss.str();
+}
+
+// FNV-1a 64-bit over the parts of a generated seed, joined by the unit separator. CI pins it per seed, so a change to
+// the fill that moves any placement, entrance, Master Quest roll or price shows up as a different value.
+uint64_t Fnv1a64(const std::vector<std::string>& parts) {
+    constexpr uint64_t kOffsetBasis = 14695981039346656037ull;
+    constexpr uint64_t kPrime = 1099511628211ull;
+    constexpr unsigned char kPartSeparator = 0x1f;
+    uint64_t h = kOffsetBasis;
+    for (const std::string& part : parts) {
+        for (unsigned char c : part)
+            h = (h ^ c) * kPrime;
+        h = (h ^ kPartSeparator) * kPrime;
+    }
+    return h;
+}
+
+std::string HexU64(uint64_t v) {
+    char buf[17];
+    std::snprintf(buf, sizeof(buf), "%016llx", static_cast<unsigned long long>(v));
+    return buf;
+}
+
+nlohmann::json PricesOf(const std::string& dump) {
+    return nlohmann::json::parse(dump).value("prices", nlohmann::json::object());
 }
 
 // Render the spoiler's "seed" (string or number) as a label.
@@ -284,6 +311,15 @@ static int Run(int argc, char** argv) {
         const std::string stored = ComboRando::StoredMasterQuestText(seed);
         if (SOH_SetComboMasterQuestDungeons && !stored.empty())
             SOH_SetComboMasterQuestDungeons(stored.c_str());
+    };
+    // What CI pins for a generated seed: the fill's placements plus everything decided before it.
+    auto fillFingerprint = [&](const ComboRando::CombinedFillResult& fill, const ComboRando::MmEntranceAttempt& mmEnt,
+                               const ComboRando::CrossAttempt& cross, const std::string& sohDump,
+                               const std::string& mmDump) {
+        return Fnv1a64({ fill.spoilerJson, SOH_DumpEntranceOverrides ? SOH_DumpEntranceOverrides() : "",
+                         mmEnt.overrides.dump(), cross.runtime.dump(),
+                         SOH_DumpComboMasterQuestDungeons ? SOH_DumpComboMasterQuestDungeons() : "",
+                         PricesOf(sohDump).dump(), PricesOf(mmDump).dump() });
     };
     // Owner ruling 2026-11-12: under Unified Inventory OOT starts with what MM starts with (SharedItems.h).
     auto pushMirrorStart = [&](bool unified, const nlohmann::json& mmSettings) {
@@ -940,15 +976,13 @@ static int Run(int argc, char** argv) {
                 foreign = nlohmann::json::parse(r.spoilerJson).value("foreign", nlohmann::json::array()).size();
             } catch (...) {}
             std::cout << "[comborando]   seed " << tag << " (" << masterSeed << ") PASS (" << foreign
-                      << " cross-game placements)\n";
+                      << " cross-game placements) fingerprint="
+                      << HexU64(fillFingerprint(r, entResult, crossResult, sohDump, mmDump)) << "\n";
             // For a single-seed run, emit a consolidated spoiler (settings + placements) so it can be fed
             // straight back to --playthrough. Mirrors ComboShip.cpp's consolidated shape.
             if (count == 1 && SOH_DumpSettings && MM_DumpSettings) {
                 try {
                     auto fillSpoiler = nlohmann::json::parse(r.spoilerJson);
-                    auto pricesOf = [](const std::string& dump) {
-                        return nlohmann::json::parse(dump).value("prices", nlohmann::json::object());
-                    };
                     // OOT's curated ice-trap disguise set (parity with RunComboFill's writer).
                     auto iceTrapModelsOf = [](const std::string& dump) {
                         return nlohmann::json::parse(dump).value("iceTrapModels", nlohmann::json::array());
@@ -991,11 +1025,11 @@ static int Run(int argc, char** argv) {
                                                                    ? nlohmann::json::parse(SOH_DumpEnabledTricks())
                                                                    : nlohmann::json::array() },
                                             { "placements", ootPl },
-                                            { "prices", pricesOf(sohDump) },
+                                            { "prices", PricesOf(sohDump) },
                                             { "iceTrapModels", iceTrapModelsOf(sohDump) } };
                     consolidated["mm"] = { { "settings", nlohmann::json::parse(MM_DumpSettings()) },
                                            { "placements", mmPl },
-                                           { "prices", pricesOf(mmDump) } };
+                                           { "prices", PricesOf(mmDump) } };
                     // ComboShip: enrich the foreign array exactly like RunComboFill (displayName game
                     // suffix) so the headless consolidated file matches the in-game one.
                     auto foreignArr = fillSpoiler.value("foreign", nlohmann::json::array());

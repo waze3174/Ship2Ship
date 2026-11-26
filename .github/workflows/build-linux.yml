@@ -130,7 +130,10 @@ jobs:
       # Fixed seed keeps failures reproducible; exit code is the verdict (0 = beatable).
       - name: Smoke-test seed generation (comborando)
         working-directory: build-cmake/combo
-        run: ./comborando --seed ci-linux-smoke --count 1
+        shell: bash
+        env:
+          FILL_LOG: ${{ github.workspace }}/fill.log
+        run: ./comborando --seed ci-linux-smoke --count 1 2>&1 | tee -a "$FILL_LOG"
 
       # Stages the runnable tree (binaries + assets + port o2rs; game archives oot.o2r / mm.o2r
       # are ROM-extracted by the user and never built or shipped here) and packages it as a
@@ -160,23 +163,37 @@ jobs:
       # when a seed is unbeatable or cannot be generated.
       - name: Seed checks, solo games, unified, cross entrances, shared items (comborando)
         working-directory: build-cmake/combo
+        shell: bash
+        env:
+          FILL_LOG: ${{ github.workspace }}/fill.log
         run: |
-          ./comborando --seed ci-solo-oot --count 3 --games oot
-          ./comborando --seed ci-solo-mm --count 3 --games mm
-          ./comborando --seed ci-unified --count 3 --unified
-          ./comborando --seed ci-cross --count 3 --cross all,pct=25
-          ./comborando --seed ci-shared --count 3 --shared-items all
-          ./comborando --seed ci-shared-unified --count 2 --shared-items all --unified --lost-woods-link
+          gen() { ./comborando "$@" 2>&1 | tee -a "$FILL_LOG"; }
+          gen --seed ci-solo-oot --count 3 --games oot
+          gen --seed ci-solo-mm --count 3 --games mm
+          gen --seed ci-unified --count 3 --unified
+          gen --seed ci-cross --count 3 --cross all,pct=25
+          gen --seed ci-shared --count 3 --shared-items all
+          gen --seed ci-shared-unified --count 2 --shared-items all --unified --lost-woods-link
 
       # The Lost Woods link changes the cross-game crossing the logic uses (Lost Woods hub instead of the Mask
       # Shop), and with the Majora's Mask start it changes the forced settings. Generate a handful of seeds each
       # way, then replay one link-on seed forward to prove it beatable.
       - name: Seed checks, Lost Woods link on and off (comborando)
         working-directory: build-cmake/combo
+        shell: bash
+        env:
+          FILL_LOG: ${{ github.workspace }}/fill.log
         run: |
-          ./comborando --seed ci-lwl-off --count 5 --no-lost-woods-link
-          ./comborando --seed ci-lwl-off-mm --count 5 --no-lost-woods-link --starting-game mm
-          ./comborando --seed ci-lwl-on --count 5 --lost-woods-link
-          ./comborando --seed ci-lwl-on-mm --count 5 --lost-woods-link --starting-game mm
-          ./comborando --seed ci-lwl-on-replay --count 1 --lost-woods-link --starting-game mm
+          gen() { ./comborando "$@" 2>&1 | tee -a "$FILL_LOG"; }
+          gen --seed ci-lwl-off --count 5 --no-lost-woods-link
+          gen --seed ci-lwl-off-mm --count 5 --no-lost-woods-link --starting-game mm
+          gen --seed ci-lwl-on --count 5 --lost-woods-link
+          gen --seed ci-lwl-on-mm --count 5 --lost-woods-link --starting-game mm
+          gen --seed ci-lwl-on-replay --count 1 --lost-woods-link --starting-game mm
           ./comborando --playthrough saves/combo/comborando.spoiler.json
+
+      # Every seed above must come out exactly as pinned. The fingerprint covers the placements and everything the setup
+      # decided before the fill, so a refactor that moves any of it fails here. A change that is meant to move seeds
+      # regenerates the table with --update and says why.
+      - name: Pinned fill fingerprints
+        run: python3 -I scripts/ap/check_fill_hashes.py --log fill.log --expected scripts/ap/expected-fill-hashes.linux.txt
