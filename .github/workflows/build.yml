@@ -46,6 +46,16 @@ jobs:
           key: build-x64-${{ hashFiles('CMakeLists.txt', 'CMake/**', 'libultraship/cmake/**', 'torch/CMakeLists.txt') }}
           restore-keys: build-x64-
 
+      # Incremental LTCG reads the cached link databases (.ipdb/.iobj). One written by another MSVC version (the
+      # runner image updates it) fails the soh link with C1354 "corrupt ipdb" (run 45779294614). Drop them so each
+      # run's link starts its database fresh; the cached object files and vcpkg tree are kept.
+      - name: Drop cached incremental-link databases
+        shell: pwsh
+        run: |
+          if (Test-Path build/x64) {
+            Get-ChildItem build/x64 -Recurse -File -Include *.ipdb, *.iobj | Remove-Item -Force
+          }
+
       - name: Configure
         # See build-windows.yml: vcvars points VCPKG_ROOT at the (non-git) VS-bundled vcpkg, which
         # breaks automate-vcpkg.cmake's git pull. Point it at the build-dir vcpkg it clones+caches.
