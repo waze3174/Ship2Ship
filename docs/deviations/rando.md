@@ -3222,3 +3222,15 @@ The Fire Temple Goron shuffle and the new tricks and logic events needed nothing
   (`ComboTerminaItems.cpp`; the spend marks the dormant save for writing), wrapped for MM in `ComboOotItems.cpp`. The
   HUD button count (green at the setting's value, as in Hyrule) and the Hyrule pause face show the remaining uses
   (`Combo_MmOotAmmoDigits`, `Combo_MmPauseSlotAmmo`).
+
+## The Zora in Hyrule: Water Temple lock and lab dive (Ship2Ship, #42 and #43)
+
+- **The Water Temple entrance lock (#42).** Lake Hylia's fish-shaped lock (`Bg_Spot06_Objects`, type 1) takes only the
+  hookshot (bumper `0x80`). The fins already carry OOT's boomerang bit, so they hit everything OOT's boomerang hits;
+  this lock is simply not one of those things. A row in `sCrossObjects` (`soh/src/code/z_collision_check.c`) lets the
+  fins (MM `0x10`) register on it and hands it the hookshot bit, so the lock opens the gate as it does for the
+  hookshot. OOT's own hookshot and boomerang carry no MM tag and are unchanged; no other form move registers on it.
+  The idea is MergeShip's (sonsegajp/mergeship `32cb5880b536`, BUG-0032, which opens the lock's bumper to
+  `DMG_BOOMERANG` while Link is the Zora). It goes through our table instead, so the actor file is untouched.
+  Logic is unchanged: the entryway still needs the Hookshot, which the Zora keeps. The fins depend on the play-time
+  "Form moves count as items" switch, which no seed stores, so logic must not credit them.
