@@ -1,6 +1,6 @@
 // combo/gui/ComboPresetPanels.h
 //
-// ComboShip: the combo menu's Settings > Presets and Settings > Import from ComboShip panels.
+// ComboShip: the combo menu's Settings > Presets and Settings > Import settings panels.
 #pragma once
 
 #include <string>
@@ -11,7 +11,7 @@ namespace ComboRando {
 // ComboPresetsPanel.cpp.
 void DrawPresetsSharedPanel();
 
-// Settings > Import from Ship2Ship or ComboShip: pull another install's ship2ship.json or comboship.json into this one.
+// Settings > Import settings: pull another install's ship2ship.json or comboship.json into this one.
 // ComboConfigImportPanel.cpp.
 void DrawConfigImportSharedPanel();
 

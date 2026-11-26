@@ -12,6 +12,8 @@
 
 namespace ComboRando {
 
+struct HubEntry; // ComboMenuNav.h
+
 class ComboMenu final : public Ship::GuiWindow {
   public:
     using GuiWindow::GuiWindow;
@@ -33,10 +35,11 @@ class ComboMenu final : public Ship::GuiWindow {
     }
 
   private:
-    void DrawSharedPanel();                  // hub for the Settings + Randomizer tabs (by mScope)
-    void DrawGamePanel(const char* gameKey); // renders from the C-ABI model (ComboMenuModel + RenderWidget)
-    void DrawComboPanel();                   // cross-world Generate (seed + button + progress)
-    // Global menu search: scans BOTH games' CwMenu models for widgets whose name+tooltip match the
+    void DrawSharedPanel();                   // hub for the Settings, Both games and Randomizer tabs (by mScope)
+    void DrawHubEntry(const HubEntry& entry); // the content of one hub page
+    void DrawGamePanel(const char* gameKey);  // renders from the C-ABI model (ComboMenuModel + RenderWidget)
+    void DrawComboPanel();                    // cross-world Generate (seed + button + progress)
+    // Global menu search: scans our own pages and BOTH games' shown CwMenu pages for names and tooltips that match the
     // (normalized) query, rendering each match inline + editable (2-3 column grid) with a breadcrumb.
     // Drawn in the active scope's content area, so the left navigation panel stays visible.
     void DrawSearchResults(const std::string& query);
@@ -48,7 +51,7 @@ class ComboMenu final : public Ship::GuiWindow {
     std::string mStatusLine;
     bool mGeneratePending = false; // one-frame defer: show "Generating…" before blocking fill
     std::string mHubActive;        // active hub entry key ("group/label"); persists across frames
-    std::string mScope;            // active top-level tab: "settings" | "randomizer" | "oot" | "mm"
+    std::string mScope;            // active top-level tab id (MenuScopes in ComboMenuNav.h)
     std::string mLastNavSig;       // last frame's nav location; a change clears the search box
     // Per-game two-level nav selection (SOH-style top header + left sidebar): gameKey -> (header,
     // sidebar). Combo-local — deliberately NOT the games' own gSettings.Menu.*SidebarSection CVars

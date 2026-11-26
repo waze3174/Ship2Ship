@@ -140,7 +140,7 @@ void BuildRows() {
     }
     if (CVarGetInteger(kCvarPerGame, 0) != 0) {
         FormatDeciseconds(ootDs, buf, sizeof(buf));
-        AddRow(nullptr, "OOT", kGrey, buf);
+        AddRow(nullptr, "OoT", kGrey, buf);
         FormatDeciseconds(mmDs, buf, sizeof(buf));
         AddRow(nullptr, "MM", kGrey, buf);
     }

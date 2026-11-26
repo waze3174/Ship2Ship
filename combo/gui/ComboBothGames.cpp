@@ -1,7 +1,7 @@
 // combo/gui/ComboBothGames.cpp
 //
-// ComboShip: draws Settings > Both games. See ComboBothGames.h for the rules. Controls are found by CVar in each
-// game's menu model.
+// ComboShip: draws Both games > Same setting in both. See ComboBothGames.h for the rules. Controls are found by CVar in
+// each game's menu model.
 #include "ComboBothGames.h"
 #include "ComboMenuModel.h"
 #include "ComboSettingsLink.h"

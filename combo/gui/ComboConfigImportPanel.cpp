@@ -1,6 +1,6 @@
 // combo/gui/ComboConfigImportPanel.cpp
 //
-// ComboShip: Settings > Import from ComboShip. See ComboConfigImport.h.
+// ComboShip: Settings > Import settings. See ComboConfigImport.h.
 #include "ComboExport.h"
 #include "ComboFilePicker.h"  // native Browse dialog (comdlg32 / pfd), shared with the setup screens
 #include "ComboWidgetStyle.h" // ComboMenu_ThemeColor / PushButton / PushCheckbox
