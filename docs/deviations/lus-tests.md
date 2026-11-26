@@ -53,3 +53,29 @@ not updated; nothing ran `lus_tests` until 2026-11-26.
 column 0, C in column 1 of the two-column sidebar), the field the bump added.
 
 **The game:** not affected. Nothing reads `CwMenu::version`; the serializer was right and the test was stale.
+
+## ResourceManagerScope tests destroy their Context (2026-11-26)
+
+**Fixed:** `ResourceManagerScope.SwapsAndRestores` (SIGSEGV at exit, after the test itself had passed).
+
+**Why:** `resource_manager_scope_tests.cpp` (our own test) made its `Context` with `CreateUninitializedInstance` and never
+destroyed it, so `~Context` ran from the static destructor of `Context::mContext` at process exit. That destructor's
+`__cxa_atexit` entry is registered when `libultraship.so` loads. spdlog's registry is a function-local static, built by
+the first log call, so it is registered later and destroyed first. In `SwapsAndRestores` the first log call happened
+inside the test (`~ResourceManager` of the swapped-in RM logs "destruct ResourceManager"); at exit `~Context` then
+released the remaining RM, whose destructor logged through the destroyed registry. `NullTargetIsNoOp` destroys no RM
+during the test, so its first log call happens during exit and it did not crash. The launcher and comborando hit the same
+order on macOS (see the comments on `ComboExitWithoutTeardown` in `combo/ComboShip.cpp` and on `main` in
+`combo/ComboRandoHeadless.cpp`).
+
+**`libultraship/tests/resource_manager_scope_tests.cpp`:** a `ResourceManagerScope` fixture creates the uninitialized
+`Context` in `SetUp` and calls `Context::DestroyInstance()` in `TearDown`, as the game's `DeinitOTR` does. The suite and
+test names are unchanged. Upstream's `main` uses the same pattern (`TickableComponentTest` in
+`tests/tickable_component_tests.cpp`).
+
+**The game:** not on its normal paths. Quitting runs `SOH_Deinit` -> `DeinitOTR` -> `Context::DestroyInstance()` while
+spdlog is alive, and the launcher's early exits end in `std::_Exit` (`ComboExitWithoutTeardown`). Two plain `exit(1)`
+calls are left after the Context and its logger exist: the "Invalid OTR File" check in `OTRGlobals::Initialize`
+(`soh/soh/OTRGlobals.cpp`) and the "Invalid O2R File" check in MM's `OTRGlobals::Initialize` (`mm/2s2h/BenPort.cpp`).
+They follow an error box and would leave `~Context` to the static destructors, so on Linux and macOS they can likely end
+in the same crash. Not verified in game.
