@@ -45,6 +45,7 @@ constexpr int kMaxHealthCapacity = 0x140; // 20 hearts, as MM's own cap
 constexpr int kHealthPerHeart = 0x10;
 
 using FnCarryGet = int (*)(int);
+using FnVoid = void (*)();
 
 int CarriedFromOot(B2B::CarryField field) {
     static FnCarryGet sGet = reinterpret_cast<FnCarryGet>(Combo_ResolveSym("soh", "SOH_ComboCarry_Get"));
@@ -153,6 +154,18 @@ void CarrySongs() {
         SET_QUEST_ITEM(QUEST_SONG_STORMS);
 }
 
+// The Song of Time's cycle reset (Sram_SaveEndOfCycle) empties MM's ammo and bottles; with the setting on it empties
+// the consumables Ocarina of Time carried into Termina by the same rule.
+void ResetOotConsumablesAtEndOfCycle() {
+    if (!ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) || !OptionOn(B2B::kResetOotConsumables))
+        return;
+    static FnVoid sReset = reinterpret_cast<FnVoid>(Combo_ResolveSym("soh", "SOH_ComboTermina_ResetConsumables"));
+    if (sReset == nullptr)
+        return;
+    sReset();
+    SPDLOG_INFO("[ComboBackToBack] the cycle reset emptied Ocarina of Time's carried consumables");
+}
+
 void TickCarryOnceFound() {
     if (gPlayState == nullptr || !Combo_MM_BackToBackLocksActive())
         return;
@@ -163,6 +176,7 @@ void TickCarryOnceFound() {
 
 void RegisterComboBackToBack() {
     COND_HOOK(OnGameStateUpdate, true, TickCarryOnceFound);
+    COND_HOOK(BeforeEndOfCycleSave, true, ResetOotConsumablesAtEndOfCycle);
 }
 
 RegisterShipInitFunc sBackToBackCarryInit(RegisterComboBackToBack, {});

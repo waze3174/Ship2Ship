@@ -25,6 +25,7 @@ constexpr const char* kPuristTooltip =
     "Every carry off and every item switch off: Ocarina of Time stays in Hyrule, and Majora's Mask is played as it is.";
 constexpr const char* kDefaultTooltip = "The defaults of this page.";
 constexpr const char* kEverythingTooltip = "Every choice on.";
+constexpr const char* kCycleResetSection = "When the Song of Time resets the cycle";
 constexpr const char* kCarrySectionThisFile = "Carried into Termina (fixed when the file was created)";
 constexpr const char* kShowTooltip =
     "Offers Back to back as a choice when you make a new file. Files you already made keep working either way.";
@@ -205,6 +206,8 @@ void DrawThisFileView() {
     DrawThisFileGroup(BackToBack::OptionGroup::OotOnlyItems, &options);
     ImGui::SeparatorText("Usable in Termina before Majora's Mask's own is found");
     DrawThisFileGroup(BackToBack::OptionGroup::EarlyUse, &options);
+    ImGui::SeparatorText(kCycleResetSection);
+    DrawThisFileGroup(BackToBack::OptionGroup::CycleReset, &options);
 }
 
 void DrawNewFilesView() {
@@ -221,6 +224,8 @@ void DrawNewFilesView() {
     ImGui::SeparatorText("Usable in Termina before Majora's Mask's own is found");
     DrawHintText(kEarlyUseNote);
     DrawOptionGroup(BackToBack::OptionGroup::EarlyUse);
+    ImGui::SeparatorText(kCycleResetSection);
+    DrawOptionGroup(BackToBack::OptionGroup::CycleReset);
 }
 
 } // namespace

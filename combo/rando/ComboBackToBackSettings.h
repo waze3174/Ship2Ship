@@ -58,6 +58,7 @@ enum Option : OptionBits {
     kEarlyGoronMask = 1ULL << 29, // OoT's Goron Mask transforms Link in Termina from the start, not worn plain first
     kEarlyZoraMask = 1ULL << 30,  // the same for the Zora Mask
     kEarlyMagic = 1ULL << 31, // OoT's magic meter is in Termina from the start, not only once MM's Great Fairy gives it
+    kResetOotConsumables = 1ULL << 32, // MM's cycle reset also empties the consumables OoT carried into Termina
 };
 
 // The layout of the options value, stored beside it in the slot's combo.mode (kOptionsLayoutKey). A mode without the
@@ -74,7 +75,7 @@ inline constexpr OptionBits kMarkedLayoutBit = 1ULL << 30;
 inline constexpr OptionBits kEarlyUseMasks =
     kEarlyKeatonMask | kEarlyBunnyHood | kEarlyMaskOfTruth | kEarlyGoronMask | kEarlyZoraMask;
 
-enum class OptionGroup { Carry, OotOnlyItems, EarlyUse };
+enum class OptionGroup { Carry, OotOnlyItems, EarlyUse, CycleReset };
 
 struct OptionDef {
     OptionBits bit;
@@ -88,6 +89,10 @@ struct OptionDef {
 inline constexpr const char* kOotOnlyTooltip = "Usable in Termina. Off: it stays in Hyrule.";
 inline constexpr const char* kEarlyUseTooltip =
     "Usable in Termina from the start. Off: it waits until Link finds Majora's Mask's own.";
+inline constexpr const char* kResetOotConsumablesTooltip =
+    "When the Song of Time takes Link back to the first day, Majora's Mask empties its own ammo and bottles. With this "
+    "on it empties the ones Ocarina of Time carried into Termina the same way: arrows, seeds, bombs, bombchus, sticks, "
+    "nuts and beans to zero, and the contents of its bottles. Off: it leaves them as they are.";
 inline constexpr const char* kEarlyMagicTooltip =
     "Link has Ocarina of Time's magic meter in Termina from the start, full: single, or double if the double magic "
     "meter switch above is on and he had it. Off: he has none until Majora's Mask's own Great Fairy gives him magic.";
@@ -156,6 +161,8 @@ inline constexpr OptionDef kOptions[] = {
     { kEarlyZoraMask, "gCombo.BackToBack.Early.ZoraMask", false, OptionGroup::EarlyUse, "Zora Mask",
       kEarlyTransformMaskTooltip },
     { kEarlyMagic, "gCombo.BackToBack.Early.Magic", false, OptionGroup::EarlyUse, "Magic", kEarlyMagicTooltip },
+    { kResetOotConsumables, "gCombo.BackToBack.ResetOotConsumables", false, OptionGroup::CycleReset,
+      "Song of Time also empties Ocarina of Time's ammo and bottles", kResetOotConsumablesTooltip },
 };
 inline constexpr std::size_t kOptionCount = sizeof(kOptions) / sizeof(kOptions[0]);
 

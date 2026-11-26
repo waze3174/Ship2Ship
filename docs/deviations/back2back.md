@@ -251,6 +251,15 @@ of OoT's), Bombchus, Hookshot (with the Longshot), Lens of Truth, Magic Beans, B
 MM's first bottle), Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask (those two mean something else, see
 below) and Magic (see below).
 
+**Song of Time and Ocarina of Time's consumables** (`gCombo.BackToBack.ResetOotConsumables`, bit 32, off by default, the
+last section of the page; editable on a loaded file). MM's cycle reset (`Sram_SaveEndOfCycle`) zeroes every ammo count
+and empties every filled bottle, but only in MM's save, so Ocarina of Time's carried ammo and bottles survive it. With
+the switch on, `ResetOotConsumablesAtEndOfCycle` (`ComboBackToBack.cpp`, on the `BeforeEndOfCycleSave` hook, back-to-back
+slots only) calls `SOH_ComboTermina_ResetConsumables` (`ComboTerminaItems.cpp`): OoT's sticks, nuts, bombs, bow, slingshot,
+bombchus and beans go to 0 and every filled bottle becomes an empty one (Ruto's Letter stays), and OoT's dormant save is
+marked changed so the write at the return to Hyrule keeps it. Rupees, hearts and the wallet are not consumables of this
+rule: MM resets its own rupees and the carried wallet is only a start value.
+
 **Magic in Termina.** With the Magic switch on, `CarryEarlyMagic` (`ComboBackToBack.cpp`, run as the opening starts with
 the hearts and the wallet) gives Link Ocarina of Time's meter at once: `isMagicAcquired` set, `magic` full, `magicLevel`
 0, which `Interface_Update` grows and fills (`z_parameter.c`, the same path MM's own gift uses). It is double when the

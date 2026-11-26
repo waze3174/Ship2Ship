@@ -127,7 +127,8 @@ void TestOptionTable() {
     CHECK((defaults & B2B::kMagicCarry) == 0);
     CHECK((defaults & B2B::kSongsCarry) == 0);
     CHECK((defaults & B2B::kHeartsCarry) == 0);
-    CHECK((defaults & B2B::kEarlyMagic) == 0); // magic waits for MM's Great Fairy by default
+    CHECK((defaults & B2B::kResetOotConsumables) == 0); // the Song of Time empties only MM's own by default
+    CHECK((defaults & B2B::kEarlyMagic) == 0);          // magic waits for MM's Great Fairy by default
 }
 
 void TestOptionsFromCVars() {
@@ -390,6 +391,7 @@ void TestEditingALoadedFile() {
     CHECK((editable & B2B::kEarlyBow) != 0);
     CHECK((editable & B2B::kEarlyGoronMask) != 0);
     CHECK((editable & B2B::kDinsFire) != 0);
+    CHECK((editable & B2B::kResetOotConsumables) != 0); // a rule of the cycle reset, not a carry
 
     const B2B::OptionBits made = B2B::kHeartsCarry | B2B::kEarlyMagic | B2B::kEarlyBow | B2B::kDinsFire;
     // Asking for everything on changes the item switches only.
