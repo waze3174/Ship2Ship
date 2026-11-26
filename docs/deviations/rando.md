@@ -2805,6 +2805,10 @@ Features that change the rules of play are off until the player turns them on in
   (`combo/ComboSharedHealth.h`). With it off the shared state is cleared every frame and the launcher skips the
   heart and ammo conversions of cross-delivered items. Seed generation and logic never read it; logic still counts
   every heart at full value, so with it on a check that needs many hearts can need more than logic assumed.
+  Each game holds the state of the last save it read (the file select reads every slot at boot), so a new file resets
+  it in both games and drops `combo.health` from its container (`Combo_OnOOTSaveInit`, as for the Bottle Shelf);
+  without that a file made in an erased slot took over the erased file's hearts (#30). Off in a back-to-back slot
+  (`docs/deviations/back2back.md`).
   The other game's ammo items (on this game's buttons and its face of this game's pause menu) show the shared count
   as that game will show it on arrival, `ComboHealth::DormantAmmo`; OOT's Slingshot fired in Termina spends from the
   shared seeds (`SpendDormantAmmo`). With it off they show, and the Slingshot spends, OOT's own save, written at the
