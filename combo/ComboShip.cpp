@@ -481,6 +481,9 @@ static ComboFnValidateRom MM_ClassifyRom = nullptr;
 static ComboFnStartExtraction MM_StartExtraction = nullptr;
 static ComboFnGetProgress MM_GetExtractionProgress = nullptr;
 static ComboFnRunExtraction ComboUI_RunExtraction = nullptr;
+// Remove a ROM archive extracted under another COMBO_EPOCH; 1 = it was outdated.
+static FnInt SOH_RemoveOutdatedRomArchives = nullptr;
+static FnInt MM_RemoveOutdatedRomArchive = nullptr;
 
 // ComboShip-owned first-launch settings import (see ComboSettingsImport.h). comboui renders the
 // screen; soh applies the launcher-merged config to the live Config.
@@ -5297,6 +5300,8 @@ int main(int argc, char** argv) {
     MM_ClassifyRom = (ComboFnValidateRom)GetSym(mmModule, "MM_ClassifyRom");
     MM_StartExtraction = (ComboFnStartExtraction)GetSym(mmModule, "MM_StartExtraction");
     MM_GetExtractionProgress = (ComboFnGetProgress)GetSym(mmModule, "MM_GetExtractionProgress");
+    SOH_RemoveOutdatedRomArchives = (FnInt)GetSym(sohModule, "SOH_RemoveOutdatedRomArchives");
+    MM_RemoveOutdatedRomArchive = (FnInt)GetSym(mmModule, "MM_RemoveOutdatedRomArchive");
     SOH_ApplyImportedConfig = (ComboFnApplyImportedConfig)GetSym(sohModule, "SOH_ApplyImportedConfig");
 
     // Anchor transport seam exports (Phase 1)
@@ -5471,6 +5476,16 @@ int main(int argc, char** argv) {
     // Capture BEFORE any window/config init: a fresh install (no ship2ship.json) gets the settings
     // import offer. (The Config ctor doesn't create the file, but capturing early stays robust.)
     const bool freshInstall = !ComboConfigExists();
+    // Outdated ROM archives (another COMBO_EPOCH) are removed before the check below, so the one ROM Setup
+    // re-extracts both. Left in place, an old oot.o2r would load as current (a combo boot never runs SoH's
+    // RunExtract), and an old mm.o2r would only be caught by 2Ship's RunExtract inside the MM boot, which
+    // removes it with no ROM Setup to offer. Both run before any Context exists, so no archive is open yet.
+    const bool outdatedOot = SOH_RemoveOutdatedRomArchives != nullptr && SOH_RemoveOutdatedRomArchives() != 0;
+    const bool outdatedMm = MM_RemoveOutdatedRomArchive != nullptr && MM_RemoveOutdatedRomArchive() != 0;
+    if (outdatedOot || outdatedMm) {
+        std::cout << "[ComboShip] Outdated ROM archive(s) removed (OoT=" << outdatedOot << " MM=" << outdatedMm
+                  << ") — they will be re-extracted." << std::endl;
+    }
     const bool needOot = !OOTVanillaArchiveExists();
     const bool needMm = !MMRomArchiveExists();
     if (needOot || needMm) {

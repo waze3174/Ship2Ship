@@ -1758,6 +1758,22 @@ extern "C" COMBO_EXPORT void SOH_FinishInit() {
     Combo_FinishInit();
 }
 
+// ComboShip: a combo boot never runs RunExtract, so its outdated-archive check (an oot.o2r / oot-mq.o2r from another
+// COMBO_EPOCH) runs here, called by the launcher before its ROM Setup. Same rule as RunExtract: either one outdated
+// removes both. Needs no Context. 1 = outdated (removed unless the file system refused), 0 = current or absent.
+extern "C" COMBO_EXPORT int SOH_RemoveOutdatedRomArchives() {
+    if (!VerifyArchiveVersion(DetectOTRVersion("oot.o2r", false)) &&
+        !VerifyArchiveVersion(DetectOTRVersion("oot-mq.o2r", true))) {
+        return 0;
+    }
+    const bool vanillaRemoved = RemoveArchiveAcrossAppDirs("oot.o2r");
+    const bool masterQuestRemoved = RemoveArchiveAcrossAppDirs("oot-mq.o2r");
+    if (!vanillaRemoved || !masterQuestRemoved) {
+        SPDLOG_ERROR("[ComboShip] an outdated OoT ROM archive could not be removed; delete it by hand");
+    }
+    return 1;
+}
+
 // ComboShip: true ONLY during a headless rando run (set by SOH_InitRandoHeadless, never by the game).
 // Lets Lang::Translate return the raw key instead of asserting when language data isn't loaded (headless
 // has no ResourceManager). The game leaves this false, so its assert stays live. See docs/UPSTREAM_MERGES.md.

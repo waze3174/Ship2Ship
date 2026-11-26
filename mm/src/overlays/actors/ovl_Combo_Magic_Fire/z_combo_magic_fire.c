@@ -20,6 +20,10 @@
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_UPDATE_DURING_OCARINA)
 
+// MM's gSPDisplayList looks a plain "__OTR__" path up in MM's archive when the command is recorded, and MM has no
+// ovl_Magic_Fire: the "@oot:" route hands the lookup to OOT's ResourceManager at draw time.
+#define OOT_DL(path) ((Gfx*)("__OTR__@oot:" path))
+
 void ComboMagicFire_Init(Actor* thisx, PlayState* play);
 void ComboMagicFire_Destroy(Actor* thisx, PlayState* play);
 void ComboMagicFire_Update(Actor* thisx, PlayState* play);
@@ -242,19 +246,19 @@ void ComboMagicFire_Draw(Actor* thisx, PlayState* play) {
         gDPPipeSync(POLY_XLU_DISP++);
         gSPTexture(POLY_XLU_DISP++, 0xFFFF, 0xFFFF, 0, G_TX_RENDERTILE, G_ON);
         gDPSetTextureLUT(POLY_XLU_DISP++, G_TT_NONE);
-        // OOT's own fire texture and sphere, resolved against OOT's ResourceManager.
+        // OOT's own fire texture and sphere. The texture is looked up at draw time, inside the "oot" bracket.
         gSPComboRMPush(POLY_XLU_DISP++, "oot");
         gDPLoadTextureBlock(POLY_XLU_DISP++, "__OTR__overlays/ovl_Magic_Fire/sTex", G_IM_FMT_I, G_IM_SIZ_8b, 64, 64, 0,
                             G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, 6, 6, 15, G_TX_NOLOD);
         gDPSetTile(POLY_XLU_DISP++, G_IM_FMT_I, G_IM_SIZ_8b, 8, 0, 1, 0, G_TX_NOMIRROR | G_TX_WRAP, 6, 14,
                    G_TX_NOMIRROR | G_TX_WRAP, 6, 14);
         gDPSetTileSize(POLY_XLU_DISP++, 1, 0, 0, 252, 252);
-        gSPDisplayList(POLY_XLU_DISP++, (Gfx*)"__OTR__overlays/ovl_Magic_Fire/sMaterialDL");
+        gSPDisplayList(POLY_XLU_DISP++, OOT_DL("overlays/ovl_Magic_Fire/sMaterialDL"));
         gSPDisplayList(POLY_XLU_DISP++,
                        Gfx_TwoTexScrollEx(play->state.gfxCtx, 0, (gameplayFrames * 2) % 512,
                                           511 - ((gameplayFrames * 5) % 512), 64, 64, 1, (gameplayFrames * 2) % 256,
                                           255 - ((gameplayFrames * 20) % 256), 32, 32, 2, -5, 2, -20));
-        gSPDisplayList(POLY_XLU_DISP++, (Gfx*)"__OTR__overlays/ovl_Magic_Fire/sModelDL");
+        gSPDisplayList(POLY_XLU_DISP++, OOT_DL("overlays/ovl_Magic_Fire/sModelDL"));
         gSPComboRMPop(POLY_XLU_DISP++);
         CLOSE_DISPS(play->state.gfxCtx);
 
