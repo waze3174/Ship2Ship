@@ -3,7 +3,8 @@
 # Ship2Ship
 
 **Ocarina of Time and Majora's Mask in one PC port: a cross-game randomizer in the spirit of
-[OoTMM](https://ootmm.com/), each game on its own, and Majora's Mask's forms and masks in Hyrule.**
+[OoTMM](https://ootmm.com/), both games back to back in one save, each game on its own, and Majora's Mask's forms
+and masks in Hyrule.**
 
 > [!IMPORTANT]
 > **Ship2Ship is an unofficial fan project.** It is not made by, affiliated with or endorsed by HarbourMasters,
@@ -21,7 +22,8 @@ enhancements, mod support and co-op.
 
 > [!WARNING]
 > **Early test build.** Expect bugs. It is not ready for races or leaderboards. Saves and seeds from one test build
-> may not carry over to the next.
+> may not carry over to the next: saves from 0.1.x don't load in 0.2.x, so keep each in its own folder (see the
+> release notes).
 
 ## What you can play
 
@@ -33,8 +35,9 @@ Each save file picks its own mode on the file-select screen:
 | **Normal** | Plain Ocarina of Time. |
 | **Master Quest** | Plain Ocarina of Time with the Master Quest dungeons. It needs a Master Quest ROM. |
 | **Majora's Mask** | Plain Majora's Mask. |
+| **Back to back** | Plain Ocarina of Time, then plain Majora's Mask, in one save. Beating Ganon opens the Lost Woods path into Termina, where Majora's Mask's own opening plays. Items both games have stay locked in Termina until you find Majora's Mask's copy. Settings > Back to back chooses what carries over (hearts, magic, bottles, wallet, songs and masks, and each item only Ocarina of Time has), and Master Quest for the Ocarina of Time half. |
 
-The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `MQ` or `MM`.
+The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `MQ`, `MM` or `S2S`.
 
 ## Features
 
@@ -42,6 +45,9 @@ The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `
 - Majora's Mask in Hyrule: Deku, Goron, Zora and Fierce Deity Link with their moves, plus MM's masks (the Blast
   Mask included) and items.
 - Ocarina of Time in Termina: OoT items such as the Boomerang, Slingshot and Megaton Hammer, and adult Link.
+- Each game's enhancements follow its items and forms into the other game. Examples: 2 Ship 2 Harkinian's Goron,
+  Zora, Deku and mask options in Hyrule; Ship of Harkinian's hookshot, boomerang, bomb and spell options in Termina;
+  and Majora's Mask's bomb arrows on Ocarina of Time's bow.
 - Pause menus that show both inventories.
 - Trackers for both games' items and checks.
 - **Optional:**
@@ -50,6 +56,7 @@ The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `
   - transformations in a plain Ocarina of Time save
   - a **Lost Woods link**: a wrong turn in Hyrule's Lost Woods leads into Termina's, and the Clock Tower leads
     back
+  - **boss release**: beating Ganon or Majora hands you the rest of that game's checks
 
 **From the ports**
 - Each port's own enhancements, cheats and cosmetics, in one combined menu.
@@ -57,6 +64,8 @@ The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `
 - Co-op through the Anchor mode, with background world sync, a partner feed and game-switch notices.
 - On first launch, import settings from a Ship of Harkinian, 2 Ship 2 Harkinian, ComboShip or Ship2Ship install.
 - Presets, so you can switch between saved sets of settings.
+- Discord status: the game, area, checks and co-op room, shown through the Discord desktop app. It's on by default,
+  and you can turn it off in Settings > Discord.
 
 **Not yet:** Archipelago, and WomboComboShip's synced co-op enemies.
 
