@@ -31,30 +31,40 @@
 #ifdef COMBO_BUILD
 #include "ComboTitleMMAssets.h"
 
-// ComboShip: the quest-select carousel offers Normal, Master Quest, Randomizer, Majora's Mask and both games back to
-// back. Normal and Master Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save, back to
-// back both; SohFileSelect_IsQuestHidden hides Boss Rush and Speedrun (the values between), and the quest whose
-// archive (oot.o2r, oot-mq.o2r) isn't loaded. A new file starts on Randomizer, the combo randomizer.
-#define MIN_QUEST QUEST_NORMAL
-#define MAX_QUEST QUEST_COMBO_BACK2BACK
-#define DEFAULT_QUEST QUEST_RANDOMIZER
+// ComboShip: the quest-select carousel offers both games back to back, Randomizer, Normal, Master Quest and Majora's
+// Mask, in that order (SohFileSelect_QuestAtCarouselPosition: the order is not the quest ids' order). Normal and Master
+// Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save, back to back both;
+// SohFileSelect_IsQuestHidden hides the quest whose archive (oot.o2r, oot-mq.o2r) isn't loaded. A new file starts on
+// the first quest shown (SohFileSelect_DefaultQuest).
+#define QUEST_POSITION_COUNT SohFileSelect_CarouselLength()
+#define QUEST_AT_POSITION(position) SohFileSelect_QuestAtCarouselPosition(position)
+#define QUEST_POSITION_OF(quest) SohFileSelect_CarouselPositionOf(quest)
+#define DEFAULT_QUEST SohFileSelect_DefaultQuest()
 #else
 #define MIN_QUEST (ResourceMgr_GameHasOriginal() ? QUEST_NORMAL : QUEST_MASTER)
 #define MAX_QUEST QUEST_SPEEDRUN_MASTER
+#define QUEST_POSITION_COUNT (MAX_QUEST - MIN_QUEST + 1)
+#define QUEST_AT_POSITION(position) (MIN_QUEST + (position))
+#define QUEST_POSITION_OF(quest) ((quest)-MIN_QUEST)
 #define DEFAULT_QUEST MIN_QUEST
 #endif
 
 // #region SOH [Enhancement] - Hide Quest Modes
-// Step from quest in the given direction (1 or -1) to the next visible quest, wrapping around at the ends
+// Step from quest in the given direction (1 or -1) to the next visible quest in carousel order, wrapping around at the
+// ends
 static s8 NextVisibleQuest(s8 quest, s8 dir) {
+    const s32 count = QUEST_POSITION_COUNT;
+    s32 position = QUEST_POSITION_OF(quest);
+
     // Try each quest at most once, so this can't loop forever if every quest is hidden
-    for (int32_t tries = MAX_QUEST - MIN_QUEST + 1; tries > 0; --tries) {
-        quest += dir;
-        if (quest > MAX_QUEST) {
-            quest = MIN_QUEST;
-        } else if (quest < MIN_QUEST) {
-            quest = MAX_QUEST;
+    for (int32_t tries = count; tries > 0; --tries) {
+        position += dir;
+        if (position >= count) {
+            position = 0;
+        } else if (position < 0) {
+            position = count - 1;
         }
+        quest = QUEST_AT_POSITION(position);
         if (!SohFileSelect_IsQuestHidden(quest)) {
             break;
         }
@@ -1119,7 +1129,7 @@ void FileChoose_RotateToQuest(GameState* thisx) {
                 this->windowRot = 628.0f;
 
                 // Only one quest is visible, so select it as if it was picked on the quest menu
-                this->questType[this->buttonIndex] = NextVisibleQuest(MAX_QUEST, 1);
+                this->questType[this->buttonIndex] = NextVisibleQuest(QUEST_AT_POSITION(QUEST_POSITION_COUNT - 1), 1);
                 gSaveContext.ship.quest.id = QUEST_SAVE_ID(this->questType[this->buttonIndex]);
 
                 switch (this->questType[this->buttonIndex]) {

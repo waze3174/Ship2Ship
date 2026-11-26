@@ -16,7 +16,7 @@ and everything usable after both games). Not done: adult Link in Termina (see "N
 `combo.mode` for a back-to-back slot (`combo/rando/ComboMode.h`):
 
 ```json
-"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 14 }
+"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 1073749996 }
 ```
 
 - `ComboMode::BackToBack(quest, options)`, `IsBackToBack()`. `sequential` and `options` (stage C) are written only for this mode;
@@ -177,25 +177,57 @@ called from `Combo_InitBackToBackSlot`), stored as one int in the file's `combo.
 the defaults) and pushed to both DLLs with the cross gate (`SOH_SetComboBackToBackOptions`,
 `MM_SetComboBackToBackOptions`; 0 for every other slot).
 
-| Option | Default | What it does |
-|---|---|---|
-| Hearts | off | Termina starts with OoT's max hearts and heart pieces (MM's start is three hearts) |
-| Magic meter | on | Double magic carries once MM's Great Fairy has given magic (tick in `ComboBackToBack.cpp`) |
-| Bottles | on | OoT's bottles are usable in Termina once MM's first bottle is found; off: they stay in Hyrule |
-| Wallet and rupees | on | the wallet tier (capped at MM's 500) and the rupees (capped to the wallet) go in as the opening starts |
-| Songs and masks | off | the masks MM has too are unlocked from the start; the songs (Time, Epona's, Storms) are learned once Link has MM's Ocarina |
-| Din's, Farore's, Nayru's, Boomerang, Slingshot, Hammer, Boots, Tunics | off | one switch each: off, the item stays in Hyrule |
+The int's bits: 0-12 the carry and OoT-only switches, 13-28 the early-use switches, 30 `kHasEarlyUseBits`. An int stored
+without bit 30 comes from before the early-use switches; `MigrateStoredOptions` (called by `ComboMode::FromJson`) sets
+the bit, leaves every old choice as it was, and, when bit 4 was on (it used to also mean "the masks both games have are
+usable at once"), sets the three mask early-use bits. So an older file's locks behave as they did (the Goron and Zora
+masks excepted, see below). A slot with no `options` key at all takes `DefaultOptions()`.
+
+The carries (default in brackets):
+
+| Option | What it does |
+|---|---|
+| Hearts (off) | Termina starts with OoT's max hearts and heart pieces (MM's start is three hearts) |
+| Double magic meter (off) | OoT's double magic meter carries once MM's Great Fairy has given magic (tick in `ComboBackToBack.cpp`) |
+| Bottles (on) | OoT's bottles are usable in Termina; off: they stay in Hyrule |
+| Wallet and rupees (on) | the wallet tier (capped at MM's 500) and the rupees (capped to the wallet) go in as the opening starts |
+| Songs (off) | the songs (Time, Epona's, Storms) are learned once Link has MM's Ocarina |
+
+"Ocarina of Time items usable in Termina": one switch each for Din's Fire, Farore's Wind, Nayru's Love, Boomerang,
+Slingshot, Megaton Hammer, Iron and Hover Boots, and the Goron and Zora tunics. All on by default; off, the item stays in
+Hyrule.
+
+"Usable in Termina before Majora's Mask's own is found" (`CVars gCombo.BackToBack.Early.*`): one switch per item MM has
+too, all off by default (the item waits). Deku Sticks, Deku Nuts, Bombs, Bow, Fire, Ice and Light Arrows, Ocarina (both
+of OoT's), Bombchus, Hookshot (with the Longshot), Lens of Truth, Magic Beans, Bottles (with the Bottles carry on: before
+MM's first bottle), Keaton Mask, Bunny Hood and Mask of Truth.
 
 The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/ComboBackToBackTest.cpp`):
 
 | OoT item | Locked in Termina until |
 |---|---|
-| Sticks, nuts, bombs, bow, the three arrows, ocarinas, bombchus, lens, beans, Hookshot and Longshot | MM holds its own copy (the Hookshot and Longshot: MM's Hookshot) |
-| Bottles and what is in them | the Bottles setting is on and MM holds any bottle |
-| Keaton, Bunny, Goron, Zora, Truth masks | MM holds its own, or Songs and masks is on |
+| Sticks, nuts, bombs, bow, the three arrows, ocarinas, bombchus, lens, beans, Hookshot and Longshot, Keaton, Bunny and Truth masks | its early-use switch is on, or MM holds its own copy (the Hookshot and Longshot: MM's Hookshot) |
+| Bottles and what is in them | the Bottles carry is on, and the early-use switch is on or MM holds any bottle |
+| Goron and Zora masks | never locked (see below) |
 | Din's, Farore's, Nayru's, Boomerang, Slingshot, Hammer | its switch is on |
 | Tunics and boots | the Tunics / Boots switch is on |
 | Everything else OoT alone has (trade items, Ruto's letter, Skull / Spooky / Gerudo masks, Roc's Feather) | both games are beaten |
+
+**Waits that are not settings.** Each has a technical reason.
+- The quiver, bomb bag, Deku stick and Deku nut levels wait for MM's bow, bombs, sticks and nuts (stage D).
+- The double magic meter waits for MM's Great Fairy: the meter needs `isMagicAcquired`, and MM's code reads that flag as
+  "magic not given yet" (the Great Fairy gift in `SkipGreatFairyCutscene.cpp`, Tatl's hint in `z_elf_message.c`), so
+  setting it earlier would stop MM giving magic.
+- The songs wait for MM's Ocarina: they can only be played on an ocarina, and MM's own lessons (Song of Time, Epona's
+  Song, Song of Storms) are not skipped by an early flag.
+
+**The Goron and Zora masks in Termina.** In a slot with the locks in force, OoT's Goron and Zora masks are worn as plain
+masks (OoT's model, no transformation) until Link holds MM's own Goron Mask (Darmani) or Zora Mask (Mikau);
+from then on they transform him as MM's masks (`Combo_MmOotMaskIsPlain`, `ComboOotItems.cpp`; they take the same path as
+the Skull, Spooky and Gerudo masks, `PLAYER_IA_COMBO_OOT_MASK`). In every other slot they transform at once, as before
+(a randomizer slot's Goron Mask is MM's). In Hyrule OoT's own Goron and Zora masks are plain masks unless the form
+setting is on (`Combo_FormsAllowed`: randomizer slots, or "Transformations in vanilla OoT" for a vanilla one), which this
+mode does not change.
 
 Where they apply: `Snapshot()` (`mm/2s2h/Rando/MiscBehavior/ComboPause.cpp`), which feeds the Hyrule face of MM's pause
 menu, the buttons' foreign items, `Combo_MmPauseOotItemAt` and with it every use of an OoT item in Termina; `EquipSnapshot()`

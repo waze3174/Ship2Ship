@@ -117,7 +117,7 @@ void CarryCapacities() {
 
 // The songs OoT has learned, once Link has MM's Ocarina to play them on.
 void CarrySongs() {
-    if (!OptionOn(B2B::kSongsMasksShared) || INV_CONTENT(ITEM_OCARINA_OF_TIME) != ITEM_OCARINA_OF_TIME)
+    if (!OptionOn(B2B::kSongsCarry) || INV_CONTENT(ITEM_OCARINA_OF_TIME) != ITEM_OCARINA_OF_TIME)
         return;
     const int songs = CarriedFromOot(B2B::kCarrySongs);
     if ((songs & B2B::kCarrySongTime) && !CHECK_QUEST_ITEM(QUEST_SONG_TIME))

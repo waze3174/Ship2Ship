@@ -23,11 +23,14 @@ constexpr const char* kMasterQuestUnavailable =
     "Needs the Master Quest ROM (oot-mq.o2r). Until it is extracted, new back-to-back files play Normal Quest.";
 
 constexpr const char* kCarryNote =
-    "Every other item Ocarina of Time and Majora's Mask both have stays locked in Termina until Link finds "
-    "Majora's Mask's own. The quiver, bomb bag, Deku stick and Deku nut upgrades carry over once Link has that "
-    "item in Majora's Mask.";
+    "The quiver, bomb bag, Deku stick and Deku nut upgrades always carry over, once Link has that item in "
+    "Majora's Mask.";
 constexpr const char* kOotOnlyItemsNote =
     "Items only Ocarina of Time has. Off, each stays in Hyrule until both games are beaten.";
+constexpr const char* kEarlyUseNote =
+    "Items Majora's Mask has too wait in Termina until Link finds Majora's Mask's own. Tick one to use "
+    "Ocarina of Time's from the start. The Goron and Zora masks can always be worn there; they transform Link "
+    "only once he has Majora's Mask's own.";
 
 using FnHasArchive = int (*)();
 
@@ -114,6 +117,9 @@ void DrawBackToBackSharedPanel() {
     ImGui::SeparatorText("Ocarina of Time items usable in Termina");
     DrawHintText(kOotOnlyItemsNote);
     DrawOptionGroup(BackToBack::OptionGroup::OotOnlyItems);
+    ImGui::SeparatorText("Usable in Termina before Majora's Mask's own is found");
+    DrawHintText(kEarlyUseNote);
+    DrawOptionGroup(BackToBack::OptionGroup::EarlyUse);
 }
 
 } // namespace ComboRando

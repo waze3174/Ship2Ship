@@ -35,7 +35,7 @@ Each save file picks its own mode on the file-select screen:
 | **Normal** | Plain Ocarina of Time. |
 | **Master Quest** | Plain Ocarina of Time with the Master Quest dungeons. It needs a Master Quest ROM. |
 | **Majora's Mask** | Plain Majora's Mask. |
-| **Back to back** | Plain Ocarina of Time, then plain Majora's Mask, in one save. Beating Ganon opens the Lost Woods path into Termina, where Majora's Mask's own opening plays. Items both games have stay locked in Termina until you find Majora's Mask's copy. Settings > Back to back chooses what carries over (hearts, magic, bottles, wallet, songs and masks, and each item only Ocarina of Time has), and Master Quest for the Ocarina of Time half. |
+| **Back to back** | Plain Ocarina of Time, then plain Majora's Mask, in one save. Beating Ganon opens the Lost Woods path into Termina, where Majora's Mask's own opening plays. Items both games have stay locked in Termina until you find Majora's Mask's copy, unless you tick that item to be usable early. Settings > Back to back chooses what carries over (hearts, the double magic meter, bottles, wallet, songs), which of Ocarina of Time's own items work in Termina, which items skip the wait, and Master Quest for the Ocarina of Time half. Ocarina of Time's Goron and Zora masks can be worn in Termina but only transform you once you have Majora's Mask's own. |
 
 The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `MQ`, `MM` or `S2S`.
 

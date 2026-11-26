@@ -9,6 +9,14 @@ const char* SohFileSelect_GetSettingText(u8 optionIndex, u8 language);
 void SohFileSelect_ShowPresetModal();
 bool SohFileSelect_IsQuestHidden(u8 quest);
 u8 SohFileSelect_CountVisibleQuests();
+#ifdef COMBO_BUILD
+// The order the new-file choice cycles through (left to right), by position 0 to Length - 1. PositionOf is -1 for a
+// quest the carousel never offers.
+u8 SohFileSelect_CarouselLength();
+u8 SohFileSelect_QuestAtCarouselPosition(u8 position);
+s32 SohFileSelect_CarouselPositionOf(u8 quest);
+u8 SohFileSelect_DefaultQuest();
+#endif
 #ifdef __cplusplus
 };
 #endif

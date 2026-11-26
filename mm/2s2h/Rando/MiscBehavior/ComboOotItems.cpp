@@ -40,6 +40,7 @@ extern "C" {
 #include "variables.h"
 #include "functions.h"
 extern PlayState* gPlayState;
+int Combo_MM_BackToBackLocksActive(void); // BenPort.cpp
 }
 
 namespace {
@@ -95,7 +96,10 @@ extern "C" int Combo_MmOotItemOf(int foreignItem) {
 }
 
 extern "C" int Combo_MmOotItemAction(int foreignItem) {
-    switch (Combo_MmOotItemOf(foreignItem)) {
+    const int ootItem = Combo_MmOotItemOf(foreignItem);
+    if (Combo_MmOotMaskIsPlain(ootItem))
+        return PLAYER_IA_COMBO_OOT_MASK; // worn by Combo_MmOotToggleMask; never held
+    switch (ootItem) {
         case COMBO_OOT_ITEM_BOOMERANG:
             return PLAYER_IA_COMBO_OOT_BOOMERANG;
         case COMBO_OOT_ITEM_HAMMER:
@@ -104,10 +108,6 @@ extern "C" int Combo_MmOotItemAction(int foreignItem) {
             return PLAYER_IA_COMBO_OOT_SLINGSHOT;
         case COMBO_OOT_ITEM_HOOKSHOT:
             return PLAYER_IA_COMBO_OOT_HOOKSHOT;
-        case COMBO_OOT_ITEM_MASK_SKULL:
-        case COMBO_OOT_ITEM_MASK_SPOOKY:
-        case COMBO_OOT_ITEM_MASK_GERUDO:
-            return PLAYER_IA_COMBO_OOT_MASK; // worn by Combo_MmOotToggleMask; never held
         case COMBO_OOT_ITEM_LONGSHOT:
             return PLAYER_IA_COMBO_OOT_LONGSHOT;
         case COMBO_OOT_ITEM_DINS_FIRE:
@@ -408,10 +408,32 @@ extern "C" void Combo_MmOotFaroresWindMessage(PlayState* play) {
     CustomMessage::StartTextbox(msg + "\xBF", entry);
 }
 
-// ---- OOT's own masks with no Termina twin (Skull Mask, Spooky Mask, Gerudo Mask). OOT puts a mask on or takes it off
-// the moment its button is pressed (Player_UseItem's mask branch: no animation, NA_SE_PL_CHANGE_ARMS), one mask at a
-// time; the model is OOT's (sMaskDlists, object_link_child) on the head limb, drawn as OOT draws it (head limb space).
+// ---- OOT's own masks worn as plain masks: the ones with no Termina twin (Skull Mask, Spooky Mask, Gerudo Mask), and
+// the Goron and Zora masks of a back-to-back slot until Link holds MM's own (they transform him only then). OOT puts a
+// mask on or takes it off the moment its button is pressed (Player_UseItem's mask branch: no animation,
+// NA_SE_PL_CHANGE_ARMS), one mask at a time; the model is OOT's (sMaskDlists, object_link_child) on the head limb,
+// drawn as OOT draws it (head limb space).
 static int sWornOotMask = -1; // OOT item id, -1 = none
+
+// Whether a back-to-back slot's locks are in force and Link has not yet got MM's own transformation mask.
+static bool TransformMaskNotYetMms(int mmMaskItem) {
+    return Combo_MM_BackToBackLocksActive() && INV_CONTENT(mmMaskItem) != mmMaskItem;
+}
+
+extern "C" int Combo_MmOotMaskIsPlain(int ootItem) {
+    switch (ootItem) {
+        case COMBO_OOT_ITEM_MASK_SKULL:
+        case COMBO_OOT_ITEM_MASK_SPOOKY:
+        case COMBO_OOT_ITEM_MASK_GERUDO:
+            return 1;
+        case COMBO_OOT_ITEM_MASK_GORON:
+            return TransformMaskNotYetMms(ITEM_MASK_GORON) ? 1 : 0;
+        case COMBO_OOT_ITEM_MASK_ZORA:
+            return TransformMaskNotYetMms(ITEM_MASK_ZORA) ? 1 : 0;
+        default:
+            return 0;
+    }
+}
 
 extern "C" int Combo_MmOotWornMask(void) {
     return sWornOotMask;
@@ -433,10 +455,8 @@ extern "C" int Combo_MmOotWearMask(int ootItem) {
 
 extern "C" int Combo_MmOotToggleMask(int foreignItem) {
     const int item = Combo_MmOotItemOf(foreignItem);
-    if ((item != COMBO_OOT_ITEM_MASK_SKULL) && (item != COMBO_OOT_ITEM_MASK_SPOOKY) &&
-        (item != COMBO_OOT_ITEM_MASK_GERUDO)) {
+    if (!Combo_MmOotMaskIsPlain(item))
         return 0;
-    }
     sWornOotMask = (sWornOotMask == item) ? -1 : item;
     Combo_MmOotLog("OOT mask 0x%02X %s", item, (sWornOotMask >= 0) ? "worn (OOT model)" : "taken off");
     return 1;
@@ -448,6 +468,10 @@ extern "C" const void* Combo_MmOotWornMaskDL(void) {
             return RoutedChild("gLinkChildSkullMaskDL");
         case COMBO_OOT_ITEM_MASK_SPOOKY:
             return RoutedChild("gLinkChildSpookyMaskDL");
+        case COMBO_OOT_ITEM_MASK_GORON:
+            return RoutedChild("gLinkChildGoronMaskDL");
+        case COMBO_OOT_ITEM_MASK_ZORA:
+            return RoutedChild("gLinkChildZoraMaskDL");
         case COMBO_OOT_ITEM_MASK_GERUDO:
             return RoutedChild("gLinkChildGerudoMaskDL");
         default:

@@ -22,6 +22,8 @@ struct PlayState;
 #define COMBO_OOT_ITEM_NAYRUS_LOVE 0x13
 #define COMBO_OOT_ITEM_MASK_SKULL 0x25
 #define COMBO_OOT_ITEM_MASK_SPOOKY 0x26
+#define COMBO_OOT_ITEM_MASK_GORON 0x28
+#define COMBO_OOT_ITEM_MASK_ZORA 0x29
 #define COMBO_OOT_ITEM_MASK_GERUDO 0x2A
 #define COMBO_OOT_ITEM_ROCS_FEATHER 0x9D // SoH's randomizer item, in OOT's Nayru's Love slot
 
@@ -100,8 +102,10 @@ int Combo_MmOotExplosiveOriginPending(int set);
 void Combo_MmOotFaroresWindMessage(struct PlayState* play);
 int Combo_MmOotFaroresWindArrivalPending(int set);
 
-// OOT's masks with no Termina twin (Skull / Spooky / Gerudo): toggle (1 = it was one), the worn one's OOT model,
-// clear (an MM mask or a transformation takes it off).
+// OOT's masks worn as plain masks in Termina: the ones with no Termina twin (Skull / Spooky / Gerudo), and the Goron
+// and Zora masks of a back-to-back slot until Link holds MM's own. Is an OOT item one (1 = yes), toggle (1 = it was
+// one), the worn one's OOT model, clear (an MM mask or a transformation takes it off).
+int Combo_MmOotMaskIsPlain(int ootItem);
 int Combo_MmOotToggleMask(int foreignItem);
 int Combo_MmOotWornMask(void);
 const void* Combo_MmOotWornMaskDL(void);

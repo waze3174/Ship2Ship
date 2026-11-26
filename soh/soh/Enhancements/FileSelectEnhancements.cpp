@@ -82,6 +82,30 @@ std::array<std::string, LANGUAGE_MAX> RandomizerSettingsMenuText[RSM_MAX] = {
 #endif
 };
 
+#ifdef COMBO_BUILD
+// ComboShip: the new-file choice, left to right. The quest ids are what saves and the combo mode store, so the order
+// is this table's and not the enum's.
+static constexpr u8 kQuestCarouselOrder[] = { QUEST_COMBO_BACK2BACK, QUEST_RANDOMIZER, QUEST_NORMAL, QUEST_MASTER,
+                                              QUEST_COMBO_MM };
+
+extern "C" u8 SohFileSelect_CarouselLength() {
+    return static_cast<u8>(std::size(kQuestCarouselOrder));
+}
+
+extern "C" u8 SohFileSelect_QuestAtCarouselPosition(u8 position) {
+    return kQuestCarouselOrder[position];
+}
+
+extern "C" s32 SohFileSelect_CarouselPositionOf(u8 quest) {
+    for (size_t position = 0; position < std::size(kQuestCarouselOrder); ++position) {
+        if (kQuestCarouselOrder[position] == quest) {
+            return static_cast<s32>(position);
+        }
+    }
+    return -1;
+}
+#endif
+
 // Quests are hidden when their O2R is missing or their File Select "Hide" option is on
 bool SohFileSelect_IsQuestHidden(u8 quest) {
 #ifdef COMBO_BUILD
@@ -118,14 +142,25 @@ bool SohFileSelect_IsQuestHidden(u8 quest) {
     }
 }
 
+#ifdef COMBO_BUILD
+// A new file starts on the first quest the carousel shows. Randomizer is never hidden, so one is always found.
+extern "C" u8 SohFileSelect_DefaultQuest() {
+    for (const u8 quest : kQuestCarouselOrder) {
+        if (!SohFileSelect_IsQuestHidden(quest)) {
+            return quest;
+        }
+    }
+    return QUEST_RANDOMIZER;
+}
+#endif
+
 u8 SohFileSelect_CountVisibleQuests() {
     u8 count = 0;
 #ifdef COMBO_BUILD
-    const u8 lastQuest = QUEST_COMBO_BACK2BACK;
+    for (const u8 quest : kQuestCarouselOrder) {
 #else
-    const u8 lastQuest = QUEST_SPEEDRUN_MASTER;
+    for (u8 quest = QUEST_NORMAL; quest <= QUEST_SPEEDRUN_MASTER; ++quest) {
 #endif
-    for (u8 quest = QUEST_NORMAL; quest <= lastQuest; ++quest) {
         if (!SohFileSelect_IsQuestHidden(quest)) {
             count++;
         }
