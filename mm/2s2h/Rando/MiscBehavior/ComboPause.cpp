@@ -22,6 +22,7 @@
 #include "ComboResolve.h"
 #include "ComboPauseABI.h"
 #include "2s2h/BenGui/HudEditor.h"
+#include "2s2h/CustomMessage/CustomMessage.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
 #include "2s2h/ShipInit.hpp"
 #include "2s2h_assets.h"
@@ -159,7 +160,11 @@ void ApplyBackToBackEquipLocks();
 // OOT's resident save, read live.
 uint8_t sOotItems[COMBO_PAUSE_OOT_SLOTS];
 int8_t sOotAmmo[COMBO_PAUSE_OOT_SLOTS];
+// The OOT item a back-to-back slot's locks kept out of sOotItems, per slot, 0xFF = none. Only the Hyrule face's drawing
+// and cursor read it (greyed, with a hint); every other consumer sees the item as not there.
+uint8_t sOotLocked[COMBO_PAUSE_OOT_SLOTS];
 bool Snapshot() {
+    memset(sOotLocked, 0xFF, sizeof(sOotLocked));
     if (!OotResolved())
         return false;
     if (Combo_GamesSolo()) { // a one-game seed never shows or uses the other game's items
@@ -311,6 +316,7 @@ void ApplyBackToBackItemLocks() {
         const uint8_t item = sOotItems[s];
         if (item == 0xFF || !B2B::Locked(options, B2B::ClassifyOotItem(item), MmHoldsCounterpartOf(item)))
             continue;
+        sOotLocked[s] = item;
         sOotItems[s] = 0xFF;
         sOotAmmo[s] = -1;
     }
@@ -610,6 +616,45 @@ extern "C" unsigned char Combo_MmPauseSlotItem(int ootSlot) {
     return sOotItems[ootSlot] == 0xFF ? ITEM_NONE : (unsigned char)ComboPause_MmEncode(ootSlot);
 }
 
+// The Hyrule face's cursor and drawing also take the items the locks keep out (greyed, with a hint on A).
+extern "C" unsigned char Combo_MmPauseSlotItemOrLocked(int ootSlot) {
+    if (CurTab() != COMBO_MM_PAUSE_TAB_HYRULE || ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot())
+        return ITEM_NONE;
+    const bool shown = (sOotItems[ootSlot] != 0xFF) || (sOotLocked[ootSlot] != 0xFF);
+    return shown ? (unsigned char)ComboPause_MmEncode(ootSlot) : ITEM_NONE;
+}
+
+extern "C" int Combo_MmPauseSlotLocked(int ootSlot) {
+    return (Combo_MmPauseSlotItemOrLocked(ootSlot) != ITEM_NONE) && (sOotLocked[ootSlot] != 0xFF) ? 1 : 0;
+}
+
+// What the hint says of a locked item: when it becomes usable in Termina, or that this file keeps it in Hyrule.
+static std::string LockedHint(int ootSlot) {
+    namespace B2B = ComboRando::BackToBack;
+    const uint8_t item = sOotLocked[ootSlot];
+    const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
+    if (B2B::ReasonLocked(Combo_MM_BackToBackOptions(), lock) == B2B::LockReason::StaysInHyrule)
+        return "This file keeps it in Hyrule.
+                   Settings > Back to back > This file.";
+                                                 const char *
+                                                 name = B2B::MmCounterpartName(item);
+    return std::string("Usable in Termina once you find Majora's Mask's ") + (name != nullptr ? name : "own") + ".";
+}
+
+// A on a locked item: the hint, in the description box MM gives its own items.
+extern "C" void Combo_MmPauseShowLockedHint(PlayState* play, int ootSlot) {
+    if (ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot() || sOotLocked[ootSlot] == 0xFF)
+        return;
+    constexpr u16 kDescriptionBaseTextId = 0x1700; // MM's item descriptions are this plus the item
+    constexpr u8 kDescriptionBoxPosBottom = 1;
+    const std::string hint = LockedHint(ootSlot);
+    play->pauseCtx.itemDescriptionOn = true;
+    Message_PauseMenu_ShowDescription(play, kDescriptionBaseTextId + ITEM_DEKU_STICK, kDescriptionBoxPosBottom);
+    CustomMessage::Entry entry;
+    entry.msg = hint;
+    CustomMessage::LoadCustomMessageIntoFont(entry);
+}
+
 extern "C" int Combo_MmPauseSlotAmmo(int ootSlot) {
     if (CurTab() != COMBO_MM_PAUSE_TAB_HYRULE || ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot())
         return -1;
@@ -619,8 +664,17 @@ extern "C" int Combo_MmPauseSlotAmmo(int ootSlot) {
     return holdsCount ? Combo_MmOotAmmoDigits(sOotItems[ootSlot], nullptr) : -1;
 }
 
+// A foreign id's OOT item, or the one the locks keep out of its slot (for drawing and naming a greyed item).
+static int LiveOrLockedOotItem(int foreignId) {
+    const int oot = LiveOotItem(foreignId);
+    if (oot >= 0)
+        return oot;
+    const int slot = ComboPause_MmDecode(foreignId);
+    return (slot >= 0 && slot < COMBO_PAUSE_OOT_SLOTS && sOotLocked[slot] != 0xFF) ? sOotLocked[slot] : -1;
+}
+
 extern "C" const char* Combo_MmPauseIconTex(int item) {
-    const int oot = LiveOotItem(item);
+    const int oot = LiveOrLockedOotItem(item);
     return oot < 0 ? nullptr : sOotIconTex(oot);
 }
 
@@ -639,7 +693,7 @@ extern "C" const char* Combo_MmPauseNameTex(int item) {
         const int eq = Combo_MmPauseEquipItem(item - COMBO_MM_PAUSE_EQUIP_CURSOR_BASE);
         return (eq == ITEM_NONE || !OotResolved()) ? nullptr : sOotNameTex(eq);
     }
-    const int oot = LiveOotItem(item);
+    const int oot = LiveOrLockedOotItem(item);
     return oot < 0 ? nullptr : sOotNameTex(oot);
 }
 

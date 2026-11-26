@@ -350,6 +350,17 @@ going up the Clock Tower on a later last night still retrieves it with the usual
 crash before the ocarina in a back-to-back slot also leaves the count above 0 and ends the first cycle the same way.
 Not tested in game.
 
+**Locked items are greyed, with a hint** (decision 15). On OoT's page in Termina (the Hyrule items face), an item the
+locks keep out stays on the page, greyed, and the cursor stops on it. `Snapshot()` (`ComboPause.cpp`) still drops it from
+`sOotItems`, so the buttons, Termina's item use, `Combo_MmPauseOotHolds` and the stand-ins see it as not there; the item
+it dropped is kept apart in `sOotLocked`, and only the drawing and cursor of `z_kaleido_combo.c` read that, through
+`Combo_MmPauseSlotItemOrLocked` / `Combo_MmPauseSlotLocked` (the icon and name plate look the locked item up in
+`LiveOrLockedOotItem`). A C or D-pad press on one plays the error sound and equips nothing. A shows the hint in the box
+MM gives its own item descriptions (`Message_PauseMenu_ShowDescription`, with the text replaced by
+`CustomMessage::LoadCustomMessageIntoFont`): "Usable in Termina once you find Majora's Mask's <item>" for an item
+waiting for MM's own copy (`MmCounterpartName`; a bottle: "first bottle"), or "This file keeps it in Hyrule" for a
+bottle the file does not carry and an OoT-only item whose switch is off (`ReasonLocked`). Not tested in game.
+
 **MM's own slots show OoT's same item** (bug #33). On the Termina item and mask pages, MM's empty ocarina slot and its
 empty Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask slots show OoT's same item while Termina may use
 it (the Goron and Zora masks only while they transform, not while worn plain), drawn as MM's item with MM's name and

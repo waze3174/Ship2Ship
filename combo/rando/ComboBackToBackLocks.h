@@ -135,6 +135,66 @@ inline bool Locked(OptionBits options, ItemLock lock, bool mmHoldsCounterpart) {
     return true;
 }
 
+// Why a locked item is locked, for the hint the Hyrule page gives it.
+enum class LockReason {
+    WaitsForMm,   // usable once Link finds Majora's Mask's own copy
+    StaysInHyrule // this file's page keeps it in Hyrule
+};
+
+inline LockReason ReasonLocked(OptionBits options, ItemLock lock) {
+    switch (lock.kind) {
+        case LockKind::UntilMmHolds:
+            return LockReason::WaitsForMm;
+        case LockKind::Bottle:
+            return (options & kBottlesCarry) == 0 ? LockReason::StaysInHyrule : LockReason::WaitsForMm;
+        default:
+            return LockReason::StaysInHyrule;
+    }
+}
+
+// Majora's Mask's own item an OoT item with a counterpart waits for, as the hint names it; nullptr for any other.
+inline const char* MmCounterpartName(int ootItem) {
+    switch (ootItem) {
+        case OotItem::kOotStick:
+            return "Deku Stick";
+        case OotItem::kOotNut:
+            return "Deku Nut";
+        case OotItem::kOotBomb:
+            return "Bomb";
+        case OotItem::kOotBow:
+            return "Hero's Bow";
+        case OotItem::kOotArrowFire:
+            return "Fire Arrow";
+        case OotItem::kOotArrowIce:
+            return "Ice Arrow";
+        case OotItem::kOotArrowLight:
+            return "Light Arrow";
+        case OotItem::kOotOcarinaFairy:
+        case OotItem::kOotOcarinaTime:
+            return "Ocarina of Time";
+        case OotItem::kOotBombchu:
+            return "Bombchu";
+        case OotItem::kOotHookshot:
+        case OotItem::kOotLongshot:
+            return "Hookshot";
+        case OotItem::kOotLens:
+            return "Lens of Truth";
+        case OotItem::kOotBean:
+            return "Magic Bean";
+        case OotItem::kOotMaskKeaton:
+            return "Keaton Mask";
+        case OotItem::kOotMaskBunny:
+            return "Bunny Hood";
+        case OotItem::kOotMaskTruth:
+            return "Mask of Truth";
+        default:
+            break;
+    }
+    if (ootItem >= OotItem::kOotBottleFirst && ootItem <= OotItem::kOotBottleLast && ootItem != OotItem::kOotLetterRuto)
+        return "first bottle";
+    return nullptr;
+}
+
 // The locks are in force: a back-to-back slot that has not yet beaten both games. Every other slot has none, and a
 // slot that has beaten both has everything usable in both games.
 inline bool LocksActive(int crossGateMask) {

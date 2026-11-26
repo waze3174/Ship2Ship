@@ -377,6 +377,30 @@ void TestPostGameUnlocksEverything() {
     CHECK(B2B::LockedInTermina(ganonOnly, 0, B2B::GearLock(true), false));
 }
 
+// The hint a locked item gives on the Hyrule page: it waits for Majora's Mask's own copy, which it names, or the file
+// keeps it in Hyrule.
+void TestLockHints() {
+    using namespace B2B::OotItem;
+    // Every item that waits for an MM copy names it.
+    for (int item : { kOotStick,      kOotNut,          kOotBomb,        kOotBow,       kOotArrowFire, kOotArrowIce,
+                      kOotArrowLight, kOotOcarinaFairy, kOotOcarinaTime, kOotBombchu,   kOotHookshot,  kOotLongshot,
+                      kOotLens,       kOotBean,         kOotMaskKeaton,  kOotMaskBunny, kOotMaskTruth, kOotBottleFirst,
+                      0x15,           kOotBottleLast }) {
+        const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
+        CHECK(lock.kind == B2B::LockKind::UntilMmHolds || lock.kind == B2B::LockKind::Bottle);
+        CHECK(B2B::MmCounterpartName(item) != nullptr);
+        CHECK(B2B::ReasonLocked(B2B::kBottlesCarry, lock) == B2B::LockReason::WaitsForMm);
+    }
+    CHECK(std::string(B2B::MmCounterpartName(kOotLongshot)) == "Hookshot"); // MM's Hookshot unlocks both
+    CHECK(std::string(B2B::MmCounterpartName(kOotBottleLast)) == "first bottle");
+    // Bottles the file does not carry stay in Hyrule, and so does an OoT-only item whose switch is off.
+    CHECK(B2B::ReasonLocked(0, B2B::ClassifyOotItem(kOotBottleFirst)) == B2B::LockReason::StaysInHyrule);
+    CHECK(B2B::ReasonLocked(0, B2B::ClassifyOotItem(kOotHammer)) == B2B::LockReason::StaysInHyrule);
+    CHECK(B2B::ReasonLocked(0, B2B::GearLock(true)) == B2B::LockReason::StaysInHyrule);
+    // An item with no MM copy has no name to give.
+    CHECK(B2B::MmCounterpartName(kOotHammer) == nullptr);
+}
+
 // A loaded file lets the player change its item switches (the live rules) and nothing it was made with.
 void TestEditingALoadedFile() {
     const B2B::OptionBits carries = B2B::kHeartsCarry | B2B::kMagicCarry | B2B::kBottlesCarry | B2B::kWalletCarry |
@@ -440,6 +464,7 @@ int main() {
     TestStoredOptionsFromTheMarkedLayout();
     TestStoredOptionsFromLayoutTwo();
     TestEditingALoadedFile();
+    TestLockHints();
     TestQuickSets();
     TestItemsWithAnMmCounterpart();
     TestBottles();

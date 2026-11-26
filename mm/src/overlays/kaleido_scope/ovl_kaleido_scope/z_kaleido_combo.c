@@ -348,7 +348,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                     if (pauseCtx->cursorXIndex[PAUSE_ITEM] != 0) {
                         pauseCtx->cursorXIndex[PAUSE_ITEM]--;
                         pauseCtx->cursorPoint[PAUSE_ITEM]--;
-                        if (Combo_MmPauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
+                        if (Combo_MmPauseSlotItemOrLocked(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
                             moveCursorResult = 1;
                         }
                     } else {
@@ -373,7 +373,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                     if (pauseCtx->cursorXIndex[PAUSE_ITEM] < 5) {
                         pauseCtx->cursorXIndex[PAUSE_ITEM]++;
                         pauseCtx->cursorPoint[PAUSE_ITEM]++;
-                        if (Combo_MmPauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
+                        if (Combo_MmPauseSlotItemOrLocked(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
                             moveCursorResult = 1;
                         }
                     } else {
@@ -397,7 +397,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                 }
             }
             if (moveCursorResult == 1) {
-                cursorItem = Combo_MmPauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]);
+                cursorItem = Combo_MmPauseSlotItemOrLocked(pauseCtx->cursorPoint[PAUSE_ITEM]);
             }
         }
     } else if (pauseCtx->cursorSpecialPos == PAUSE_CURSOR_PAGE_LEFT) {
@@ -405,7 +405,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
             KaleidoScope_MoveCursorFromSpecialPos(play);
             cursorPoint = cursorX = cursorY = 0;
             while (true) {
-                if (Combo_MmPauseSlotItem(cursorPoint) != ITEM_NONE) {
+                if (Combo_MmPauseSlotItemOrLocked(cursorPoint) != ITEM_NONE) {
                     pauseCtx->cursorPoint[PAUSE_ITEM] = cursorPoint;
                     pauseCtx->cursorXIndex[PAUSE_ITEM] = cursorX;
                     pauseCtx->cursorYIndex[PAUSE_ITEM] = cursorY;
@@ -433,7 +433,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
             cursorPoint = cursorX = 5;
             cursorY = 0;
             while (true) {
-                if (Combo_MmPauseSlotItem(cursorPoint) != ITEM_NONE) {
+                if (Combo_MmPauseSlotItemOrLocked(cursorPoint) != ITEM_NONE) {
                     pauseCtx->cursorPoint[PAUSE_ITEM] = cursorPoint;
                     pauseCtx->cursorXIndex[PAUSE_ITEM] = cursorX;
                     pauseCtx->cursorYIndex[PAUSE_ITEM] = cursorY;
@@ -467,7 +467,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                     if (pauseCtx->cursorYIndex[PAUSE_ITEM] != 0) {
                         pauseCtx->cursorYIndex[PAUSE_ITEM]--;
                         pauseCtx->cursorPoint[PAUSE_ITEM] -= 6;
-                        if (Combo_MmPauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
+                        if (Combo_MmPauseSlotItemOrLocked(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
                             moveCursorResult = 1;
                         }
                     } else {
@@ -479,7 +479,7 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
                     if (pauseCtx->cursorYIndex[PAUSE_ITEM] < 3) {
                         pauseCtx->cursorYIndex[PAUSE_ITEM]++;
                         pauseCtx->cursorPoint[PAUSE_ITEM] += 6;
-                        if (Combo_MmPauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
+                        if (Combo_MmPauseSlotItemOrLocked(pauseCtx->cursorPoint[PAUSE_ITEM]) != ITEM_NONE) {
                             moveCursorResult = 1;
                         }
                     } else {
@@ -492,14 +492,22 @@ void KaleidoScope_ComboUpdateForeignItemCursor(PlayState* play) {
         }
 
         pauseCtx->cursorColorSet = PAUSE_CURSOR_COLOR_SET_YELLOW;
-        cursorItem = Combo_MmPauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]);
+        cursorItem = Combo_MmPauseSlotItemOrLocked(pauseCtx->cursorPoint[PAUSE_ITEM]);
         if (cursorItem == ITEM_NONE) {
             cursorItem = PAUSE_ITEM_NONE;
         }
         pauseCtx->cursorItem[PAUSE_ITEM] = cursorItem;
         pauseCtx->cursorSlot[PAUSE_ITEM] = pauseCtx->cursorPoint[PAUSE_ITEM];
 
-        if ((cursorItem != PAUSE_ITEM_NONE) && (pauseCtx->debugEditor == DEBUG_EDITOR_NONE)) {
+        if ((cursorItem != PAUSE_ITEM_NONE) && (pauseCtx->debugEditor == DEBUG_EDITOR_NONE) &&
+            Combo_MmPauseSlotLocked(pauseCtx->cursorPoint[PAUSE_ITEM])) {
+            // A back-to-back slot's lock: the item stays on the page, greyed. It can't be equipped, and A says why.
+            if (Combo_EquipTargetForPress(play) != 0xFFFF) {
+                Audio_PlaySfx(NA_SE_SY_ERROR);
+            } else if (CHECK_BTN_ALL(input->press.button, BTN_A) && (play->msgCtx.msgLength == 0)) {
+                Combo_MmPauseShowLockedHint(play, pauseCtx->cursorPoint[PAUSE_ITEM]);
+            }
+        } else if ((cursorItem != PAUSE_ITEM_NONE) && (pauseCtx->debugEditor == DEBUG_EDITOR_NONE)) {
             u16 target = Combo_EquipTargetForPress(play);
             if (target != 0xFFFF) {
                 u8 equipItem;
@@ -593,9 +601,14 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
     // OOT's icons, resolved against OOT's ResourceManager.
     gSPComboRMPush(POLY_OPA_DISP++, "oot");
     for (j = 0, i = 0; i < 24; i++, j += 4) {
-        u8 item = Combo_MmPauseSlotItem(i);
+        u8 item = Combo_MmPauseSlotItemOrLocked(i);
         const char* tex;
-        gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
+        if (Combo_MmPauseSlotLocked(i)) {
+            // A back-to-back slot's lock: the item shows greyed, as OOT draws an item Link's age can't use.
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 100, 100, 100, pauseCtx->alpha);
+        } else {
+            gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
+        }
         if (item == ITEM_NONE) {
             continue;
         }
