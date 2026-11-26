@@ -154,6 +154,11 @@ void CutsceneHandler_StartScript(PlayState* play, CutsceneContext* csCtx) {
 
 /* Start of command handling section */
 
+#ifdef COMBO_BUILD
+// ComboBackToBackEnding.cpp: called on every frame a cutscene is held on one frame for good.
+void Combo_MM_CutsceneHeldForever(PlayState* play, u16 miscType);
+#endif
+
 void CutsceneCmd_Misc(PlayState* play, CutsceneContext* csCtx, CsCmdMisc* cmd) {
     static u16 D_801BB15C = 0xFFFF;
     Player* player = GET_PLAYER(play);
@@ -303,6 +308,9 @@ void CutsceneCmd_Misc(PlayState* play, CutsceneContext* csCtx, CsCmdMisc* cmd) {
         case CS_MISC_LONG_SCARECROW_SONG:
             AudioOcarina_PlayLongScarecrowSong();
             csCtx->curFrame = cmd->startFrame - 1; // the cutscene runs forever
+#ifdef COMBO_BUILD
+            Combo_MM_CutsceneHeldForever(play, cmd->type);
+#endif
             break;
 
         case CS_MISC_SET_CSFLAG_3:
@@ -416,6 +424,9 @@ void CutsceneCmd_Misc(PlayState* play, CutsceneContext* csCtx, CsCmdMisc* cmd) {
 
         case CS_MISC_FINALE:
             csCtx->curFrame = cmd->startFrame - 1; // the cutscene runs forever
+#ifdef COMBO_BUILD
+            Combo_MM_CutsceneHeldForever(play, cmd->type);
+#endif
             break;
 
         default:
