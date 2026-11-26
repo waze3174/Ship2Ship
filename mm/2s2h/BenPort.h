@@ -224,7 +224,7 @@ void Combo_MM_CreditsEnded(void);
 int Combo_MM_BackToBackOpeningPending(void);
 // The loaded back-to-back slot's page choices, and whether its Ocarina of Time item locks are in force (see
 // BenPort.cpp).
-int Combo_MM_BackToBackOptions(void);
+uint64_t Combo_MM_BackToBackOptions(void);
 int Combo_MM_BackToBackLocksActive(void);
 // What a back-to-back slot carries into MM as its opening starts (see ComboBackToBack.cpp).
 void Combo_MM_ApplyBackToBackStart(void);
