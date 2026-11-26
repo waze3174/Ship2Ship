@@ -1861,6 +1861,17 @@ extern "C" Gfx* ResourceMgr_LoadGfxByName(const char* path) {
     ResourceMgr_PreloadAltWhenItExists(path);
 
     auto res = std::static_pointer_cast<Fast::DisplayList>(GetResourceByName(path));
+#ifdef COMBO_BUILD
+    if (res == nullptr) {
+        // ComboShip: e.g. an OOT model submitted without its "__OTR__@oot:" route. Reported once per path; the
+        // caller gets NULL instead of a crash. Bounded by the distinct missing paths.
+        static std::set<std::string> sReported;
+        if (sReported.insert(path).second) {
+            SPDLOG_ERROR("[ComboShip] display list '{}' is not in the active archive", path);
+        }
+        return nullptr;
+    }
+#endif
     return (Gfx*)&res->Instructions[0];
 }
 

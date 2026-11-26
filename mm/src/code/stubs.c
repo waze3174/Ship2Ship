@@ -193,8 +193,8 @@ void gSPDisplayList(Gfx* pkt, Gfx* dl) {
     if (ResourceMgr_OTRSigCheck(imgData) == 1) {
 #ifdef COMBO_BUILD
         // ComboShip: "__OTR__@<game>:" cross-game paths must NOT be resolved here — this helper
-        // resolves through MM's own RM, which misses the other game's assets and returns an empty
-        // DisplayList, crashing on &Instructions[0]. Emit the raw string as a G_DL_OTR_FILEPATH
+        // resolves through MM's own RM, which misses the other game's assets (the model would not
+        // be drawn). Emit the raw string as a G_DL_OTR_FILEPATH
         // command so the interpreter's routed handler resolves it against the named game's RM
         // (mirror of soh's GbiWrap.cpp; see libultraship interpreter.cpp routing).
         if (imgData[7] == '@') {
@@ -206,6 +206,12 @@ void gSPDisplayList(Gfx* pkt, Gfx* dl) {
         // ResourceMgr_PushCurrentDirectory(imgData);
         // gsSPPushCD(pkt++, imgData);
         dl = ResourceMgr_LoadGfxByName(imgData);
+#ifdef COMBO_BUILD
+        if (dl == NULL) {
+            gDPNoOp(pkt); // not in the archive (logged by ResourceMgr_LoadGfxByName): skip instead of calling NULL
+            return;
+        }
+#endif
     }
 
     __gSPDisplayList(pkt, dl);
@@ -233,8 +239,15 @@ void gDPSetTileSizeLerp(Gfx* pkt, int t, float uls0, float ult0, float lrs0, flo
 void gSPDisplayListOffset(Gfx* pkt, Gfx* dl, int offset) {
     char* imgData = (char*)dl;
 
-    if (ResourceMgr_OTRSigCheck(imgData) == 1)
+    if (ResourceMgr_OTRSigCheck(imgData) == 1) {
         dl = ResourceMgr_LoadGfxByName(imgData);
+#ifdef COMBO_BUILD
+        if (dl == NULL) {
+            gDPNoOp(pkt); // see gSPDisplayList
+            return;
+        }
+#endif
+    }
 
     __gSPDisplayList(pkt, dl + offset);
 }
