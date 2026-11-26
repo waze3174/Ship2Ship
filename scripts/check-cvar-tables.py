@@ -1,11 +1,15 @@
 """Fail when a table that names CVars or menu labels by string names one that its game no longer has.
 
-Three tables are keyed on strings that upstream owns, so an upstream rename drops a row without a warning:
+Four tables are keyed on strings that upstream owns, so an upstream rename drops a row without a warning:
   - combo/gui/ComboLinkRows.h `kLinkRows`: one OoT CVar and up to two MM CVars per row. Each must exist in its own
     game's sources (soh/ for OoT, mm/ for MM, libultraship/ for both).
   - combo/gui/ComboBothGames.cpp `kSharedItems`: one CVar both games read. It must exist in both.
-  - the menu filters in combo/gui/ComboMenu*.cpp: `strcmp(section, "Settings")`, `strcmp(sidebar, "Mod Menu")` and
-    alike, which pick pages by their English label. Each label must appear in one of the games' menu sources.
+  - combo/gui/ComboCrossGamePanels.cpp `kSwitches`: the live cross-game switches. Each CVar must be read somewhere
+    outside the table (soh/, mm/ or the rest of combo/), and each upstream `gEnhancements.*` name the table writes
+    through must exist in one of the games.
+  - the menu labels in combo/gui/ComboMenuNav.cpp: the section and page names (`kSettingsSection`, `kModMenuPage`,
+    `kProgramPages`, the aliases' port labels and alike), which pick the ports' pages by their English label. Each
+    label must appear in one of the games' menu sources.
 
 A CVar exists when its full name is a string literal in the sources, when a CVAR_*("Rest.Of.Name") prefix macro builds
 it, or when CMake/lus-cvars.cmake builds it as "${CVAR_PREFIX_*}.Rest.Of.Name" (the prefix is not compared). One shared
@@ -25,7 +29,9 @@ LINK_ROWS_FILE = "combo/gui/ComboLinkRows.h"
 LINK_ROWS_TABLE = "kLinkRows"
 SHARED_ITEMS_FILE = "combo/gui/ComboBothGames.cpp"
 SHARED_ITEMS_TABLE = "kSharedItems"
-MENU_FILTER_FILES = ("combo/gui/ComboMenu.cpp", "combo/gui/ComboBothGames.cpp", "combo/gui/ComboMenuModel.cpp")
+LIVE_SWITCHES_FILE = "combo/gui/ComboCrossGamePanels.cpp"
+LIVE_SWITCHES_TABLE = "kSwitches"
+MENU_LABEL_FILE = "combo/gui/ComboMenuNav.cpp"
 MENU_SOURCES = ("soh/soh/SohGui", "mm/2s2h/BenGui")
 GAME_FOLDERS = {"oot": ("soh", "libultraship", "CMake"), "mm": ("mm", "libultraship", "CMake")}
 # Shared items one game does not have, and why: OOT applies the speed modifier whenever its button is held, so only MM
@@ -35,7 +41,10 @@ MM_ONLY_SHARED_ITEMS = {"gCheats.SpeedModifier.Mode"}
 CVAR_LITERAL = r'"g[A-Za-z]+(\.[A-Za-z0-9_]+)+"'
 CVAR_MACRO = r'CVAR_[A-Z_]+\(\s*"[A-Za-z0-9_.]+"'
 CVAR_PREFIX_EXPANSION = r'\$\{CVAR_PREFIX_[A-Z_]+\}\.[A-Za-z0-9_.]+'
-MENU_FILTER = re.compile(r'strcmp\(\s*\w*(?:[Ss]ection|[Ss]idebar)\w*\s*,\s*"([^"]+)"\s*\)')
+UPSTREAM_CVAR_LITERAL = re.compile(r'"(gEnhancements(?:\.[A-Za-z0-9_]+)+)"')
+MENU_LABEL_CONSTANT = re.compile(r'constexpr const char\* k\w*(?:Section|Page)\s*=\s*"([^"]+)"')
+MENU_LABEL_ARRAY = re.compile(r'constexpr const char\* kProgramPages\[\]\s*=\s*\{([^}]*)\}')
+MENU_LABEL_ALIAS = re.compile(r'\{\s*"([^"]+)"\s*,\s*"[^"]+"\s*\}')
 STRING_LITERAL = re.compile(r'"((?:[^"\\]|\\.)*)"')
 
 
@@ -114,24 +123,46 @@ def check_shared_items(known):
     return problems
 
 
-def menu_filter_labels():
-    labels = {}
-    for path in MENU_FILTER_FILES:
-        text = (ROOT / path).read_text(encoding="utf-8")
-        for label in MENU_FILTER.findall(text):
-            labels.setdefault(label, path)
+def menu_labels():
+    text = (ROOT / MENU_LABEL_FILE).read_text(encoding="utf-8")
+    labels = set(MENU_LABEL_CONSTANT.findall(text))
+    for array in MENU_LABEL_ARRAY.findall(text):
+        labels.update(STRING_LITERAL.findall(array))
+    labels.update(MENU_LABEL_ALIAS.findall(text))
     return labels
 
 
-def check_menu_filters():
+def check_menu_labels():
     menu_text = ""
     listing = subprocess.run(["git", "ls-files", "-z", "--", *MENU_SOURCES], cwd=ROOT, capture_output=True,
                              check=True).stdout.decode("utf-8").split("\0")
     for name in listing:
         if name.endswith((".cpp", ".h")):
             menu_text += (ROOT / name).read_text(encoding="utf-8", errors="replace")
-    return [f'{path}: the menu filter names "{label}", which neither game\'s menu sources contain'
-            for label, path in menu_filter_labels().items() if f'"{label}"' not in menu_text]
+    return [f'{MENU_LABEL_FILE}: the menu names "{label}", which neither game\'s menu sources contain'
+            for label in sorted(menu_labels()) if f'"{label}"' not in menu_text]
+
+
+def is_read_outside(name, table_file):
+    """True when the CVar's full name is a string literal in a tracked source file other than the table's own."""
+    result = subprocess.run(["git", "grep", "-l", "-I", "-F", f'"{name}"', "--", "soh", "mm", "combo"], cwd=ROOT,
+                            capture_output=True, check=False)
+    files = result.stdout.decode("utf-8", errors="replace").split()
+    return any(path != table_file for path in files)
+
+
+def live_switch_names():
+    return [shared_item_name(row) for row in table_rows(LIVE_SWITCHES_FILE, LIVE_SWITCHES_TABLE)]
+
+
+def check_live_switches(known):
+    problems = [f"{LIVE_SWITCHES_FILE}: live switch {name} is not read anywhere outside the table"
+                for name in live_switch_names() if not is_read_outside(name, LIVE_SWITCHES_FILE)]
+    text = (ROOT / LIVE_SWITCHES_FILE).read_text(encoding="utf-8")
+    for name in sorted(set(UPSTREAM_CVAR_LITERAL.findall(text))):
+        if not any(cvar_exists(name, known[game]) for game in known):
+            problems.append(f"{LIVE_SWITCHES_FILE}: upstream CVar {name} is in neither game's sources")
+    return problems
 
 
 def main():
@@ -140,16 +171,17 @@ def main():
     known = {game: known_cvars(folders) for game, folders in GAME_FOLDERS.items()}
     link_rows = len(table_rows(LINK_ROWS_FILE, LINK_ROWS_TABLE))
     shared_items = len(table_rows(SHARED_ITEMS_FILE, SHARED_ITEMS_TABLE))
-    labels = len(menu_filter_labels())
-    if min(link_rows, shared_items, labels) == 0:
+    live_switches = len(live_switch_names())
+    labels = len(menu_labels())
+    if min(link_rows, shared_items, live_switches, labels) == 0:
         sys.exit("error: found no rows in one of the tables. The table's layout changed; update this script.")
-    problems = check_link_rows(known) + check_shared_items(known) + check_menu_filters()
+    problems = check_link_rows(known) + check_shared_items(known) + check_live_switches(known) + check_menu_labels()
     if problems:
         print("\n".join(problems))
         sys.exit(f"error: {len(problems)} table entr(ies) name something their game does not have. An upstream "
                  f"rename drops a row silently; follow the rename or remove the row.")
-    print(f"{link_rows} link rows, {shared_items} shared items and {labels} menu filter labels all exist in their "
-          f"game's sources.")
+    print(f"{link_rows} link rows, {shared_items} shared items, {live_switches} live switches and {labels} menu labels "
+          f"all exist in their game's sources.")
 
 
 if __name__ == "__main__":
