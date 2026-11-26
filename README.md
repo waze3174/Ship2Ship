@@ -59,15 +59,17 @@ The file-select screen labels each slot with its mode: `S2S`, `COMBO`, `OOTR`, `
   - **boss release**: beating Ganon or Majora hands you the rest of that game's checks
 
 **From the ports**
-- Each port's own enhancements, cheats and cosmetics, in one combined menu.
+- Each port's own enhancements, cheats and cosmetics, in one combined menu with five tabs: Settings, Both games (the
+  settings both games share, plus the cross-game switches and Back to back), Ocarina of Time, Majora's Mask and
+  Randomizer. Search finds Ship2Ship's own settings too.
 - Texture, model and music mods for both games.
 - Co-op through the Anchor mode, with background world sync, a partner feed and game-switch notices.
 - On first launch, import settings from a Ship of Harkinian, 2 Ship 2 Harkinian, ComboShip or Ship2Ship install.
 - Presets, so you can switch between saved sets of settings.
 - Discord status: the game, area, checks and co-op room, shown through the Discord desktop app. It's on by default,
-  and you can turn it off in Settings > Discord.
+  and you can turn it off in Settings > Online > Discord.
 
-**Not yet:** Archipelago, and WomboComboShip's synced co-op enemies.
+**Not yet:** Archipelago (being built for 0.3.0), and WomboComboShip's synced co-op enemies.
 
 ## Getting started
 
