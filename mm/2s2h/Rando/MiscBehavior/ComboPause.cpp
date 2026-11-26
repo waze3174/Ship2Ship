@@ -130,6 +130,7 @@ void Combo_RequestCrossSwitch(int ootEntrance); // BenPort.cpp
 int Combo_GamesSolo(void);                      // BenPort.cpp
 int Combo_MM_BackToBackOptions(void);           // BenPort.cpp
 int Combo_MM_BackToBackLocksActive(void);       // BenPort.cpp
+extern int gMMComboCrossGate;                   // BenPort.cpp: the loaded slot's ways between the games
 }
 
 namespace {
@@ -207,6 +208,9 @@ enum : uint8_t {
     OOT_ITEM_MASK_GORON = 0x28,
     OOT_ITEM_MASK_ZORA = 0x29,
     OOT_ITEM_MASK_TRUTH = 0x2B,
+    OOT_ITEM_BOW_ARROW_FIRE = 0x38, // OOT's button icon for the bow with that arrow (never in a slot)
+    OOT_ITEM_BOW_ARROW_ICE = 0x39,
+    OOT_ITEM_BOW_ARROW_LIGHT = 0x3A,
 };
 
 // Shared items (the same item exists natively in Termina): equipping OOT's copy equips MM's own whenever MM holds it.
@@ -315,6 +319,71 @@ void ApplyBackToBackItemLocks() {
 int LiveOotItem(int foreignId) {
     const int item = Combo_MmPauseOotItemAt(ComboPause_MmDecode(foreignId));
     return (item == ITEM_NONE) ? -1 : item;
+}
+
+// Whether OOT's save holds this OOT item where Termina may use it now (a back-to-back slot's locks applied).
+bool OotHolds(uint8_t ootItem) {
+    if (!Snapshot())
+        return false;
+    for (const uint8_t item : sOotItems) {
+        if (item == ootItem)
+            return true;
+    }
+    return false;
+}
+
+bool IsOotMagicArrow(int ootItem) {
+    return (ootItem == OOT_ITEM_ARROW_FIRE) || (ootItem == OOT_ITEM_ARROW_ICE) || (ootItem == OOT_ITEM_ARROW_LIGHT);
+}
+
+// A bow to shoot OOT's magic arrows from in Termina: MM's own, or OOT's.
+bool BowUsable() {
+    return (INV_CONTENT(ITEM_BOW) == ITEM_BOW) || OotHolds(OOT_ITEM_BOW);
+}
+
+// A back-to-back slot's Termina pages show an OOT item in MM's own empty slot for the same item, as MM's item: OOT's
+// ocarina, Keaton Mask, Bunny Hood and Mask of Truth, and its Goron and Zora masks while they transform Link (not
+// while worn plain, Combo_MmOotMaskIsPlain). Equipping it there puts OOT's on the button (Combo_MmPauseStandInEquip).
+// MM's own item is never given, so MM's own sources still give it, and once found MM's shows instead.
+bool IsStandInSlot(int mmSlot) {
+    static const uint8_t kStandInItems[] = { ITEM_OCARINA_OF_TIME, ITEM_MASK_KEATON, ITEM_MASK_BUNNY,
+                                             ITEM_MASK_TRUTH,      ITEM_MASK_GORON,  ITEM_MASK_ZORA };
+    for (const uint8_t mm : kStandInItems) {
+        if (SLOT(mm) == mmSlot)
+            return true;
+    }
+    return false;
+}
+
+bool StandsIn(uint8_t ootItem) {
+    switch (ootItem) {
+        case OOT_ITEM_OCARINA_FAIRY:
+        case OOT_ITEM_OCARINA_TIME:
+        case OOT_ITEM_MASK_KEATON:
+        case OOT_ITEM_MASK_BUNNY:
+        case OOT_ITEM_MASK_TRUTH:
+            return true;
+        case OOT_ITEM_MASK_GORON:
+        case OOT_ITEM_MASK_ZORA:
+            return !Combo_MmOotMaskIsPlain(ootItem);
+        default:
+            return false;
+    }
+}
+
+// The foreign id of the OOT item standing in for MM's empty slot (items[] index), ITEM_NONE for none.
+int StandInFor(int mmSlot) {
+    if ((mmSlot < 0) || (mmSlot >= COMBO_PAUSE_MM_SLOTS) || !IsStandInSlot(mmSlot) ||
+        !ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) ||
+        (gSaveContext.save.saveInfo.inventory.items[mmSlot] != ITEM_NONE) || !Snapshot()) {
+        return ITEM_NONE;
+    }
+    for (int s = 0; s < COMBO_PAUSE_OOT_SLOTS; s++) {
+        const uint8_t oot = sOotItems[s];
+        if ((oot != 0xFF) && StandsIn(oot) && (SLOT(TwinOf(oot)) == mmSlot))
+            return ComboPause_MmEncode(s);
+    }
+    return ITEM_NONE;
 }
 
 // The hexagonal prism (MM's pause cube with six faces): 0 Termina items, 1 Hyrule items, 2 Map, 3 Quest, 4 Masks,
@@ -517,6 +586,18 @@ extern "C" int Combo_MmPauseEquipGearId(int gridSlot) {
     return ((LiveOotItem(id) >= 0) && Combo_MmOotItemAgeOk(id)) ? id : ITEM_NONE;
 }
 
+// Whether Link may put on an equipment face piece (a column 1-3) in Termina: a tunic or boots OOT owns and Link's age
+// may wear (Combo_MmPauseEquipUse); never a sword or shield, which are MM's own in Termina.
+extern "C" int Combo_MmPauseEquipUsable(int gridSlot) {
+    const int row = gridSlot / 4;
+    const int col = gridSlot % 4;
+    if ((row < kEquipRowTunic) || (row > kEquipRowBoots) || (col < 1)) {
+        return 0;
+    }
+    const int id = ComboPause_MmEncode(COMBO_PAUSE_OOT_SLOTS + (row - kEquipRowTunic) * kPiecesPerRow + (col - 1));
+    return ((LiveOotItem(id) >= 0) && Combo_MmOotItemAgeOk(id)) ? 1 : 0;
+}
+
 extern "C" const char* const* Combo_MmPausePageTexs(void) {
     if (CurTab() == COMBO_MM_PAUSE_TAB_TERMINA || !OotResolved())
         return nullptr;
@@ -541,6 +622,16 @@ extern "C" int Combo_MmPauseSlotAmmo(int ootSlot) {
 extern "C" const char* Combo_MmPauseIconTex(int item) {
     const int oot = LiveOotItem(item);
     return oot < 0 ? nullptr : sOotIconTex(oot);
+}
+
+// A foreign item's icon on a HUD button: OOT's own button icon, which for a magic arrow is the bow with that arrow (OOT
+// z_kaleido_item.c puts ITEM_BOW_ARROW_FIRE + n on the button).
+extern "C" const char* Combo_MmPauseButtonIconTex(int item) {
+    const int oot = LiveOotItem(item);
+    if (!IsOotMagicArrow(oot))
+        return Combo_MmPauseIconTex(item);
+    const int index = (oot == OOT_ITEM_ARROW_FIRE) ? 0 : ((oot == OOT_ITEM_ARROW_ICE) ? 1 : 2);
+    return sOotIconTex(OOT_ITEM_BOW_ARROW_FIRE + index);
 }
 
 extern "C" const char* Combo_MmPauseNameTex(int item) {
@@ -613,6 +704,15 @@ extern "C" int Combo_MmPauseForeignHostItem(int item) {
             return ITEM_BOW;
         case OOT_ITEM_BEAN:
             return ITEM_MAGIC_BEANS;
+        // OOT's magic arrows are MM's bow with that arrow, shot from a bow Termina may use (MM's or OOT's): MM's code
+        // spends MM's magic, or shoots a plain arrow without enough (func_808306F8), as for MM's own magic arrows.
+        // Combo_MmPauseForeignAmmoItem picks the quiver.
+        case OOT_ITEM_ARROW_FIRE:
+            return BowUsable() ? ITEM_BOW_FIRE : ITEM_NONE;
+        case OOT_ITEM_ARROW_ICE:
+            return BowUsable() ? ITEM_BOW_ICE : ITEM_NONE;
+        case OOT_ITEM_ARROW_LIGHT:
+            return BowUsable() ? ITEM_BOW_LIGHT : ITEM_NONE;
         // OOT's bottle code is MM's too (OOT Player_Action_8084EAC0 drink, Player_Action_SwingBottle catch,
         // Player_Action_8084EED8 fairy, Player_Action_8084EFC0 release = MM Player_Action_67 / 68 / 69 / 70), run on
         // OOT's slot (Combo_MmPauseSetForeignBottle). Not OOT's Blue Fire: MM's item table runs ITEM_BLUE_FIRE as a
@@ -709,6 +809,50 @@ extern "C" int Combo_MmPauseOotItemAt(int ootSlot) {
     if (ootSlot < 0 || ootSlot >= COMBO_PAUSE_OOT_SLOTS || !Snapshot())
         return ITEM_NONE;
     return sOotItems[ootSlot];
+}
+
+extern "C" int Combo_MmPauseOotHolds(int ootItem) {
+    return OotHolds((uint8_t)ootItem) ? 1 : 0;
+}
+
+// The OOT item whose bag a foreign item MM's own code runs spends (z_player.c Combo_ChooseAmmoBag), -1 for MM's own:
+// OOT's magic arrows take OOT's arrows while OOT has a bow Termina may use, else MM's.
+extern "C" int Combo_MmPauseForeignAmmoItem(int item) {
+    if (Combo_MmPauseForeignHostItem(item) == ITEM_NONE)
+        return -1;
+    const int oot = Combo_MmOotItemOf(item);
+    if (IsOotMagicArrow(oot))
+        return OotHolds(OOT_ITEM_BOW) ? OOT_ITEM_BOW : -1;
+    return oot;
+}
+
+extern "C" int Combo_MmPauseIsForeignMagicArrow(int item) {
+    return IsOotMagicArrow(LiveOotItem(item)) ? 1 : 0;
+}
+
+// Whether a Hyrule face item may go on a button: not OOT's magic arrows without a bow to shoot them from.
+extern "C" int Combo_MmPauseEquipAllowed(int item) {
+    return (!IsOotMagicArrow(LiveOotItem(item)) || BowUsable()) ? 1 : 0;
+}
+
+extern "C" int Combo_MmPauseSlotShownItem(int mmSlot) {
+    if ((mmSlot < 0) || (mmSlot >= COMBO_PAUSE_MM_SLOTS))
+        return ITEM_NONE;
+    const int own = gSaveContext.save.saveInfo.inventory.items[mmSlot];
+    if (own != ITEM_NONE)
+        return own;
+    const int standIn = StandInFor(mmSlot);
+    return (standIn == ITEM_NONE) ? ITEM_NONE : TwinOf((uint8_t)LiveOotItem(standIn));
+}
+
+extern "C" void Combo_MmPauseStandInEquip(int mmSlot, unsigned short* item, unsigned short* slot) {
+    const int standIn = StandInFor(mmSlot);
+    if (standIn == ITEM_NONE)
+        return;
+    // As from the Hyrule face: the foreign id is the button's item and its slot byte (Combo_MmPauseResolveEquip).
+    *item = (unsigned short)standIn;
+    *slot = (unsigned short)standIn;
+    Log("equip OOT item 0x%02X from MM's empty slot %d as foreign id 0x%02X", LiveOotItem(standIn), mmSlot, standIn);
 }
 
 // Outside the anonymous namespace: OPEN_DISPS block-declares the FrameInterpolation hooks, which must keep C linkage.
@@ -855,7 +999,7 @@ void RegisterComboPauseHost() {
     COND_VB_SHOULD(VB_INTERFACE_LOAD_ITEM_ICON, true, {
         u8 btn = (u8)va_arg(args, int);
         if (gPlayState != nullptr && Combo_MmPauseIsForeign(GET_CUR_FORM_BTN_ITEM(btn))) {
-            const char* tex = Combo_MmPauseIconTex(GET_CUR_FORM_BTN_ITEM(btn));
+            const char* tex = Combo_MmPauseButtonIconTex(GET_CUR_FORM_BTN_ITEM(btn));
             gPlayState->interfaceCtx.iconItemSegment[btn] = tex ? (char*)tex : (char*)gEmptyTexture;
             *should = false;
         }
@@ -863,7 +1007,7 @@ void RegisterComboPauseHost() {
     COND_VB_SHOULD(VB_INTERFACE_LOAD_DPAD_ITEM_ICON, true, {
         u8 btn = (u8)va_arg(args, int);
         if (gPlayState != nullptr && Combo_MmPauseIsForeign(DPAD_GET_CUR_FORM_BTN_ITEM(btn))) {
-            const char* tex = Combo_MmPauseIconTex(DPAD_GET_CUR_FORM_BTN_ITEM(btn));
+            const char* tex = Combo_MmPauseButtonIconTex(DPAD_GET_CUR_FORM_BTN_ITEM(btn));
             gPlayState->interfaceCtx.iconItemSegment[DPAD_BUTTON(btn) + EQUIP_SLOT_MAX] =
                 tex ? (char*)tex : (char*)gEmptyTexture;
             *should = false;

@@ -27,7 +27,7 @@ enum Option : int {
     kMagicCarry = 1 << 1,   // OoT's double magic meter carries, once Majora's Mask's Great Fairy gives magic
     kBottlesCarry = 1 << 2, // OoT's bottles are usable in Termina
     kWalletCarry = 1 << 3,  // the wallet's size and the rupees carry
-    kSongsCarry = 1 << 4,   // the songs OoT has learned are learned in Termina, once Link has MM's Ocarina
+    kSongsCarry = 1 << 4,   // the songs OoT has learned are learned in Termina, once Link has an ocarina there
     kDinsFire = 1 << 5,     // the OoT-only items, one switch each
     kFaroresWind = 1 << 6,
     kNayrusLove = 1 << 7,
@@ -58,9 +58,12 @@ enum Option : int {
 
 // The layout of the options int, stored beside it in the slot's combo.mode (kOptionsLayoutKey). A mode without the key
 // holds the first layout (bits 0 to 12), where bit 4 also meant "the masks both games have are usable at once";
-// MigrateStoredOptions turns that into the mask bits.
+// MigrateStoredOptions turns that into the mask bits. A mode without the key but with kMarkedLayoutBit set was made by
+// 0.2.2, which marked its layout with that bit instead of the key: bits 0 to 28 as now, no Goron or Zora switch (both
+// masks were worn plain until Majora's Mask's own), and bit 30 only the marker.
 inline constexpr int kOptionsLayout = 2;
 inline constexpr int kFirstOptionsLayout = 1;
+inline constexpr int kMarkedLayoutBit = 1 << 30;
 
 inline constexpr int kEarlyUseMasks =
     kEarlyKeatonMask | kEarlyBunnyHood | kEarlyMaskOfTruth | kEarlyGoronMask | kEarlyZoraMask;
@@ -96,7 +99,8 @@ inline constexpr OptionDef kOptions[] = {
       "Termina starts with the wallet's size and the rupees Link has at the end of Ocarina of Time." },
     { kSongsCarry, "gCombo.BackToBack.Songs", false, OptionGroup::Carry, "Songs",
       "The songs Link learned in Ocarina of Time (Song of Time, Epona's Song, Song of Storms) are learned in Termina "
-      "too, once Link has Majora's Mask's Ocarina. Off: he learns each there." },
+      "too, once Link has an ocarina he can play there: Majora's Mask's, or Ocarina of Time's when the ocarina switch "
+      "below lets it in from the start. Off: he learns each there." },
     { kDinsFire, "gCombo.BackToBack.Items.DinsFire", true, OptionGroup::OotOnlyItems, "Din's Fire", kOotOnlyTooltip },
     { kFaroresWind, "gCombo.BackToBack.Items.FaroresWind", true, OptionGroup::OotOnlyItems, "Farore's Wind",
       kOotOnlyTooltip },
@@ -120,7 +124,10 @@ inline constexpr OptionDef kOptions[] = {
     { kEarlyLightArrows, "gCombo.BackToBack.Early.LightArrows", false, OptionGroup::EarlyUse, "Light Arrows",
       kEarlyUseTooltip },
     { kEarlyOcarina, "gCombo.BackToBack.Early.Ocarina", false, OptionGroup::EarlyUse,
-      "Fairy Ocarina and Ocarina of Time", kEarlyUseTooltip },
+      "Fairy Ocarina and Ocarina of Time",
+      "Usable in Termina from the start: Link can play it before he gets Majora's Mask's back from the Skull Kid, and "
+      "the Happy Mask Salesman teaches him the Song of Healing. With the Songs switch on, the Song of Time can then "
+      "end the first cycle early. Off: it waits until Link finds Majora's Mask's own." },
     { kEarlyBombchus, "gCombo.BackToBack.Early.Bombchus", false, OptionGroup::EarlyUse, "Bombchus", kEarlyUseTooltip },
     { kEarlyHookshot, "gCombo.BackToBack.Early.Hookshot", false, OptionGroup::EarlyUse, "Hookshot and Longshot",
       kEarlyUseTooltip },
@@ -167,6 +174,8 @@ template <typename GetInt> inline int OptionsFromCVars(GetInt getInt) {
 inline constexpr int MigrateStoredOptions(int stored, int layout) {
     if (layout >= kOptionsLayout)
         return stored;
+    if ((stored & kMarkedLayoutBit) != 0)
+        return stored & ~kMarkedLayoutBit;
     const int masks = (stored & kSongsCarry) != 0 ? kEarlyUseMasks : 0;
     return stored | masks;
 }

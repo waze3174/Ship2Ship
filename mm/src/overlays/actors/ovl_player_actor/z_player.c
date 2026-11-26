@@ -4817,7 +4817,8 @@ void func_80831944(PlayState* play, Player* this) {
 
 #ifdef COMBO_BUILD
 // An OOT item MM's own code runs (Combo_MmPauseForeignHostItem) checks and spends OOT's bag: the bag is that of the
-// button the item came from, the OOT item for an OOT button, -1 for MM's own. A stick or a bow stays in hand, so its
+// button the item came from, the OOT item whose bag it spends for an OOT button (Combo_MmPauseForeignAmmoItem: OOT's
+// magic arrows take the bow's), -1 for MM's own. A stick or a bow stays in hand, so its
 // bag is the one it was taken out with; a nut, an explosive or a bean is spent as it is taken out or planted.
 static s32 sComboStickBag = -1;
 static s32 sComboNutBag = -1;
@@ -4874,7 +4875,7 @@ static void Combo_ChooseAmmoBag(Player* this, ItemId item, PlayerItemAction item
         (((ammoItem == ITEM_DEKU_STICK) || (ammoItem == ITEM_BOW)) && (this->heldItemAction == itemAction))) {
         return;
     }
-    *bag = (Combo_MmPauseForeignHostItem(item) != ITEM_NONE) ? Combo_MmOotItemOf(item) : -1;
+    *bag = Combo_MmPauseForeignAmmoItem(item);
 }
 
 static s32 Combo_PlayerExplosiveFromOot(s32 explosiveType) {

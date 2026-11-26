@@ -324,7 +324,16 @@ extern "C" int Combo_MmOotAmmoDigits(int ootItem, int* full) {
 }
 
 extern "C" int Combo_MmForeignAmmo(int foreignItem, int* full) {
-    const int oot = Combo_MmOotItemOf(foreignItem);
+    // OOT's magic arrows show the quiver they shoot from (Combo_MmPauseForeignAmmoItem): OOT's, else MM's own.
+    if (Combo_MmPauseIsForeignMagicArrow(foreignItem) && (Combo_MmPauseForeignHostItem(foreignItem) != ITEM_NONE) &&
+        (Combo_MmPauseForeignAmmoItem(foreignItem) < 0)) {
+        if (full != nullptr) {
+            *full = AMMO(ITEM_BOW) >= CUR_CAPACITY(UPG_QUIVER);
+        }
+        return AMMO(ITEM_BOW);
+    }
+    const int oot = Combo_MmPauseIsForeignMagicArrow(foreignItem) ? Combo_MmPauseForeignAmmoItem(foreignItem)
+                                                                  : Combo_MmOotItemOf(foreignItem);
     if (oot < 0) {
         if (full != nullptr) {
             *full = 0;

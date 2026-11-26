@@ -4522,7 +4522,20 @@ extern "C" int Combo_CrossToHyruleOpen(void) {
 // 0 outside a back-to-back slot.
 extern "C" int gMMComboBackToBackOptions = 0;
 extern "C" COMBO_EXPORT void MM_SetComboBackToBackOptions(int options) {
+    namespace B2B = ComboRando::BackToBack;
     gMMComboBackToBackOptions = options;
+    if (!ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate))
+        return;
+    // The choices the slot was made with, which a bug report needs: the page shows what the next new file would get.
+    std::string on;
+    for (const B2B::OptionDef& option : B2B::kOptions) {
+        if ((options & option.bit) == 0)
+            continue;
+        on += on.empty() ? "" : ", ";
+        on += (option.group == B2B::OptionGroup::EarlyUse) ? std::string("early ") + option.label : option.label;
+    }
+    SPDLOG_INFO("[ComboBackToBack] slot options 0x{:08X} (cross gate 0x{:X}), on: {}", static_cast<uint32_t>(options),
+                gMMComboCrossGate, on.empty() ? "none" : on);
 }
 extern "C" int Combo_MM_BackToBackOptions(void) {
     return gMMComboBackToBackOptions;
