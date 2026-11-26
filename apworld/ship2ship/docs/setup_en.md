@@ -26,6 +26,11 @@ names Ship2Ship's seed files use. OoT No Logic is not supported, and neither is 
 
 ## Generating
 
-Generate as usual. Each Ship2Ship slot starts one `comborando` process and takes a few seconds to a few minutes,
-depending on how many players there are. The output holds the slot's seed as `AP_<seed>_P<n>_<name>.ship2ship.json`
-next to the usual `.archipelago` file.
+Generate as usual. Each Ship2Ship slot starts one `comborando` process, which Archipelago asks about 2,000 to 3,500
+times (each answer takes tens of milliseconds), so a solo slot takes two to three minutes and each extra Ship2Ship slot
+adds about as much. The output holds the slot's seed as `AP_<seed>_P<n>_<name>.ship2ship.json` next to the usual
+`.archipelago` file.
+
+Entrance shuffles can produce layouts nothing can be played in, such as one with nothing reachable at the start.
+Like Ship2Ship's own generator, the world then rolls a new layout, up to 30 times, and the log says which attempt it
+kept.

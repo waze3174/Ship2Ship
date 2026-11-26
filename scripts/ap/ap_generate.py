@@ -282,7 +282,7 @@ def fill_rate_run(args, preset, index):
         try:
             check_generation(gen, args.comborando, {"playthrough": True})
         except (ChecksFailed, AssertionError) as error:
-            ok, detail = False, f"beatability: {error}"
+            ok, detail = False, "beatability: " + str(error).splitlines()[0]
     return preset, index, ok, gen.seconds, detail
 
 
