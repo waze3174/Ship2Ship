@@ -17,7 +17,7 @@ enum class LockKind {
     UntilMmHolds, // MM has the item too: locked until MM's own copy is found, unless its early-use switch is on
     Bottle,       // an OoT bottle or what is in it: needs the Bottles switch, and waits for MM's first bottle
     Option,       // OoT only: locked unless its switch is on
-    Free,         // never locked (the Goron and Zora masks: worn as plain masks until MM's own is found)
+    Free,         // never locked (the Goron and Zora masks: worn plain, or transforming, as their early switch says)
     Closed,       // OoT only and no switch: locked until both games are beaten
 };
 

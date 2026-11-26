@@ -1,13 +1,15 @@
 // combo/rando/ComboMode.h
 // ComboShip: the mode of one save slot, stored in the slot's .combosav container as combo.mode:
-//   { "game": "ootmm"|"oot"|"mm", "kind": "rando"|"vanilla", "quest": "normal"|"mq", "sequential": true, "options": N }
+//   { "game": "ootmm"|"oot"|"mm", "kind": "rando"|"vanilla", "quest": "normal"|"mq", "sequential": true, "options": N,
+//     "optionsLayout": L }
 // game is the game(s) the slot plays, kind is whether a randomizer seed is bound to it, and quest is the OoT quest
 // of a vanilla OoT slot or of the Ocarina of Time half of a back-to-back slot. An absent key (every save before this
 // setting) is a combo randomizer slot. A vanilla Majora's Mask slot is { "game": "mm", "kind": "vanilla" }. A
 // back-to-back slot (vanilla Ocarina of Time, then vanilla Majora's Mask, in one slot) is
-// { "game": "ootmm", "kind": "vanilla", "sequential": true, "options": N }; "sequential" and "options" (the Back to
-// back page's choices, ComboBackToBackSettings.h) are written only there. A back-to-back slot without a "quest" key
-// (made before the Master Quest choice) is a Normal Quest one, and one without "options" takes the page's defaults.
+// { "game": "ootmm", "kind": "vanilla", "sequential": true, "options": N, "optionsLayout": L }; "sequential", "options"
+// (the Back to back page's choices, ComboBackToBackSettings.h) and "optionsLayout" (which bits N holds) are written
+// only there. A back-to-back slot without a "quest" key (made before the Master Quest choice) is a Normal Quest one,
+// one without "options" takes the page's defaults, and one without "optionsLayout" holds the first layout.
 // Header-only, compiled into the exe and soh.dll. See docs/deviations/rando.md "Save modes: vanilla OoT".
 #pragma once
 
@@ -44,6 +46,7 @@ inline constexpr const char* kComboModeKey = "mode";
 
 inline constexpr const char* kSequentialKey = "sequential";
 inline constexpr const char* kOptionsKey = "options";
+inline constexpr const char* kOptionsLayoutKey = "optionsLayout";
 
 inline const char* ComboKindKey(ComboKind k) {
     return k == COMBO_KIND_VANILLA ? "vanilla" : "rando";
@@ -97,6 +100,7 @@ struct ComboMode {
         if (sequential) {
             j[kSequentialKey] = true;
             j[kOptionsKey] = options;
+            j[kOptionsLayoutKey] = ComboRando::BackToBack::kOptionsLayout;
         }
         return j;
     }
@@ -117,7 +121,8 @@ struct ComboMode {
             m.kind = COMBO_KIND_VANILLA;
             m.sequential = true;
             m.options = ComboRando::BackToBack::MigrateStoredOptions(
-                j.value(kOptionsKey, ComboRando::BackToBack::DefaultOptions()));
+                j.value(kOptionsKey, ComboRando::BackToBack::DefaultOptions()),
+                j.value(kOptionsLayoutKey, ComboRando::BackToBack::kFirstOptionsLayout));
         }
         return m;
     }

@@ -17,7 +17,7 @@ and everything usable after both games). Not done: adult Link in Termina (see "N
 `combo.mode` for a back-to-back slot (`combo/rando/ComboMode.h`):
 
 ```json
-"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 1073749996 }
+"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 8172, "optionsLayout": 2 }
 ```
 
 - `ComboMode::BackToBack(quest, options)`, `IsBackToBack()`. `sequential` and `options` (stage C) are written only for this mode;
@@ -197,11 +197,12 @@ called from `Combo_InitBackToBackSlot`), stored as one int in the file's `combo.
 the defaults) and pushed to both DLLs with the cross gate (`SOH_SetComboBackToBackOptions`,
 `MM_SetComboBackToBackOptions`; 0 for every other slot).
 
-The int's bits: 0-12 the carry and OoT-only switches, 13-28 the early-use switches, 30 `kHasEarlyUseBits`. An int stored
-without bit 30 comes from before the early-use switches; `MigrateStoredOptions` (called by `ComboMode::FromJson`) sets
-the bit, leaves every old choice as it was, and, when bit 4 was on (it used to also mean "the masks both games have are
-usable at once"), sets the three mask early-use bits. So an older file's locks behave as they did (the Goron and Zora
-masks excepted, see below). A slot with no `options` key at all takes `DefaultOptions()`.
+The int's bits: 0-12 the carry and OoT-only switches, 13-30 the early-use switches (Goron Mask is 29, Zora Mask 30); the
+sign bit stays unused. `ComboMode::ToJson` writes `"optionsLayout": 2` (`kOptionsLayout`) beside `"options"`. A mode
+without the key holds the first layout (bits 0-12 only); `MigrateStoredOptions` (called by `ComboMode::FromJson`) leaves
+every old choice as it was and, when bit 4 was on (it used to also mean "the masks both games have are usable at once,
+and the Goron and Zora masks transform at once"), sets all five mask early-use bits (Keaton, Bunny, Truth, Goron, Zora).
+So an older file's locks and masks behave as they did. A slot with no `options` key at all takes `DefaultOptions()`.
 
 The carries (default in brackets):
 
@@ -220,7 +221,8 @@ Hyrule.
 "Usable in Termina before Majora's Mask's own is found" (`CVars gCombo.BackToBack.Early.*`): one switch per item MM has
 too, all off by default (the item waits). Deku Sticks, Deku Nuts, Bombs, Bow, Fire, Ice and Light Arrows, Ocarina (both
 of OoT's), Bombchus, Hookshot (with the Longshot), Lens of Truth, Magic Beans, Bottles (with the Bottles carry on: before
-MM's first bottle), Keaton Mask, Bunny Hood and Mask of Truth.
+MM's first bottle), Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask. The last two mean something else:
+see below.
 
 The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/ComboBackToBackTest.cpp`):
 
@@ -242,8 +244,9 @@ The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/Co
   Song, Song of Storms) are not skipped by an early flag.
 
 **The Goron and Zora masks in Termina.** In a slot with the locks in force, OoT's Goron and Zora masks are worn as plain
-masks (OoT's model, no transformation) until Link holds MM's own Goron Mask (Darmani) or Zora Mask (Mikau);
-from then on they transform him as MM's masks (`Combo_MmOotMaskIsPlain`, `ComboOotItems.cpp`; they take the same path as
+masks (OoT's model, no transformation) until Link holds MM's own Goron Mask (Darmani) or Zora Mask (Mikau), unless the
+slot's Goron Mask or Zora Mask early-use switch is on, which lets that mask transform Link from the start. Once Link
+holds MM's own, they transform him as MM's masks (`Combo_MmOotMaskIsPlain`, `ComboOotItems.cpp`; they take the same path as
 the Skull, Spooky and Gerudo masks, `PLAYER_IA_COMBO_OOT_MASK`). In every other slot they transform at once, as before
 (a randomizer slot's Goron Mask is MM's). In Hyrule OoT's own Goron and Zora masks are plain masks unless the form
 setting is on (`Combo_FormsAllowed`: randomizer slots, or "Transformations in vanilla OoT" for a vanilla one), which this

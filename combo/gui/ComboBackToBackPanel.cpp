@@ -29,8 +29,8 @@ constexpr const char* kOotOnlyItemsNote =
     "Items only Ocarina of Time has. Off, each stays in Hyrule until both games are beaten.";
 constexpr const char* kEarlyUseNote =
     "Items Majora's Mask has too wait in Termina until Link finds Majora's Mask's own. Tick one to use "
-    "Ocarina of Time's from the start. The Goron and Zora masks can always be worn there; they transform Link "
-    "only once he has Majora's Mask's own.";
+    "Ocarina of Time's from the start. The Goron and Zora masks can always be worn there as plain masks; tick them "
+    "to let them transform Link from the start, not only once he has Majora's Mask's own.";
 
 using FnHasArchive = int (*)();
 
@@ -83,8 +83,10 @@ void DrawMasterQuestSetting() {
     }
 }
 
+// Two options may share a label (Bottles carries, and is usable early), so each is scoped by its CVar.
 void DrawOption(const BackToBack::OptionDef& option) {
     bool on = CVarGetInteger(option.cvar, option.defaultOn ? 1 : 0) != 0;
+    ImGui::PushID(option.cvar);
     ComboMenu_PushCheckbox(ComboMenu_ThemeColor());
     if (ImGui::Checkbox(option.label, &on)) {
         CVarSetInteger(option.cvar, on ? 1 : 0);
@@ -94,6 +96,7 @@ void DrawOption(const BackToBack::OptionDef& option) {
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("%s", option.tooltip);
     }
+    ImGui::PopID();
 }
 
 void DrawOptionGroup(BackToBack::OptionGroup group) {

@@ -52,13 +52,18 @@ enum Option : int {
     kEarlyKeatonMask = 1 << 26,
     kEarlyBunnyHood = 1 << 27,
     kEarlyMaskOfTruth = 1 << 28,
+    kEarlyGoronMask = 1 << 29, // OoT's Goron Mask transforms Link in Termina from the start, not worn plain first
+    kEarlyZoraMask = 1 << 30,  // the same for the Zora Mask. Bit 31, the sign bit, stays unused.
 };
 
-// Set on every options int written with the early-use bits above. A stored int without it is from before them, when
-// bit 4 also meant "the masks both games have are usable at once"; MigrateStoredOptions turns that into the mask bits.
-inline constexpr int kHasEarlyUseBits = 1 << 30;
+// The layout of the options int, stored beside it in the slot's combo.mode (kOptionsLayoutKey). A mode without the key
+// holds the first layout (bits 0 to 12), where bit 4 also meant "the masks both games have are usable at once";
+// MigrateStoredOptions turns that into the mask bits.
+inline constexpr int kOptionsLayout = 2;
+inline constexpr int kFirstOptionsLayout = 1;
 
-inline constexpr int kEarlyUseMasks = kEarlyKeatonMask | kEarlyBunnyHood | kEarlyMaskOfTruth;
+inline constexpr int kEarlyUseMasks =
+    kEarlyKeatonMask | kEarlyBunnyHood | kEarlyMaskOfTruth | kEarlyGoronMask | kEarlyZoraMask;
 
 enum class OptionGroup { Carry, OotOnlyItems, EarlyUse };
 
@@ -74,6 +79,9 @@ struct OptionDef {
 inline constexpr const char* kOotOnlyTooltip = "Usable in Termina. Off: it stays in Hyrule.";
 inline constexpr const char* kEarlyUseTooltip =
     "Usable in Termina from the start. Off: it waits until Link finds Majora's Mask's own.";
+inline constexpr const char* kEarlyTransformMaskTooltip =
+    "Transforms Link in Termina from the start. Off: Link can wear it there as a plain mask, and it transforms him "
+    "only once he has Majora's Mask's own.";
 
 inline constexpr OptionDef kOptions[] = {
     { kHeartsCarry, "gCombo.BackToBack.Hearts", false, OptionGroup::Carry, "Hearts",
@@ -127,11 +135,15 @@ inline constexpr OptionDef kOptions[] = {
       kEarlyUseTooltip },
     { kEarlyMaskOfTruth, "gCombo.BackToBack.Early.MaskOfTruth", false, OptionGroup::EarlyUse, "Mask of Truth",
       kEarlyUseTooltip },
+    { kEarlyGoronMask, "gCombo.BackToBack.Early.GoronMask", false, OptionGroup::EarlyUse, "Goron Mask",
+      kEarlyTransformMaskTooltip },
+    { kEarlyZoraMask, "gCombo.BackToBack.Early.ZoraMask", false, OptionGroup::EarlyUse, "Zora Mask",
+      kEarlyTransformMaskTooltip },
 };
 inline constexpr std::size_t kOptionCount = sizeof(kOptions) / sizeof(kOptions[0]);
 
 inline constexpr int DefaultOptions() {
-    int options = kHasEarlyUseBits;
+    int options = 0;
     for (const OptionDef& option : kOptions) {
         if (option.defaultOn)
             options |= option.bit;
@@ -141,7 +153,7 @@ inline constexpr int DefaultOptions() {
 
 // The options a new file takes from the page. getInt(cvarName, fallback) reads one CVar (CVarGetInteger).
 template <typename GetInt> inline int OptionsFromCVars(GetInt getInt) {
-    int options = kHasEarlyUseBits;
+    int options = 0;
     for (const OptionDef& option : kOptions) {
         if (getInt(option.cvar, option.defaultOn ? 1 : 0) != 0)
             options |= option.bit;
@@ -149,13 +161,14 @@ template <typename GetInt> inline int OptionsFromCVars(GetInt getInt) {
     return options;
 }
 
-// A stored options int in the current layout. One from before the early-use bits tied the masks to the songs switch:
-// with it on, the masks both games have were usable at once; with it off they waited.
-inline constexpr int MigrateStoredOptions(int stored) {
-    if ((stored & kHasEarlyUseBits) != 0)
+// A stored options int in the current layout. In the first layout the songs switch also decided the masks: with it on,
+// the masks both games have (the Goron and Zora masks transforming at once among them) were usable at once; with it
+// off they waited.
+inline constexpr int MigrateStoredOptions(int stored, int layout) {
+    if (layout >= kOptionsLayout)
         return stored;
     const int masks = (stored & kSongsCarry) != 0 ? kEarlyUseMasks : 0;
-    return stored | kHasEarlyUseBits | masks;
+    return stored | masks;
 }
 
 } // namespace BackToBack

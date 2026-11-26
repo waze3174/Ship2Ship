@@ -95,15 +95,15 @@ void TestOptionTable() {
     }
     CHECK(bits.size() == B2B::kOptionCount);
     CHECK(cvars.size() == B2B::kOptionCount);
-    CHECK((allBits & B2B::kHasEarlyUseBits) == 0);
-    CHECK(allBits < B2B::kHasEarlyUseBits); // every option sits below the layout marker, inside the int
+    CHECK(allBits > 0); // every option sits below the sign bit, which stays unused
 
     // The defaults the owner chose: bottles, wallet and rupees carry, and every OoT-only item is usable in Termina.
     // Hearts, the double magic meter and songs are off.
     const int ootOnlyItems = B2B::kDinsFire | B2B::kFaroresWind | B2B::kNayrusLove | B2B::kBoomerang | B2B::kSlingshot |
                              B2B::kHammer | B2B::kBoots | B2B::kTunics;
     const int defaults = B2B::DefaultOptions();
-    CHECK(defaults == (B2B::kHasEarlyUseBits | B2B::kBottlesCarry | B2B::kWalletCarry | ootOnlyItems));
+    CHECK(defaults == (B2B::kBottlesCarry | B2B::kWalletCarry | ootOnlyItems));
+    CHECK((defaults & B2B::kEarlyUseMasks) == 0); // the Goron and Zora masks are worn plain by default
     CHECK((defaults & B2B::kMagicCarry) == 0);
     CHECK((defaults & B2B::kSongsCarry) == 0);
     CHECK((defaults & B2B::kHeartsCarry) == 0);
@@ -128,16 +128,19 @@ void TestOptionsFromCVars() {
     CHECK((options & B2B::kEarlyBombs) == 0);
     CHECK((options & B2B::kBottlesCarry) != 0);
     CHECK((options & B2B::kBoots) != 0);
-    CHECK((options & B2B::kHasEarlyUseBits) != 0);
+    cvars["gCombo.BackToBack.Early.GoronMask"] = 1;
+    CHECK((B2B::OptionsFromCVars(get) & B2B::kEarlyGoronMask) != 0);
+    CHECK((B2B::OptionsFromCVars(get) & B2B::kEarlyZoraMask) == 0);
 }
 
 void TestModeStoresOptions() {
-    const int options = B2B::kHasEarlyUseBits | B2B::kHeartsCarry | B2B::kBoots | B2B::kEarlyBow;
+    const int options = B2B::kHeartsCarry | B2B::kBoots | B2B::kEarlyBow | B2B::kEarlyGoronMask | B2B::kEarlyZoraMask;
     const ComboMode made = ComboMode::BackToBack(ComboRando::OOT_QUEST_MQ, options);
     const ComboMode read = ComboMode::FromJson(made.ToJson());
     CHECK(read.IsBackToBack());
     CHECK(read.quest == ComboRando::OOT_QUEST_MQ);
     CHECK(read.options == options);
+    CHECK(made.ToJson().at(ComboRando::kOptionsLayoutKey) == B2B::kOptionsLayout); // the key goes with the int
 
     // A back-to-back slot made before the options were stored takes the page's defaults.
     nlohmann::json older = made.ToJson();
@@ -148,20 +151,24 @@ void TestModeStoresOptions() {
     CHECK(!ComboMode::VanillaMm().ToJson().contains(ComboRando::kOptionsKey));
     CHECK(!ComboMode::VanillaOot(ComboRando::OOT_QUEST_NORMAL).ToJson().contains(ComboRando::kOptionsKey));
     CHECK(!ComboMode::Rando(ComboRando::COMBO_GAMES_BOTH).ToJson().contains(ComboRando::kOptionsKey));
+    CHECK(!ComboMode::VanillaMm().ToJson().contains(ComboRando::kOptionsLayoutKey));
+    CHECK(!ComboMode::Rando(ComboRando::COMBO_GAMES_BOTH).ToJson().contains(ComboRando::kOptionsLayoutKey));
     CHECK(ComboMode::FromJson(nlohmann::json::object()).options == 0);
 }
 
-// A file that stored its options int before the early-use switches keeps every choice it made, and each item keeps the
-// lock it had: every early-use bit is clear (the item waits), and the masks follow the old shared switch.
-void TestStoredOptionsFromBeforeEarlyUseSwitches() {
+// A mode stored without the layout key holds the first layout: every choice it made is kept, and each item keeps the
+// lock it had. Every early-use bit is clear (the item waits), except that the old songs and masks switch also set the
+// five mask bits, the Goron and Zora masks among them (they transformed at once).
+void TestStoredOptionsFromTheFirstLayout() {
     for (int stored = 0; stored <= kLegacyOptionMask; stored++) {
-        const ComboMode file =
-            ComboMode::FromJson(ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, stored).ToJson());
-        const int options = file.options;
-        CHECK((options & B2B::kHasEarlyUseBits) != 0);
+        nlohmann::json json = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, stored).ToJson();
+        json.erase(ComboRando::kOptionsLayoutKey);
+        const int options = ComboMode::FromJson(json).options;
         CHECK((options & kLegacyOptionMask) == stored); // every old choice kept
-        const int newBits = options & ~kLegacyOptionMask & ~B2B::kHasEarlyUseBits;
+        const int newBits = options & ~kLegacyOptionMask;
         CHECK(newBits == (((stored & B2B::kSongsCarry) != 0) ? B2B::kEarlyUseMasks : 0));
+        CHECK(((options & B2B::kEarlyGoronMask) != 0) == ((stored & B2B::kSongsCarry) != 0));
+        CHECK(((options & B2B::kEarlyZoraMask) != 0) == ((stored & B2B::kSongsCarry) != 0));
         for (int item = 0; item <= kLastOotItem; item++) {
             if (IsTransformMask(item))
                 continue; // the Goron and Zora masks are never locked now, whatever an older file chose
@@ -169,7 +176,10 @@ void TestStoredOptionsFromBeforeEarlyUseSwitches() {
                 CHECK(Locked(options, item, mmHolds) == LegacyLocked(stored, item, mmHolds));
         }
     }
-    CHECK(B2B::MigrateStoredOptions(B2B::DefaultOptions()) == B2B::DefaultOptions()); // the current layout stays
+    // The current layout is left alone.
+    const int current = B2B::kEarlyBow | B2B::kEarlyGoronMask | B2B::kBoots;
+    CHECK(B2B::MigrateStoredOptions(current, B2B::kOptionsLayout) == current);
+    CHECK(B2B::MigrateStoredOptions(B2B::kSongsCarry, B2B::kOptionsLayout) == B2B::kSongsCarry);
 }
 
 void TestLocksActive() {
@@ -212,10 +222,10 @@ void TestItemsWithAnMmCounterpart() {
         { kOotMaskTruth, B2B::kEarlyMaskOfTruth },
     };
     for (const Row& row : rows) {
-        CHECK(Locked(0, row.item, false));                                    // waits for MM's own by default
-        CHECK(!Locked(0, row.item, true));                                    // and is usable once MM's is found
-        CHECK(!Locked(row.option, row.item, false));                          // its own switch lets it in early
-        CHECK(Locked(~row.option & ~B2B::kHasEarlyUseBits, row.item, false)); // no other switch does
+        CHECK(Locked(0, row.item, false));           // waits for MM's own by default
+        CHECK(!Locked(0, row.item, true));           // and is usable once MM's is found
+        CHECK(!Locked(row.option, row.item, false)); // its own switch lets it in early
+        CHECK(Locked(~row.option, row.item, false)); // no other switch does
         CHECK(Locked(B2B::DefaultOptions(), row.item, false));
     }
 }
@@ -297,7 +307,7 @@ int main() {
     TestOptionsFromCVars();
     TestModeStoresOptions();
     TestLocksActive();
-    TestStoredOptionsFromBeforeEarlyUseSwitches();
+    TestStoredOptionsFromTheFirstLayout();
     TestItemsWithAnMmCounterpart();
     TestBottles();
     TestTransformationMasks();

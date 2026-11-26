@@ -33,6 +33,7 @@
 #include "ComboAdultBody.h"
 #include "ComboPause.h"
 #include "2s2h/CustomMessage/CustomMessage.h"
+#include "rando/ComboBackToBackSettings.h"
 
 extern "C" {
 #include "z64.h"
@@ -41,6 +42,7 @@ extern "C" {
 #include "functions.h"
 extern PlayState* gPlayState;
 int Combo_MM_BackToBackLocksActive(void); // BenPort.cpp
+int Combo_MM_BackToBackOptions(void);     // BenPort.cpp
 }
 
 namespace {
@@ -409,15 +411,17 @@ extern "C" void Combo_MmOotFaroresWindMessage(PlayState* play) {
 }
 
 // ---- OOT's own masks worn as plain masks: the ones with no Termina twin (Skull Mask, Spooky Mask, Gerudo Mask), and
-// the Goron and Zora masks of a back-to-back slot until Link holds MM's own (they transform him only then). OOT puts a
-// mask on or takes it off the moment its button is pressed (Player_UseItem's mask branch: no animation,
-// NA_SE_PL_CHANGE_ARMS), one mask at a time; the model is OOT's (sMaskDlists, object_link_child) on the head limb,
-// drawn as OOT draws it (head limb space).
+// the Goron and Zora masks of a back-to-back slot until Link holds MM's own (they transform him only then, unless
+// the slot lets them transform from the start). OOT puts a mask on or takes it off the moment its button is pressed
+// (Player_UseItem's mask branch: no animation, NA_SE_PL_CHANGE_ARMS), one mask at a time; the model is OOT's
+// (sMaskDlists, object_link_child) on the head limb, drawn as OOT draws it (head limb space).
 static int sWornOotMask = -1; // OOT item id, -1 = none
 
-// Whether a back-to-back slot's locks are in force and Link has not yet got MM's own transformation mask.
-static bool TransformMaskNotYetMms(int mmMaskItem) {
-    return Combo_MM_BackToBackLocksActive() && INV_CONTENT(mmMaskItem) != mmMaskItem;
+// Whether a back-to-back slot's locks are in force, its early switch for the mask is off, and Link has not yet got MM's
+// own transformation mask.
+static bool TransformMaskWornPlain(int mmMaskItem, int earlySwitch) {
+    return Combo_MM_BackToBackLocksActive() && (Combo_MM_BackToBackOptions() & earlySwitch) == 0 &&
+           INV_CONTENT(mmMaskItem) != mmMaskItem;
 }
 
 extern "C" int Combo_MmOotMaskIsPlain(int ootItem) {
@@ -427,9 +431,9 @@ extern "C" int Combo_MmOotMaskIsPlain(int ootItem) {
         case COMBO_OOT_ITEM_MASK_GERUDO:
             return 1;
         case COMBO_OOT_ITEM_MASK_GORON:
-            return TransformMaskNotYetMms(ITEM_MASK_GORON) ? 1 : 0;
+            return TransformMaskWornPlain(ITEM_MASK_GORON, ComboRando::BackToBack::kEarlyGoronMask) ? 1 : 0;
         case COMBO_OOT_ITEM_MASK_ZORA:
-            return TransformMaskNotYetMms(ITEM_MASK_ZORA) ? 1 : 0;
+            return TransformMaskWornPlain(ITEM_MASK_ZORA, ComboRando::BackToBack::kEarlyZoraMask) ? 1 : 0;
         default:
             return 0;
     }
