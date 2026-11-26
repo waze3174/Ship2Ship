@@ -3740,6 +3740,7 @@ extern "C" COMBO_EXPORT const char* MM_DumpRandoStaticData(void) {
         // item can lie with a real near-miss name instead of a letter-doubled one.
         nlohmann::json entry = { { "name", Rando::StaticData::GetItemDisplayName(id) },
                                  { "advancement", isAdvancement(item) },
+                                 { "category", categoryName(item) },
                                  { "trap", id == RI_TRAP },
                                  { "trickNames", Rando::StaticData::GetTrickNames(id) } };
         if (item.name && item.name[0] != '\0') {

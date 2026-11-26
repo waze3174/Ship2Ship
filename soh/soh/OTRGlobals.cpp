@@ -5453,6 +5453,7 @@ extern "C" COMBO_EXPORT const char* SOH_DumpRandoStaticData(void) {
         items.push_back({ { "name", name },
                           { "displayName", name },
                           { "advancement", comboIsAdv(static_cast<RandomizerGet>(rg)) },
+                          { "category", comboCategory(static_cast<RandomizerGet>(rg)) },
                           { "trap", rg == RG_ICE_TRAP },
                           { "trickNames", Rando::Traps::GetTrickNamesEnglish(static_cast<uint16_t>(rg)) } });
     }

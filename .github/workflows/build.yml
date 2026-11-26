@@ -113,6 +113,12 @@ jobs:
             & ./comborando.exe @run
             if ($LASTEXITCODE -ne 0) { throw "comborando $($run -join ' ') exited with $LASTEXITCODE" }
           }
+      # The oracle protocol on Windows: hello, open, one reach, close. First run in CI: read the result by hand.
+      - name: Oracle smoke (comborando --oracle)
+        continue-on-error: true
+        working-directory: x64/Release
+        shell: pwsh
+        run: python -I "$env:GITHUB_WORKSPACE/scripts/ap/oracle_parity.py" --comborando "$PWD/comborando.exe" --cwd . --smoke
       - name: Build comboui
         run: cmake --build build/x64 --target comboui --config Release
       - name: Build Ship2Ship
@@ -141,6 +147,8 @@ jobs:
         run: |
           $zip = Get-ChildItem _packages/*.zip | Select-Object -First 1
           Expand-Archive -Path $zip.FullName -DestinationPath _packages/stage -Force
+          # The Archipelago world runs `comborando --oracle` from the install folder.
+          if (-not (Test-Path _packages/stage/comborando.exe)) { throw "comborando.exe is not in the package" }
 
       - name: Upload Ship2Ship artifact
         uses: actions/upload-artifact@v4

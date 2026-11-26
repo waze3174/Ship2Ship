@@ -107,6 +107,11 @@ jobs:
         working-directory: build-cmake/combo
         run: ./comborando --seed ci-macos-smoke --count 1
 
+      # The oracle protocol on macOS: hello, open, one reach, close.
+      - name: Oracle smoke (comborando --oracle)
+        working-directory: build-cmake/combo
+        run: python3 -I "$GITHUB_WORKSPACE/scripts/ap/oracle_parity.py" --comborando "$PWD/comborando" --cwd . --smoke
+
       # Spotlight indexing the disk image cpack just created keeps hdiutil from detaching it
       # ("Resource busy"); upstream Shipwright's macOS job disables it the same way.
       - name: Package (.app / .dmg)

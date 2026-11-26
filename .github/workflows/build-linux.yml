@@ -197,3 +197,30 @@ jobs:
       # regenerates the table with --update and says why.
       - name: Pinned fill fingerprints
         run: python3 -I scripts/ap/check_fill_hashes.py --log fill.log --expected scripts/ap/expected-fill-hashes.linux.txt
+
+      # Every item and check of both libraries under its Archipelago name, and the id table that must name them all.
+      # The dump is uploaded so a stale table can be regenerated from it (scripts/ap/update_tables.py --write).
+      - name: Archipelago tables (comborando --ap-tables)
+        working-directory: build-cmake/combo
+        run: |
+          ./comborando --ap-tables "$RUNNER_TEMP/ap-tables.json"
+          cp "$GITHUB_WORKSPACE/apworld/ship2ship/data/ids.json" "$RUNNER_TEMP/ids-regenerated.json" || true
+          python3 -I "$GITHUB_WORKSPACE/scripts/ap/update_tables.py" --tables "$RUNNER_TEMP/ap-tables.json"             --ids "$RUNNER_TEMP/ids-regenerated.json" --write
+      - name: Check the id table
+        if: hashFiles('apworld/ship2ship/data/ids.json') != ''
+        run: python3 -I scripts/ap/update_tables.py --tables "$RUNNER_TEMP/ap-tables.json" --check
+      - name: Upload Archipelago tables
+        uses: actions/upload-artifact@v4
+        with:
+          name: ap-tables
+          path: |
+            ${{ runner.temp }}/ap-tables.json
+            ${{ runner.temp }}/ids-regenerated.json
+          if-no-files-found: warn
+
+      # The oracle (`comborando --oracle`) against the game's own fill and playthrough: parity sphere by sphere,
+      # monotonicity under random item chains, determinism, finalize, and per-call times. Generate mode writes
+      # saves/combo/ into the folder it runs in, so it runs in the build folder.
+      - name: Oracle parity, monotonicity and timing
+        timeout-minutes: 30
+        run: python3 -I scripts/ap/oracle_parity.py --comborando "$PWD/build-cmake/combo/comborando" --cwd build-cmake/combo

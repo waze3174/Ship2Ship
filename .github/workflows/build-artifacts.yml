@@ -20,6 +20,8 @@ on:
       - 'ZAPDTR/**'
       - 'torch/**'
       - 'scripts/linux/**'
+      - 'scripts/ap/**'
+      - 'apworld/**'
       # A build input (CMakeLists.txt reads it for the version/save gate), and it keeps the gate from
       # skipping an upstream-merge PR whose diff is only the pin bump + merge log.
       - 'upstream-pins.json'
