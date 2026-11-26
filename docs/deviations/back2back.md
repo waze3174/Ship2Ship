@@ -4,7 +4,8 @@ A back-to-back slot plays **vanilla Ocarina of Time, then vanilla Majora's Mask*
 randomizer. The file select shows it as the Ship2Ship logo alone (the randomizer's choice has a "Randomizer" subtitle)
 and labels the slot `S2S`. Ganon's defeat ends OoT with its full ending and opens the Lost Woods path into Termina for
 child Link; Majora's defeat opens the way back. Save compatibility: no `COMBO_RELEASE_VERSION` change and no change to
-an existing field; the only new keys are `sequential` and `options` inside `combo.mode`. An older build reads such a slot as a combo
+an existing field; the only new keys are `sequential` and `options` inside `combo.mode`, and OoT's save section
+`comboBackToBack` (`endingReached`; an older build skips the section with a warning). An older build reads such a slot as a combo
 randomizer slot with no seed, so downgrading is not covered.
 
 This page records stage A (the plumbing and the story gates, and Master Quest for Ocarina of Time's half) and stages B to E
@@ -125,21 +126,40 @@ the only state where adult Link and child Link differ: adult Link finds the Lost
 
 ## The ending
 
-OoT (`ComboBackToBackEnding.cpp`, `soh/src/code/z_play.c`):
+OoT (`soh/soh/Enhancements/combo/ComboBackToBackEnding.cpp`, with seams in `soh/soh/SaveManager.cpp` and
+`soh/src/code/z_sram.c`):
 
-1. Ganon's last cutscene (`z_boss_ganon2.c`, `csState 20`) asks `gComboFinalBossDefeated(0, fileNum)`. The launcher
-   records Ganon as beaten (opening the gate) and, for a back-to-back slot, answers 1: the combo-seed skip of the credits
-   is not taken, and the vanilla ending plays: the Chamber of the Sages, Zelda's farewell (`z_demo.c` terminator 117) and
-   the credits.
-2. The credits end the way the game ends: `Play_Init` receives `ENTR_LOAD_OPENING` (the invalid entrance that exits to the
-   title). It first asks `Combo_BackToBack_ResumeAfterCredits`. In a back-to-back slot with Ganon beaten and Majora not,
-   that call unmutes the credits' muted sound banks, returns the game mode to normal, swaps in the child's equipment if
-   Link is adult, sets his age to child and the entrance to `ENTR_TEMPLE_OF_TIME_2` (the pedestal arrival a child Link
-   gets when he returns through the Master Sword), and `Play_Init` carries on loading that scene.
-3. Once the Temple of Time has settled (no transition, no cutscene), the slot is saved (`Play_PerformSave`).
+1. **The final blow saves the slot.** The Master Sword strike on Ganon (`z_boss_ganon2.c`, `csState 6`) fires
+   `OnBossDefeat`. At the end of that frame, once every hook on it has run (the Ganon timestamp is one), the slot calls
+   `gComboFinalBossDefeated(0, fileNum)`: the launcher records Ganon as beaten, flushes the completion record and pushes
+   the gate, which opens the Lost Woods path for child Link. With Ganon beaten and Majora not, the slot is then saved as it
+   will be once the ending is over: child Link (his worn gear swapped for the child's, as the pedestal does), in the
+   Temple of Time (`savedSceneNum`), arriving at `ENTR_TEMPLE_OF_TIME_2` (the pedestal arrival a child Link gets when he
+   returns through the Master Sword), with no cutscene queued. Only the saved copy is changed: `SaveManager::SaveSection`
+   copies `gSaveContext` before it returns, and the live state is put back at once, so the ending plays on as adult Link.
+2. **The ending plays as vanilla.** `csState 20` asks the same callback again; the repeat writes nothing and answers 1 for
+   a back-to-back slot, so the combo-seed skip of the credits is not taken: the Chamber of the Sages, Zelda's farewell
+   and the credits play. Until the ending is over, every other base save of the slot is held (`SaveSection` returns
+   early, with a `[ComboBackToBack] save ... held` log line): the 3-minute autosave and the soft-reset autosave
+   included. A section-only save (the tracker's data) still writes its section and keeps that base. Every scene of the
+   ending plays one of its own cutscenes (`cutsceneIndex` 0xFFF0 or above) or the credits; a scene in normal play means the
+   ending was left some other way, and the hold ends there.
+3. **"The End" moves on.** The ending stops in the castle courtyard (`ENTR_CASTLE_COURTYARD_ZELDA_0`, cutscene 0xFFF0)
+   with "The End" (`End_Title`); no cutscene exit follows, so vanilla stays there until the console is reset. Once "The
+   End" has fully faded in (its alpha has reached 200) and stayed up for 5 seconds, or at once on A, B or Start, the
+   courtyard fades white to `ENTR_TEMPLE_OF_TIME_2` with child Link, as the pedestal does (`z_demo.c`, terminator 8). When
+   the courtyard is torn down (`OnPlayDestroy`), the credits' muted sound banks are unmuted, the game mode returns to
+   normal, no cutscene is queued and the hold ends.
+4. **The arrival is saved once,** when the Temple of Time has settled (no transition, no cutscene): `Play_PerformSave`.
 
-The player then walks to the Lost Woods and takes the path. If the game is closed during the credits, the slot loads with
-adult Link and Ganon recorded; the Master Sword pedestal still makes him a child.
+**Loading.** `Sram_OpenSave` sends a child save made outside a dungeon to Link's house. Once OoT's ending has been
+reached in the slot (the save section `comboBackToBack`, key `endingReached`, set at the final blow), a save of child Link
+in the Temple of Time at `ENTR_TEMPLE_OF_TIME_2` loads there instead (`Combo_BackToBack_KeepsSavedArrival`). So a reset or
+quit at any point after the final blow loads that arrival, with Ganon recorded: every OoT load reads the completion record
+(`OnLoadGame` → `Combo_OnOOTSaveLoad` → `LoadComboCompletion` → the gate), so the Lost Woods path is open. The key stays
+set for the slot: a later child return through the pedestal, saved before leaving the temple, also loads there.
+
+The player then walks to the Lost Woods and takes the path.
 
 MM (`BenPort.cpp`, `mm/src/code/z_play.c`): Majora's last cutscene (`z_boss_07.c`) asks the same callback, which records
 Majora as beaten (opening the way back, and both ways once Ganon is beaten too) and answers 1: Majora's real credits
