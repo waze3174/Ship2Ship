@@ -1,8 +1,9 @@
 // combo/tests/ComboPlaythroughTest.cpp
 //
-// Tests for the cross-game playthrough walk and the requiredness pare-down (ComboPlaythrough.h) against two fake
-// logic oracles, so no game module is needed. Build and run: `cmake --build <dir> --target comboPlaythroughTest`,
-// then run the exe; it exits 0 when every check passes.
+// Tests for the cross-game playthrough walk and the requiredness pare-down (ComboPlaythrough.h), and for the reach
+// fixpoint the fill and the Archipelago oracle share (CrossWorldSession.h), against two fake logic oracles, so no game
+// module is needed. Build and run: `cmake --build <dir> --target comboPlaythroughTest`, then run the exe; it exits 0
+// when every check passes.
 #include <algorithm>
 #include <iostream>
 #include <string>
@@ -110,12 +111,30 @@ void TestPareDownSeesThePooledBottle() {
     CHECK(!r.requiredByCheck.at("oot:Side Chest"));
 }
 
+// The fill and the oracle ask the same question through the session: the MM bottle is the last item credited, and the
+// OoT check behind it must still be reached.
+CwFixResult Fixpoint(uint32_t sharedMask) {
+    CrossWorldSession session(kOot, kMm, 1u, OotAccess::ALL_REACHABLE, CwGoal{}, GAME_OOT, sharedMask,
+                              COMBO_GAMES_BOTH);
+    session.effectiveSharedMask = sharedMask; // what Prepare keeps for a pooled family
+    const std::vector<CwPlacement> placements = {
+        { { GAME_OOT, "Temple Chest" }, { GAME_MM, "Bottle with Red Potion", true, CwCat::MAJOR } },
+    };
+    return session.ReachableFixpoint(placements, {}, {});
+}
+
+void TestFixpointCreditsThePooledBottleInOot() {
+    CHECK(Fixpoint(kSharedBottles).ootReachable.count("Jabu Chest") == 1);
+    CHECK(Fixpoint(0u).ootReachable.count("Jabu Chest") == 0);
+}
+
 } // namespace
 
 int main() {
     TestPooledBottleFromMmReachesTheNextOotSearch();
     TestWithoutSharedBottlesTheMmBottleStaysInMm();
     TestPareDownSeesThePooledBottle();
+    TestFixpointCreditsThePooledBottleInOot();
     if (ComboTest::gFailures != 0) {
         std::cerr << ComboTest::gFailures << " of " << ComboTest::gChecks << " checks failed\n";
         return 1;

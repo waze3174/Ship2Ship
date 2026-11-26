@@ -225,6 +225,38 @@ struct CwPlacement {
     CwItem item;
 };
 
+// ---------- Shared Items mirror ----------
+
+// Shared Items mirror: pushes newly-owed mmOwned copies per ootOwned's count; `given` tracks what's
+// already pushed so repeat calls don't duplicate.
+inline void ApplySharedMirror(uint32_t sharedMask, const std::vector<std::string>& ootOwned,
+                              std::vector<std::string>& mmOwned, size_t (&given)[SF_COUNT]) {
+    if (sharedMask == 0)
+        return;
+    for (int i = 0; i < SF_COUNT; ++i) {
+        if (!(sharedMask & (1u << i)))
+            continue;
+        const auto& def = SharedFamilyByIndex(i);
+        if (!def.mmHasItem || def.pooled)
+            continue; // nothing to push / pooled families mirror via ApplyPooledMirror
+        size_t k = static_cast<size_t>(std::count(ootOwned.begin(), ootOwned.end(), std::string(def.ootName)));
+        size_t target = std::min<size_t>(k, static_cast<size_t>(def.mmTierCap));
+        for (size_t n = given[i]; n < target; ++n)
+            mmOwned.push_back(def.mmName);
+        given[i] = target;
+    }
+}
+
+// Both Shared Items mirrors, applied before a round's searches. The pooled mirror also runs MM -> OOT, so a copy
+// found on the MM side (an MM bottle, even one in an OOT temple) must already be in the next OOT search's owned set.
+// Mirrored after that search, it is lost whenever the round opens nothing else.
+inline void ApplyMirrorsBeforeSearch(uint32_t sharedMask, std::vector<std::string>& ootOwned,
+                                     std::vector<std::string>& mmOwned, size_t (&sharedGiven)[SF_COUNT],
+                                     PooledMirrorState& pooledGiven) {
+    ApplySharedMirror(sharedMask, ootOwned, mmOwned, sharedGiven);
+    ApplyPooledMirror(sharedMask, ootOwned, mmOwned, pooledGiven);
+}
+
 // ---------- Session ----------
 
 // Per-oracle query stats (count + total ms), logged on completion — the searches dominate fill time, so this is
@@ -724,6 +756,7 @@ struct CrossWorldSession {
         CrossWarpLatch crossLatch;
         CrossEntranceLatch doorLatch; // cross-game entrances (age-tagged arrivals)
         for (;;) {
+            ApplyMirrorsBeforeSearch(effectiveSharedMask, ootOwned, mmOwned, sharedGiven, pooledGiven);
             ootReachable = queryReachable(ootOracle, ootOwned);
             const uint32_t ootCrossOut = OracleCrossOut(ootOracle);
             const std::vector<std::string> ootDoors = ReadOotCrossExits(); // read right after the OOT search
@@ -731,22 +764,6 @@ struct CrossWorldSession {
             // is what stops the fill proving the portal with an item that lives behind it.
             if (!portalOpen)
                 portalOpen = ootOracle.GetPortalOpen() != 0;
-            if (effectiveSharedMask != 0) {
-                for (int i = 0; i < SF_COUNT; ++i) {
-                    if (!(effectiveSharedMask & (1u << i)))
-                        continue;
-                    const auto& def = SharedFamilyByIndex(i);
-                    if (!def.mmHasItem || def.pooled)
-                        continue; // nothing to push / pooled families mirror below
-                    size_t k =
-                        static_cast<size_t>(std::count(ootOwned.begin(), ootOwned.end(), std::string(def.ootName)));
-                    size_t target = std::min<size_t>(k, static_cast<size_t>(def.mmTierCap));
-                    for (size_t n = sharedGiven[i]; n < target; ++n)
-                        mmOwned.push_back(def.mmName);
-                    sharedGiven[i] = target;
-                }
-                ApplyPooledMirror(effectiveSharedMask, ootOwned, mmOwned, pooledGiven);
-            }
             // Cross-game entrances: Termina can be entered through a crossed door before the portal opens.
             const bool mmQueried = portalOpen || HasMmCrossArrival(mmOwned);
             mmReachable = !mmQueried   ? std::unordered_set<std::string>{}

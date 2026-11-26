@@ -2331,7 +2331,9 @@ round's OOT search. A copy found on the MM side (an MM bottle, even one in an OO
 in the next round, and when that round opened nothing else the walk stopped one bottle short: seed `shared`/1009 from
 the Archipelago fill rate stuck at sphere 8 with OOT's only bottle mirrored but never searched. Both now mirror before
 the OOT search (`ApplyMirrorsBeforeSearch`), and the full-inventory pass, which never ran the pooled mirror, does too.
-`combo/tests/ComboPlaythroughTest.cpp` covers it.
+The session's reach fixpoint (`CrossWorldSession.h`, used by the fill and the Archipelago oracle) had the same order
+and now calls the same helper. There the lag could only make the answer smaller, never larger, so it never let an
+unbeatable seed through. `combo/tests/ComboPlaythroughTest.cpp` covers all four.
 
 **Runtime:** each game keeps its native slots (OOT 4, MM 6) as the working set; bottles past them wait on a
 **Bottle Shelf**: `soh/soh/Enhancements/randomizer/ComboBottleShelf.cpp` and

@@ -39,36 +39,6 @@ inline std::vector<std::string> SharedStartingMmFromSpoiler(const std::string& s
     return out;
 }
 
-// Shared Items mirror: pushes newly-owed mmOwned copies per ootOwned's count; `given` tracks what's
-// already pushed so repeat calls don't duplicate.
-inline void ApplySharedMirror(uint32_t sharedMask, const std::vector<std::string>& ootOwned,
-                              std::vector<std::string>& mmOwned, size_t (&given)[SF_COUNT]) {
-    if (sharedMask == 0)
-        return;
-    for (int i = 0; i < SF_COUNT; ++i) {
-        if (!(sharedMask & (1u << i)))
-            continue;
-        const auto& def = SharedFamilyByIndex(i);
-        if (!def.mmHasItem || def.pooled)
-            continue; // nothing to push / pooled families mirror via ApplyPooledMirror
-        size_t k = static_cast<size_t>(std::count(ootOwned.begin(), ootOwned.end(), std::string(def.ootName)));
-        size_t target = std::min<size_t>(k, static_cast<size_t>(def.mmTierCap));
-        for (size_t n = given[i]; n < target; ++n)
-            mmOwned.push_back(def.mmName);
-        given[i] = target;
-    }
-}
-
-// Both Shared Items mirrors, applied before a sphere's searches. The pooled mirror also runs MM -> OOT, so a copy
-// found on the MM side (an MM bottle, even one in an OOT temple) must already be in the next OOT search's owned set.
-// Mirrored after that search, it is lost whenever the sphere opens nothing else.
-inline void ApplyMirrorsBeforeSearch(uint32_t sharedMask, std::vector<std::string>& ootOwned,
-                                     std::vector<std::string>& mmOwned, size_t (&sharedGiven)[SF_COUNT],
-                                     PooledMirrorState& pooledGiven) {
-    ApplySharedMirror(sharedMask, ootOwned, mmOwned, sharedGiven);
-    ApplyPooledMirror(sharedMask, ootOwned, mmOwned, pooledGiven);
-}
-
 // A single placed item, parsed from a combined-fill spoiler (see ParseSpoilerPlacements). Shared by
 // RunPlaythrough and PareDownPlaythrough so both traverse the identical placement set.
 struct CwPlacedItem {
