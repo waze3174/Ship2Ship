@@ -12,7 +12,11 @@ name: Build (Linux)
 on:
   workflow_call:
     inputs:
-      # ap-fill-rate.yml sets these: the Archipelago fill failure rate over many seeds per option preset.
+      # Manual runs only (build-artifacts.yml, workflow_dispatch): the whole Archipelago test set, and the fill failure
+      # rate over many seeds per option preset. A push runs the two-seed smoke check instead.
+      ap_suite:
+        type: boolean
+        default: false
       ap_fill_rate:
         type: boolean
         default: false
@@ -162,9 +166,10 @@ jobs:
         run: ./comborando --seed ci-linux-smoke --count 1 2>&1 | tee -a "$FILL_LOG"
 
       # The Archipelago world: Archipelago's own Generate.py (pinned core) runs Ship2Ship slots whose access rules are
-      # comborando's oracle. Solo, beside another game, two slots, an item link, start inventory from pool and item
-      # plando. Every slot's seed must equal its slot_data, and a solo slot must pass comborando --playthrough, which
-      # is our own check, independent of Archipelago's fill. Nothing here needs ROMs.
+      # comborando's oracle. Every slot's seed must equal its slot_data, and a solo slot must pass comborando
+      # --playthrough, which is our own check, independent of Archipelago's fill. Nothing here needs ROMs. A push runs
+      # two solo seeds; the whole set (solo, beside another game, two slots, an item link, start inventory from pool,
+      # item plando) and the failure rate run by hand.
       - name: Check out the Archipelago core (pinned)
         uses: actions/checkout@v5
         with:
@@ -182,20 +187,19 @@ jobs:
           echo "ship2ship_options:" > archipelago-core/host.yaml
           echo "  comborando_path: $PWD/build-cmake/combo/comborando" >> archipelago-core/host.yaml
           cat archipelago-core/host.yaml
+      - name: Archipelago smoke check, two solo seeds
+        if: ${{ !inputs.ap_suite && !inputs.ap_fill_rate }}
+        timeout-minutes: 20
+        run: >
+          python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
+          --comborando "$PWD/build-cmake/combo/comborando" --work ap-run --fill-rate --count 2
+          --presets default --max-failure-percent 0
       - name: Generate Ship2Ship slots in Archipelago
+        if: inputs.ap_suite
         timeout-minutes: 45
         run: >
           python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
           --comborando "$PWD/build-cmake/combo/comborando" --work ap-run
-      # A first reading of the fill failure rate: eight solo seeds per option preset, checked like the manual run below.
-      # It reports; ap-fill-rate (the manual run) is the one that enforces the 2% target.
-      - name: Archipelago fill failure rate, a few seeds
-        if: ${{ !inputs.ap_fill_rate }}
-        timeout-minutes: 90
-        run: >
-          python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
-          --comborando "$PWD/build-cmake/combo/comborando" --work ap-run --fill-rate --count 8
-          --max-failure-percent 100
       - name: Upload the Archipelago generation logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -292,8 +296,8 @@ jobs:
             ${{ runner.temp }}/groups.json
           if-no-files-found: warn
 
-      # Only the manual fill-rate run (ap-fill-rate.yml): how often Archipelago's fill fails on Ship2Ship slots, per option
-      # preset. The target is under 2%; the step fails above it.
+      # Only the manual fill-rate run: how often Archipelago's fill fails on Ship2Ship slots, per option preset. The
+      # target is under 2%; the step fails above it.
       - name: Archipelago fill failure rate
         if: inputs.ap_fill_rate
         timeout-minutes: 330

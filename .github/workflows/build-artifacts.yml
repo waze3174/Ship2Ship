@@ -31,8 +31,12 @@ on:
       - '.github/workflows/build-artifacts.yml'
   workflow_dispatch:
     inputs:
-      # Run with the branch as the ref. Only the Linux pipeline runs: it ends in the Archipelago fill-rate measurement
-      # (scripts/ap/ap_generate.py --fill-rate), the failure rate of Archipelago's fill on solo Ship2Ship slots.
+      # Run with the branch as the ref. Only the Linux pipeline runs, with the Archipelago generation tests that a push
+      # leaves at a two-seed smoke check (scripts/ap/ap_generate.py): the whole set, and/or the fill failure rate.
+      ap_suite:
+        description: Run every Archipelago generation test YAML (Linux only)
+        type: boolean
+        default: false
       ap_fill_rate:
         description: Measure the Archipelago fill failure rate (Linux only)
         type: boolean
@@ -162,7 +166,7 @@ jobs:
 
   windows:
     needs: gate
-    if: needs.gate.outputs.code == 'true' && !inputs.ap_fill_rate
+    if: needs.gate.outputs.code == 'true' && !inputs.ap_suite && !inputs.ap_fill_rate
     uses: ./.github/workflows/build.yml
     with:
       # Only develop's validator artifact is ever consumed (validate-seed.yml fetches the latest
@@ -174,11 +178,12 @@ jobs:
     if: needs.gate.outputs.code == 'true'
     uses: ./.github/workflows/build-linux.yml
     with:
+      ap_suite: ${{ inputs.ap_suite || false }}
       ap_fill_rate: ${{ inputs.ap_fill_rate || false }}
       ap_fill_count: ${{ fromJSON(inputs.ap_fill_count || '50') }}
       ap_fill_presets: ${{ inputs.ap_fill_presets || 'all' }}
 
   macos:
     needs: gate
-    if: needs.gate.outputs.code == 'true' && !inputs.ap_fill_rate
+    if: needs.gate.outputs.code == 'true' && !inputs.ap_suite && !inputs.ap_fill_rate
     uses: ./.github/workflows/build-macos.yml

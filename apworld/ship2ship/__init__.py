@@ -122,6 +122,8 @@ class Ship2ShipWorld(World):
         weakref.finalize(self, self.oracle.close)
         attempt = self._open_playable_layout(settings)
         self.master_seed, self.opened, self.reach_cache = attempt.master_seed, attempt.opened, attempt.cache
+        logger.info("%s: open request %s", self.player_name,
+                    json.dumps(settings.to_request(self.master_seed, self.multiworld.seed_name), sort_keys=True))
         self._index_opened(self.opened)
         self.pieces_required = settings.pieces_required if settings.triforce_hunt else 0
         self._promote_junk_the_logic_reads()
@@ -166,7 +168,6 @@ class Ship2ShipWorld(World):
         except ValueError as error:
             raise OptionError(f"{self.player_name}: {error}")
         opened = parse_opened(self.oracle.call(request))
-        logger.info("%s: open request %s", self.player_name, json.dumps(request, sort_keys=True))
         cache = ReachCache(self.oracle.call, self.item_name_to_id)
         self._require_known_names(opened)
         return OpenAttempt(master_seed, opened, cache, assess_layout(opened, pool_counts(opened), cache.answer))

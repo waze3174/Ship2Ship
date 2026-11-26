@@ -2,7 +2,7 @@
 comborando with its game libraries beside it, an Archipelago checkout with the packed apworld in custom_worlds/ and a
 host.yaml that points ship2ship_options.comborando_path at comborando.
 
-  ap_generate.py --ap-root <Archipelago> --comborando <comborando> --work <folder>
+  ap_generate.py --ap-root <Archipelago> --comborando <comborando> --work <folder> [--cases solo,plando]
         the short suite: solo, with APQuest, two Ship2Ship slots, an item link, start inventory from pool, item plando
   ap_generate.py ... --fill-rate --count 50 [--presets default,shared,...] [--jobs 3] [--max-failure-percent 2]
         the failure rate of the fill, per option preset
@@ -243,7 +243,11 @@ def diagnose(comborando, log_path):
 
 def run_short_suite(args):
     results = []
-    for name, (files, expect) in short_suite().items():
+    cases = short_suite()
+    unknown = [c for c in args.cases if c not in cases]
+    if unknown:
+        sys.exit(f"unknown case(s) {unknown}; known: {list(cases)}")
+    for name, (files, expect) in ((n, cases[n]) for n in (args.cases or cases)):
         gen = Generation(args.ap_root, args.work, name, files, BASE_SEED)
         print(f"::group::{name}")
         ok = gen.run()
@@ -320,6 +324,8 @@ def main():
     parser.add_argument("--ap-root", type=pathlib.Path, required=True)
     parser.add_argument("--comborando", required=True)
     parser.add_argument("--work", type=pathlib.Path, required=True)
+    parser.add_argument("--cases", type=lambda text: text.split(","), default=[],
+                        help="the short suite's cases to run (default: all)")
     parser.add_argument("--fill-rate", action="store_true")
     parser.add_argument("--count", type=int, default=50, help="seeds per preset (fill rate)")
     parser.add_argument("--presets", default="all")
