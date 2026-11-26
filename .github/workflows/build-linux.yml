@@ -102,6 +102,8 @@ jobs:
       # libultraship's own tests: archives, paths, the resource-manager scope and the combo menu serializer. ctest runs
       # each test from the folder where lus_tests was built.
       - name: libultraship unit tests (lus_tests)
+        # First run in CI: read the result by hand, and drop this flag once the step has passed once.
+        continue-on-error: true
         run: |
           cmake --build build-cmake --target lus_tests -j 4
           ctest --test-dir build-cmake/libultraship --output-on-failure

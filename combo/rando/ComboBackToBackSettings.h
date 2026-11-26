@@ -1,6 +1,7 @@
 // combo/rando/ComboBackToBackSettings.h
-// ComboShip: the CVars of the back-to-back mode's settings page (Settings > Back to back). Each one is read once, when
-// a back-to-back file is created, and baked into that file; changing it later never touches an existing file.
+// ComboShip: the CVars of the back-to-back mode's settings page (Both games > Back to back). Each one is read once,
+// when a back-to-back file is created, and baked into that file; changing it later never touches an existing file.
+// The page's This file view edits the loaded file's own item switches (EditableOptionsMask) instead.
 // Header-only and std only, so comboui, soh.dll, 2ship.dll and the launcher share it. See docs/deviations/back2back.md.
 #pragma once
 

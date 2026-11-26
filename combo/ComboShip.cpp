@@ -1573,18 +1573,27 @@ static void Combo_PushBackToBackOptions(ComboRando::BackToBack::OptionBits optio
     if (MM_SetComboBackToBackOptions)
         MM_SetComboBackToBackOptions(options);
 }
+// The file select can copy another file over the loaded slot, or erase it, without a load: the slot's stored mode, not
+// g_activeMode, says what the slot holds now.
 static int Combo_GetLoadedBackToBackOptions(ComboRando::BackToBack::OptionBits* options) {
-    if (!g_activeMode.IsBackToBack())
+    if (!g_activeMode.IsBackToBack() || !ComboIsValidSlot(g_comboCompletionSlot))
         return 0;
-    *options = g_activeMode.options;
+    const ComboRando::ComboMode stored = Combo_GetSlotMode(g_comboCompletionSlot);
+    if (!stored.IsBackToBack())
+        return 0;
+    *options = stored.options;
     return 1;
 }
 static void Combo_EditLoadedBackToBackOptions(ComboRando::BackToBack::OptionBits requested) {
     if (!g_activeMode.IsBackToBack() || !ComboIsValidSlot(g_comboCompletionSlot))
         return;
-    g_activeMode.options = ComboRando::BackToBack::ApplyEditedOptions(g_activeMode.options, requested);
-    Combo_SetSlotMode(g_comboCompletionSlot, g_activeMode);
-    Combo_PushBackToBackOptions(g_activeMode.options);
+    ComboRando::ComboMode mode = Combo_GetSlotMode(g_comboCompletionSlot);
+    if (!mode.IsBackToBack())
+        return;
+    mode.options = ComboRando::BackToBack::ApplyEditedOptions(mode.options, requested);
+    Combo_SetSlotMode(g_comboCompletionSlot, mode);
+    g_activeMode = mode;
+    Combo_PushBackToBackOptions(mode.options);
 }
 // Seed-bound Master Quest dungeon set (ComboRando::kMasterQuestKey). SOH_SetComboRandoSeed unpins, so a push
 // follows it; a seed without the key pushes nothing and OOT's FinalizeSettings rolls as it always did.

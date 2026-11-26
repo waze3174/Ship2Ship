@@ -634,10 +634,8 @@ static std::string LockedHint(int ootSlot) {
     const uint8_t item = sOotLocked[ootSlot];
     const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
     if (B2B::ReasonLocked(Combo_MM_BackToBackOptions(), lock) == B2B::LockReason::StaysInHyrule)
-        return "This file keeps it in Hyrule.
-                   Settings > Back to back > This file.";
-                                                 const char *
-                                                 name = B2B::MmCounterpartName(item);
+        return "This file keeps it in Hyrule.\nBoth games > Back to back > This file.";
+    const char* name = B2B::MmCounterpartName(item);
     return std::string("Usable in Termina once you find Majora's Mask's ") + (name != nullptr ? name : "own") + ".";
 }
 

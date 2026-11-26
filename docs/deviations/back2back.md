@@ -48,7 +48,7 @@ static_assert in `OTRGlobals.cpp` that ties the value to `kSohQuestComboBackToBa
 
 The carousel offers the mode unless the player hides it: `gCombo.BackToBack.Show` (`kBackToBackShowCVar`,
 `combo/rando/ComboBackToBackSettings.h`; unset = `kBackToBackShowDefault`, shown since 0.2.1, when stages B to E landed;
-0.2.0 hid it while only stage A existed), a checkbox at the top of Settings > Back to back.
+0.2.0 hid it while only stage A existed), a checkbox at the top of Both games > Back to back.
 `SohFileSelect_IsQuestHidden` returns hidden for `QUEST_COMBO_BACK2BACK` while it is off, so the carousel's own skipping
 (`NextVisibleQuest`) and its fallback for a selection that becomes hidden apply as for a missing Master Quest archive.
 Only the new-file choice is hidden: a slot that already is a back-to-back one loads, plays and shows its `S2S` badge
@@ -59,7 +59,7 @@ the boss release (`Combo_OnFinalBossDefeated` queues it only for a non-vanilla s
 
 ## The settings page and Master Quest
 
-Settings > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
+Both games > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
 the choices apply to new back-to-back files when they're created. Every setting on it is read once, when a file is
 created and baked into it; the rest of the mode's settings are on the same page (stage C). The page has two views, "New
 files" and "This file". "New files" is the CVars above, with three quick-set buttons: Purist (every choice off), Default

@@ -22,7 +22,8 @@ void SaveSettingsNextFrame() {
 
 const std::vector<LiveSwitch> kSwitches = {
     { CrossPage::ItemsAndForms, "gCombo.Forms.InHyrule", 1, "Transformations in Hyrule",
-      "In randomizer files, Goron/Zora Masks transform in OoT too; every form carries between the games.", nullptr,
+      "In randomizer files, Goron/Zora Masks transform in OoT too; every form carries between the games.",
+      "Leave it on in a seed made with \"Logic counts form abilities\": that seed's logic expects the forms.",
       nullptr },
     { CrossPage::ItemsAndForms, "gCombo.Forms.InVanillaOot", 0, "Transformations in vanilla OoT",
       "Applies to vanilla saves only.",
@@ -32,7 +33,8 @@ const std::vector<LiveSwitch> kSwitches = {
     { CrossPage::ItemsAndForms, "gCombo.Forms.ItemAnalogs", 1, "Form moves count as items",
       "Goron lifts like Golden Gauntlets, punch/pound = Megaton Hammer, Zora fins =\n"
       "Boomerang, Deku bubble = Slingshot: solve Hyrule's puzzles with form moves.",
-      nullptr, nullptr },
+      "Leave it on in a seed made with \"Logic counts form abilities\": that seed's logic expects the form moves.",
+      nullptr },
     { CrossPage::ItemsAndForms, "gCombo.DpadEquips", 1, "D-pad item slots (both games)",
       "Four more item buttons on the D-pad, in Hyrule and Termina.", nullptr, &ApplyDpadEquips },
     { CrossPage::SharedHealthAndAmmo, "gCombo.Shared.HealthMagicAmmo", 0, "Shared health, magic and ammo",

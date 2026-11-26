@@ -85,16 +85,17 @@ struct AmmoSlot {
 
 // The native fields of the running game.
 struct Native {
-    // The eighths of a heart one quarter of this game's own growth counts for when the game is first seen. 1 is the
-    // shared rule (a piece or container is worth half of what it is at home). A back-to-back file turns sharing on
-    // late, with the hearts already earned: its games count them in full (2), so that turning it on takes no heart
-    // from the game in play. What is picked up afterwards counts at the shared rule.
-    int growthWeight = 1;
     int16_t* healthCapacity;
     int16_t* health;
     uint32_t* questItems;
     uint8_t* doubleDefenseFlag; // OOT isDoubleDefenseAcquired / MM playerData.doubleDefense
     int8_t* defenseHearts;      // 20 with Double Defense, as both games set it
+    // The eighths of a heart one quarter of this game's own growth counts for when the game is first seen. 1 is the
+    // shared rule (a piece or container is worth half of what it is at home). A back-to-back file turns sharing on
+    // late, with the hearts already earned: its games count them in full (2), so that turning it on takes no heart
+    // from the game in play. What is picked up afterwards counts at the shared rule. It sits after the five pointers
+    // the DLLs fill by position.
+    int growthWeight = 1;
     // Magic (same fields, same units in both games; nullptr = this game doesn't take part)
     int8_t* magic = nullptr;
     int8_t* magicLevel = nullptr; // 0 none, 1 normal, 2 double
