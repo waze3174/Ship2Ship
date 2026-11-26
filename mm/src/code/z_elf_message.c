@@ -8,12 +8,19 @@
  * That system has been replaced with a single function that hardcodes the checks.
  */
 #include "global.h"
+#ifdef COMBO_BUILD
+#include "BenPort.h"
+// ComboShip: a back-to-back slot's first cycle can end with Ocarina of Time's ocarina (Combo_MM_FirstCycleOver).
+#define OCARINA_RETRIEVED() Combo_MM_FirstCycleOver()
+#else
+#define OCARINA_RETRIEVED() (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME)
+#endif
 
 /**
  * Gets the relevant text ID for Tatl hints in first cycle.
  */
 u16 QuestHint_GetTatlTextId(PlayState* play) {
-    if (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME) {
+    if (OCARINA_RETRIEVED()) {
         return 0;
     }
 

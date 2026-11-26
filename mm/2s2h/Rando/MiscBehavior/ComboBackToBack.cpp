@@ -35,6 +35,7 @@ int Combo_MM_BackToBackLocksActive(void);                            // BenPort.
 ComboRando::BackToBack::OptionBits Combo_MM_BackToBackOptions(void); // BenPort.cpp
 extern int gMMComboCrossGate;            // BenPort.cpp: the loaded slot's ways between the games
 int Combo_MM_LinkHasUsableOcarina(void); // below
+int Combo_MM_FirstCycleOver(void);       // below
 }
 
 namespace {
@@ -174,7 +175,23 @@ void TickCarryOnceFound() {
     CarryCapacities();
 }
 
+// What MM keeps for its first cycle (the ocarina is still Skull Kid's) stops once the cycle is over: time speeds back
+// up to normal, Termina Field is no longer empty, the Clock Tower opens on the last night, and the Scrub in the field
+// is there. The Skull Kid on the Clock Tower roof is not among them: he still holds MM's ocarina until Link takes it.
+void EndFirstCycleBehavior(bool* should) {
+    if (Combo_MM_FirstCycleOver())
+        *should = false;
+}
+
+void RegisterFirstCycleEnd() {
+    COND_VB_SHOULD(VB_FASTER_FIRST_CYCLE, true, { EndFirstCycleBehavior(should); });
+    COND_VB_SHOULD(VB_TERMINA_FIELD_BE_EMPTY, true, { EndFirstCycleBehavior(should); });
+    COND_VB_SHOULD(VB_SCOPENUTS_CONSIDER_FIRST_CYCLE, true, { EndFirstCycleBehavior(should); });
+    COND_VB_SHOULD(VB_CLOCK_TOWER_OPENING_CONSIDER_THIS_FIRST_CYCLE, true, { EndFirstCycleBehavior(should); });
+}
+
 void RegisterComboBackToBack() {
+    RegisterFirstCycleEnd();
     COND_HOOK(OnGameStateUpdate, true, TickCarryOnceFound);
     COND_HOOK(BeforeEndOfCycleSave, true, ResetOotConsumablesAtEndOfCycle);
 }
@@ -194,6 +211,19 @@ extern "C" int Combo_MM_LinkHasUsableOcarina(void) {
     namespace Oot = ComboRando::BackToBack::OotItem;
     return ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) &&
                    (Combo_MmPauseOotHolds(Oot::kOotOcarinaFairy) || Combo_MmPauseOotHolds(Oot::kOotOcarinaTime))
+               ? 1
+               : 0;
+}
+
+// Majora's Mask's first cycle is over when its ocarina is back in the inventory, as in the game. A back-to-back slot's
+// Link can also end it with Ocarina of Time's ocarina (its early switch): the Song of Time that resets the cycle then
+// leaves MM's ocarina with Skull Kid, and the reset itself (Sram_SaveEndOfCycle counts it in threeDayResetCount, which
+// no other way into a first-cycle reset leaves nonzero) is the story's record that the cycle is over.
+extern "C" int Combo_MM_FirstCycleOver(void) {
+    if (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME)
+        return 1;
+    return ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) &&
+                   gSaveContext.save.saveInfo.playerData.threeDayResetCount > 0
                ? 1
                : 0;
 }

@@ -328,16 +328,27 @@ Changed to read it:
   randomizer's own override (`EnOsn.cpp`, `VB_OSN_CONSIDER_ELIGIBLE_FOR_SONG_OF_HEALING`) still runs after;
 - the songs carried over (above).
 
-Left reading MM's ocarina slot, because they mean "the Skull Kid still has MM's ocarina" (the first cycle's story),
-not "Link can play": the Clock Tower opening's first-cycle rule (`z_en_test4.c`), the faster first cycle (`z_scene.c`,
-`z_scene_2SH.cpp`), the clock tower (`z_obj_tokeidai.c`), the Skull Kid's ocarina and hands (`z_dm_stk.c`), the
-falling ocarina (`z_dm_char02.c`), the empty Termina Field (`z_play.c`), Tatl's first-cycle hints (`z_elf_message.c`,
-`z_elf_msg6.c`); also 2S2H's song items (`SongItems.cpp`), the pause owl warp (Soaring is not carried), the Curiosity
-Shop refills and the randomizer's own checks (`BenPort.cpp`). So the Skull Kid still has MM's ocarina, the retrieval
-and the Song of Time flashback play as in MM, and MM's own ocarina is never given early. With the Songs switch on as
-well, a carried Song of Time can end the first cycle early: the first return then has the Mask Salesman teach the Song
-of Healing, and the next cycle still reads as the first until Link takes MM's ocarina back at the top of the Clock
-Tower (Termina Field empty, the faster clock). Not tested in game.
+Left reading MM's ocarina slot, because they mean "the Skull Kid still has MM's ocarina": the Skull Kid's ocarina and
+hands (`z_dm_stk.c`), the falling ocarina (`z_dm_char02.c`); also 2S2H's song items (`SongItems.cpp`), the pause owl
+warp (Soaring is not carried), the Curiosity Shop refills and the randomizer's own checks (`BenPort.cpp`). So the Skull
+Kid still has MM's ocarina, the retrieval plays as in MM, and MM's own ocarina is never given early.
+
+**Early ocarina ends the first cycle** (decision 23). MM's first cycle is whatever runs while the ocarina slot is empty;
+the decomp has no story flag for it. Retrieval writes only the item (`Item_Give`, `z_parameter.c`); everything else
+that marks the first cycle reads the slot: the faster clock (`VB_FASTER_FIRST_CYCLE`, `z_scene.c`), the empty Termina
+Field (`VB_TERMINA_FIELD_BE_EMPTY`), the Scrub in the field (`VB_SCOPENUTS_CONSIDER_FIRST_CYCLE`), the Clock Tower's
+opening on the last night (`VB_CLOCK_TOWER_OPENING_CONSIDER_THIS_FIRST_CYCLE`, `z_en_test4.c`, and
+`ObjTokeidai_IsPostFirstCycleFinalHours`) and Tatl's first-cycle hints (`z_elf_message.c`, `z_elf_msg6.c`). They now ask
+`Combo_MM_FirstCycleOver` (`ComboBackToBack.cpp`): MM's ocarina is in the slot, or this is a back-to-back slot whose
+`threeDayResetCount` is above 0. That count is MM's own record that a reset happened (`Sram_SaveEndOfCycle`, the Song of
+Time's return) and persists in the save, so no new flag is stored. A reset needs a playable ocarina, so in a
+back-to-back slot it can only come from OoT's early ocarina before MM's own is back: playing the Song of Time with it
+therefore ends the first cycle. The reset is MM's own (the first return still plays its flashback cutscene, which
+`z_player.c` picks at count 1, and the Salesman teaches the Song of Healing). The Skull Kid keeps MM's ocarina, so
+going up the Clock Tower on a later last night still retrieves it with the usual cutscene, with no second flashback
+(the count is already past 1). Other slots are unchanged: their count is above 0 only with the ocarina back. A moon
+crash before the ocarina in a back-to-back slot also leaves the count above 0 and ends the first cycle the same way.
+Not tested in game.
 
 **MM's own slots show OoT's same item** (bug #33). On the Termina item and mask pages, MM's empty ocarina slot and its
 empty Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask slots show OoT's same item while Termina may use

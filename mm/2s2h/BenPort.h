@@ -231,6 +231,9 @@ void Combo_MM_ApplyBackToBackStart(void);
 // Link has an ocarina he can play in Termina: MM's, or a back-to-back slot's Ocarina of Time one when the slot lets it
 // in (see ComboBackToBack.cpp).
 int Combo_MM_LinkHasUsableOcarina(void);
+// Majora's Mask's first cycle is over: its ocarina is back, or a back-to-back slot's Song of Time has already reset the
+// cycle with Ocarina of Time's (see ComboBackToBack.cpp).
+int Combo_MM_FirstCycleOver(void);
 COMBO_EXPORT void MM_PrepareForTransition(void);
 COMBO_EXPORT void MM_ResumeGame(int fileNum);
 #endif

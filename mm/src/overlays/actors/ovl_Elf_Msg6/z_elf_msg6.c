@@ -7,6 +7,13 @@
 #include "z_elf_msg6.h"
 #include "overlays/actors/ovl_En_Elf/z_en_elf.h"
 #include "2s2h/GameInteractor/GameInteractor.h"
+#ifdef COMBO_BUILD
+#include "BenPort.h"
+// ComboShip: a back-to-back slot's first cycle can end with Ocarina of Time's ocarina (Combo_MM_FirstCycleOver).
+#define OCARINA_RETRIEVED() Combo_MM_FirstCycleOver()
+#else
+#define OCARINA_RETRIEVED() (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME)
+#endif
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED)
 
@@ -177,7 +184,7 @@ void ElfMsg6_Init(Actor* thisx, PlayState* play) {
             break;
 
         case 2:
-            if (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME) {
+            if (OCARINA_RETRIEVED()) {
                 Actor_Kill(&this->actor);
                 return;
             }
