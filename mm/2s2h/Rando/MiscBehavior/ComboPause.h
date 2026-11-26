@@ -54,9 +54,15 @@ int Combo_MmPauseEquipUsable(int gridSlot); // 1 = Link may put that piece on in
 
 int Combo_MmPauseIsForeign(int item);
 unsigned char Combo_MmPauseSlotItem(int ootSlot); // foreign id of a Hyrule-tab slot, ITEM_NONE when empty
-int Combo_MmPauseSlotAmmo(int ootSlot);           // OOT's ammo digits for that slot, -1 = none
-const char* Combo_MmPauseIconTex(int item);       // OOT icon (inside an "oot" bracket)
-const char* Combo_MmPauseNameTex(int item);       // OOT name plate (inside an "oot" bracket)
+// The same for the cursor and the drawing, which also stop on and show an item a back-to-back slot's locks keep out of
+// Termina (greyed): Combo_MmPauseSlotLocked says which, and A on one shows its hint. Every other consumer reads
+// Combo_MmPauseSlotItem, which leaves those out.
+unsigned char Combo_MmPauseSlotItemOrLocked(int ootSlot);
+int Combo_MmPauseSlotLocked(int ootSlot);
+void Combo_MmPauseShowLockedHint(struct PlayState* play, int ootSlot);
+int Combo_MmPauseSlotAmmo(int ootSlot);     // OOT's ammo digits for that slot, -1 = none
+const char* Combo_MmPauseIconTex(int item); // OOT icon (inside an "oot" bracket)
+const char* Combo_MmPauseNameTex(int item); // OOT name plate (inside an "oot" bracket)
 int Combo_MmPauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
 // The MM item whose own code runs a foreign OOT item in Termina on OOT's bag (OOT's Deku Sticks, Deku Nuts, Bombs,
 // Bombchus, Bow and Magic Beans when MM has none): the button keeps the foreign id, so that code knows to check and
@@ -82,6 +88,9 @@ const char* Combo_MmPauseButtonIconTex(int item); // OOT's HUD button icon (the 
 int Combo_MmPauseSlotShownItem(int mmSlot); // the MM item to show in MM's slot (items[] index), 0xFF = empty
 // Equipping from that slot: an OOT item shown there goes on as its foreign id (item and slot byte), else unchanged.
 void Combo_MmPauseStandInEquip(int mmSlot, unsigned short* item, unsigned short* slot);
+// The MM slot (items[] index) whose equipped box a button's slot byte gets on MM's own pages: an MM slot is itself; a
+// foreign id (never an MM slot) is the slot showing that OOT item as a stand-in, else 0xFF (on neither page).
+int Combo_MmPauseButtonShownSlot(int slotByte);
 
 #ifdef __cplusplus
 }

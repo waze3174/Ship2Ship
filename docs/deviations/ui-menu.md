@@ -453,7 +453,11 @@ pieces per row, equipped outline; no Link preview).
 game's inventory slot: OOT host 0x9E + MM slot, skipping 0xBF–0xC1 (→ 0x9E–0xD0); MM host 0xD0 + OOT slot
 (→ 0xD0–0xE7), and with SoH's "Assignable Tunics and Boots" on, OOT's tunics and boots as the button slots OOT
 stores for them (`SLOT_TUNIC_KOKIRI` 24 – `SLOT_BOOTS_HOVER` 29 → 0xE8–0xED). The host's slot byte for a foreign
-button is the foreign id itself (unique, never a real slot), so both games' "same slot on another button → swap" rules work unchanged. A shared item the host holds equips as the
+button is the foreign id itself (unique, never a real slot), so both games' "same slot on another button → swap" rules work unchanged. A page's white "equipped" box goes only on a
+slot of that page: a foreign button is boxed on its own game's face, and on the MM host also in MM's slot where a
+back-to-back stand-in shows it (`Combo_MmPauseButtonShownSlot`, `KALEIDO_BTN_SHOWN_SLOT`). Until 0.2.3, MM's Masks page
+read a foreign id as a mask slot and drew its box at a stray spot, from vertex data past the end of `maskVtx` (#41,
+inherited from WomboComboShip `35ae4d55`; the OOT host had the guard already). A shared item the host holds equips as the
 host's own copy. HUD / equip-animation icons come from the owning game's RM. A foreign ammo item's button digits are
 the owning game's count as a use spends it (MM host: `VB_DRAW_HUD_AMMO_COUNT` in `ComboPause.cpp`; OOT host: a fenced
 `Interface_ComboDrawForeignAmmoCount` in `z_parameter.c`), green at the owning game's full bag, grey at 0; with shared

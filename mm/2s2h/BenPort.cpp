@@ -4540,14 +4540,18 @@ extern "C" COMBO_EXPORT void MM_SetComboCrossGate(int mask) {
 extern "C" int Combo_BackToBackSlot(void) {
     return ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) ? 1 : 0;
 }
+// The loaded slot is a back-to-back one that has not yet beaten both games.
+extern "C" int Combo_BackToBackLocksActive(void) {
+    return ComboRando::BackToBack::LocksActive(gMMComboCrossGate) ? 1 : 0;
+}
 // Any way into Hyrule (the Clock Tower corridor, the portal, the warp songs, the entrances shuffled across).
 extern "C" int Combo_CrossToHyruleOpen(void) {
     return ComboRando::CrossGate::ToHyruleOpen(gMMComboCrossGate) ? 1 : 0;
 }
 // The Back to back page's choices for the loaded slot (combo/rando/ComboBackToBackSettings.h), pushed by the launcher;
 // 0 outside a back-to-back slot.
-extern "C" int gMMComboBackToBackOptions = 0;
-extern "C" COMBO_EXPORT void MM_SetComboBackToBackOptions(int options) {
+extern "C" ComboRando::BackToBack::OptionBits gMMComboBackToBackOptions = 0;
+extern "C" COMBO_EXPORT void MM_SetComboBackToBackOptions(ComboRando::BackToBack::OptionBits options) {
     namespace B2B = ComboRando::BackToBack;
     gMMComboBackToBackOptions = options;
     if (!ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate))
@@ -4560,10 +4564,10 @@ extern "C" COMBO_EXPORT void MM_SetComboBackToBackOptions(int options) {
         on += on.empty() ? "" : ", ";
         on += (option.group == B2B::OptionGroup::EarlyUse) ? std::string("early ") + option.label : option.label;
     }
-    SPDLOG_INFO("[ComboBackToBack] slot options 0x{:08X} (cross gate 0x{:X}), on: {}", static_cast<uint32_t>(options),
-                gMMComboCrossGate, on.empty() ? "none" : on);
+    SPDLOG_INFO("[ComboBackToBack] slot options 0x{:016X} (cross gate 0x{:X}), on: {}", options, gMMComboCrossGate,
+                on.empty() ? "none" : on);
 }
-extern "C" int Combo_MM_BackToBackOptions(void) {
+extern "C" ComboRando::BackToBack::OptionBits Combo_MM_BackToBackOptions(void) {
     return gMMComboBackToBackOptions;
 }
 // The loaded slot is a back-to-back one that has not beaten both games: Ocarina of Time's items are locked in Termina

@@ -24,9 +24,11 @@ struct GameFields {
     uint32_t questItems = 0;
     uint8_t doubleDefense = 0;
     int8_t defenseHearts = 0;
+    int growthWeight = 1;
 
     ComboHealth::Native Native() {
         ComboHealth::Native n{}; // no magic, no ammo: those parts of the tick skip themselves
+        n.growthWeight = growthWeight;
         n.healthCapacity = &capacity;
         n.health = &health;
         n.questItems = &questItems;
@@ -210,6 +212,47 @@ void TestLogLines() {
     CHECK(ComboHealth::HeartsLogLine(off, before, "OOT").empty());
 }
 
+// A back-to-back file turns sharing on with hearts already earned. The game in play keeps every one of them; what it
+// picks up afterwards counts at the shared rule (half), and the other game's growth joins when it is first seen.
+void TestTurningSharingOnInABackToBackFileTakesNoHeart() {
+    constexpr int kWeight = 2;
+    GameFields mm;
+    mm.growthWeight = kWeight;
+    mm.capacity = mm.health = ComboHealth::kBaseCapacity + 9 * kHeart; // 12 hearts and two pieces
+    mm.questItems = 2u << ComboHealth::kHeartPieceShift;
+    mm.health -= 3 * kHeart / 2;
+    const int16_t healthBefore = mm.health;
+    ComboHealth::Runtime rt;
+    ComboHealth::Tick(rt, kGameMm, mm.Native());
+    CHECK(mm.capacity == ComboHealth::kBaseCapacity + 9 * kHeart);
+    CHECK(mm.Pieces() == 2);
+    CHECK(mm.health == healthBefore);
+
+    // Its next container is half a heart, as in any shared file.
+    mm.GiveContainer();
+    ComboHealth::Tick(rt, kGameMm, mm.Native());
+    CHECK(mm.capacity == ComboHealth::kBaseCapacity + 10 * kHeart); // the half heart completes the two pieces' half
+    CHECK(mm.Pieces() == 0);
+
+    // Hyrule's game, first seen later, joins with its own hearts in full as well: 20 hearts in all.
+    const int16_t healthAtSwitch = mm.health;
+    ComboHealth::Runtime ootRt;
+    TakeState(ootRt, rt);
+    GameFields oot;
+    oot.growthWeight = kWeight;
+    oot.capacity = oot.health = ComboHealth::kMaxCapacity;
+    ComboHealth::Tick(ootRt, kGameOot, oot.Native());
+    CHECK(oot.capacity == ComboHealth::kMaxCapacity);
+    CHECK(oot.health == healthAtSwitch); // current health is the one shared across the switch
+
+    // Without the weight the same first sight costs the hearts: 12 become 7 and a half.
+    GameFields plain;
+    plain.capacity = plain.health = ComboHealth::kBaseCapacity + 9 * kHeart;
+    ComboHealth::Runtime plainRt;
+    ComboHealth::Tick(plainRt, kGameMm, plain.Native());
+    CHECK(plain.capacity == ComboHealth::kBaseCapacity + 4 * kHeart);
+}
+
 } // namespace
 
 int main() {
@@ -221,6 +264,7 @@ int main() {
     TestContainerDeliveredWhileDormant();
     TestCapacityStopsAtTwentyHearts();
     TestLogLines();
+    TestTurningSharingOnInABackToBackFileTakesNoHeart();
 
     if (ComboTest::gFailures != 0) {
         std::cerr << ComboTest::gFailures << " of " << ComboTest::gChecks << " checks FAILED\n";

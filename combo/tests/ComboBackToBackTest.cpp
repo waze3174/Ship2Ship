@@ -19,13 +19,13 @@ namespace B2B = ComboRando::BackToBack;
 namespace Gate = ComboRando::CrossGate;
 using ComboRando::ComboMode;
 
-constexpr int kOotUnlistedItem = 0x2C; // an item OoT alone has that no switch names
+constexpr int kOotUnlistedItem = 0x2C; // an item OoT alone has that no switch names (the Sold Out sign)
 constexpr int kOotMaskSkull = 0x25;
 constexpr int kLastOotItem = 0x9D;
 constexpr int kLegacyOptionBits = 13; // the bits of the layout before the early-use switches: 0 to 12
-constexpr int kLegacyOptionMask = (1 << kLegacyOptionBits) - 1;
+constexpr B2B::OptionBits kLegacyOptionMask = (1ULL << kLegacyOptionBits) - 1;
 
-bool Locked(int options, int ootItem, bool mmHolds) {
+bool Locked(B2B::OptionBits options, int ootItem, bool mmHolds) {
     return B2B::Locked(options, B2B::ClassifyOotItem(ootItem), mmHolds);
 }
 
@@ -33,9 +33,32 @@ bool IsTransformMask(int ootItem) {
     return ootItem == B2B::OotItem::kOotMaskGoron || ootItem == B2B::OotItem::kOotMaskZora;
 }
 
+// The items no switch covers and no wait applies to: OoT's trade items, the letters, the masks MM has no copy of, and
+// the two transformation masks (worn plain or transforming, decided where they are worn).
+bool NeverLocked(int ootItem) {
+    constexpr int kWeirdEgg = 0x21;
+    constexpr int kZeldasLetter = 0x23;
+    constexpr int kMaskSpooky = 0x26;
+    constexpr int kMaskGerudo = 0x2A;
+    constexpr int kRocsFeather = 0x9D;
+    switch (ootItem) {
+        case B2B::OotItem::kOotLetterRuto:
+        case kWeirdEgg:
+        case kZeldasLetter:
+        case kOotMaskSkull:
+        case kMaskSpooky:
+        case kMaskGerudo:
+        case kOotUnlistedItem:
+        case kRocsFeather:
+            return true;
+        default:
+            return IsTransformMask(ootItem);
+    }
+}
+
 // The lock rules of the layout before the early-use switches, written out item by item: what a file that stored an
 // options int then must still do.
-bool LegacyLocked(int options, int ootItem, bool mmHolds) {
+bool LegacyLocked(B2B::OptionBits options, int ootItem, bool mmHolds) {
     using namespace B2B::OotItem;
     switch (ootItem) {
         case kOotStick:
@@ -80,14 +103,12 @@ bool LegacyLocked(int options, int ootItem, bool mmHolds) {
 void TestOptionTable() {
     std::set<int> bits;
     std::set<std::string> cvars;
-    int allBits = 0;
     for (const B2B::OptionDef& option : B2B::kOptions) {
         bits.insert(option.bit);
         cvars.insert(option.cvar);
-        allBits |= option.bit;
         CHECK(std::string(option.cvar).rfind("gCombo.BackToBack.", 0) == 0);
         CHECK((option.bit & (option.bit - 1)) == 0); // one bit each
-        CHECK(option.bit > 0);                       // none in the sign bit
+        CHECK(option.bit != 0);
         if (option.group == B2B::OptionGroup::EarlyUse)
             CHECK(!option.defaultOn); // every item Majora's Mask has too waits for its own by default
         if (option.group == B2B::OptionGroup::OotOnlyItems)
@@ -95,18 +116,19 @@ void TestOptionTable() {
     }
     CHECK(bits.size() == B2B::kOptionCount);
     CHECK(cvars.size() == B2B::kOptionCount);
-    CHECK(allBits > 0); // every option sits below the sign bit, which stays unused
 
     // The defaults the owner chose: bottles, wallet and rupees carry, and every OoT-only item is usable in Termina.
     // Hearts, the double magic meter and songs are off.
-    const int ootOnlyItems = B2B::kDinsFire | B2B::kFaroresWind | B2B::kNayrusLove | B2B::kBoomerang | B2B::kSlingshot |
-                             B2B::kHammer | B2B::kBoots | B2B::kTunics;
-    const int defaults = B2B::DefaultOptions();
+    const B2B::OptionBits ootOnlyItems = B2B::kDinsFire | B2B::kFaroresWind | B2B::kNayrusLove | B2B::kBoomerang |
+                                         B2B::kSlingshot | B2B::kHammer | B2B::kBoots | B2B::kTunics;
+    const B2B::OptionBits defaults = B2B::DefaultOptions();
     CHECK(defaults == (B2B::kBottlesCarry | B2B::kWalletCarry | ootOnlyItems));
     CHECK((defaults & B2B::kEarlyUseMasks) == 0); // the Goron and Zora masks are worn plain by default
     CHECK((defaults & B2B::kMagicCarry) == 0);
     CHECK((defaults & B2B::kSongsCarry) == 0);
     CHECK((defaults & B2B::kHeartsCarry) == 0);
+    CHECK((defaults & B2B::kResetOotConsumables) == 0); // the Song of Time empties only MM's own by default
+    CHECK((defaults & B2B::kEarlyMagic) == 0);          // magic waits for MM's Great Fairy by default
 }
 
 void TestOptionsFromCVars() {
@@ -120,7 +142,7 @@ void TestOptionsFromCVars() {
     cvars["gCombo.BackToBack.Hearts"] = 1;
     cvars["gCombo.BackToBack.Items.Hammer"] = 0;
     cvars["gCombo.BackToBack.Early.Bow"] = 1;
-    const int options = B2B::OptionsFromCVars(get);
+    const B2B::OptionBits options = B2B::OptionsFromCVars(get);
     CHECK((options & B2B::kMagicCarry) != 0);
     CHECK((options & B2B::kHeartsCarry) != 0);
     CHECK((options & B2B::kHammer) == 0);
@@ -131,10 +153,14 @@ void TestOptionsFromCVars() {
     cvars["gCombo.BackToBack.Early.GoronMask"] = 1;
     CHECK((B2B::OptionsFromCVars(get) & B2B::kEarlyGoronMask) != 0);
     CHECK((B2B::OptionsFromCVars(get) & B2B::kEarlyZoraMask) == 0);
+    CHECK((B2B::OptionsFromCVars(get) & B2B::kEarlyMagic) == 0);
+    cvars["gCombo.BackToBack.Early.Magic"] = 1;
+    CHECK((B2B::OptionsFromCVars(get) & B2B::kEarlyMagic) != 0);
 }
 
 void TestModeStoresOptions() {
-    const int options = B2B::kHeartsCarry | B2B::kBoots | B2B::kEarlyBow | B2B::kEarlyGoronMask | B2B::kEarlyZoraMask;
+    const B2B::OptionBits options = B2B::kHeartsCarry | B2B::kBoots | B2B::kEarlyBow | B2B::kEarlyGoronMask |
+                                    B2B::kEarlyZoraMask | B2B::kEarlyMagic; // bit 31 and above survive the JSON
     const ComboMode made = ComboMode::BackToBack(ComboRando::OOT_QUEST_MQ, options);
     const ComboMode read = ComboMode::FromJson(made.ToJson());
     CHECK(read.IsBackToBack());
@@ -160,24 +186,24 @@ void TestModeStoresOptions() {
 // lock it had. Every early-use bit is clear (the item waits), except that the old songs and masks switch also set the
 // five mask bits, the Goron and Zora masks among them (they transformed at once).
 void TestStoredOptionsFromTheFirstLayout() {
-    for (int stored = 0; stored <= kLegacyOptionMask; stored++) {
+    for (B2B::OptionBits stored = 0; stored <= kLegacyOptionMask; stored++) {
         nlohmann::json json = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, stored).ToJson();
         json.erase(ComboRando::kOptionsLayoutKey);
-        const int options = ComboMode::FromJson(json).options;
+        const B2B::OptionBits options = ComboMode::FromJson(json).options;
         CHECK((options & kLegacyOptionMask) == stored); // every old choice kept
-        const int newBits = options & ~kLegacyOptionMask;
+        const B2B::OptionBits newBits = options & ~kLegacyOptionMask;
         CHECK(newBits == (((stored & B2B::kSongsCarry) != 0) ? B2B::kEarlyUseMasks : 0));
         CHECK(((options & B2B::kEarlyGoronMask) != 0) == ((stored & B2B::kSongsCarry) != 0));
         CHECK(((options & B2B::kEarlyZoraMask) != 0) == ((stored & B2B::kSongsCarry) != 0));
         for (int item = 0; item <= kLastOotItem; item++) {
-            if (IsTransformMask(item))
-                continue; // the Goron and Zora masks are never locked now, whatever an older file chose
+            if (B2B::ClassifyOotItem(item).kind == B2B::LockKind::Free)
+                continue; // the items no switch covers are never locked now, whatever an older file chose
             for (bool mmHolds : { false, true })
                 CHECK(Locked(options, item, mmHolds) == LegacyLocked(stored, item, mmHolds));
         }
     }
     // The current layout is left alone.
-    const int current = B2B::kEarlyBow | B2B::kEarlyGoronMask | B2B::kBoots;
+    const B2B::OptionBits current = B2B::kEarlyBow | B2B::kEarlyGoronMask | B2B::kBoots | B2B::kEarlyMagic;
     CHECK(B2B::MigrateStoredOptions(current, B2B::kOptionsLayout) == current);
     CHECK(B2B::MigrateStoredOptions(B2B::kSongsCarry, B2B::kOptionsLayout) == B2B::kSongsCarry);
 }
@@ -185,16 +211,30 @@ void TestStoredOptionsFromTheFirstLayout() {
 // A file made by 0.2.2 (before the layout key): its layout was marked by bit 30, now the Zora Mask's switch, and its
 // songs switch meant only the songs. The owner's 2026-11-25 file is one (bugs #31-#37).
 void TestStoredOptionsFromTheMarkedLayout() {
-    const int songsAndEarly = B2B::kSongsCarry | B2B::kBoots | B2B::kEarlyOcarina | B2B::kEarlyHookshot |
-                              B2B::kEarlyKeatonMask | B2B::kEarlyBunnyHood | B2B::kEarlyMaskOfTruth;
-    for (const int stored : { 0, static_cast<int>(B2B::kSongsCarry), songsAndEarly }) {
+    const B2B::OptionBits songsAndEarly = B2B::kSongsCarry | B2B::kBoots | B2B::kEarlyOcarina | B2B::kEarlyHookshot |
+                                          B2B::kEarlyKeatonMask | B2B::kEarlyBunnyHood | B2B::kEarlyMaskOfTruth;
+    for (const B2B::OptionBits stored : { B2B::OptionBits{ 0 }, B2B::OptionBits{ B2B::kSongsCarry }, songsAndEarly }) {
         nlohmann::json json =
             ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, stored | B2B::kMarkedLayoutBit).ToJson();
         json.erase(ComboRando::kOptionsLayoutKey);
-        const int options = ComboMode::FromJson(json).options;
+        const B2B::OptionBits options = ComboMode::FromJson(json).options;
         CHECK(options == stored);                     // every choice kept, the marker gone
         CHECK((options & B2B::kEarlyGoronMask) == 0); // worn plain until MM's own, as 0.2.2 did
         CHECK((options & B2B::kEarlyZoraMask) == 0);
+    }
+}
+
+// A mode stored with layout 2 (0.2.2, bits 0 to 30 in a 31-bit int) holds the same bits: every choice kept, and Magic,
+// which that layout never had, waits for MM's Great Fairy.
+void TestStoredOptionsFromLayoutTwo() {
+    const B2B::OptionBits everyLayoutTwoBit = (1ULL << 31) - 1;
+    for (const B2B::OptionBits stored : { B2B::OptionBits{ 0 }, B2B::DefaultOptions(), everyLayoutTwoBit,
+                                          B2B::OptionBits{ B2B::kEarlyGoronMask | B2B::kEarlyZoraMask } }) {
+        nlohmann::json json = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, stored).ToJson();
+        json[ComboRando::kOptionsLayoutKey] = B2B::kFirstKeyedOptionsLayout;
+        const B2B::OptionBits options = ComboMode::FromJson(json).options;
+        CHECK(options == stored); // bit 30 is the Zora Mask's switch here, not a marker
+        CHECK((options & B2B::kEarlyMagic) == 0);
     }
 }
 
@@ -227,7 +267,7 @@ void TestItemsWithAnMmCounterpart() {
     using namespace B2B::OotItem;
     struct Row {
         int item;
-        int option;
+        B2B::OptionBits option;
     };
     const Row rows[] = {
         { kOotStick, B2B::kEarlySticks },
@@ -267,7 +307,7 @@ void TestBottles() {
         CHECK(Locked(0, item, true));                                  // not carried: they stay in Hyrule
         CHECK(Locked(B2B::kEarlyBottles, item, true));                 // skipping the wait does not carry them
     }
-    CHECK(Locked(kCarriedAndEarly, kOotLetterRuto, true)); // Ruto's letter is OoT's alone
+    CHECK(!Locked(0, kOotLetterRuto, false)); // Ruto's letter is OoT's alone: no bottle rule, never locked
 }
 
 void TestTransformationMasks() {
@@ -275,19 +315,30 @@ void TestTransformationMasks() {
     // The Goron and Zora masks are never locked: Link can always wear them in Termina. Whether they transform him is
     // decided where they are worn, by whether he holds MM's own.
     for (int item : { kOotMaskGoron, kOotMaskZora }) {
-        for (int options : { 0, ~0, B2B::DefaultOptions(), B2B::kEarlyUseMasks }) {
+        for (const B2B::OptionBits options :
+             { B2B::OptionBits{ 0 }, ~B2B::OptionBits{ 0 }, B2B::DefaultOptions(), B2B::kEarlyUseMasks }) {
             CHECK(!Locked(options, item, false));
             CHECK(!Locked(options, item, true));
         }
     }
-    CHECK(Locked(B2B::kEarlyUseMasks, kOotMaskSkull, false)); // the Skull Mask is OoT's alone: no mask switch covers it
+}
+
+// The items only OoT has and no switch names are in Termina from the start, with the locks in force.
+void TestItemsWithNoSwitchAreNeverLocked() {
+    using namespace B2B::OotItem;
+    for (int item : { kOotLetterRuto, 0x21, 0x23, kOotMaskSkull, 0x26, 0x2A, kOotUnlistedItem, 0x9D }) {
+        CHECK(NeverLocked(item));
+        CHECK(B2B::ClassifyOotItem(item).kind == B2B::LockKind::Free);
+        for (B2B::OptionBits options : { B2B::OptionBits{ 0 }, B2B::DefaultOptions(), ~B2B::OptionBits{ 0 } })
+            CHECK(!Locked(options, item, false));
+    }
 }
 
 void TestOotOnlyItems() {
     using namespace B2B::OotItem;
     struct Row {
         int item;
-        int option;
+        B2B::OptionBits option;
     };
     const Row rows[] = { { kOotDinsFire, B2B::kDinsFire },     { kOotFaroresWind, B2B::kFaroresWind },
                          { kOotNayrusLove, B2B::kNayrusLove }, { kOotBoomerang, B2B::kBoomerang },
@@ -297,8 +348,6 @@ void TestOotOnlyItems() {
         CHECK(!Locked(row.option, row.item, false));
         CHECK(Locked(~row.option, row.item, true)); // another switch does not unlock it
     }
-    CHECK(Locked(0, kOotUnlistedItem, true));
-    CHECK(Locked(~0, kOotUnlistedItem, true)); // no switch: locked until both games are beaten
 }
 
 void TestGear() {
@@ -319,12 +368,88 @@ void TestPostGameUnlocksEverything() {
         const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
         CHECK(!B2B::LockedInTermina(bothBeaten, 0, lock, false));
         CHECK(!B2B::LockedInTermina(rando, 0, lock, false));
-        // With nothing chosen and nothing found, all are locked but the Goron and Zora masks (plain masks).
-        CHECK(B2B::LockedInTermina(ganonOnly, 0, lock, false) == !IsTransformMask(item));
+        // With nothing chosen and nothing found, all are locked but the items nothing locks.
+        CHECK(B2B::LockedInTermina(ganonOnly, 0, lock, false) == (lock.kind != B2B::LockKind::Free));
+        CHECK(!NeverLocked(item) || lock.kind == B2B::LockKind::Free);
     }
     CHECK(!B2B::LockedInTermina(bothBeaten, 0, B2B::GearLock(true), false));
     CHECK(!B2B::LockedInTermina(bothBeaten, 0, B2B::GearLock(false), false));
     CHECK(B2B::LockedInTermina(ganonOnly, 0, B2B::GearLock(true), false));
+}
+
+// The hint a locked item gives on the Hyrule page: it waits for Majora's Mask's own copy, which it names, or the file
+// keeps it in Hyrule.
+void TestLockHints() {
+    using namespace B2B::OotItem;
+    // Every item that waits for an MM copy names it.
+    for (int item : { kOotStick,      kOotNut,          kOotBomb,        kOotBow,       kOotArrowFire, kOotArrowIce,
+                      kOotArrowLight, kOotOcarinaFairy, kOotOcarinaTime, kOotBombchu,   kOotHookshot,  kOotLongshot,
+                      kOotLens,       kOotBean,         kOotMaskKeaton,  kOotMaskBunny, kOotMaskTruth, kOotBottleFirst,
+                      0x15,           kOotBottleLast }) {
+        const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
+        CHECK(lock.kind == B2B::LockKind::UntilMmHolds || lock.kind == B2B::LockKind::Bottle);
+        CHECK(B2B::MmCounterpartName(item) != nullptr);
+        CHECK(B2B::ReasonLocked(B2B::kBottlesCarry, lock) == B2B::LockReason::WaitsForMm);
+    }
+    CHECK(std::string(B2B::MmCounterpartName(kOotLongshot)) == "Hookshot"); // MM's Hookshot unlocks both
+    CHECK(std::string(B2B::MmCounterpartName(kOotBottleLast)) == "first bottle");
+    // Bottles the file does not carry stay in Hyrule, and so does an OoT-only item whose switch is off.
+    CHECK(B2B::ReasonLocked(0, B2B::ClassifyOotItem(kOotBottleFirst)) == B2B::LockReason::StaysInHyrule);
+    CHECK(B2B::ReasonLocked(0, B2B::ClassifyOotItem(kOotHammer)) == B2B::LockReason::StaysInHyrule);
+    CHECK(B2B::ReasonLocked(0, B2B::GearLock(true)) == B2B::LockReason::StaysInHyrule);
+    // An item with no MM copy has no name to give.
+    CHECK(B2B::MmCounterpartName(kOotHammer) == nullptr);
+}
+
+// A loaded file lets the player change its item switches (the live rules) and nothing it was made with.
+void TestEditingALoadedFile() {
+    const B2B::OptionBits carries = B2B::kHeartsCarry | B2B::kMagicCarry | B2B::kBottlesCarry | B2B::kWalletCarry |
+                                    B2B::kSongsCarry | B2B::kEarlyMagic;
+    const B2B::OptionBits editable = B2B::EditableOptionsMask();
+    CHECK((editable & carries) == 0); // the carries and the one-time Magic carry stay as the file was made
+    for (const B2B::OptionDef& option : B2B::kOptions) {
+        const bool isCarry = (carries & option.bit) != 0;
+        CHECK(B2B::EditableOnLoadedFile(option) == !isCarry);
+        CHECK(((editable & option.bit) != 0) == !isCarry);
+    }
+    CHECK((editable & B2B::kEarlyBow) != 0);
+    CHECK((editable & B2B::kEarlyGoronMask) != 0);
+    CHECK((editable & B2B::kDinsFire) != 0);
+    CHECK((editable & B2B::kResetOotConsumables) != 0); // a rule of the cycle reset, not a carry
+
+    const B2B::OptionBits made = B2B::kHeartsCarry | B2B::kEarlyMagic | B2B::kEarlyBow | B2B::kDinsFire;
+    // Asking for everything on changes the item switches only.
+    const B2B::OptionBits all = B2B::ApplyEditedOptions(made, ~B2B::OptionBits{ 0 });
+    CHECK((all & ~editable) == (made & ~editable));
+    CHECK((all & editable) == editable);
+    // Asking for nothing turns the item switches off and keeps the carries.
+    const B2B::OptionBits none = B2B::ApplyEditedOptions(made, 0);
+    CHECK((none & ~editable) == (made & ~editable));
+    CHECK((none & editable) == 0);
+    // Turning one on or off touches only that one.
+    const B2B::OptionBits plusHammer = B2B::ApplyEditedOptions(made, made | B2B::kHammer);
+    CHECK(plusHammer == (made | B2B::kHammer));
+    CHECK(B2B::ApplyEditedOptions(made, made & ~B2B::kEarlyBow) == (made & ~B2B::kEarlyBow));
+    // The edit survives the file's storage.
+    const ComboMode edited = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, plusHammer);
+    CHECK(ComboMode::FromJson(edited.ToJson()).options == plusHammer);
+}
+
+void TestQuickSets() {
+    const B2B::OptionBits purist = B2B::QuickSetOptions(B2B::QuickSet::Purist);
+    CHECK(purist == 0);
+    CHECK(B2B::QuickSetOptions(B2B::QuickSet::Default) == B2B::DefaultOptions());
+    const B2B::OptionBits everything = B2B::QuickSetOptions(B2B::QuickSet::Everything);
+    B2B::OptionBits every = 0;
+    for (const B2B::OptionDef& option : B2B::kOptions)
+        every |= option.bit;
+    CHECK(everything == every);
+    // Everything lets every item in from the start, and Purist keeps every one waiting.
+    for (int item : { B2B::OotItem::kOotBow, B2B::OotItem::kOotOcarinaTime, B2B::OotItem::kOotMaskBunny,
+                      B2B::OotItem::kOotHookshot, B2B::OotItem::kOotDinsFire, B2B::OotItem::kOotBottleFirst }) {
+        CHECK(!Locked(everything, item, false));
+        CHECK(Locked(purist, item, false));
+    }
 }
 
 } // namespace
@@ -337,9 +462,14 @@ int main() {
     TestTerminaAgeRule();
     TestStoredOptionsFromTheFirstLayout();
     TestStoredOptionsFromTheMarkedLayout();
+    TestStoredOptionsFromLayoutTwo();
+    TestEditingALoadedFile();
+    TestLockHints();
+    TestQuickSets();
     TestItemsWithAnMmCounterpart();
     TestBottles();
     TestTransformationMasks();
+    TestItemsWithNoSwitchAreNeverLocked();
     TestOotOnlyItems();
     TestGear();
     TestPostGameUnlocksEverything();

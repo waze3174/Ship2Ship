@@ -26,8 +26,9 @@
 
 #include "rando/SharedItems.h"
 
-extern "C" int Combo_GamesSolo(void);      // each game's DLL: a one-game seed (combo/rando/ComboGames.h)
-extern "C" int Combo_BackToBackSlot(void); // each game's DLL: a back-to-back slot (combo/rando/ComboCrossGate.h)
+extern "C" int Combo_GamesSolo(void);             // each game's DLL: a one-game seed (combo/rando/ComboGames.h)
+extern "C" int Combo_BackToBackSlot(void);        // each game's DLL: a back-to-back slot (combo/rando/ComboCrossGate.h)
+extern "C" int Combo_BackToBackLocksActive(void); // each game's DLL: a back-to-back slot that has not beaten both games
 
 namespace ComboHealth {
 
@@ -84,6 +85,11 @@ struct AmmoSlot {
 
 // The native fields of the running game.
 struct Native {
+    // The eighths of a heart one quarter of this game's own growth counts for when the game is first seen. 1 is the
+    // shared rule (a piece or container is worth half of what it is at home). A back-to-back file turns sharing on
+    // late, with the hearts already earned: its games count them in full (2), so that turning it on takes no heart
+    // from the game in play. What is picked up afterwards counts at the shared rule.
+    int growthWeight = 1;
     int16_t* healthCapacity;
     int16_t* health;
     uint32_t* questItems;
@@ -231,7 +237,7 @@ inline void Tick(Runtime& rt, int game, const Native& n) {
     const int pieces = Pieces(n);
     if (!s.seen[game]) {
         // First sight of this game's save: its native growth so far becomes its tally (pre-existing saves).
-        int q = ((*n.healthCapacity - kBaseCapacity) / 0x10) * 4 + pieces;
+        int q = (((*n.healthCapacity - kBaseCapacity) / 0x10) * 4 + pieces) * n.growthWeight;
         s.quarters[game] = (q > 0) ? q : 0;
         s.seen[game] = true;
     } else if ((rt.lastCapacity >= 0) || (s.written[game] >= 0)) {
@@ -278,10 +284,17 @@ inline void Tick(Runtime& rt, int game, const Native& n) {
     TickAmmo(rt, game, n);
 }
 
-// A one-game seed has no second game to share with, so the switch is inert there. So is a back-to-back slot: each
-// game keeps its own hearts, magic and ammo, and the Back to back page decides what Termina takes from Hyrule, once.
+// A one-game seed has no second game to share with, so the switch is inert there. So is a back-to-back slot until both
+// games are beaten: each game keeps its own hearts, magic and ammo, and the Back to back page decides what Termina
+// takes from Hyrule, once. After that the slot follows the switch like a randomizer one.
 inline bool Enabled() {
-    return !Combo_GamesSolo() && !Combo_BackToBackSlot() && CVarGetInteger(kCvarEnabled, 0) != 0;
+    return !Combo_GamesSolo() && !Combo_BackToBackLocksActive() && CVarGetInteger(kCvarEnabled, 0) != 0;
+}
+
+// The growth weight of this game's native fields in the slot being played (Native::growthWeight).
+inline int NativeGrowthWeight() {
+    constexpr int kBackToBackWeight = 2;
+    return Combo_BackToBackSlot() ? kBackToBackWeight : 1;
 }
 
 // Sharing is off: forget what was shared, so that switching it on later starts again from each game's native fields

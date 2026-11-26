@@ -1,7 +1,9 @@
 // mm/2s2h/Rando/MiscBehavior/ComboBackToBack.cpp — ComboShip: what Ocarina of Time carries into a back-to-back slot's
 // Majora's Mask save. Combo-owned file (2ship GLOB_RECURSE). See docs/deviations/back2back.md.
 //
-//   At the opening   The hearts and the wallet with its rupees go into MM's save as the opening starts (title_setup.c),
+//   At the opening   The hearts, the wallet with its rupees and, with the Magic early-use switch, the magic meter go
+//   into
+//                    MM's save as the opening starts (title_setup.c),
 //                    whenever the slot has not yet played the opening, so what MM saves from then on holds them.
 //   Once found       The rest waits for the MM item it belongs to, because MM's own give code reads some of these as
 //                    ownership. The magic meter carries once MM's Great Fairy has given magic, the songs once Link has
@@ -28,11 +30,12 @@ extern "C" {
 #include "macros.h"
 #include "variables.h"
 #include "functions.h"
-int Combo_MM_BackToBackOpeningPending(void); // BenPort.cpp
-int Combo_MM_BackToBackLocksActive(void);    // BenPort.cpp
-int Combo_MM_BackToBackOptions(void);        // BenPort.cpp
-extern int gMMComboCrossGate;                // BenPort.cpp: the loaded slot's ways between the games
-int Combo_MM_LinkHasUsableOcarina(void);     // below
+int Combo_MM_BackToBackOpeningPending(void);                         // BenPort.cpp
+int Combo_MM_BackToBackLocksActive(void);                            // BenPort.cpp
+ComboRando::BackToBack::OptionBits Combo_MM_BackToBackOptions(void); // BenPort.cpp
+extern int gMMComboCrossGate;            // BenPort.cpp: the loaded slot's ways between the games
+int Combo_MM_LinkHasUsableOcarina(void); // below
+int Combo_MM_FirstCycleOver(void);       // below
 }
 
 namespace {
@@ -43,6 +46,7 @@ constexpr int kMaxHealthCapacity = 0x140; // 20 hearts, as MM's own cap
 constexpr int kHealthPerHeart = 0x10;
 
 using FnCarryGet = int (*)(int);
+using FnVoid = void (*)();
 
 int CarriedFromOot(B2B::CarryField field) {
     static FnCarryGet sGet = reinterpret_cast<FnCarryGet>(Combo_ResolveSym("soh", "SOH_ComboCarry_Get"));
@@ -74,6 +78,23 @@ void CarryWallet() {
         static_cast<s16>(std::min<int>(CarriedFromOot(B2B::kCarryRupees), CAPACITY(UPG_WALLET, tier)));
     SPDLOG_INFO("[ComboBackToBack] wallet carried into Termina: tier {}, {} rupees", tier,
                 gSaveContext.save.saveInfo.playerData.rupees);
+}
+
+// With the Magic early-use switch, Link starts Termina with Ocarina of Time's meter, full, as MM's Great Fairy would
+// have given it (its gift skips what he already has, so her story is unchanged): single, or double when the double
+// magic meter carry is on and OoT's was. None without a meter in OoT. Interface_Update grows the meter once the opening
+// runs.
+void CarryEarlyMagic() {
+    const int level = CarriedFromOot(B2B::kCarryMagicLevel);
+    if (level == 0)
+        return;
+    SavePlayerData& player = gSaveContext.save.saveInfo.playerData;
+    const bool doubleMeter = level >= 2 && OptionOn(B2B::kMagicCarry);
+    player.isMagicAcquired = true;
+    player.isDoubleMagicAcquired = doubleMeter;
+    player.magic = doubleMeter ? MAGIC_DOUBLE_METER : MAGIC_NORMAL_METER;
+    player.magicLevel = 0;
+    SPDLOG_INFO("[ComboBackToBack] magic meter in Termina from the start: {}", doubleMeter ? "double" : "single");
 }
 
 // MM's magic meter, once its own Great Fairy has given it, grows to double when OoT's was double. Waits for MM's own
@@ -134,6 +155,18 @@ void CarrySongs() {
         SET_QUEST_ITEM(QUEST_SONG_STORMS);
 }
 
+// The Song of Time's cycle reset (Sram_SaveEndOfCycle) empties MM's ammo and bottles; with the setting on it empties
+// the consumables Ocarina of Time carried into Termina by the same rule.
+void ResetOotConsumablesAtEndOfCycle() {
+    if (!ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) || !OptionOn(B2B::kResetOotConsumables))
+        return;
+    static FnVoid sReset = reinterpret_cast<FnVoid>(Combo_ResolveSym("soh", "SOH_ComboTermina_ResetConsumables"));
+    if (sReset == nullptr)
+        return;
+    sReset();
+    SPDLOG_INFO("[ComboBackToBack] the cycle reset emptied Ocarina of Time's carried consumables");
+}
+
 void TickCarryOnceFound() {
     if (gPlayState == nullptr || !Combo_MM_BackToBackLocksActive())
         return;
@@ -142,8 +175,25 @@ void TickCarryOnceFound() {
     CarryCapacities();
 }
 
+// What MM keeps for its first cycle (the ocarina is still Skull Kid's) stops once the cycle is over: time speeds back
+// up to normal, Termina Field is no longer empty, the Clock Tower opens on the last night, and the Scrub in the field
+// is there. The Skull Kid on the Clock Tower roof is not among them: he still holds MM's ocarina until Link takes it.
+void EndFirstCycleBehavior(bool* should) {
+    if (Combo_MM_FirstCycleOver())
+        *should = false;
+}
+
+void RegisterFirstCycleEnd() {
+    COND_VB_SHOULD(VB_FASTER_FIRST_CYCLE, true, { EndFirstCycleBehavior(should); });
+    COND_VB_SHOULD(VB_TERMINA_FIELD_BE_EMPTY, true, { EndFirstCycleBehavior(should); });
+    COND_VB_SHOULD(VB_SCOPENUTS_CONSIDER_FIRST_CYCLE, true, { EndFirstCycleBehavior(should); });
+    COND_VB_SHOULD(VB_CLOCK_TOWER_OPENING_CONSIDER_THIS_FIRST_CYCLE, true, { EndFirstCycleBehavior(should); });
+}
+
 void RegisterComboBackToBack() {
+    RegisterFirstCycleEnd();
     COND_HOOK(OnGameStateUpdate, true, TickCarryOnceFound);
+    COND_HOOK(BeforeEndOfCycleSave, true, ResetOotConsumablesAtEndOfCycle);
 }
 
 RegisterShipInitFunc sBackToBackCarryInit(RegisterComboBackToBack, {});
@@ -165,7 +215,21 @@ extern "C" int Combo_MM_LinkHasUsableOcarina(void) {
                : 0;
 }
 
-// Called as MM's opening starts in a back-to-back slot's first entry (title_setup.c): the carried hearts and wallet.
+// Majora's Mask's first cycle is over when its ocarina is back in the inventory, as in the game. A back-to-back slot's
+// Link can also end it with Ocarina of Time's ocarina (its early switch): the Song of Time that resets the cycle then
+// leaves MM's ocarina with Skull Kid, and the reset itself (Sram_SaveEndOfCycle counts it in threeDayResetCount, which
+// no other way into a first-cycle reset leaves nonzero) is the story's record that the cycle is over.
+extern "C" int Combo_MM_FirstCycleOver(void) {
+    if (INV_CONTENT(ITEM_OCARINA_OF_TIME) == ITEM_OCARINA_OF_TIME)
+        return 1;
+    return ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) &&
+                   gSaveContext.save.saveInfo.playerData.threeDayResetCount > 0
+               ? 1
+               : 0;
+}
+
+// Called as MM's opening starts in a back-to-back slot's first entry (title_setup.c): the carried hearts and wallet,
+// and the magic meter when it is usable from the start.
 extern "C" void Combo_MM_ApplyBackToBackStart(void) {
     if (!Combo_MM_BackToBackOpeningPending())
         return;
@@ -173,6 +237,8 @@ extern "C" void Combo_MM_ApplyBackToBackStart(void) {
         CarryHearts();
     if (OptionOn(B2B::kWalletCarry))
         CarryWallet();
+    if (OptionOn(B2B::kEarlyMagic))
+        CarryEarlyMagic();
 }
 
 #endif // COMBO_BUILD

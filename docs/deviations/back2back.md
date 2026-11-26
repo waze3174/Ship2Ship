@@ -17,7 +17,7 @@ and everything usable after both games). Not done: adult Link in Termina (see "N
 `combo.mode` for a back-to-back slot (`combo/rando/ComboMode.h`):
 
 ```json
-"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 8172, "optionsLayout": 2 }
+"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 8172, "optionsLayout": 3 }
 ```
 
 - `ComboMode::BackToBack(quest, options)`, `IsBackToBack()`. `sequential` and `options` (stage C) are written only for this mode;
@@ -61,8 +61,16 @@ the boss release (`Combo_OnFinalBossDefeated` queues it only for a non-vanilla s
 
 Settings > Back to back > New files (`combo/gui/ComboBackToBackPanel.cpp`) is the mode's own page. Its header says that
 the choices apply to new back-to-back files when they're created. Every setting on it is read once, when a file is
-created, and is fixed for that file from then on; the rest of the mode's settings are on the same page (stage C).
-The CVars live under `gCombo.BackToBack.` (`combo/rando/ComboBackToBackSettings.h`); each is a leaf, and no
+created and baked into it; the rest of the mode's settings are on the same page (stage C). The page has two views, "New
+files" and "This file". "New files" is the CVars above, with three quick-set buttons: Purist (every choice off), Default
+(`defaultOn`) and Everything (every choice on; `QuickSetOptions`). "This file" shows the loaded back-to-back file's
+choices (the launcher answers `Combo_GetLoadedBackToBackOptions`; with no such file loaded it says so). The item
+switches (the OoT-only items and the early-use ones) can be changed there while the file is loaded: the setter
+(`Combo_EditLoadedBackToBackOptions`, handed to comboui with `ComboUI_SetBackToBackStore`) applies
+`BackToBack::ApplyEditedOptions`, which changes only `EditableOptionsMask()` bits, writes the slot's `combo.mode`
+(`Combo_SetSlotMode`, the container's normal flush) and pushes the new value to both DLLs at once, so the locks follow
+it on the next frame. The carries (hearts, double magic, bottles, wallet, songs) and the Magic early switch were applied
+when Termina was first entered and stay greyed. The CVars live under `gCombo.BackToBack.` (`combo/rando/ComboBackToBackSettings.h`); each is a leaf, and no
 `gCombo.BackToBack` leaf exists to collide with that subtree. Presets carry them like any other `gCombo.` preference.
 
 **Master Quest** (`gCombo.BackToBack.MasterQuest`, 0 or unset = Normal Quest, 1 = Master Quest). The file's quest is
@@ -210,9 +218,11 @@ called from `Combo_InitBackToBackSlot`), stored as one int in the file's `combo.
 the defaults) and pushed to both DLLs with the cross gate (`SOH_SetComboBackToBackOptions`,
 `MM_SetComboBackToBackOptions`; 0 for every other slot).
 
-The int's bits: 0-12 the carry and OoT-only switches, 13-30 the early-use switches (Goron Mask is 29, Zora Mask 30); the
-sign bit stays unused. `ComboMode::ToJson` writes `"optionsLayout": 2` (`kOptionsLayout`) beside `"options"`. A mode
-without the key holds the first layout (bits 0-12 only); `MigrateStoredOptions` (called by `ComboMode::FromJson`) leaves
+The options are one 64-bit value (`BackToBack::OptionBits`, a `uint64_t`; nlohmann stores it as an unsigned number, and
+the launcher and both DLLs pass it as 64 bits): bits 0-12 the carry and OoT-only switches, 13-31 the early-use switches
+(Goron Mask is 29, Zora Mask 30, Magic 31). `ComboMode::ToJson` writes `"optionsLayout": 3` (`kOptionsLayout`) beside
+`"options"`. Layout 2 (0.2.2) is the same bits in a 31-bit int without Magic; `MigrateStoredOptions` returns a layout-2
+or layout-3 value untouched, so a layout-2 file has Magic off. A mode without the key holds the first layout (bits 0-12 only); `MigrateStoredOptions` (called by `ComboMode::FromJson`) leaves
 every old choice as it was and, when bit 4 was on (it used to also mean "the masks both games have are usable at once,
 and the Goron and Zora masks transform at once"), sets all five mask early-use bits (Keaton, Bunny, Truth, Goron, Zora).
 A mode without the key but with bit 30 set was made by 0.2.2, which marked its layout with that bit
@@ -238,8 +248,29 @@ Hyrule.
 "Usable in Termina before Majora's Mask's own is found" (`CVars gCombo.BackToBack.Early.*`): one switch per item MM has
 too, all off by default (the item waits). Deku Sticks, Deku Nuts, Bombs, Bow, Fire, Ice and Light Arrows, Ocarina (both
 of OoT's), Bombchus, Hookshot (with the Longshot), Lens of Truth, Magic Beans, Bottles (with the Bottles carry on: before
-MM's first bottle), Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask. The last two mean something else:
-see below.
+MM's first bottle), Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask (those two mean something else, see
+below) and Magic (see below).
+
+**Song of Time and Ocarina of Time's consumables** (`gCombo.BackToBack.ResetOotConsumables`, bit 32, off by default, the
+last section of the page; editable on a loaded file). MM's cycle reset (`Sram_SaveEndOfCycle`) zeroes every ammo count
+and empties every filled bottle, but only in MM's save, so Ocarina of Time's carried ammo and bottles survive it. With
+the switch on, `ResetOotConsumablesAtEndOfCycle` (`ComboBackToBack.cpp`, on the `BeforeEndOfCycleSave` hook, back-to-back
+slots only) calls `SOH_ComboTermina_ResetConsumables` (`ComboTerminaItems.cpp`): OoT's sticks, nuts, bombs, bow, slingshot,
+bombchus and beans go to 0 and every filled bottle becomes an empty one (Ruto's Letter stays), and OoT's dormant save is
+marked changed so the write at the return to Hyrule keeps it. Rupees, hearts and the wallet are not consumables of this
+rule: MM resets its own rupees and the carried wallet is only a start value.
+
+**Magic in Termina.** With the Magic switch on, `CarryEarlyMagic` (`ComboBackToBack.cpp`, run as the opening starts with
+the hearts and the wallet) gives Link Ocarina of Time's meter at once: `isMagicAcquired` set, `magic` full, `magicLevel`
+0, which `Interface_Update` grows and fills (`z_parameter.c`, the same path MM's own gift uses). It is double when the
+Double magic meter carry is on and OoT's meter was double, otherwise single, and none if OoT had none. Off: no meter until
+MM's Great Fairy, then the carry decides single or double. MM's Great Fairy flow tolerates the meter being there already:
+her gift (`z_bg_dy_yoseizo.c`, `GREAT_FAIRY_TYPE_MAGIC` and `_WISDOM`) only writes `isMagicAcquired` and the fill target
+when the flag is unset. The Clock Town fairy's Deku Mask and Great Fairy's Mask branches (`z_en_elfgrp.c`) do not read
+the magic flag; with it set she plays her heal cutscene in the one branch that tests it. A double meter from the start
+also makes the Snowhead (Wisdom) fairy heal instead of giving double magic (she tests `isDoubleMagicAcquired`), which no
+progression needs. Spells and magic arrows go through
+`Magic_Consume`, which only needs `isMagicAcquired`. Read from the code, not played.
 
 The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/ComboBackToBackTest.cpp`):
 
@@ -250,13 +281,13 @@ The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/Co
 | Goron and Zora masks | never locked (see below) |
 | Din's, Farore's, Nayru's, Boomerang, Slingshot, Hammer | its switch is on |
 | Tunics and boots | the Tunics / Boots switch is on |
-| Everything else OoT alone has (trade items, Ruto's letter, Skull / Spooky / Gerudo masks, Roc's Feather) | both games are beaten |
+| Everything else OoT alone has (trade items, Ruto's letter, Skull / Spooky / Gerudo masks, Roc's Feather) | never locked: they are in Termina from the start. The three masks are worn as plain masks (`Combo_MmOotMaskIsPlain`); the other items are there to carry and trade, and "can't use" on a button |
 
 **Waits that are not settings.** Each has a technical reason.
 - The quiver, bomb bag, Deku stick and Deku nut levels wait for MM's bow, bombs, sticks and nuts (stage D).
-- The double magic meter waits for MM's Great Fairy: the meter needs `isMagicAcquired`, and MM's code reads that flag as
-  "magic not given yet" (the Great Fairy gift in `SkipGreatFairyCutscene.cpp`, Tatl's hint in `z_elf_message.c`), so
-  setting it earlier would stop MM giving magic.
+- Without the Magic switch, the magic meter waits for MM's Great Fairy: MM reads `isMagicAcquired` as "magic not given
+  yet" (the Great Fairy gift in `SkipGreatFairyCutscene.cpp`, Tatl's hint in `z_elf_message.c`). The Magic switch above
+  sets it from the start.
 - The songs wait for an ocarina Link can play in Termina (`Combo_MM_LinkHasUsableOcarina`, `ComboBackToBack.cpp`):
   MM's, or OoT's once the slot lets it in (the ocarina's early-use switch). MM's own lessons (Song of Time, Epona's
   Song, Song of Storms) are not skipped by an early flag, and no MM code branches on the Song of Time bit but the
@@ -297,16 +328,38 @@ Changed to read it:
   randomizer's own override (`EnOsn.cpp`, `VB_OSN_CONSIDER_ELIGIBLE_FOR_SONG_OF_HEALING`) still runs after;
 - the songs carried over (above).
 
-Left reading MM's ocarina slot, because they mean "the Skull Kid still has MM's ocarina" (the first cycle's story),
-not "Link can play": the Clock Tower opening's first-cycle rule (`z_en_test4.c`), the faster first cycle (`z_scene.c`,
-`z_scene_2SH.cpp`), the clock tower (`z_obj_tokeidai.c`), the Skull Kid's ocarina and hands (`z_dm_stk.c`), the
-falling ocarina (`z_dm_char02.c`), the empty Termina Field (`z_play.c`), Tatl's first-cycle hints (`z_elf_message.c`,
-`z_elf_msg6.c`); also 2S2H's song items (`SongItems.cpp`), the pause owl warp (Soaring is not carried), the Curiosity
-Shop refills and the randomizer's own checks (`BenPort.cpp`). So the Skull Kid still has MM's ocarina, the retrieval
-and the Song of Time flashback play as in MM, and MM's own ocarina is never given early. With the Songs switch on as
-well, a carried Song of Time can end the first cycle early: the first return then has the Mask Salesman teach the Song
-of Healing, and the next cycle still reads as the first until Link takes MM's ocarina back at the top of the Clock
-Tower (Termina Field empty, the faster clock). Not tested in game.
+Left reading MM's ocarina slot, because they mean "the Skull Kid still has MM's ocarina": the Skull Kid's ocarina and
+hands (`z_dm_stk.c`), the falling ocarina (`z_dm_char02.c`); also 2S2H's song items (`SongItems.cpp`), the pause owl
+warp (Soaring is not carried), the Curiosity Shop refills and the randomizer's own checks (`BenPort.cpp`). So the Skull
+Kid still has MM's ocarina, the retrieval plays as in MM, and MM's own ocarina is never given early.
+
+**Early ocarina ends the first cycle** (decision 23). MM's first cycle is whatever runs while the ocarina slot is empty;
+the decomp has no story flag for it. Retrieval writes only the item (`Item_Give`, `z_parameter.c`); everything else
+that marks the first cycle reads the slot: the faster clock (`VB_FASTER_FIRST_CYCLE`, `z_scene.c`), the empty Termina
+Field (`VB_TERMINA_FIELD_BE_EMPTY`), the Scrub in the field (`VB_SCOPENUTS_CONSIDER_FIRST_CYCLE`), the Clock Tower's
+opening on the last night (`VB_CLOCK_TOWER_OPENING_CONSIDER_THIS_FIRST_CYCLE`, `z_en_test4.c`, and
+`ObjTokeidai_IsPostFirstCycleFinalHours`) and Tatl's first-cycle hints (`z_elf_message.c`, `z_elf_msg6.c`). They now ask
+`Combo_MM_FirstCycleOver` (`ComboBackToBack.cpp`): MM's ocarina is in the slot, or this is a back-to-back slot whose
+`threeDayResetCount` is above 0. That count is MM's own record that a reset happened (`Sram_SaveEndOfCycle`, the Song of
+Time's return) and persists in the save, so no new flag is stored. A reset needs a playable ocarina, so in a
+back-to-back slot it can only come from OoT's early ocarina before MM's own is back: playing the Song of Time with it
+therefore ends the first cycle. The reset is MM's own (the first return still plays its flashback cutscene, which
+`z_player.c` picks at count 1, and the Salesman teaches the Song of Healing). The Skull Kid keeps MM's ocarina, so
+going up the Clock Tower on a later last night still retrieves it with the usual cutscene, with no second flashback
+(the count is already past 1). Other slots are unchanged: their count is above 0 only with the ocarina back. A moon
+crash before the ocarina in a back-to-back slot also leaves the count above 0 and ends the first cycle the same way.
+Not tested in game.
+
+**Locked items are greyed, with a hint** (decision 15). On OoT's page in Termina (the Hyrule items face), an item the
+locks keep out stays on the page, greyed, and the cursor stops on it. `Snapshot()` (`ComboPause.cpp`) still drops it from
+`sOotItems`, so the buttons, Termina's item use, `Combo_MmPauseOotHolds` and the stand-ins see it as not there; the item
+it dropped is kept apart in `sOotLocked`, and only the drawing and cursor of `z_kaleido_combo.c` read that, through
+`Combo_MmPauseSlotItemOrLocked` / `Combo_MmPauseSlotLocked` (the icon and name plate look the locked item up in
+`LiveOrLockedOotItem`). A C or D-pad press on one plays the error sound and equips nothing. A shows the hint in the box
+MM gives its own item descriptions (`Message_PauseMenu_ShowDescription`, with the text replaced by
+`CustomMessage::LoadCustomMessageIntoFont`): "Usable in Termina once you find Majora's Mask's <item>" for an item
+waiting for MM's own copy (`MmCounterpartName`; a bottle: "first bottle"), or "This file keeps it in Hyrule" for a
+bottle the file does not carry and an OoT-only item whose switch is off (`ReasonLocked`). Not tested in game.
 
 **MM's own slots show OoT's same item** (bug #33). On the Termina item and mask pages, MM's empty ocarina slot and its
 empty Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask slots show OoT's same item while Termina may use
@@ -349,14 +402,25 @@ the carry tick at once and at every later load: everything OoT has is usable in 
 everything MM has in Hyrule through OoT's Termina faces, as in a randomizer file. No new mechanism: `LocksActive` is the one
 gate. Both ways are open for either age, as in stage A.
 
-## Shared health is off in this mode
+## Shared health waits for both games
 
-"Shared health, magic and ammo" (`gCombo.Shared.HealthMagicAmmo`) does nothing in a back-to-back slot, whatever the menu
-says, before or after both games are beaten: `ComboHealth::Enabled` reads `Combo_BackToBackSlot()` (each DLL, from the
-cross gate's `kBackToBack` bit). Each game keeps its own hearts, magic meter and ammo, and the page's carry settings
-decide what Termina takes from Hyrule, once. Before this, with the switch on, the shared bar overwrote the hearts the
-page chose, and a new file could take over the shared hearts of the file erased before it (#30, 0.2.2: 20 heart
-containers, 3 filled, on a new file).
+"Shared health, magic and ammo" (`gCombo.Shared.HealthMagicAmmo`) does nothing in a back-to-back slot until both games
+are beaten, then follows the switch like a randomizer file's: `ComboHealth::Enabled` reads
+`Combo_BackToBackLocksActive()` (each DLL, from the cross gate: a back-to-back slot that has not beaten both). Before that
+each game keeps its own hearts, magic meter and ammo, and the page's carry settings decide what Termina takes from
+Hyrule, once; with the switch on the shared bar used to overwrite the hearts the page chose, and a new file could take
+over the shared hearts of the file erased before it (#30, 0.2.2: 20 heart containers, 3 filled, on a new file; the second
+half was fixed in the slot ownership, not by the switch).
+
+Turning sharing on takes no heart from the game in play. A game's first sight in a shared file counts its native
+growth as its tally (`Tick`); a randomizer file's games start at 3 hearts, so they count it as it comes, at half value.
+A back-to-back file turns it on with the hearts already earned, so `Native::growthWeight` is 2 there
+(`ComboHealth::NativeGrowthWeight`): the game counts what it has in full, its capacity, heart pieces and current health
+stay as they are, and what it picks up afterwards counts at the shared rule (half a heart per container). The other
+game, first seen later in the same file, joins the same way, so the bar adds both games' hearts up to 20. Magic and ammo
+need no such care: the first game's own amount becomes the shared one, and a game that arrives takes the larger count
+(`JoinedAmmo`). `combo/tests/ComboSharedHealthTest.cpp` (`TestTurningSharingOnInABackToBackFileTakesNoHeart`) checks the
+tally.
 
 ## Not done yet
 

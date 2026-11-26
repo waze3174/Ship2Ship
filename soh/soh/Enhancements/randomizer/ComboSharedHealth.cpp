@@ -93,6 +93,7 @@ void Combo_SharedHealthRegister() {
         }
         ComboHealth::Native n{ &gSaveContext.healthCapacity, &gSaveContext.health, &gSaveContext.inventory.questItems,
                                &gSaveContext.isDoubleDefenseAcquired, &gSaveContext.inventory.defenseHearts };
+        n.growthWeight = ComboHealth::NativeGrowthWeight();
         n.magic = &gSaveContext.magic;
         n.magicLevel = &gSaveContext.magicLevel;
         n.isMagicAcquired = &gSaveContext.isMagicAcquired;

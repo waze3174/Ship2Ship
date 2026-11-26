@@ -17,13 +17,13 @@ enum class LockKind {
     UntilMmHolds, // MM has the item too: locked until MM's own copy is found, unless its early-use switch is on
     Bottle,       // an OoT bottle or what is in it: needs the Bottles switch, and waits for MM's first bottle
     Option,       // OoT only: locked unless its switch is on
-    Free,         // never locked (the Goron and Zora masks: worn plain, or transforming, as their early switch says)
-    Closed,       // OoT only and no switch: locked until both games are beaten
+    Free, // never locked: OoT only with no switch (trade items, letters, Skull / Spooky / Gerudo masks), and the
+          // Goron and Zora masks, which are worn plain or transforming as their early switch says
 };
 
 struct ItemLock {
     LockKind kind;
-    int option; // the Option bit: the early-use switch for UntilMmHolds, the item's switch for Option
+    OptionBits option; // the Option bit: the early-use switch for UntilMmHolds, the item's switch for Option
 };
 
 // OoT item ids (soh/include/z64item.h).
@@ -112,7 +112,7 @@ inline ItemLock ClassifyOotItem(int ootItem) {
     }
     if (ootItem >= OotItem::kOotBottleFirst && ootItem <= OotItem::kOotBottleLast && ootItem != OotItem::kOotLetterRuto)
         return { LockKind::Bottle, 0 };
-    return { LockKind::Closed, 0 };
+    return { LockKind::Free, 0 };
 }
 
 // OoT's tunics and boots, which have no inventory slot.
@@ -121,7 +121,7 @@ inline ItemLock GearLock(bool boots) {
 }
 
 // mmHoldsCounterpart: Link has found MM's own copy (for a bottle: any bottle at all).
-inline bool Locked(int options, ItemLock lock, bool mmHoldsCounterpart) {
+inline bool Locked(OptionBits options, ItemLock lock, bool mmHoldsCounterpart) {
     switch (lock.kind) {
         case LockKind::UntilMmHolds:
             return (options & lock.option) == 0 && !mmHoldsCounterpart;
@@ -131,10 +131,68 @@ inline bool Locked(int options, ItemLock lock, bool mmHoldsCounterpart) {
             return (options & lock.option) == 0;
         case LockKind::Free:
             return false;
-        case LockKind::Closed:
-            return true;
     }
     return true;
+}
+
+// Why a locked item is locked, for the hint the Hyrule page gives it.
+enum class LockReason {
+    WaitsForMm,   // usable once Link finds Majora's Mask's own copy
+    StaysInHyrule // this file's page keeps it in Hyrule
+};
+
+inline LockReason ReasonLocked(OptionBits options, ItemLock lock) {
+    switch (lock.kind) {
+        case LockKind::UntilMmHolds:
+            return LockReason::WaitsForMm;
+        case LockKind::Bottle:
+            return (options & kBottlesCarry) == 0 ? LockReason::StaysInHyrule : LockReason::WaitsForMm;
+        default:
+            return LockReason::StaysInHyrule;
+    }
+}
+
+// Majora's Mask's own item an OoT item with a counterpart waits for, as the hint names it; nullptr for any other.
+inline const char* MmCounterpartName(int ootItem) {
+    switch (ootItem) {
+        case OotItem::kOotStick:
+            return "Deku Stick";
+        case OotItem::kOotNut:
+            return "Deku Nut";
+        case OotItem::kOotBomb:
+            return "Bomb";
+        case OotItem::kOotBow:
+            return "Hero's Bow";
+        case OotItem::kOotArrowFire:
+            return "Fire Arrow";
+        case OotItem::kOotArrowIce:
+            return "Ice Arrow";
+        case OotItem::kOotArrowLight:
+            return "Light Arrow";
+        case OotItem::kOotOcarinaFairy:
+        case OotItem::kOotOcarinaTime:
+            return "Ocarina of Time";
+        case OotItem::kOotBombchu:
+            return "Bombchu";
+        case OotItem::kOotHookshot:
+        case OotItem::kOotLongshot:
+            return "Hookshot";
+        case OotItem::kOotLens:
+            return "Lens of Truth";
+        case OotItem::kOotBean:
+            return "Magic Bean";
+        case OotItem::kOotMaskKeaton:
+            return "Keaton Mask";
+        case OotItem::kOotMaskBunny:
+            return "Bunny Hood";
+        case OotItem::kOotMaskTruth:
+            return "Mask of Truth";
+        default:
+            break;
+    }
+    if (ootItem >= OotItem::kOotBottleFirst && ootItem <= OotItem::kOotBottleLast && ootItem != OotItem::kOotLetterRuto)
+        return "first bottle";
+    return nullptr;
 }
 
 // The locks are in force: a back-to-back slot that has not yet beaten both games. Every other slot has none, and a
@@ -144,7 +202,7 @@ inline bool LocksActive(int crossGateMask) {
 }
 
 // An item the loaded slot keeps out of Termina right now: Locked(), but only while the locks are in force.
-inline bool LockedInTermina(int crossGateMask, int options, ItemLock lock, bool mmHoldsCounterpart) {
+inline bool LockedInTermina(int crossGateMask, OptionBits options, ItemLock lock, bool mmHoldsCounterpart) {
     return LocksActive(crossGateMask) && Locked(options, lock, mmHoldsCounterpart);
 }
 

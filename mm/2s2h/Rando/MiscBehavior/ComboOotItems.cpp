@@ -41,8 +41,8 @@ extern "C" {
 #include "variables.h"
 #include "functions.h"
 extern PlayState* gPlayState;
-int Combo_MM_BackToBackLocksActive(void); // BenPort.cpp
-int Combo_MM_BackToBackOptions(void);     // BenPort.cpp
+int Combo_MM_BackToBackLocksActive(void);                            // BenPort.cpp
+ComboRando::BackToBack::OptionBits Combo_MM_BackToBackOptions(void); // BenPort.cpp
 }
 
 namespace {
@@ -428,7 +428,7 @@ static int sWornOotMask = -1; // OOT item id, -1 = none
 
 // Whether a back-to-back slot's locks are in force, its early switch for the mask is off, and Link has not yet got MM's
 // own transformation mask.
-static bool TransformMaskWornPlain(int mmMaskItem, int earlySwitch) {
+static bool TransformMaskWornPlain(int mmMaskItem, ComboRando::BackToBack::OptionBits earlySwitch) {
     return Combo_MM_BackToBackLocksActive() && (Combo_MM_BackToBackOptions() & earlySwitch) == 0 &&
            INV_CONTENT(mmMaskItem) != mmMaskItem;
 }

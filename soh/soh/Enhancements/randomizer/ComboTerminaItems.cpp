@@ -95,6 +95,25 @@ extern "C" COMBO_EXPORT int SOH_ComboTermina_SetBottle(int ootSlot, int ootItem)
     return 1;
 }
 
+// MM's cycle reset (Sram_SaveEndOfCycle) on the consumables OOT's save holds: every ammo count goes to 0, and every
+// filled bottle becomes an empty one (MM empties all bottle contents). Ruto's Letter is not a content and stays.
+extern "C" COMBO_EXPORT void SOH_ComboTermina_ResetConsumables(void) {
+    if (!SaveResident())
+        return;
+    static constexpr u8 kAmmoItems[] = { ITEM_STICK,     ITEM_NUT,     ITEM_BOMB, ITEM_BOW,
+                                         ITEM_SLINGSHOT, ITEM_BOMBCHU, ITEM_BEAN };
+    for (const u8 item : kAmmoItems) {
+        if (INV_CONTENT(item) == item)
+            AMMO(item) = 0;
+    }
+    for (int slot = SLOT_BOTTLE_1; slot <= SLOT_BOTTLE_4; slot++) {
+        const u8 content = gSaveContext.inventory.items[slot];
+        if (content > ITEM_BOTTLE && content <= ITEM_POE && content != ITEM_LETTER_RUTO)
+            SOH_ComboTermina_SetBottle(slot, ITEM_BOTTLE);
+    }
+    sDormantSaveChanged = true;
+}
+
 // OOT loads its save again from the slot when Link comes back from Termina, so a change made to the dormant save from
 // Termina is written first (SOH_ResumeGame), or the seeds shot there would be back in the bag.
 extern "C" void Combo_TerminaPersistDormantSave(void) {

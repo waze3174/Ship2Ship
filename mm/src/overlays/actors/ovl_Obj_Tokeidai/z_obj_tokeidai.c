@@ -33,6 +33,9 @@
 #include "objects/object_obj_tokeidai/object_obj_tokeidai.h"
 #include "2s2h/BenGui/CosmeticEditor.h"
 #include <libultraship/bridge/consolevariablebridge.h>
+#ifdef COMBO_BUILD
+#include "BenPort.h"
+#endif
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_DRAW_CULLING_DISABLED)
 
@@ -624,9 +627,16 @@ void ObjTokeidai_StaircaseToRooftop_Idle(ObjTokeidai* this, PlayState* play) {
 }
 
 s32 ObjTokeidai_IsPostFirstCycleFinalHours(ObjTokeidai* this, PlayState* play) {
+#ifdef COMBO_BUILD
+    // ComboShip: a back-to-back slot's first cycle can end with Ocarina of Time's ocarina (Combo_MM_FirstCycleOver).
+    if (!Combo_MM_FirstCycleOver()) {
+        return false;
+    }
+#else
     if (gSaveContext.save.saveInfo.inventory.items[SLOT_OCARINA] == ITEM_NONE) {
         return false;
     }
+#endif
     if ((CURRENT_DAY == 3) && (CURRENT_TIME < CLOCK_TIME(6, 0))) {
         ObjTokeidai_SetupTowerOpening(this);
         return true;
