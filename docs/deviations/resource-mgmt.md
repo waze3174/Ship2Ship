@@ -313,3 +313,14 @@ years (`z_scene_otr.cpp`, `Scene_CommandTransitionActorList`); MM never received
 in `Scene_CommandTransiActorList`, `ABS()`-normalize every transition actor id before
 `MapDisp_InitTransitionActorData`. Same code as SoH's fix, wrapped in `#ifdef COMBO_BUILD` with a
 `// ComboShip:` comment.
+
+## Null textures are named in the log, once per path (2026-11-26)
+
+**Why:** the owner's Deck log held 4,081 identical `G_SETTIMG_OTR_FILEPATH: Texture is null` lines that did not say which
+texture, so the cause (a cross-game item drawn with a path looked up in the wrong game's archive, or a texture mod) could
+not be told apart from the log. The sibling `G_SETTIMG_OTR_HASH` message already named its path.
+
+**`libultraship/src/fast/interpreter.cpp` (small, marked `// ComboShip:` — preserve on future LUS merges, or drop it if
+upstream names the path):** `ReportNullTextureOnce(handler, fileName)` logs `<handler>: Texture is null (<path>)` once per
+path, and both `gfx_set_timg_otr_hash_handler_custom` and `gfx_set_timg_otr_filepath_handler_custom` call it. The first
+copy of the once-per-path set in the hash handler became this helper.
