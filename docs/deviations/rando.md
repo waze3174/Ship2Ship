@@ -2816,6 +2816,11 @@ Features that change the rules of play are off until the player turns them on in
   into its own slot. An erase or a copy onto a slot forgets it. Before this, the boot reads gave slots 1 and 2 slot 0's
   hearts in the cache, and a slot loaded after another was read, or after an MM session ended on the file select,
   played with that other slot's hearts.
+  At half value a Heart Container is half a heart: the bar gains a heart at every second container, or at the first
+  one when the pause screen's piece meter already shows half a heart, and the get-item text still says one heart
+  (#39). Each game logs every heart item counted and every state it takes (`[ComboShip] shared hearts, ...`, with
+  what its own save held), because the launcher's lines about the state go to stdout, not to the log file. Tested
+  by `comboSharedHealthTest`.
   The other game's ammo items (on this game's buttons and its face of this game's pause menu) show the shared count
   as that game will show it on arrival, `ComboHealth::DormantAmmo`; OOT's Slingshot fired in Termina spends from the
   shared seeds (`SpendDormantAmmo`). With it off they show, and the Slingshot spends, OOT's own save, written at the

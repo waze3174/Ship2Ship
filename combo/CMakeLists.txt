@@ -195,6 +195,16 @@ target_link_libraries(comboBackToBackTest PRIVATE nlohmann_json::nlohmann_json)
 add_executable(comboSharedHealthSlotsTest EXCLUDE_FROM_ALL tests/ComboSharedHealthSlotsTest.cpp)
 target_include_directories(comboSharedHealthSlotsTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
+# Unit tests for the shared health bar's heart tally (ComboSharedHealth.h): header code, no game DLL. libultraship's
+# headers only for the CVar declaration, which the tested code never calls. Build with
+# `cmake --build <dir> --target comboSharedHealthTest`, then run the exe.
+add_executable(comboSharedHealthTest EXCLUDE_FROM_ALL tests/ComboSharedHealthTest.cpp)
+target_include_directories(comboSharedHealthTest PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}
+    ${CMAKE_CURRENT_SOURCE_DIR}/../libultraship/include
+)
+target_link_libraries(comboSharedHealthTest PRIVATE nlohmann_json::nlohmann_json)
+
 # Windows-specific settings
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # Icon + version info for Ship2Ship.exe; the version is SHIP2SHIP_VERSION padded to 4 parts.

@@ -195,7 +195,11 @@ static void ComboSharedHealthTick() {
             SPDLOG_INFO("[ComboShip] COMBO_DEBUG_AMMO: MM ammo kind {} set to {}", kind, v);
         }
     }
+    const ComboHealth::HeartsBefore heartsBefore = ComboHealth::HeartsBeforeTick(sRt, n);
     ComboHealth::TickIfEnabled(sRt, ComboHealth::kGameMm, n);
+    if (const std::string line = ComboHealth::HeartsLogLine(sRt, heartsBefore, "MM"); !line.empty()) {
+        SPDLOG_INFO("{}", line);
+    }
     FillInfinite();
     if (!Combo_GamesSolo()) {
         // The watched-transformation record is one for both games: MM's weekEventReg flags (z_player.c D_8085D908)

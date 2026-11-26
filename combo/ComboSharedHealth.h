@@ -301,6 +301,38 @@ inline void TickIfEnabled(Runtime& rt, int game, const Native& n) {
     }
 }
 
+// The log's view of one tick, so that a capture shows what the shared bar did (the launcher's own lines go to stdout,
+// not to the log file): a line when the game takes a state (its first tick after a load or a switch), with what its
+// own save held, and a line whenever the tally grows (a heart item counted, at half value). Taken before the tick.
+struct HeartsBefore {
+    bool entering = false;
+    int eighths = 0;
+    int saveCapacity = 0;
+};
+
+inline HeartsBefore HeartsBeforeTick(const Runtime& rt, const Native& n) {
+    return HeartsBefore{ rt.pendingEntry, rt.s.quarters[kGameOot] + rt.s.quarters[kGameMm], *n.healthCapacity };
+}
+
+// "" = nothing to log: a quiet frame, or sharing is off (Release ran, which leaves pendingEntry set).
+inline std::string HeartsLogLine(const Runtime& rt, const HeartsBefore& before, const char* game) {
+    const State& s = rt.s;
+    const int eighths = s.quarters[kGameOot] + s.quarters[kGameMm];
+    if (rt.pendingEntry || (!before.entering && (eighths == before.eighths))) {
+        return "";
+    }
+    std::string line = std::string("[ComboShip] shared hearts, ") + game;
+    if (before.entering) {
+        line += " took the state (its save held " + std::to_string(before.saveCapacity / 0x10) + " hearts)";
+    }
+    if (eighths != before.eighths) {
+        line += " tally " + std::to_string(eighths - before.eighths) + "/8";
+    }
+    return line + ": " + std::to_string(SharedCapacity(s) / 0x10) + " hearts + " + std::to_string(LeftoverEighths(s)) +
+           "/8 (eighths: OoT " + std::to_string(s.quarters[kGameOot]) + ", MM " + std::to_string(s.quarters[kGameMm]) +
+           ")";
+}
+
 // Ship of Harkinian's "Infinite Upgrades" (RAND_INF_HAS_INFINITE_*, kept in OOT's save), as OOT hands them to Termina
 // (SOH_ComboInfiniteMask): one bit per upgrade, a consumable's at its AmmoKind.
 constexpr uint32_t InfiniteAmmoBit(int kind) {

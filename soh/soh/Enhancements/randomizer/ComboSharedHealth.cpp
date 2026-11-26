@@ -5,6 +5,7 @@
 #include <string>
 
 #include <libultraship/libultraship.h>
+#include <spdlog/spdlog.h>
 
 #include "ComboExport.h"
 #include "ComboSharedHealth.h"
@@ -114,7 +115,11 @@ void Combo_SharedHealthRegister() {
                 gSaveContext.magic = (s8)std::strtol(mp, nullptr, 0);
             }
         }
+        const ComboHealth::HeartsBefore heartsBefore = ComboHealth::HeartsBeforeTick(sRt, n);
         ComboHealth::TickIfEnabled(sRt, ComboHealth::kGameOot, n);
+        if (const std::string line = ComboHealth::HeartsLogLine(sRt, heartsBefore, "OOT"); !line.empty()) {
+            SPDLOG_INFO("{}", line);
+        }
         static int sDbg = 0;
         if (Combo_DebugEnv("COMBO_DEBUG_HEALTH") && ((++sDbg % 60) == 0)) {
             Combo_DebugLog("[ComboShip] health OOT: %d/%d (q oot %d mm %d, dd %d) magic %d shared %d state %d\n",
