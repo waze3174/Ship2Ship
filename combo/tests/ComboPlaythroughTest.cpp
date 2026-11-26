@@ -128,6 +128,33 @@ void TestFixpointCreditsThePooledBottleInOot() {
     CHECK(Fixpoint(0u).ootReachable.count("Jabu Chest") == 0);
 }
 
+// Another player's item is native junk to the walk: its foreign entry credits nothing, and the check keeps its own
+// item.
+void TestAnotherPlayersItemIsNotCreditedByTheWalk() {
+    const json spoiler = { { "oot", { { "Kokiri Chest", "Blue Rupee" }, { "Link Gift", "Deku Stick" } } },
+                           { "mm", json::object() },
+                           { "foreign", json::array({ { { "checkGame", "oot" },
+                                                        { "checkName", "Kokiri Chest" },
+                                                        { "itemGame", "oot" },
+                                                        { "itemName", "Progressive Hookshot (OoT)" },
+                                                        { "ap", true },
+                                                        { "advancement", true } },
+                                                      { { "checkGame", "oot" },
+                                                        { "checkName", "Link Gift" },
+                                                        { "itemGame", "mm" },
+                                                        { "itemName", "Hookshot" },
+                                                        { "advancement", true } } }) } };
+    const std::vector<CwPlacedItem> placed = ParseSpoilerPlacements(spoiler.dump());
+    CHECK(placed.size() == 2);
+    for (const CwPlacedItem& p : placed) {
+        if (p.check == "Kokiri Chest") {
+            CHECK(p.itemGame == GAME_OOT && p.item == "Blue Rupee");
+        } else {
+            CHECK(p.item == "Hookshot" && p.itemGame == GAME_MM && p.advancement); // a cross-game item still counts
+        }
+    }
+}
+
 } // namespace
 
 int main() {
@@ -135,6 +162,7 @@ int main() {
     TestWithoutSharedBottlesTheMmBottleStaysInMm();
     TestPareDownSeesThePooledBottle();
     TestFixpointCreditsThePooledBottleInOot();
+    TestAnotherPlayersItemIsNotCreditedByTheWalk();
     if (ComboTest::gFailures != 0) {
         std::cerr << ComboTest::gFailures << " of " << ComboTest::gChecks << " checks failed\n";
         return 1;

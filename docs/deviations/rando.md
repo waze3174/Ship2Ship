@@ -3249,3 +3249,36 @@ The Fire Temple Goron shuffle and the new tricks and logic events needed nothing
   (`Combo_FormBoots` in `z_player.c`), so his dive to the bottom was voided. The iron-boots rule now skips the Zora
   form, and his depth counts as a scale dive's. No fork had this fix. Logic already expected it: with "Logic counts
   form abilities" on, the Zora is credited with the Golden Scale, which is what `RC_LH_LAB_DIVE` asks for.
+
+## Archipelago seed bridge: another player's item at a check (Ship2Ship 0.3.0, stage 3)
+
+A Ship2Ship slot of an Archipelago generation is played from the seed the generation writes
+(`AP_<seed>_P<n>_<name>.ship2ship.json`, also inside the slot data), as if Ship2Ship had generated it. No network is
+involved yet; the client is stage 4. Everything is additive: a seed that is not an Archipelago seed loads and plays as it
+did.
+
+- **The seed** (`combo/rando/ComboApSeed.h`, pure header code, `combo/tests/ComboApSeedTest.cpp`). `finalize` with an
+  `archipelago` object (`slotName`, `seedName`) writes `fileType` `Ship2ShipArchipelago` (`ComboSeedFileType.h`), which a
+  build without this code refuses as "not a Ship2Ship seed". The seed's `archipelago` block holds `formatVersion` (1), the
+  slot and room names and `otherPlayersItems`. `displaySeed` and `file_hash` are derived from the slot, the room and the
+  master seed, so two slots of one room show different hashes. `finalize` fails when another player's item comes without
+  the `archipelago` object.
+- **The foreign kind** (`CrossForeign.h`). Each of `otherPlayersItems` gets a `foreign` entry flagged `ap`: `itemGame` is
+  the check's own game, `itemName` the item's Archipelago name, `displayName` "<Player>'s <Item>" (the game tag dropped),
+  `category` `major` for progression and `junk` otherwise. `ForeignItem` gains `ap` and `apPlayer`. The check holds the
+  game's foreign sentinel at load time, as for a cross-game item, so every surface that names a foreign item (the
+  pickup text, shops, hints, the trackers) shows `displayName` unchanged.
+- **At pickup nothing is granted.** `OOT_DeliverForeign` and MM's `SendForeignCheck` show a toast and stop; the boss
+  release and the Anchor catch-up skip the entry. The check is obtained like any other, so the obtained-check lists
+  (`Combo_SOH_GetObtainedChecks`, `Combo_MM_GetObtainedChecks`) already say which locations to send
+  (`ApSentLocations`); no sent list is saved.
+- **The look.** The sentinel's own blue rupee, the same fallback a cross-game item with no model gets
+  (`ComboFillForeignDrawInfo` and its MM twin return Unknown for an `ap` entry). Progression and filler differ only by
+  the container category, which Container Matches Contents and the skip-animation setting already read.
+- **Loading.** `Combo_ApplySeedJson` refuses an Archipelago seed that `ApSeedProblem` rejects (another format, no slot,
+  an item at a check its game does not have, the foreign entries and the list disagreeing). The seed arrives like any
+  other: dropped on the game window at the file select, found in the Randomizer folder, or chosen with the new "Load seed
+  file..." button next to Generate (Combo > Randomizer; it hands the path to the file select as a drop does). The new file
+  stores `combo.archipelago` (`slotName`, `seedName`, `receivedIndex` 0). The Plandomizer refuses an Archipelago seed.
+- **The playthrough** (`ComboPlaythrough.h`) skips `ap` entries: the check holds native junk for the walk, as before.
+

@@ -34,3 +34,10 @@ adds about as much. The output holds the slot's seed as `AP_<seed>_P<n>_<name>.s
 Entrance shuffles can produce layouts nothing can be played in, such as one with nothing reachable at the start.
 Like Ship2Ship's own generator, the world then rolls a new layout, up to 30 times, and the log says which attempt it
 kept.
+
+## Playing your slot's seed
+
+Until the Archipelago client arrives, a slot's seed plays offline. Start Ship2Ship, go to the file select and either drop
+`AP_<seed>_P<n>_<name>.ship2ship.json` on the game window or open Combo > Randomizer and press "Load seed file...". Then
+start a new Randomizer file as for any seed. A check that holds another player's item shows "<Player>'s <Item>" and
+gives nothing; the other player's items, and your own items found by them, are not delivered yet.

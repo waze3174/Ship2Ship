@@ -380,6 +380,12 @@ class SeedOutputTest(unittest.TestCase):
         self.assertEqual(seedout.other_players_items({"archipelago": {"otherPlayersItems": [1]}}), [1])
         self.assertEqual(seedout.other_players_items({}), [])
 
+    def test_the_finalize_request_names_the_slot_and_the_room_only_when_asked(self):
+        placements = [seedout.own_placement("oot", "L0", "oot", "Key")]
+        self.assertNotIn("archipelago", seedout.finalize_request(placements))
+        self.assertEqual(seedout.finalize_request(placements, "Link", "AP_42")["archipelago"],
+                         {"slotName": "Link", "seedName": "AP_42"})
+
 
 class PackagingTest(unittest.TestCase):
     def test_the_apworld_has_one_folder_and_a_loadable_manifest(self):

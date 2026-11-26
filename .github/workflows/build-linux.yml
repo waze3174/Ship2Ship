@@ -105,6 +105,12 @@ jobs:
           cmake --build build-cmake --target comboOracleServerTest -j 4
           ./build-cmake/combo/comboOracleServerTest
 
+      # The Archipelago slot's seed and the foreign kind it adds: pure header code.
+      - name: Archipelago seed unit tests (comboApSeedTest)
+        run: |
+          cmake --build build-cmake --target comboApSeedTest -j 4
+          ./build-cmake/combo/comboApSeedTest
+
       # The playthrough walk and the requiredness pare-down against fake logic oracles: pure header code.
       - name: Playthrough unit tests (comboPlaythroughTest)
         run: |

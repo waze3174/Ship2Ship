@@ -90,8 +90,8 @@ OracleBackend FakeBackend() {
                                                             world.config.goal, GAME_OOT, 0u, COMBO_GAMES_BOTH);
         return world.session->Prepare(kOotDump, kMmDump, "");
     };
-    backend.finalize = [](OracleWorld&, std::vector<CwPlacement>& placements, const json& others, json& seed) {
-        seed = { { "placements", placements.size() }, { "others", others.size() } };
+    backend.finalize = [](OracleWorld&, std::vector<CwPlacement>& placements, json& seed) {
+        seed = { { "placements", placements.size() }, { "foreign", json::array() } };
         return std::string();
     };
     return backend;
@@ -186,13 +186,26 @@ void TestFinalizeNeedsEveryReachableLocation() {
     CHECK(!Call(server, { { "cmd", "finalize" }, { "placements", placements } })["ok"].get<bool>());
     placements.push_back(place("oot", "Key Chest", "mm", "Odolwa's Remains"));
     placements.push_back(place("mm", "MM Chest", "oot", "Master Sword"));
-    placements.push_back({ { "game", "mm" },
-                           { "check", "Remains Chest" },
-                           { "other", { { "player", "Zelda" }, { "name", "Hookshot" } } } });
-    const json done = Call(server, { { "cmd", "finalize" }, { "placements", placements } });
+    placements.push_back(
+        { { "game", "mm" },
+          { "check", "Remains Chest" },
+          { "other", { { "player", "Zelda" }, { "name", "Hookshot (OoT)" }, { "advancement", true } } } });
+    CHECK(!Call(server, { { "cmd", "finalize" }, { "placements", placements } })["ok"].get<bool>());
+    const json done = Call(server, { { "cmd", "finalize" },
+                                     { "placements", placements },
+                                     { "archipelago", { { "slotName", "Link" }, { "seedName", "AP_123" } } } });
     CHECK(done["ok"].get<bool>());
     CHECK(done["seed"]["placements"] == 5); // the never-reachable Never Chest is padded with junk
-    CHECK(done["seed"]["others"] == 1);
+    CHECK(done["seed"]["fileType"] == kApSeedFileType);
+    CHECK(done["seed"]["archipelago"][kApOthersKey].size() == 1);
+    CHECK(done["seed"]["foreign"].size() == 1);
+    CHECK(done["seed"]["foreign"][0]["displayName"] == "Zelda's Hookshot");
+    CHECK(done["seed"]["foreign"][0]["ap"] == true);
+    CHECK(done["seed"]["file_hash"].size() == 5);
+    CHECK(!Call(server, { { "cmd", "finalize" },
+                          { "placements", placements },
+                          { "archipelago", { { "slotName", "Link" } } } })["ok"]
+               .get<bool>());
     CHECK(!Call(server, { { "cmd", "finalize" },
                           { "placements", json::array({ place("oot", "Nope", "oot", "Small Key") }) } })["ok"]
                .get<bool>());
