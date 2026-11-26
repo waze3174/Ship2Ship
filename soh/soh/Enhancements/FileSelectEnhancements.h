@@ -15,6 +15,7 @@ u8 SohFileSelect_CountVisibleQuests();
 u8 SohFileSelect_CarouselLength();
 u8 SohFileSelect_QuestAtCarouselPosition(u8 position);
 s32 SohFileSelect_CarouselPositionOf(u8 quest);
+u8 SohFileSelect_DefaultQuest();
 #endif
 #ifdef __cplusplus
 };

@@ -142,6 +142,18 @@ bool SohFileSelect_IsQuestHidden(u8 quest) {
     }
 }
 
+#ifdef COMBO_BUILD
+// A new file starts on the first quest the carousel shows. Randomizer is never hidden, so one is always found.
+extern "C" u8 SohFileSelect_DefaultQuest() {
+    for (const u8 quest : kQuestCarouselOrder) {
+        if (!SohFileSelect_IsQuestHidden(quest)) {
+            return quest;
+        }
+    }
+    return QUEST_RANDOMIZER;
+}
+#endif
+
 u8 SohFileSelect_CountVisibleQuests() {
     u8 count = 0;
 #ifdef COMBO_BUILD

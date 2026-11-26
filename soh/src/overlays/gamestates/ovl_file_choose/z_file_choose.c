@@ -35,11 +35,11 @@
 // Mask, in that order (SohFileSelect_QuestAtCarouselPosition: the order is not the quest ids' order). Normal and Master
 // Quest make a vanilla OoT save (no seed, no MM save), Majora's Mask a vanilla MM save, back to back both;
 // SohFileSelect_IsQuestHidden hides the quest whose archive (oot.o2r, oot-mq.o2r) isn't loaded. A new file starts on
-// Randomizer, the combo randomizer.
+// the first quest shown (SohFileSelect_DefaultQuest).
 #define QUEST_POSITION_COUNT SohFileSelect_CarouselLength()
 #define QUEST_AT_POSITION(position) SohFileSelect_QuestAtCarouselPosition(position)
 #define QUEST_POSITION_OF(quest) SohFileSelect_CarouselPositionOf(quest)
-#define DEFAULT_QUEST QUEST_RANDOMIZER
+#define DEFAULT_QUEST SohFileSelect_DefaultQuest()
 #else
 #define MIN_QUEST (ResourceMgr_GameHasOriginal() ? QUEST_NORMAL : QUEST_MASTER)
 #define MAX_QUEST QUEST_SPEEDRUN_MASTER
