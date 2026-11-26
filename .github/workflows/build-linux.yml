@@ -75,6 +75,12 @@ jobs:
           cmake --build build-cmake --target comboBackToBackTest -j 4
           ./build-cmake/combo/comboBackToBackTest
 
+      # The Archipelago oracle protocol against fake logic oracles: pure header code.
+      - name: Oracle protocol unit tests (comboOracleServerTest)
+        run: |
+          cmake --build build-cmake --target comboOracleServerTest -j 4
+          ./build-cmake/combo/comboOracleServerTest
+
       # Which slot each game's shared health state belongs to: pure header code.
       - name: Shared health slot unit tests (comboSharedHealthSlotsTest)
         run: |
