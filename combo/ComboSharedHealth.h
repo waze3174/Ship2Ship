@@ -26,7 +26,8 @@
 
 #include "rando/SharedItems.h"
 
-extern "C" int Combo_GamesSolo(void); // each game's DLL: a one-game seed (combo/rando/ComboGames.h)
+extern "C" int Combo_GamesSolo(void);      // each game's DLL: a one-game seed (combo/rando/ComboGames.h)
+extern "C" int Combo_BackToBackSlot(void); // each game's DLL: a back-to-back slot (combo/rando/ComboCrossGate.h)
 
 namespace ComboHealth {
 
@@ -277,9 +278,10 @@ inline void Tick(Runtime& rt, int game, const Native& n) {
     TickAmmo(rt, game, n);
 }
 
-// A one-game seed has no second game to share with, so the switch is inert there.
+// A one-game seed has no second game to share with, so the switch is inert there. So is a back-to-back slot: each
+// game keeps its own hearts, magic and ammo, and the Back to back page decides what Termina takes from Hyrule, once.
 inline bool Enabled() {
-    return !Combo_GamesSolo() && CVarGetInteger(kCvarEnabled, 0) != 0;
+    return !Combo_GamesSolo() && !Combo_BackToBackSlot() && CVarGetInteger(kCvarEnabled, 0) != 0;
 }
 
 // Sharing is off: forget what was shared, so that switching it on later starts again from each game's native fields

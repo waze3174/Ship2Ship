@@ -288,9 +288,16 @@ the carry tick at once and at every later load: everything OoT has is usable in 
 everything MM has in Hyrule through OoT's Termina faces, as in a randomizer file. No new mechanism: `LocksActive` is the one
 gate. Both ways are open for either age, as in stage A.
 
+## Shared health is off in this mode
+
+"Shared health, magic and ammo" (`gCombo.Shared.HealthMagicAmmo`) does nothing in a back-to-back slot, whatever the menu
+says, before or after both games are beaten: `ComboHealth::Enabled` reads `Combo_BackToBackSlot()` (each DLL, from the
+cross gate's `kBackToBack` bit). Each game keeps its own hearts, magic meter and ammo, and the page's carry settings
+decide what Termina takes from Hyrule, once. Before this, with the switch on, the shared bar overwrote the hearts the
+page chose, and a new file could take over the shared hearts of the file erased before it (#30, 0.2.2: 20 heart
+containers, 3 filled, on a new file).
+
 ## Not done yet
 
 - Adult Link in Termina with OoT's adult gear (the adult path stays closed until both games are beaten).
 - Co-op: the mode is vanilla, so the dormant co-op gate stays closed.
-- Shared health (the opt-in `gCombo.Shared.HealthMagicAmmo`) is not aware of the mode: with it on, it can overwrite the
-  hearts the page chose.

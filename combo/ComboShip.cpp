@@ -66,6 +66,7 @@
 #include "ComboRelease.h"
 #include "ComboSaveTiming.h"
 #include "ComboContainerWriter.h"
+#include "ComboSharedHealthSlots.h" // which slot each game's shared health state is (pure logic, unit-tested)
 #include "discord/DiscordGameState.h"
 #include "discord/DiscordPresence.h"
 
@@ -604,6 +605,8 @@ static FnDumpData SOH_DumpEntranceOverrides = nullptr;
 // launcher is the sole save-compat gate. See docs/deviations/boot-shutdown.md.
 static std::mutex g_containerMutex;
 static std::map<int, nlohmann::json> g_containerCache;
+// The slot each game's shared health state came from (combo/ComboSharedHealthSlots.h); guarded by g_containerMutex.
+static ComboHealth::SlotOwnership g_comboHealthSlots;
 // Slots whose container was backed up for a COMBO_RELEASE_VERSION mismatch; guarded by g_containerMutex.
 // OOT drains it on the main thread (Combo_TakeEvictionNotice) to surface a popup.
 static std::vector<int> g_evictedSlots;
@@ -798,6 +801,9 @@ static void EraseComboContainer(int slot) {
         // and any dormant MM write would put the erased save back into the slot.
         if (g_MmSaveInMemorySlot == slot)
             g_MmSaveInMemorySlot = -1;
+        // A shared health state taken from the erased file belongs to no file now: a new file in this slot must not
+        // keep it or store it (#30).
+        g_comboHealthSlots.Forget(slot);
         // The slot's waiting snapshot is dropped and its write in progress waited out, or it would put the file back.
         auto& writer = ComboContainerIo::SharedWriter();
         writer.CancelAndWait(slot);
@@ -830,6 +836,7 @@ static void Combo_CopyContainer(int from, int to) {
         g_containerCache[to] = std::move(copy);
         if (g_MmSaveInMemorySlot == to)
             g_MmSaveInMemorySlot = -1; // the destination's MM save just changed under us
+        g_comboHealthSlots.Forget(to); // so did its shared health: the next read takes the copied combo.health
         FlushContainer(to);
     }
     // ComboShip (#182): the destination's owl save came from the donor, so MM's descent cache is wrong.
@@ -958,6 +965,9 @@ static const char* Combo_ReadGameSaveAs(int game, int fileNum, ComboSectionView 
         // is still broken between termina and hyrule"; reproduced on the owner's save). Now the live state wins: the
         // container is refreshed from it, the game being played keeps its own, and only another game (dormant or
         // arriving) takes the shared state, from that fresh copy.
+        // That holds only for the slot the live state came from: the file select reads every slot, and a state kept
+        // for, or stored into, another slot gave that file the other one's hearts (#30). A read of any other slot
+        // hands the reader that slot's own combo.health (ComboHealth::ApplySaveRead).
         FnShelfGet liveGet =
             (g_comboHealthActiveGame == ComboRando::GAME_OOT) ? SOH_ComboHealthGetState : MM_ComboHealthGetState;
         nlohmann::json live = nlohmann::json::object();
@@ -965,16 +975,17 @@ static const char* Combo_ReadGameSaveAs(int game, int fileNum, ComboSectionView 
             live = nlohmann::json::parse(liveGet(), nullptr, false);
         }
         const bool liveValid = live.is_object() && (live.value("health", -1) >= 0);
-        if (liveValid) {
-            c["combo"]["health"] = live;
-        }
-        if (liveValid && (game == g_comboHealthActiveGame)) {
+        const bool kept = ComboHealth::ApplySaveRead(
+            g_comboHealthSlots, g_comboHealthActiveGame, liveValid, game, fileNum, [&] { c["combo"]["health"] = live; },
+            [&] {
+                const std::string health = ComboObjectOf(c).value("health", nlohmann::json::object()).dump();
+                std::cout << "[ComboShip] save read for " << key << " (slot " << fileNum << "): shared health set "
+                          << health << std::endl;
+                set(health.c_str());
+            });
+        if (kept) {
             std::cout << "[ComboShip] save read for " << key << " (the game in play): its live shared state kept"
                       << std::endl;
-        } else {
-            const std::string health = ComboObjectOf(c).value("health", nlohmann::json::object()).dump();
-            std::cout << "[ComboShip] save read for " << key << ": shared health set " << health << std::endl;
-            set(health.c_str());
         }
     }
     return buf.c_str();
@@ -1066,13 +1077,17 @@ static void Combo_HandoffSharedHealth(int fromGame, int toGame, int fileNum) {
         return;
     }
     set(state.c_str());
-    if (ComboIsValidSlot(fileNum)) {
+    {
         std::lock_guard<std::mutex> lk(g_containerMutex);
-        auto& c = LoadOrCreateContainer(fileNum);
-        try {
-            c["combo"]["health"] = nlohmann::json::parse(state);
-            FlushContainer(fileNum);
-        } catch (...) {}
+        g_comboHealthSlots.HandedOff(fromGame, toGame);
+        // Stored only as the slot it came from (ComboSharedHealthSlots.h).
+        if (ComboIsValidSlot(fileNum) && g_comboHealthSlots.Owns(toGame, fileNum)) {
+            auto& c = LoadOrCreateContainer(fileNum);
+            try {
+                c["combo"]["health"] = nlohmann::json::parse(state);
+                FlushContainer(fileNum);
+            } catch (...) {}
+        }
     }
     std::cout << "[ComboShip] shared health/magic handed " << (fromGame == ComboRando::GAME_OOT ? "OOT" : "MM")
               << " -> " << (toGame == ComboRando::GAME_OOT ? "OOT" : "MM") << ": " << state << std::endl;
@@ -1102,7 +1117,8 @@ static void Combo_WriteGameSave(int game, int fileNum, const char* json) {
         c[key] = nlohmann::json::parse(json);
         if (FnShelfGet get = game == ComboRando::GAME_OOT ? SOH_BottleShelfGetState : MM_BottleShelfGetState)
             c["combo"]["bottleShelf"][key] = nlohmann::json::parse(get());
-        if (game == g_foregroundGame) {
+        // Only the state taken from this slot: a new file's first write would otherwise store the last slot read's.
+        if ((game == g_foregroundGame) && g_comboHealthSlots.Owns(game, fileNum)) {
             if (FnShelfGet get = game == ComboRando::GAME_OOT ? SOH_ComboHealthGetState : MM_ComboHealthGetState)
                 c["combo"]["health"] = nlohmann::json::parse(get());
         }
@@ -4669,11 +4685,17 @@ static void Combo_OnOOTSaveInit(int fileNum) {
         // Each game still holds the Bottle Shelf of the save it last read, and OOT's new save was just written with
         // it. A new save starts with an empty shelf in both games.
         c["combo"].erase("bottleShelf");
+        // The same holds for the shared health bar (combo.health). The save last read can be another file's: the
+        // file select reads every slot at boot, and erasing a slot leaves the games' state as it was, so a new file
+        // made in its place started with that file's hearts (#30: 20 heart containers, 3 filled).
+        c["combo"].erase("health");
+        g_comboHealthSlots.NewFile(fileNum); // the states emptied just below are this file's
         FlushContainer(fileNum);
     }
-    for (FnShelfSet setShelf : { SOH_BottleShelfSetState, MM_BottleShelfSetState }) {
-        if (setShelf)
-            setShelf("{}");
+    for (FnShelfSet setState :
+         { SOH_BottleShelfSetState, MM_BottleShelfSetState, SOH_ComboHealthSetState, MM_ComboHealthSetState }) {
+        if (setState)
+            setState("{}");
     }
     const int quest = SOH_GetNewSaveQuest ? SOH_GetNewSaveQuest() : ComboRando::kSohQuestRandomizer;
     if (quest == ComboRando::kSohQuestComboMm) {

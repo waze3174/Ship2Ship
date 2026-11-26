@@ -4510,6 +4510,10 @@ extern "C" int gMMComboCrossGate = ComboRando::CrossGate::kAllOpen;
 extern "C" COMBO_EXPORT void MM_SetComboCrossGate(int mask) {
     gMMComboCrossGate = mask;
 }
+// The loaded slot is a back-to-back one.
+extern "C" int Combo_BackToBackSlot(void) {
+    return ComboRando::CrossGate::IsBackToBack(gMMComboCrossGate) ? 1 : 0;
+}
 // Any way into Hyrule (the Clock Tower corridor, the portal, the warp songs, the entrances shuffled across).
 extern "C" int Combo_CrossToHyruleOpen(void) {
     return ComboRando::CrossGate::ToHyruleOpen(gMMComboCrossGate) ? 1 : 0;
