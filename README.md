@@ -27,17 +27,17 @@ enhancements, mod support and co-op.
 
 ## What you can play
 
-Each save file picks its own mode on the file-select screen:
+Each save file picks its own mode on the file-select screen, in this order:
 
 | Mode | What it is |
 |---|---|
+| **Back to back** | Plain Ocarina of Time, then plain Majora's Mask, in one save. The final blow to Ganon saves the game and opens the Lost Woods path into Termina; after the credits, or after a reset, child Link stands in the Temple of Time, and Majora's Mask's own opening plays when he crosses. Items both games have stay locked in Termina until you find Majora's Mask's copy, unless you tick that item to be usable early. Settings > Back to back chooses what carries over (hearts, the double magic meter, bottles, wallet, songs), which of Ocarina of Time's own items work in Termina, which items skip the wait, and Master Quest for the Ocarina of Time half. Ocarina of Time's Goron and Zora masks can be worn in Termina but only transform you once you have Majora's Mask's own. |
 | **Randomizer** | A seed generated from the Randomizer settings. The **Games** setting makes it a cross-game seed (Ocarina of Time + Majora's Mask), or Ocarina of Time only, or Majora's Mask only. |
 | **Normal** | Plain Ocarina of Time. |
 | **Master Quest** | Plain Ocarina of Time with the Master Quest dungeons. It needs a Master Quest ROM. |
 | **Majora's Mask** | Plain Majora's Mask. |
-| **Back to back** | Plain Ocarina of Time, then plain Majora's Mask, in one save. Beating Ganon opens the Lost Woods path into Termina, where Majora's Mask's own opening plays. Items both games have stay locked in Termina until you find Majora's Mask's copy, unless you tick that item to be usable early. Settings > Back to back chooses what carries over (hearts, the double magic meter, bottles, wallet, songs), which of Ocarina of Time's own items work in Termina, which items skip the wait, and Master Quest for the Ocarina of Time half. Ocarina of Time's Goron and Zora masks can be worn in Termina but only transform you once you have Majora's Mask's own. |
 
-The file-select screen labels each slot with its mode: `COMBO`, `OOTR`, `MMR`, `MQ`, `MM` or `S2S`.
+The file-select screen labels each slot with its mode: `S2S`, `COMBO`, `OOTR`, `MMR`, `MQ` or `MM`.
 
 ## Features
 
