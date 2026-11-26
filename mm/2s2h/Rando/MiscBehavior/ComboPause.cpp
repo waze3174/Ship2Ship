@@ -855,6 +855,19 @@ extern "C" void Combo_MmPauseStandInEquip(int mmSlot, unsigned short* item, unsi
     Log("equip OOT item 0x%02X from MM's empty slot %d as foreign id 0x%02X", LiveOotItem(standIn), mmSlot, standIn);
 }
 
+extern "C" int Combo_MmPauseButtonShownSlot(int slotByte) {
+    if ((slotByte >= 0) && (slotByte < COMBO_PAUSE_MM_SLOTS))
+        return slotByte;
+    const int oot = LiveOotItem(slotByte);
+    if ((oot < 0) || !StandsIn((uint8_t)oot))
+        return SLOT_NONE;
+    const uint8_t mm = TwinOf((uint8_t)oot);
+    if (mm == ITEM_NONE)
+        return SLOT_NONE;
+    const int mmSlot = SLOT(mm);
+    return (StandInFor(mmSlot) == slotByte) ? mmSlot : SLOT_NONE;
+}
+
 // Outside the anonymous namespace: OPEN_DISPS block-declares the FrameInterpolation hooks, which must keep C linkage.
 static void ComboPause_DrawEquipAnimIcon(const char* tex) {
     OPEN_DISPS(gPlayState->state.gfxCtx);

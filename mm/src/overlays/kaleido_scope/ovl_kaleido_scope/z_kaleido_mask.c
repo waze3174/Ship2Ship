@@ -219,7 +219,8 @@ void KaleidoScope_DrawMaskSelect(PlayState* play) {
     for (i = 0, j = MASK_NUM_SLOTS * 4; i < 3; i++, j += 4) {
         if (GET_CUR_FORM_BTN_ITEM(i + 1) != ITEM_NONE) {
             ItemId item = GET_CUR_FORM_BTN_ITEM(i + 1);
-            if (GameInteractor_Should(VB_DRAW_ITEM_EQUIPPED_OUTLINE, (GET_CUR_FORM_BTN_SLOT(i + 1) >= ITEM_NUM_SLOTS),
+            if (GameInteractor_Should(VB_DRAW_ITEM_EQUIPPED_OUTLINE,
+                                      KALEIDO_SLOT_ON_MASK_PAGE(KALEIDO_BTN_SHOWN_SLOT(GET_CUR_FORM_BTN_SLOT(i + 1))),
                                       &item, (s32)(i + 1), 0, PAUSE_MASK)) {
                 gSPVertex(POLY_OPA_DISP++, &pauseCtx->maskVtx[j], 4, 0);
                 POLY_OPA_DISP = Gfx_DrawTexQuadIA8(POLY_OPA_DISP, gEquippedItemOutlineTex, 32, 32, 0);
@@ -231,9 +232,10 @@ void KaleidoScope_DrawMaskSelect(PlayState* play) {
         for (i = EQUIP_SLOT_D_RIGHT; i <= EQUIP_SLOT_D_UP; i++, j += 4) {
             if (DPAD_GET_CUR_FORM_BTN_ITEM(i) != ITEM_NONE) {
                 ItemId item = DPAD_GET_CUR_FORM_BTN_ITEM(i);
-                if (GameInteractor_Should(VB_DRAW_ITEM_EQUIPPED_OUTLINE,
-                                          (DPAD_GET_CUR_FORM_BTN_SLOT(i) >= ITEM_NUM_SLOTS), &item, (s32)(i), 1,
-                                          PAUSE_MASK)) {
+                if (GameInteractor_Should(
+                        VB_DRAW_ITEM_EQUIPPED_OUTLINE,
+                        KALEIDO_SLOT_ON_MASK_PAGE(KALEIDO_BTN_SHOWN_SLOT(DPAD_GET_CUR_FORM_BTN_SLOT(i))), &item,
+                        (s32)(i), 1, PAUSE_MASK)) {
                     gSPVertex(POLY_OPA_DISP++, &pauseCtx->maskVtx[j], 4, 0);
                     POLY_OPA_DISP = Gfx_DrawTexQuadIA8(POLY_OPA_DISP, gEquippedItemOutlineTex, 32, 32, 0);
                 }
