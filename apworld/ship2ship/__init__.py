@@ -286,6 +286,8 @@ class Ship2ShipWorld(World):
     # ---- output ----
 
     def fill_slot_data(self) -> Mapping[str, Any]:
+        logger.info("%s: %d oracle questions (distinct item sets), %.1f s asking", self.player_name,
+                    self.reach_cache.misses, self.reach_cache.seconds)
         return slot_data_for(self._finalized(), self.opened.effective, self.oracle.library, self.master_seed, PROTOCOL)
 
     def generate_output(self, output_directory: str) -> None:

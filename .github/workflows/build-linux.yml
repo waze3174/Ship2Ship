@@ -187,6 +187,15 @@ jobs:
         run: >
           python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
           --comborando "$PWD/build-cmake/combo/comborando" --work ap-run
+      # A first reading of the fill failure rate: two solo seeds per option preset, checked like the manual run below.
+      # It reports; ap-fill-rate (the manual run) is the one that enforces the 2% target.
+      - name: Archipelago fill failure rate, a few seeds
+        if: ${{ !inputs.ap_fill_rate }}
+        timeout-minutes: 45
+        run: >
+          python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
+          --comborando "$PWD/build-cmake/combo/comborando" --work ap-run --fill-rate --count 2
+          --max-failure-percent 100
       - name: Upload the Archipelago generation logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -195,7 +204,7 @@ jobs:
           path: |
             ap-run/**/generate.log
             ap-run/**/players/*.yaml
-            ap-run/**/out/*.zip
+            ap-run/*/out/*.zip
             ap-run/fill-rate.json
           if-no-files-found: ignore
 

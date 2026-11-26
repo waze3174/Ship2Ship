@@ -5,6 +5,7 @@ answer is a pure, monotone function of the owned items, so it is cached by the s
 Pieces never change what is reachable, so they are left out of the key and counted in Python.
 """
 import threading
+import time
 from typing import Callable, Dict, Mapping, Tuple
 
 from .oracle import ReachAnswer, reach_request, parse_reach
@@ -41,6 +42,7 @@ class ReachCache:
         self._answers: Dict[ReachKey, ReachAnswer] = {}
         self._lock = threading.Lock()
         self.misses = 0
+        self.seconds = 0.0  # spent asking the oracle
 
     def answer(self, owned: Mapping[str, int]) -> ReachAnswer:
         key = reach_key(owned, self._known_names)
@@ -50,7 +52,9 @@ class ReachCache:
         with self._lock:
             found = self._answers.get(key)
             if found is None:
+                started = time.perf_counter()
                 found = parse_reach(self._ask(request_for(key)))
+                self.seconds += time.perf_counter() - started
                 self._answers[key] = found
                 self.misses += 1
         return found

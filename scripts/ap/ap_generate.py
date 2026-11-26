@@ -39,6 +39,7 @@ GENERATE_TIMEOUT_SECONDS = 1500
 PLAYTHROUGH_TIMEOUT_SECONDS = 300
 BASE_SEED = 1000
 SPOILER_LEVEL = "2"
+FILL_RATE_SPOILER_LEVEL = "0"  # the failure is in the fill, not the playthrough spoiler
 LOG_TAIL_LINES = 40
 MIDO_CHESTS = ["KF Mido Top Left Chest (OoT)", "KF Mido Top Right Chest (OoT)", "KF Mido Bottom Left Chest (OoT)"]
 FAILURE_MARKERS = ("FillError", "OptionError", "OracleError", "Exception", "Error:")
@@ -111,13 +112,14 @@ def failure_summary(log_path):
 
 
 class Generation:
-    def __init__(self, ap_root, work, name, files, seed):
+    def __init__(self, ap_root, work, name, files, seed, spoiler=SPOILER_LEVEL):
         self.ap_root = ap_root
         self.folder = work / name
         self.players = self.folder / "players"
         self.out = self.folder / "out"
         self.log = self.folder / "generate.log"
         self.seed = seed
+        self.spoiler = spoiler
         self.seconds = 0.0
         self.failure = None
         for stale in (self.players, self.out):
@@ -127,7 +129,7 @@ class Generation:
 
     def run(self):
         command = [sys.executable, "Generate.py", "--player_files_path", str(self.players), "--outputpath",
-                   str(self.out), "--seed", str(self.seed), "--spoiler", SPOILER_LEVEL, "--plando",
+                   str(self.out), "--seed", str(self.seed), "--spoiler", self.spoiler, "--plando",
                    "bosses,items,connections,texts"]
         started = time.perf_counter()
         with self.log.open("w", encoding="utf-8") as log:
@@ -201,7 +203,8 @@ def playthrough(comborando, raw, label):
 
 def check_plando(spoiler_text, expectation):
     item, locations = expectation
-    found = [line for line in spoiler_text.splitlines() if item in line and any(l in line for l in locations)]
+    found = [line for line in spoiler_text.splitlines()
+             if any(line.strip().startswith(location) for location in locations) and line.rstrip().endswith(item)]
     if not found:
         raise ChecksFailed(f"plando: {item} is not at any of {locations} in the spoiler")
     return f"plando placed: {found[0].strip()}"
@@ -268,7 +271,7 @@ def run_short_suite(args):
 def fill_rate_run(args, preset, index):
     name = f"{preset}-{index:03d}"
     gen = Generation(args.ap_root, args.work / "fill-rate", name,
-                     {"Solo.yaml": ship2ship_yaml("Solo", PRESETS[preset])}, BASE_SEED + index)
+                     {"Solo.yaml": ship2ship_yaml("Solo", PRESETS[preset])}, BASE_SEED + index, FILL_RATE_SPOILER_LEVEL)
     ok = gen.run()
     detail = gen.failure
     if ok:
