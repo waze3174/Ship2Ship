@@ -60,6 +60,8 @@ struct RomSlot {
     ComboFnGetProgress progress = nullptr;
     std::string path;
     RomFit fit = RomFit::NotARom;
+    // When the ROM doesn't fit: the slot it belongs in instead (the other game or quest), or -1.
+    int owner = -1;
     // extraction runtime state
     bool started = false;
     bool done = false;
@@ -109,30 +111,48 @@ bool ClaimRom(RomSlot& s, const std::string& path) {
     }
     s.path = path;
     s.fit = fit;
+    s.owner = -1;
     return true;
 }
 
-// Puts the ROM in the slot whether or not it fits, so the slot can say what is wrong with it.
-void AssignRom(RomSlot& s, const std::string& path, ComboFnValidateRom check) {
-    s.path = path;
-    s.fit = JudgeRom(s, check, path.c_str());
+// The slot other than `except` that the ROM at path fits, judged header-only; -1 if none.
+int FindOwnerSlot(const RomSlot* slots, int except, const std::string& path) {
+    for (int i = 0; i < kSlotCount; i++) {
+        if (i != except && JudgeRom(slots[i], RoutingCheck(slots[i]), path.c_str()) == RomFit::Fits) {
+            return i;
+        }
+    }
+    return -1;
 }
 
-void DrawRomProblem(const RomSlot& s, const ImVec4& color) {
+// Puts the ROM in slot `index` whether or not it fits, so the slot can say what is wrong with it.
+void AssignRom(RomSlot* slots, int index, const std::string& path, ComboFnValidateRom check) {
+    RomSlot& s = slots[index];
+    s.path = path;
+    s.fit = JudgeRom(s, check, path.c_str());
+    s.owner = s.valid() ? -1 : FindOwnerSlot(slots, index, path);
+}
+
+void DrawRomProblem(const RomSlot* slots, const RomSlot& s, const ImVec4& color) {
     ImGui::PushStyleColor(ImGuiCol_Text, color);
-    if (s.fit == RomFit::WrongQuest) {
+    if (s.owner >= 0 && !slots[s.owner].needed) {
+        ImGui::TextWrapped("This is the %s ROM, which is already extracted", slots[s.owner].label);
+    } else if (s.fit == RomFit::WrongQuest) {
         ImGui::TextWrapped("%s", s.masterQuest ? kVanillaInMasterQuestSlot : kMasterQuestInVanillaSlot);
+    } else if (s.owner >= 0) {
+        ImGui::TextWrapped("This is the %s ROM, not a %s ROM", slots[s.owner].label, s.label);
     } else {
         ImGui::TextWrapped("Not a valid %s ROM", s.label);
     }
     ImGui::PopStyleColor();
 }
 
-// Native open-file dialog filtered to N64 ROM extensions. Returns "" if cancelled.
+// Native open-file dialog filtered to N64 ROM extensions. Returns "" if cancelled. The Linux/macOS patterns list
+// both cases, since those dialogs may match case-sensitively; the Windows dialog never does.
 std::string PickRomFile() {
-    return ComboFilePicker::PickFile("Select ROM",
-                                     "N64 ROMs (*.z64;*.n64;*.v64)\0*.z64;*.n64;*.v64\0All Files (*.*)\0*.*\0",
-                                     { "N64 ROMs (*.z64 *.n64 *.v64)", "*.z64 *.n64 *.v64", "All Files", "*" });
+    return ComboFilePicker::PickFile(
+        "Select ROM", "N64 ROMs (*.z64;*.n64;*.v64)\0*.z64;*.n64;*.v64\0All Files (*.*)\0*.*\0",
+        { "N64 ROMs (*.z64 *.n64 *.v64)", "*.z64 *.n64 *.v64 *.Z64 *.N64 *.V64", "All Files", "*" });
 }
 
 // The UI disables Browse and points at drag & drop when no dialog helper exists (Linux only).
@@ -141,13 +161,14 @@ bool PickerAvailable() {
 }
 
 // Dropped-file hand-off from the gfx backend's event pump (via FileDropMgr) to the PICK loop
-// below. Same thread — the pump runs inside wnd->HandleEvents() — so a plain string suffices.
-// Registered only while the extraction screen is up; returns true so FileDropMgr doesn't emit
+// below. Same thread — the pump runs inside wnd->HandleEvents() — so a plain vector suffices.
+// FileDropMgr calls the handler once per file, so a multi-file drop arrives as several calls in one
+// frame. Registered only while the extraction screen is up; returns true so FileDropMgr doesn't emit
 // its "unsupported file" overlay for what is actually the expected input here.
-std::string sDroppedRomPath;
+std::vector<std::string> sDroppedRomPaths;
 bool HandleRomDrop(char* path) {
     if (path != nullptr) {
-        sDroppedRomPath = path;
+        sDroppedRomPaths.emplace_back(path);
     }
     return true;
 }
@@ -248,7 +269,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
     // to FileDropMgr (created by the window-only boot precisely so it exists here); the handler
     // stashes the path and the PICK phase below routes it into a slot.
     auto fileDropMgr = ctx->GetFileDropMgr();
-    sDroppedRomPath.clear();
+    sDroppedRomPaths.clear();
     if (fileDropMgr != nullptr) {
         fileDropMgr->RegisterDropHandler(HandleRomDrop);
     }
@@ -309,36 +330,44 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
             ImGui::Separator();
 
             if (phase == PICK) {
-                // A ROM dropped onto the window: route it by the header-only classify (same
+                // ROMs dropped onto the window: route each by the header-only classify (same
                 // routing as the auto-scan above), replacing a prior selection for that game —
-                // a drop is an explicit user action. If no slot claims it, park it in the first
-                // unfilled slot so the "Not a valid ... ROM" feedback explains what happened.
-                if (!sDroppedRomPath.empty()) {
-                    std::string dropped = std::move(sDroppedRomPath);
-                    sDroppedRomPath.clear();
+                // a drop is an explicit user action. If no slot claims one, park it in the first
+                // unfilled slot so the slot's problem line explains what happened.
+                if (!sDroppedRomPaths.empty()) {
+                    std::vector<std::string> dropped = std::move(sDroppedRomPaths);
+                    sDroppedRomPaths.clear();
                     if (fileDropMgr != nullptr) {
                         fileDropMgr->ClearDroppedFile();
                     }
-                    bool placed = false;
-                    for (auto& s : slots) {
-                        if (s.needed && ClaimRom(s, dropped)) {
-                            placed = true;
-                            break;
-                        }
-                    }
-                    if (!placed) {
+                    for (const auto& path : dropped) {
+                        bool placed = false;
                         for (auto& s : slots) {
-                            if (s.needed && !s.valid()) {
-                                AssignRom(s, dropped, RoutingCheck(s));
+                            if (s.needed && ClaimRom(s, path)) {
+                                placed = true;
                                 break;
+                            }
+                        }
+                        for (int i = 0; !placed && i < kSlotCount; i++) {
+                            if (slots[i].needed && !slots[i].valid()) {
+                                AssignRom(slots, i, path, RoutingCheck(slots[i]));
+                                placed = true;
                             }
                         }
                     }
                 }
 
-                ImGui::TextWrapped("Ship2Ship needs both an Ocarina of Time ROM and a Majora's Mask ROM. "
-                                   "Select each ROM below or drag and drop ROM files onto this window, "
-                                   "then click Extract. Both are required.");
+                if (oot.needed && mm.needed) {
+                    ImGui::TextWrapped("Ship2Ship needs both an Ocarina of Time ROM and a Majora's Mask ROM. "
+                                       "Select each ROM below or drag and drop ROM files onto this window, "
+                                       "then click Extract. Both are required.");
+                } else {
+                    const RomSlot& missing = oot.needed ? oot : mm;
+                    const RomSlot& extracted = oot.needed ? mm : oot;
+                    ImGui::TextWrapped("Ship2Ship needs your %s ROM (%s is already extracted). Select it below "
+                                       "or drag and drop the ROM file onto this window, then click Extract.",
+                                       missing.label, extracted.label);
+                }
                 if (ootMq.needed) {
                     ImGui::TextWrapped("An Ocarina of Time Master Quest ROM is optional. Add it to play "
                                        "Master Quest in addition to the regular game.");
@@ -369,7 +398,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                         if (ImGui::Button(s.path.empty() ? "Browse..." : "Change")) {
                             std::string picked = PickRomFile();
                             if (!picked.empty()) {
-                                AssignRom(s, picked, s.validate);
+                                AssignRom(slots, i, picked, s.validate);
                             }
                         }
                         if (!PickerAvailable()) {
@@ -382,6 +411,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                             if (ImGui::Button("Clear")) {
                                 s.path.clear();
                                 s.fit = RomFit::NotARom;
+                                s.owner = -1;
                             }
                             ComboMenu_PopButton();
                         }
@@ -391,7 +421,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
                         } else if (s.valid()) {
                             ImGui::TextColored(kGreen, "Valid %s ROM", s.label);
                         } else {
-                            DrawRomProblem(s, kRed);
+                            DrawRomProblem(slots, s, kRed);
                         }
                     }
                     ImGui::Spacing();
@@ -510,7 +540,7 @@ extern "C" COMBO_EXPORT int ComboUI_RunExtraction(const ComboExtractCallbacks* c
         fileDropMgr->UnregisterDropHandler(HandleRomDrop);
         fileDropMgr->ClearDroppedFile();
     }
-    sDroppedRomPath.clear();
+    sDroppedRomPaths.clear();
 
     return result;
 }

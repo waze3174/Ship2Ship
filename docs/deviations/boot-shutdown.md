@@ -658,6 +658,38 @@ hashing the ROM, so a Master Quest ROM always lands in `oot-mq.o2r` whichever sl
   the vanilla ROM; the combo needs `oot.o2r`. The screen opens only when `oot.o2r` or the MM archive is missing, and
   nothing re-opens it mid-game, so a player who skipped the optional slot adds `oot-mq.o2r` by copying it in.
 
+## ROM Setup: outdated archives re-extract before the boot (0.2.2, 2026-11-25)
+
+**Why:** the first launch after a COMBO_EPOCH bump crashed (Steam Deck, 0.2.2 RC: Signal 11 in
+`OTRGlobals::RunExtract`, `benFast3dWindow` null). The launcher only checked that the archives exist, so an old
+`mm.o2r` skipped ROM Setup and reached 2Ship's `RunExtract` inside `MM_BootForCombo`. That removed it and drew its
+popup through `benFast3dWindow`, which a combo boot never creates. An old `oot.o2r` was never checked at all: SoH's
+check lives in its standalone `RunExtract`, which a combo boot doesn't run.
+
+- **`soh/soh/OTRGlobals.cpp` `SOH_RemoveOutdatedRomArchives()`, `mm/2s2h/BenPort.cpp` `MM_RemoveOutdatedRomArchive()`
+  (combo exports):** each game's own `RunExtract` rule (version major != this build's, then
+  `RemoveArchiveAcrossAppDirs`), callable before any Context exists.
+- **`combo/ComboShip.cpp`:** the launcher calls both before its "archive missing" check, so the one ROM Setup
+  re-extracts every outdated archive.
+- **`mm/2s2h/BenPort.cpp` `RunExtract` (upstream code):** `benFast3dWindow->StartFrame/RunGuiOnly/EndFrame` became
+  `wnd->…`, the context's window (the same object standalone; the shared one in a combo boot). Keep it on merges.
+
+## ROM Setup: misplaced ROMs, multi-file drops, any-case extensions (0.2.2, 2026-11-25)
+
+- **Misplaced ROMs say what they are (`combo/gui/ComboExtractScreen.cpp`):** a ROM that doesn't fit its slot is
+  checked against the other slots (header-only). A ROM for an already-extracted slot reads "This is the Ocarina of
+  Time ROM, which is already extracted" instead of "Not a valid Majora's Mask ROM"; one for another open slot reads
+  "This is the … ROM, not a … ROM". The intro names the one missing game when the other is already extracted, instead
+  of "Both are required".
+- **Multi-file drops:** `FileDropMgr` calls the handler once per dropped file; the screen now queues every path and
+  routes each, instead of keeping only the last.
+- **Any-case extensions:** the screen's scan lowercased extensions, but the extractors compared them exactly, so a
+  `.Z64` ROM was listed and then refused. `HasRomExtension()` in `soh/soh/Extractor/Extract.cpp` and
+  `mm/2s2h/Extractor/Extract.cpp` lowercases first; it is used by `ClassifyRom` (ComboShip code) and by upstream's
+  `RunFileStandalone` (one changed `if` each, marked `// ComboShip:`). It can't be done on the ComboShip side: the
+  extractors open the path they're given, and on Linux a differently-cased path is another file. On merges, keep
+  the `HasRomExtension` call if upstream rewrites that check. The Linux/macOS Browse filter also lists `*.Z64` etc.
+
 ## Three more quit-to-MM-title seams (2026-08-22)
 
 Every path that reaches `TitleSetup_SetupTitleScreen` runs `Sram_InitNewSave()` (a `SAVETYPE_VANILLA`

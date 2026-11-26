@@ -54,6 +54,7 @@
 #include <utility>
 #include <vector>
 #include <string>
+#include <cctype> // ComboShip: HasRomExtension
 
 extern "C" uint32_t CRC32C(unsigned char* data, size_t dataSize);
 
@@ -478,6 +479,15 @@ bool Extractor::ManuallySearchForRomMatchingType(RomSearchMode searchMode) {
     return true;
 }
 
+// ComboShip: a ROM extension in any case (".Z64" too), as the launcher's ROM Setup scan lists them.
+static bool HasRomExtension(const std::filesystem::path& file) {
+    std::string ext = file.extension().string();
+    for (char& c : ext) {
+        c = (char)std::tolower((unsigned char)c);
+    }
+    return ext == ".n64" || ext == ".z64" || ext == ".v64";
+}
+
 // ComboShip: classify a ROM by its header version CRC only (no full-ROM read/CRC). The folder
 // auto-scan calls this per candidate x slot, so a full read here made extraction slow to start; the
 // full-ROM CRC check stays in RunFileStandalone, run once on the matched ROM at extraction time.
@@ -485,8 +495,7 @@ bool Extractor::ClassifyRom(std::string rom) {
     if (std::filesystem::is_directory(rom)) {
         return false;
     }
-    auto file = std::filesystem::path(rom);
-    if ((file.extension() != ".n64") && (file.extension() != ".z64") && (file.extension() != ".v64")) {
+    if (!HasRomExtension(rom)) {
         return false;
     }
     SetRomInfo(rom);
@@ -522,8 +531,7 @@ bool Extractor::RunFileStandalone(std::string rom) {
     if (std::filesystem::is_directory(rom)) {
         return false;
     }
-    auto file = std::filesystem::path(rom);
-    if ((file.extension() != ".n64") && (file.extension() != ".z64") && (file.extension() != ".v64")) {
+    if (!HasRomExtension(rom)) { // ComboShip: any case (upstream compares ".n64"/".z64"/".v64" exactly)
         return false;
     }
     SetRomInfo(rom);
