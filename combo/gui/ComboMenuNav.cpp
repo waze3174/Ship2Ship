@@ -175,8 +175,12 @@ std::vector<HubGroup> BothGamesGroups() {
     }
     cross.push_back(MakeEntry(scope, kGroupCrossGame, "Back to back", HubEntry::COMBO_BACK_TO_BACK,
                               "vanilla Ocarina of Time then Majora's Mask one save file Master Quest carried hearts "
-                              "magic bottles wallet rupees songs usable in Termina early sticks nuts bombs bow "
-                              "arrows hookshot lens beans ocarina"));
+                              "magic bottles wallet rupees songs usable in Termina early this file purist default "
+                              "everything quick set Song of Time reset cycle Din's Fire Farore's Wind Nayru's Love "
+                              "boomerang slingshot Megaton Hammer Iron Boots Hover Boots tunics Deku Sticks Deku "
+                              "Nuts bombs bow fire arrows ice arrows light arrows ocarina bombchus hookshot "
+                              "longshot lens of truth magic beans Keaton Mask Bunny Hood Mask of Truth Goron Mask "
+                              "Zora Mask"));
     AddGroup(groups, kGroupCrossGame, std::move(cross));
     return groups;
 }
