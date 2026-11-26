@@ -11,6 +11,7 @@
 #ifdef COMBO_BUILD
 #include "overlays/actors/ovl_En_Arrow/z_en_arrow.h" // ComboShip: MM's Deku Bubble held at Deku Link's mouth
 #include "overlays/actors/ovl_En_Boom/z_en_boom.h"   // ComboShip: MM's Zora fins (arm fins hide while thrown)
+#include "overlays/actors/ovl_Arms_Hook/z_arms_hook.h" // ComboShip: the Hookshot Reach Multiplier is OOT's own only
 static s32 sComboDekuHeadPushed = false; // head matrix saved before the bubble squash (popped after the head)
 #endif
 #ifdef COMBO_BUILD
@@ -3000,7 +3001,7 @@ void Player_PostLimbDrawGameplay(PlayState* play, s32 limbIndex, Gfx** dList, Ve
                         Player_DrawHookshotReticle(
                             play, this,
                             ((this->heldItemAction == PLAYER_IA_HOOKSHOT) ? 38600.0f : 77600.0f) *
-                                CVarGetFloat(CVAR_CHEAT("HookshotReachMultiplier"), 1.0f));
+                                Combo_HookshotReachMultiplier());
                     }
                 }
             }

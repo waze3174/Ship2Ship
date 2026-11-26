@@ -20,4 +20,9 @@ typedef struct ArmsHook {
     /* 0x0214 */ ArmsHookActionFunc actionFunc;
 } ArmsHook; // size = 0x0218
 
+// ComboShip (z_player.c): the hookshot in Link's hand is MM's (a foreign item on its button), and SoH's Hookshot Reach
+// Multiplier, which applies to OOT's own hookshots only.
+s32 Combo_HookshotIsMm(void);
+f32 Combo_HookshotReachMultiplier(void);
+
 #endif
