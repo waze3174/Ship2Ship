@@ -9,8 +9,8 @@
 #include "objects/object_link_child/object_link_child.h"
 #include "overlays/actors/ovl_Demo_Effect/z_demo_effect.h"
 #ifdef COMBO_BUILD
-#include "overlays/actors/ovl_En_Arrow/z_en_arrow.h" // ComboShip: MM's Deku Bubble held at Deku Link's mouth
-#include "overlays/actors/ovl_En_Boom/z_en_boom.h"   // ComboShip: MM's Zora fins (arm fins hide while thrown)
+#include "overlays/actors/ovl_En_Arrow/z_en_arrow.h"   // ComboShip: MM's Deku Bubble held at Deku Link's mouth
+#include "overlays/actors/ovl_En_Boom/z_en_boom.h"     // ComboShip: MM's Zora fins (arm fins hide while thrown)
 #include "overlays/actors/ovl_Arms_Hook/z_arms_hook.h" // ComboShip: the Hookshot Reach Multiplier is OOT's own only
 static s32 sComboDekuHeadPushed = false; // head matrix saved before the bubble squash (popped after the head)
 #endif
