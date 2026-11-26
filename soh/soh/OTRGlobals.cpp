@@ -3903,12 +3903,12 @@ extern "C" int Combo_LostWoodsToTerminaOpen(void) {
 }
 // The Back to back page's choices (combo/rando/ComboBackToBackSettings.h) for the loaded slot, pushed by the launcher;
 // 0 outside a back-to-back slot.
-static int sComboBackToBackOptions = 0;
-extern "C" COMBO_EXPORT void SOH_SetComboBackToBackOptions(int options) {
+static ComboRando::BackToBack::OptionBits sComboBackToBackOptions = 0;
+extern "C" COMBO_EXPORT void SOH_SetComboBackToBackOptions(ComboRando::BackToBack::OptionBits options) {
     sComboBackToBackOptions = options;
 }
 // The choices a new back-to-back file is created with: what the page holds now.
-extern "C" COMBO_EXPORT int SOH_GetNewSaveBackToBackOptions(void) {
+extern "C" COMBO_EXPORT ComboRando::BackToBack::OptionBits SOH_GetNewSaveBackToBackOptions(void) {
     return ComboRando::BackToBack::OptionsFromCVars(
         [](const char* cvar, int fallback) { return CVarGetInteger(cvar, fallback); });
 }

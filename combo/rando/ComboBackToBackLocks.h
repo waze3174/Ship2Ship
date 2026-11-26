@@ -23,7 +23,7 @@ enum class LockKind {
 
 struct ItemLock {
     LockKind kind;
-    int option; // the Option bit: the early-use switch for UntilMmHolds, the item's switch for Option
+    OptionBits option; // the Option bit: the early-use switch for UntilMmHolds, the item's switch for Option
 };
 
 // OoT item ids (soh/include/z64item.h).
@@ -121,7 +121,7 @@ inline ItemLock GearLock(bool boots) {
 }
 
 // mmHoldsCounterpart: Link has found MM's own copy (for a bottle: any bottle at all).
-inline bool Locked(int options, ItemLock lock, bool mmHoldsCounterpart) {
+inline bool Locked(OptionBits options, ItemLock lock, bool mmHoldsCounterpart) {
     switch (lock.kind) {
         case LockKind::UntilMmHolds:
             return (options & lock.option) == 0 && !mmHoldsCounterpart;
@@ -144,7 +144,7 @@ inline bool LocksActive(int crossGateMask) {
 }
 
 // An item the loaded slot keeps out of Termina right now: Locked(), but only while the locks are in force.
-inline bool LockedInTermina(int crossGateMask, int options, ItemLock lock, bool mmHoldsCounterpart) {
+inline bool LockedInTermina(int crossGateMask, OptionBits options, ItemLock lock, bool mmHoldsCounterpart) {
     return LocksActive(crossGateMask) && Locked(options, lock, mmHoldsCounterpart);
 }
 

@@ -17,7 +17,7 @@ and everything usable after both games). Not done: adult Link in Termina (see "N
 `combo.mode` for a back-to-back slot (`combo/rando/ComboMode.h`):
 
 ```json
-"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 8172, "optionsLayout": 2 }
+"mode": { "game": "ootmm", "kind": "vanilla", "quest": "normal", "sequential": true, "options": 8172, "optionsLayout": 3 }
 ```
 
 - `ComboMode::BackToBack(quest, options)`, `IsBackToBack()`. `sequential` and `options` (stage C) are written only for this mode;
@@ -210,9 +210,11 @@ called from `Combo_InitBackToBackSlot`), stored as one int in the file's `combo.
 the defaults) and pushed to both DLLs with the cross gate (`SOH_SetComboBackToBackOptions`,
 `MM_SetComboBackToBackOptions`; 0 for every other slot).
 
-The int's bits: 0-12 the carry and OoT-only switches, 13-30 the early-use switches (Goron Mask is 29, Zora Mask 30); the
-sign bit stays unused. `ComboMode::ToJson` writes `"optionsLayout": 2` (`kOptionsLayout`) beside `"options"`. A mode
-without the key holds the first layout (bits 0-12 only); `MigrateStoredOptions` (called by `ComboMode::FromJson`) leaves
+The options are one 64-bit value (`BackToBack::OptionBits`, a `uint64_t`; nlohmann stores it as an unsigned number, and
+the launcher and both DLLs pass it as 64 bits): bits 0-12 the carry and OoT-only switches, 13-31 the early-use switches
+(Goron Mask is 29, Zora Mask 30, Magic 31). `ComboMode::ToJson` writes `"optionsLayout": 3` (`kOptionsLayout`) beside
+`"options"`. Layout 2 (0.2.2) is the same bits in a 31-bit int without Magic; `MigrateStoredOptions` returns a layout-2
+or layout-3 value untouched, so a layout-2 file has Magic off. A mode without the key holds the first layout (bits 0-12 only); `MigrateStoredOptions` (called by `ComboMode::FromJson`) leaves
 every old choice as it was and, when bit 4 was on (it used to also mean "the masks both games have are usable at once,
 and the Goron and Zora masks transform at once"), sets all five mask early-use bits (Keaton, Bunny, Truth, Goron, Zora).
 A mode without the key but with bit 30 set was made by 0.2.2, which marked its layout with that bit
@@ -238,8 +240,20 @@ Hyrule.
 "Usable in Termina before Majora's Mask's own is found" (`CVars gCombo.BackToBack.Early.*`): one switch per item MM has
 too, all off by default (the item waits). Deku Sticks, Deku Nuts, Bombs, Bow, Fire, Ice and Light Arrows, Ocarina (both
 of OoT's), Bombchus, Hookshot (with the Longshot), Lens of Truth, Magic Beans, Bottles (with the Bottles carry on: before
-MM's first bottle), Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask. The last two mean something else:
-see below.
+MM's first bottle), Keaton Mask, Bunny Hood, Mask of Truth, Goron Mask and Zora Mask (those two mean something else, see
+below) and Magic (see below).
+
+**Magic in Termina.** With the Magic switch on, `CarryEarlyMagic` (`ComboBackToBack.cpp`, run as the opening starts with
+the hearts and the wallet) gives Link Ocarina of Time's meter at once: `isMagicAcquired` set, `magic` full, `magicLevel`
+0, which `Interface_Update` grows and fills (`z_parameter.c`, the same path MM's own gift uses). It is double when the
+Double magic meter carry is on and OoT's meter was double, otherwise single, and none if OoT had none. Off: no meter until
+MM's Great Fairy, then the carry decides single or double. MM's Great Fairy flow tolerates the meter being there already:
+her gift (`z_bg_dy_yoseizo.c`, `GREAT_FAIRY_TYPE_MAGIC` and `_WISDOM`) only writes `isMagicAcquired` and the fill target
+when the flag is unset. The Clock Town fairy's Deku Mask and Great Fairy's Mask branches (`z_en_elfgrp.c`) do not read
+the magic flag; with it set she plays her heal cutscene in the one branch that tests it. A double meter from the start
+also makes the Snowhead (Wisdom) fairy heal instead of giving double magic (she tests `isDoubleMagicAcquired`), which no
+progression needs. Spells and magic arrows go through
+`Magic_Consume`, which only needs `isMagicAcquired`. Read from the code, not played.
 
 The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/ComboBackToBackTest.cpp`):
 
@@ -254,9 +268,9 @@ The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/Co
 
 **Waits that are not settings.** Each has a technical reason.
 - The quiver, bomb bag, Deku stick and Deku nut levels wait for MM's bow, bombs, sticks and nuts (stage D).
-- The double magic meter waits for MM's Great Fairy: the meter needs `isMagicAcquired`, and MM's code reads that flag as
-  "magic not given yet" (the Great Fairy gift in `SkipGreatFairyCutscene.cpp`, Tatl's hint in `z_elf_message.c`), so
-  setting it earlier would stop MM giving magic.
+- Without the Magic switch, the magic meter waits for MM's Great Fairy: MM reads `isMagicAcquired` as "magic not given
+  yet" (the Great Fairy gift in `SkipGreatFairyCutscene.cpp`, Tatl's hint in `z_elf_message.c`). The Magic switch above
+  sets it from the start.
 - The songs wait for an ocarina Link can play in Termina (`Combo_MM_LinkHasUsableOcarina`, `ComboBackToBack.cpp`):
   MM's, or OoT's once the slot lets it in (the ocarina's early-use switch). MM's own lessons (Song of Time, Epona's
   Song, Song of Storms) are not skipped by an early flag, and no MM code branches on the Song of Time bit but the

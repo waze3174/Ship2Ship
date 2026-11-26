@@ -126,11 +126,11 @@ extern "C" COMBO_EXPORT void MM_ComboPause_DebugGive(int mmItem) {
 
 extern "C" {
 extern u8 gPlayerFormItemRestrictions[PLAYER_FORM_MAX][114];
-void Combo_RequestCrossSwitch(int ootEntrance); // BenPort.cpp
-int Combo_GamesSolo(void);                      // BenPort.cpp
-int Combo_MM_BackToBackOptions(void);           // BenPort.cpp
-int Combo_MM_BackToBackLocksActive(void);       // BenPort.cpp
-extern int gMMComboCrossGate;                   // BenPort.cpp: the loaded slot's ways between the games
+void Combo_RequestCrossSwitch(int ootEntrance);                      // BenPort.cpp
+int Combo_GamesSolo(void);                                           // BenPort.cpp
+ComboRando::BackToBack::OptionBits Combo_MM_BackToBackOptions(void); // BenPort.cpp
+int Combo_MM_BackToBackLocksActive(void);                            // BenPort.cpp
+extern int gMMComboCrossGate; // BenPort.cpp: the loaded slot's ways between the games
 }
 
 namespace {
@@ -306,7 +306,7 @@ void ApplyBackToBackItemLocks() {
     namespace B2B = ComboRando::BackToBack;
     if (!Combo_MM_BackToBackLocksActive())
         return;
-    const int options = Combo_MM_BackToBackOptions();
+    const auto options = Combo_MM_BackToBackOptions();
     for (int s = 0; s < COMBO_PAUSE_OOT_SLOTS; s++) {
         const uint8_t item = sOotItems[s];
         if (item == 0xFF || !B2B::Locked(options, B2B::ClassifyOotItem(item), MmHoldsCounterpartOf(item)))
@@ -433,7 +433,7 @@ void ApplyBackToBackEquipLocks() {
     namespace B2B = ComboRando::BackToBack;
     if (!Combo_MM_BackToBackLocksActive())
         return;
-    const int options = Combo_MM_BackToBackOptions();
+    const auto options = Combo_MM_BackToBackOptions();
     for (int row = kEquipRowTunic; row <= kEquipRowBoots; row++) {
         if (!B2B::Locked(options, B2B::GearLock(row == kEquipRowBoots), false))
             continue;

@@ -30,7 +30,8 @@ constexpr const char* kOotOnlyItemsNote =
 constexpr const char* kEarlyUseNote =
     "Items Majora's Mask has too wait in Termina until Link finds Majora's Mask's own. Tick one to use "
     "Ocarina of Time's from the start. The Goron and Zora masks can always be worn there as plain masks; tick them "
-    "to let them transform Link from the start, not only once he has Majora's Mask's own.";
+    "to let them transform Link from the start, not only once he has Majora's Mask's own. Magic gives Link Ocarina of "
+    "Time's magic meter from the start.";
 
 using FnHasArchive = int (*)();
 

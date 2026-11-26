@@ -1,7 +1,9 @@
 // mm/2s2h/Rando/MiscBehavior/ComboBackToBack.cpp — ComboShip: what Ocarina of Time carries into a back-to-back slot's
 // Majora's Mask save. Combo-owned file (2ship GLOB_RECURSE). See docs/deviations/back2back.md.
 //
-//   At the opening   The hearts and the wallet with its rupees go into MM's save as the opening starts (title_setup.c),
+//   At the opening   The hearts, the wallet with its rupees and, with the Magic early-use switch, the magic meter go
+//   into
+//                    MM's save as the opening starts (title_setup.c),
 //                    whenever the slot has not yet played the opening, so what MM saves from then on holds them.
 //   Once found       The rest waits for the MM item it belongs to, because MM's own give code reads some of these as
 //                    ownership. The magic meter carries once MM's Great Fairy has given magic, the songs once Link has
@@ -28,11 +30,11 @@ extern "C" {
 #include "macros.h"
 #include "variables.h"
 #include "functions.h"
-int Combo_MM_BackToBackOpeningPending(void); // BenPort.cpp
-int Combo_MM_BackToBackLocksActive(void);    // BenPort.cpp
-int Combo_MM_BackToBackOptions(void);        // BenPort.cpp
-extern int gMMComboCrossGate;                // BenPort.cpp: the loaded slot's ways between the games
-int Combo_MM_LinkHasUsableOcarina(void);     // below
+int Combo_MM_BackToBackOpeningPending(void);                         // BenPort.cpp
+int Combo_MM_BackToBackLocksActive(void);                            // BenPort.cpp
+ComboRando::BackToBack::OptionBits Combo_MM_BackToBackOptions(void); // BenPort.cpp
+extern int gMMComboCrossGate;            // BenPort.cpp: the loaded slot's ways between the games
+int Combo_MM_LinkHasUsableOcarina(void); // below
 }
 
 namespace {
@@ -74,6 +76,23 @@ void CarryWallet() {
         static_cast<s16>(std::min<int>(CarriedFromOot(B2B::kCarryRupees), CAPACITY(UPG_WALLET, tier)));
     SPDLOG_INFO("[ComboBackToBack] wallet carried into Termina: tier {}, {} rupees", tier,
                 gSaveContext.save.saveInfo.playerData.rupees);
+}
+
+// With the Magic early-use switch, Link starts Termina with Ocarina of Time's meter, full, as MM's Great Fairy would
+// have given it (its gift skips what he already has, so her story is unchanged): single, or double when the double
+// magic meter carry is on and OoT's was. None without a meter in OoT. Interface_Update grows the meter once the opening
+// runs.
+void CarryEarlyMagic() {
+    const int level = CarriedFromOot(B2B::kCarryMagicLevel);
+    if (level == 0)
+        return;
+    SavePlayerData& player = gSaveContext.save.saveInfo.playerData;
+    const bool doubleMeter = level >= 2 && OptionOn(B2B::kMagicCarry);
+    player.isMagicAcquired = true;
+    player.isDoubleMagicAcquired = doubleMeter;
+    player.magic = doubleMeter ? MAGIC_DOUBLE_METER : MAGIC_NORMAL_METER;
+    player.magicLevel = 0;
+    SPDLOG_INFO("[ComboBackToBack] magic meter in Termina from the start: {}", doubleMeter ? "double" : "single");
 }
 
 // MM's magic meter, once its own Great Fairy has given it, grows to double when OoT's was double. Waits for MM's own
@@ -165,7 +184,8 @@ extern "C" int Combo_MM_LinkHasUsableOcarina(void) {
                : 0;
 }
 
-// Called as MM's opening starts in a back-to-back slot's first entry (title_setup.c): the carried hearts and wallet.
+// Called as MM's opening starts in a back-to-back slot's first entry (title_setup.c): the carried hearts and wallet,
+// and the magic meter when it is usable from the start.
 extern "C" void Combo_MM_ApplyBackToBackStart(void) {
     if (!Combo_MM_BackToBackOpeningPending())
         return;
@@ -173,6 +193,8 @@ extern "C" void Combo_MM_ApplyBackToBackStart(void) {
         CarryHearts();
     if (OptionOn(B2B::kWalletCarry))
         CarryWallet();
+    if (OptionOn(B2B::kEarlyMagic))
+        CarryEarlyMagic();
 }
 
 #endif // COMBO_BUILD

@@ -59,8 +59,8 @@ struct ComboMode {
     ComboGames game = COMBO_GAMES_BOTH;
     ComboKind kind = COMBO_KIND_RANDO;
     OotQuest quest = OOT_QUEST_NORMAL;
-    bool sequential = false; // both games, vanilla, one after the other (see the header comment)
-    int options = 0;         // a back-to-back slot's BackToBack::Option bits
+    bool sequential = false;                        // both games, vanilla, one after the other (see the header comment)
+    ComboRando::BackToBack::OptionBits options = 0; // a back-to-back slot's BackToBack::Option bits
 
     bool IsVanilla() const {
         return kind == COMBO_KIND_VANILLA;
@@ -89,7 +89,7 @@ struct ComboMode {
     static ComboMode VanillaMm() {
         return { COMBO_GAMES_MM, COMBO_KIND_VANILLA, OOT_QUEST_NORMAL, false, 0 };
     }
-    static ComboMode BackToBack(OotQuest quest, int options) {
+    static ComboMode BackToBack(OotQuest quest, ComboRando::BackToBack::OptionBits options) {
         return { COMBO_GAMES_BOTH, COMBO_KIND_VANILLA, quest, true, options };
     }
 

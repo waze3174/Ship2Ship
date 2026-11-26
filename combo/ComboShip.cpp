@@ -270,6 +270,8 @@ typedef void (*FnVoid)();
 typedef bool (*FnExtract)(const char*);
 typedef void (*FnRunMain)(int, char**);
 typedef int (*FnInt)();
+typedef ComboRando::BackToBack::OptionBits (*FnOptions)();
+typedef void (*FnSetOptions)(ComboRando::BackToBack::OptionBits);
 typedef void (*FnSetSaveCallback)(void (*)(int));
 typedef void (*FnMMInitSave)(int);
 typedef void (*FnSetSceneSwitchCallback)(void (*)(int));
@@ -293,7 +295,7 @@ static FnInt SOH_GetNewSaveQuest = nullptr;
 // The quest the new save's OoT half was stored as (kSohQuestNormal or kSohQuestMaster); valid in the same callback.
 static FnInt SOH_GetNewSaveStoredQuest = nullptr;
 // The Back to back page's choices as the file select's new file takes them (ComboBackToBackSettings.h).
-static FnInt SOH_GetNewSaveBackToBackOptions = nullptr;
+static FnOptions SOH_GetNewSaveBackToBackOptions = nullptr;
 // Nonzero = the slot's MM half is missing/broken; nothing was loaded (see SaveManager_LoadSaveFile).
 typedef int (*FnMMLoadSave)(int);
 static FnMMLoadSave MM_LoadSaveForCombo = nullptr;
@@ -1513,9 +1515,9 @@ static void Combo_PushCrossGate(int mask) {
         MM_SetComboCrossGate(mask);
 }
 // The loaded slot's Back to back page choices (ComboBackToBackSettings.h), pushed to both DLLs. 0 for every other slot.
-static FnSetInt SOH_SetComboBackToBackOptions = nullptr;
-static FnSetInt MM_SetComboBackToBackOptions = nullptr;
-static void Combo_PushBackToBackOptions(int options) {
+static FnSetOptions SOH_SetComboBackToBackOptions = nullptr;
+static FnSetOptions MM_SetComboBackToBackOptions = nullptr;
+static void Combo_PushBackToBackOptions(ComboRando::BackToBack::OptionBits options) {
     if (SOH_SetComboBackToBackOptions)
         SOH_SetComboBackToBackOptions(options);
     if (MM_SetComboBackToBackOptions)
@@ -4648,7 +4650,7 @@ static void Combo_InitVanillaMmSlot(int fileNum) {
 static void Combo_InitBackToBackSlot(int fileNum) {
     const ComboRando::OotQuest quest =
         Combo_OotQuestOfSohQuest(SOH_GetNewSaveStoredQuest ? SOH_GetNewSaveStoredQuest() : ComboRando::kSohQuestNormal);
-    const int options =
+    const ComboRando::BackToBack::OptionBits options =
         SOH_GetNewSaveBackToBackOptions ? SOH_GetNewSaveBackToBackOptions() : ComboRando::BackToBack::DefaultOptions();
     Combo_InitVanillaSlot(fileNum, ComboRando::ComboMode::BackToBack(quest, options));
     if (!MM_InitVanillaSaveFile) {
@@ -5216,7 +5218,7 @@ int main(int argc, char** argv) {
     SOH_GetCurrentPlayerName = (FnGetPlayerName)GetSym(sohModule, "SOH_GetCurrentPlayerName");
     SOH_GetNewSaveQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveQuest");
     SOH_GetNewSaveStoredQuest = (FnInt)GetSym(sohModule, "SOH_GetNewSaveStoredQuest");
-    SOH_GetNewSaveBackToBackOptions = (FnInt)GetSym(sohModule, "SOH_GetNewSaveBackToBackOptions");
+    SOH_GetNewSaveBackToBackOptions = (FnOptions)GetSym(sohModule, "SOH_GetNewSaveBackToBackOptions");
     MM_LoadSaveForCombo = (FnMMLoadSave)GetSym(mmModule, "MM_LoadSaveForCombo");
     MM_InvalidateOwlBlobSlot = (FnMMInvalidateOwlBlob)GetSym(mmModule, "MM_InvalidateOwlBlobSlot");
     SOH_ParkForComboMMResume = (FnVoid)GetSym(sohModule, "SOH_ParkForComboMMResume");
@@ -5371,8 +5373,8 @@ int main(int argc, char** argv) {
     MM_SetComboLostWoodsLink = (FnSetInt)GetSym(mmModule, "MM_SetComboLostWoodsLink");
     SOH_SetComboCrossGate = (FnSetInt)GetSym(sohModule, "SOH_SetComboCrossGate");
     MM_SetComboCrossGate = (FnSetInt)GetSym(mmModule, "MM_SetComboCrossGate");
-    SOH_SetComboBackToBackOptions = (FnSetInt)GetSym(sohModule, "SOH_SetComboBackToBackOptions");
-    MM_SetComboBackToBackOptions = (FnSetInt)GetSym(mmModule, "MM_SetComboBackToBackOptions");
+    SOH_SetComboBackToBackOptions = (FnSetOptions)GetSym(sohModule, "SOH_SetComboBackToBackOptions");
+    MM_SetComboBackToBackOptions = (FnSetOptions)GetSym(mmModule, "MM_SetComboBackToBackOptions");
 
     // Shared Items seam — SOH_SetComboSharedItems is OOT-only (shapes the gen-time wallet force).
     SOH_SetComboSharedItems = (FnSetComboSharedItems)GetSym(sohModule, "SOH_SetComboSharedItems");
