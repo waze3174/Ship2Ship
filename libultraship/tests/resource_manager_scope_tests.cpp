@@ -7,13 +7,24 @@
 
 namespace {
 
-// The harness never boots a Context, so GetRawInstance() is null by default. Stand up a minimal,
-// uninitialized one (libultraship owns it) to exercise the guard's swap/restore for real without
-// starting any subsystems. ~Context tolerates the null Window/Config this leaves behind.
-Ship::Context& TestContext() {
-    static Ship::Context* ctx = Ship::Context::CreateUninitializedInstance("LusTest", "lustest", "");
-    return *ctx;
-}
+// The harness never boots a Context, so GetRawInstance() is null by default. Each test stands up a minimal,
+// uninitialized one (libultraship owns it) to exercise the guard's swap/restore for real without starting any
+// subsystems. ~Context tolerates the null Window/Config this leaves behind.
+// TearDown destroys it again, as the game's DeinitOTR does. Left to the static destructors, ~Context would run after
+// spdlog's registry (created lazily by the first log call, so destroyed first) and log through a freed logger.
+class ResourceManagerScope : public ::testing::Test {
+  protected:
+    void SetUp() override {
+        mCtx = Ship::Context::CreateUninitializedInstance("LusTest", "lustest", "");
+        ASSERT_NE(mCtx, nullptr);
+    }
+
+    void TearDown() override {
+        Ship::Context::DestroyInstance();
+    }
+
+    Ship::Context* mCtx = nullptr;
+};
 
 // These tests use ResourceManagers purely as identity tokens (pointer equality),
 // so we skip Init(): a default-constructed ResourceManager is a valid, destructible
@@ -25,31 +36,27 @@ std::shared_ptr<Ship::ResourceManager> MakeRm() {
 } // namespace
 
 // Verifies the active RM is swapped within scope and restored after.
-TEST(ResourceManagerScope, SwapsAndRestores) {
-    auto& ctx = TestContext();
-
+TEST_F(ResourceManagerScope, SwapsAndRestores) {
     auto original = MakeRm();
-    ctx.SetResourceManager(original);
-    ASSERT_EQ(ctx.GetResourceManager(), original);
+    mCtx->SetResourceManager(original);
+    ASSERT_EQ(mCtx->GetResourceManager(), original);
 
     auto other = MakeRm();
     {
         Ship::ResourceManagerScope scope(other);
-        EXPECT_EQ(ctx.GetResourceManager(), other);
+        EXPECT_EQ(mCtx->GetResourceManager(), other);
     }
-    EXPECT_EQ(ctx.GetResourceManager(), original);
+    EXPECT_EQ(mCtx->GetResourceManager(), original);
 }
 
 // Constructing the guard with a null target must be a no-op (no swap, no crash).
-TEST(ResourceManagerScope, NullTargetIsNoOp) {
-    auto& ctx = TestContext();
-
+TEST_F(ResourceManagerScope, NullTargetIsNoOp) {
     auto original = MakeRm();
-    ctx.SetResourceManager(original);
+    mCtx->SetResourceManager(original);
 
     {
         Ship::ResourceManagerScope scope(nullptr);
-        EXPECT_EQ(ctx.GetResourceManager(), original);
+        EXPECT_EQ(mCtx->GetResourceManager(), original);
     }
-    EXPECT_EQ(ctx.GetResourceManager(), original);
+    EXPECT_EQ(mCtx->GetResourceManager(), original);
 }

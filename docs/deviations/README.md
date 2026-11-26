@@ -17,3 +17,4 @@ for the merge mechanism and standing policies.
 - [`discord.md`](discord.md) — Discord Rich Presence: what is sent, the switches, the platforms, and the launcher's own IPC client.
 - [`back2back.md`](back2back.md) — The back-to-back mode: vanilla OoT then vanilla MM in one slot, the one-way gate between the games, and OoT's full ending leading on to Termina.
 - [`extractors.md`](extractors.md) — ZAPDTR & OTRExporter: the single shared extractor copy, runtime MM-vs-OOT ROM detection replacing `#ifdef GAME_MM`, and dynamic-CRT/shared-LUS build wiring.
+- [`lus-tests.md`](lus-tests.md) — libultraship's unit tests: the vendored test files changed so `lus_tests` passes in our Release, `COMBO_BUILD` CI configuration.

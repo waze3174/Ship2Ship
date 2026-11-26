@@ -48,6 +48,10 @@ target_link_libraries(lus_tests PRIVATE
 
 target_compile_definitions(lus_tests PRIVATE SPDLOG_ACTIVE_LEVEL=SPDLOG_LEVEL_OFF)
 
+# ComboShip: libultraship defines _DEBUG for itself in Debug only (src/CMakeLists.txt). Mirror it so the tests see
+# the library's Context layout and its Debug-only behaviour (EventSystem caller metadata) in every configuration.
+target_compile_definitions(lus_tests PRIVATE $<$<CONFIG:Debug>:_DEBUG>)
+
 # ComboShip: combo-owned menu serializer is header-only; tests mock the game-side menu types.
 target_include_directories(lus_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../../combo/menu)
 

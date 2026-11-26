@@ -141,17 +141,19 @@ TEST(ComboMenuExport, FlattensInDeterministicOrderWithStableIndices) {
     Fixture f;
     const CwMenu* menu = f.Build();
     ASSERT_NE(menu, nullptr);
-    EXPECT_EQ(menu->version, 1);
+    EXPECT_EQ(menu->version, 2); // v2 added CwWidget.column
     ASSERT_EQ(menu->sectionCount, 2);
     ASSERT_EQ(f.state.widgets.size(), 5u);
     ASSERT_EQ(f.state.flat.size(), 5u);
 
     // Walk order: Settings/General col0 (A, B), col1 (C), Settings/Audio (D), Rando/Seed (E).
     const char* expectedNames[] = { "A", "B", "C", "D", "E" };
+    const int32_t expectedColumns[] = { 0, 0, 1, 0, 0 };
     for (int i = 0; i < 5; i++) {
         EXPECT_EQ(f.state.widgets[i].index, i);
         EXPECT_STREQ(f.state.widgets[i].name, expectedNames[i]);
         EXPECT_STREQ(f.state.flat[i]->name.c_str(), expectedNames[i]);
+        EXPECT_EQ(f.state.widgets[i].column, expectedColumns[i]);
     }
 
     EXPECT_EQ(f.state.widgets[0].kind, CW_CHECKBOX);
