@@ -22,6 +22,7 @@ Usage (standard library only):
 """
 import argparse
 import json
+import os
 import pathlib
 import random
 import statistics
@@ -93,6 +94,24 @@ def strip_suffix(name):
         if name.endswith(suffix):
             return name[: -len(suffix)]
     return name
+
+
+def folder_listing(cwd):
+    """Every file under cwd with its size and modification time, to prove the oracle writes nothing there."""
+    listing = {}
+    for folder, _, files in os.walk(cwd):
+        for name in files:
+            path = os.path.join(folder, name)
+            stat = os.stat(path)
+            listing[path] = (stat.st_size, stat.st_mtime_ns)
+    return listing
+
+
+def require_untouched(cwd, before):
+    after = folder_listing(cwd)
+    changed = sorted(p for p in set(before) | set(after) if before.get(p) != after.get(p))
+    if changed:
+        raise Failure(f"the oracle changed the folder it ran from: {changed[:5]}")
 
 
 def run(command, cwd, log):
@@ -321,6 +340,7 @@ def check_finalize(world):
 
 def run_case(comborando, case, cwd, log, rng, timings):
     spoiler, replay = generate(comborando, case, cwd, log)
+    before = folder_listing(cwd)
     oracle = Oracle(comborando, cwd, log)
     try:
         world = World(oracle, spoiler)
@@ -333,6 +353,7 @@ def run_case(comborando, case, cwd, log, rng, timings):
     finally:
         timings.extend(oracle.calls)
         oracle.close()
+        require_untouched(cwd, before)
 
 
 def print_timings(calls):
@@ -345,6 +366,7 @@ def print_timings(calls):
 
 
 def smoke(comborando, cwd, log):
+    before = folder_listing(cwd)
     oracle = Oracle(comborando, cwd, log)
     try:
         hello = oracle.call({"cmd": "hello"})
@@ -357,6 +379,7 @@ def smoke(comborando, cwd, log):
               f"mask {len(reach['mask'])} hex digits; library {hello['library']}")
     finally:
         oracle.close()
+        require_untouched(cwd, before)
         print_timings(oracle.calls)
 
 
