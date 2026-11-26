@@ -182,6 +182,22 @@ void TestStoredOptionsFromTheFirstLayout() {
     CHECK(B2B::MigrateStoredOptions(B2B::kSongsCarry, B2B::kOptionsLayout) == B2B::kSongsCarry);
 }
 
+// A file made by 0.2.2 (before the layout key): its layout was marked by bit 30, now the Zora Mask's switch, and its
+// songs switch meant only the songs. The owner's 2026-11-25 file is one (bugs #31-#37).
+void TestStoredOptionsFromTheMarkedLayout() {
+    const int songsAndEarly = B2B::kSongsCarry | B2B::kBoots | B2B::kEarlyOcarina | B2B::kEarlyHookshot |
+                              B2B::kEarlyKeatonMask | B2B::kEarlyBunnyHood | B2B::kEarlyMaskOfTruth;
+    for (const int stored : { 0, static_cast<int>(B2B::kSongsCarry), songsAndEarly }) {
+        nlohmann::json json =
+            ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, stored | B2B::kMarkedLayoutBit).ToJson();
+        json.erase(ComboRando::kOptionsLayoutKey);
+        const int options = ComboMode::FromJson(json).options;
+        CHECK(options == stored);                     // every choice kept, the marker gone
+        CHECK((options & B2B::kEarlyGoronMask) == 0); // worn plain until MM's own, as 0.2.2 did
+        CHECK((options & B2B::kEarlyZoraMask) == 0);
+    }
+}
+
 void TestLocksActive() {
     const ComboMode backToBack = ComboMode::BackToBack(ComboRando::OOT_QUEST_NORMAL, B2B::DefaultOptions());
     CHECK(B2B::LocksActive(Gate::Mask(backToBack, false, false)));
@@ -320,6 +336,7 @@ int main() {
     TestLocksActive();
     TestTerminaAgeRule();
     TestStoredOptionsFromTheFirstLayout();
+    TestStoredOptionsFromTheMarkedLayout();
     TestItemsWithAnMmCounterpart();
     TestBottles();
     TestTransformationMasks();

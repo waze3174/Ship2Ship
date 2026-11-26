@@ -58,9 +58,12 @@ enum Option : int {
 
 // The layout of the options int, stored beside it in the slot's combo.mode (kOptionsLayoutKey). A mode without the key
 // holds the first layout (bits 0 to 12), where bit 4 also meant "the masks both games have are usable at once";
-// MigrateStoredOptions turns that into the mask bits.
+// MigrateStoredOptions turns that into the mask bits. A mode without the key but with kMarkedLayoutBit set was made by
+// 0.2.2, which marked its layout with that bit instead of the key: bits 0 to 28 as now, no Goron or Zora switch (both
+// masks were worn plain until Majora's Mask's own), and bit 30 only the marker.
 inline constexpr int kOptionsLayout = 2;
 inline constexpr int kFirstOptionsLayout = 1;
+inline constexpr int kMarkedLayoutBit = 1 << 30;
 
 inline constexpr int kEarlyUseMasks =
     kEarlyKeatonMask | kEarlyBunnyHood | kEarlyMaskOfTruth | kEarlyGoronMask | kEarlyZoraMask;
@@ -171,6 +174,8 @@ template <typename GetInt> inline int OptionsFromCVars(GetInt getInt) {
 inline constexpr int MigrateStoredOptions(int stored, int layout) {
     if (layout >= kOptionsLayout)
         return stored;
+    if ((stored & kMarkedLayoutBit) != 0)
+        return stored & ~kMarkedLayoutBit;
     const int masks = (stored & kSongsCarry) != 0 ? kEarlyUseMasks : 0;
     return stored | masks;
 }

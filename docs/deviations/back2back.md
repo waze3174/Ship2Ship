@@ -215,7 +215,11 @@ sign bit stays unused. `ComboMode::ToJson` writes `"optionsLayout": 2` (`kOption
 without the key holds the first layout (bits 0-12 only); `MigrateStoredOptions` (called by `ComboMode::FromJson`) leaves
 every old choice as it was and, when bit 4 was on (it used to also mean "the masks both games have are usable at once,
 and the Goron and Zora masks transform at once"), sets all five mask early-use bits (Keaton, Bunny, Truth, Goron, Zora).
-So an older file's locks and masks behave as they did. A slot with no `options` key at all takes `DefaultOptions()`.
+A mode without the key but with bit 30 set was made by 0.2.2, which marked its layout with that bit
+(`kMarkedLayoutBit`): bits 0-28 mean what they mean now, bit 4 only the songs, and it had no Goron or Zora switch (both
+were worn plain until MM's own), so `MigrateStoredOptions` only clears bit 30. Before 2026-11-25 such a file read bit
+30 as the Zora Mask's switch, and bit 4 as all five mask switches. So an older file's locks and masks behave as they
+did. A slot with no `options` key at all takes `DefaultOptions()`.
 
 The carries (default in brackets):
 
