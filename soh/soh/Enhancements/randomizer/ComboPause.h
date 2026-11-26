@@ -48,10 +48,16 @@ int Combo_PauseSlotAmmo(int pageSlot);            // MM ammo digits for that slo
 // The ammo digits for a foreign (MM) item on an OOT button: MM's count as a use spends it (with shared consumables,
 // what MM will show), -1 = none. `full` (may be NULL): MM's bag is full (the count is drawn green).
 int Combo_PauseForeignAmmoDigits(int foreignId, int* full);
-const char* Combo_PauseIconTex(int item); // MM icon (draw inside a "mm" bracket); NULL = unavailable
-const char* Combo_PauseNameTex(int item); // MM name plate (inside a "mm" bracket)
+int Combo_PauseForeignAmmo(int foreignId);              // the same count without the bag's fullness
+int Combo_PauseForeignAmmoChange(int foreignId, int n); // spend or add `n` on MM's bag (the shared count if on)
+int Combo_PauseHasNativeTwin(int foreignId);            // OOT holds the item MM's equals: equipping it takes OOT's own
+const char* Combo_PauseIconTex(int item);               // MM icon (draw inside a "mm" bracket); NULL = unavailable
+const char* Combo_PauseNameTex(int item);               // MM name plate (inside a "mm" bracket)
 int Combo_PauseResolveEquip(int item, unsigned char* outItem, unsigned char* outSlot);
 int Combo_PauseOnButton(int item); // 1 = that foreign item sits on a C button / D-pad direction
+// The foreign id of the slot of MM's item page (slots 0-23) that holds MM item `mmItem` (ComboMmItem), ITEM_NONE when
+// MM has none or its save isn't resident.
+int Combo_PauseMmItemForeignId(int mmItem);
 
 // Using a foreign item (Player_UseItem). Masks: transformation -> form, others -> worn with MM's model.
 int Combo_PauseForeignForm(int item); // COMBO_FORM_* for a transformation mask, -1 otherwise
@@ -81,6 +87,8 @@ void Combo_PauseLogUse(int item, const char* what);
 
 // MM items in Hyrule (docs/deviations/ui-menu.md "MM items in Hyrule"). MM item ids (mm/include/z64item.h).
 enum ComboMmItem {
+    COMBO_MM_ITEM_BOW = 0x01,
+    COMBO_MM_ITEM_BOMB = 0x06,
     COMBO_MM_ITEM_POWDER_KEG = 0x0C,
     COMBO_MM_ITEM_PICTOGRAPH_BOX = 0x0D,
     COMBO_MM_ITEM_SWORD_GREAT_FAIRY = 0x10,

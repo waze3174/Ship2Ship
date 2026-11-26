@@ -13,10 +13,12 @@
 #include "z_kaleido_scope.h"
 #include "textures/parameter_static/parameter_static.h"
 #include "soh/Enhancements/randomizer/ComboPause.h"
+#include "soh/Enhancements/randomizer/ComboBombArrows.h"
 #include <libultraship/bridge/consolevariablebridge.h>
 
 extern const char* _gAmmoDigit0Tex[];
-Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, void** textures); // z_kaleido_scope_PAL.c
+Gfx* KaleidoScope_DrawPageSections(Gfx* gfx, Vtx* vertices, void** textures);      // z_kaleido_scope_PAL.c
+void KaleidoScope_ComboDrawBombArrowBadge(PlayState* play, u8 slot, u8 onPreview); // z_kaleido_item.c
 
 #define COMBO_GRID_X(slot) (-96 + ((slot) % 6) * 32 + 2)
 #define COMBO_GRID_Y(pauseCtx, slot) (58 - ((slot) / 6) * 32 + (pauseCtx)->offsetY - 2)
@@ -210,6 +212,7 @@ static void KaleidoScope_ComboUpdateForeignCursor(PlayState* play) {
 
         pauseCtx->cursorSlot[PAUSE_ITEM] = pauseCtx->cursorPoint[PAUSE_ITEM];
         cursorItem = Combo_PauseSlotItem(pauseCtx->cursorPoint[PAUSE_ITEM]);
+        cursorItem = Combo_BombArrowsMmSlotItem(pauseCtx->cursorSlot[PAUSE_ITEM], cursorItem);
         pauseCtx->cursorColorSet = 4; // yellow on an item
         if (cursorItem == ITEM_NONE) {
             cursorItem = PAUSE_ITEM_NONE;
@@ -227,6 +230,14 @@ static void KaleidoScope_ComboUpdateForeignCursor(PlayState* play) {
             if (CHECK_BTN_ALL(input->press.button, BTN_A) && (Combo_PauseTab() == COMBO_PAUSE_TAB_MASKS)) {
                 Combo_PauseMaskAPress(cursorItem);
             }
+            // 2S2H's bomb arrows with MM's own bow and bombs: A on the bomb slot flips it between the bombs and the
+            // bow.
+            if (CHECK_BTN_ALL(input->press.button, BTN_A) && Combo_BombArrowsMmCanCycle() &&
+                Combo_BombArrowsMmIsBombSlot(pauseCtx->cursorSlot[PAUSE_ITEM])) {
+                Audio_PlaySfxGeneral(NA_SE_SY_DECIDE, &gSfxDefaultPos, 4, &gSfxDefaultFreqAndVolScale,
+                                     &gSfxDefaultFreqAndVolScale, &gSfxDefaultReverb);
+                Combo_BombArrowsMmToggleSlot();
+            }
             if (CHECK_BTN_ANY(input->press.button, buttonsToCheck)) {
                 u8 equipItem;
                 u8 equipSlot;
@@ -239,6 +250,8 @@ static void KaleidoScope_ComboUpdateForeignCursor(PlayState* play) {
                 } else {
                     KaleidoScope_SetupItemEquip(play, equipItem, equipSlot, pauseCtx->itemVtx[index].v.ob[0] * 10,
                                                 pauseCtx->itemVtx[index].v.ob[1] * 10);
+                    Combo_BombArrowsEquipQueued(Combo_BombArrowsMmSlotShowsBow() &&
+                                                Combo_BombArrowsMmIsBombSlot(pauseCtx->cursorSlot[PAUSE_ITEM]));
                 }
             }
         }
@@ -307,7 +320,8 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
             break;
         }
         if (Combo_PauseIsForeign(item)) {
-            Combo_DrawSlotOutline(play->state.gfxCtx, pauseCtx, extra, i - 1, item);
+            Combo_DrawSlotOutline(play->state.gfxCtx, pauseCtx, extra, i - 1,
+                                  Combo_BombArrowsMmOutlineItem(i - 1, item));
         }
     }
     // 2S2H's Easy Mask Equip: the mask worn from this menu sits on no button, and gets the same outline.
@@ -324,7 +338,7 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
     // MM's icons, resolved against MM's ResourceManager.
     gSPComboRMPush(POLY_OPA_DISP++, "mm");
     for (i = j = 0; i < 24; i++, j += 4) {
-        u8 item = Combo_PauseSlotItem(i);
+        u8 item = Combo_BombArrowsMmSlotItem(i, Combo_PauseSlotItem(i));
         const char* tex;
         gDPSetPrimColor(POLY_OPA_DISP++, 0, 0, 255, 255, 255, pauseCtx->alpha);
         if (item == ITEM_NONE) {
@@ -356,7 +370,7 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
     gDPSetCombineLERP(POLY_OPA_DISP++, PRIMITIVE, ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0, PRIMITIVE,
                       ENVIRONMENT, TEXEL0, ENVIRONMENT, TEXEL0, 0, PRIMITIVE, 0);
     for (i = 0; i < 24; i++) {
-        s32 ammo = Combo_PauseSlotAmmo(i);
+        s32 ammo = Combo_BombArrowsMmSlotAmmo(i, Combo_PauseSlotAmmo(i));
         s32 tens = 0;
         Vtx* digits;
         if (ammo < 0) {
@@ -385,6 +399,15 @@ void KaleidoScope_ComboDrawForeignItemSelect(PlayState* play) {
                             G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMIRROR | G_TX_WRAP, G_TX_NOMASK, G_TX_NOMASK, G_TX_NOLOD,
                             G_TX_NOLOD);
         gSP1Quadrangle(POLY_OPA_DISP++, 4, 6, 7, 5, 0);
+    }
+
+    // 2S2H's bomb arrows: the bomb slot showing the bow wears a bomb badge.
+    if (Combo_BombArrowsMmSlotShowsBow()) {
+        for (i = 0; i < 24; i++) {
+            if (Combo_BombArrowsMmIsBombSlot(i)) {
+                KaleidoScope_ComboDrawBombArrowBadge(play, i, false);
+            }
+        }
     }
 
     CLOSE_DISPS(play->state.gfxCtx);

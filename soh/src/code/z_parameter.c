@@ -4615,7 +4615,7 @@ static void Interface_ComboDrawBombArrowBadge(PlayState* play, s16 button, s16 l
     const s16 badge = size / 2;
     const s16 badgeLeft = left + (size - badge) / 2 + 2;
     const s16 badgeTop = top + (size - badge) / 2 - 2;
-    const u16 alpha = (AMMO(ITEM_BOMB) > 0) ? buttonAlphas[button] : (buttonAlphas[button] / 2);
+    const u16 alpha = Combo_BombArrowsButtonHasBombs(button - 1) ? buttonAlphas[button] : (buttonAlphas[button] / 2);
 
     OPEN_DISPS(play->state.gfxCtx);
     gDPPipeSync(OVERLAY_DISP++);
@@ -4907,11 +4907,12 @@ static int16_t gItemAmmoY[] = { B_BUTTON_Y + 18, C_LEFT_BUTTON_Y + 17, C_DOWN_BU
 // Interface_DrawAmmoCount draws OOT's own, which knows OOT's ammo items only. 1 = drawn.
 static s32 Interface_ComboDrawForeignAmmoCount(PlayState* play, s16 button, s16 alpha, s16 x, s16 y) {
     s32 full = 0;
-    const s32 ammo = Combo_PauseForeignAmmoDigits(gSaveContext.equips.buttonItems[button], &full);
+    s32 ammo = Combo_PauseForeignAmmoDigits(gSaveContext.equips.buttonItems[button], &full);
 
     if (ammo < 0) {
         return 0;
     }
+    Combo_BombArrowsMmHudAmmo(button, &ammo, &full); // a bomb-arrow button counts what a shot spends both of
     OPEN_DISPS(play->state.gfxCtx);
     gDPPipeSync(OVERLAY_DISP++);
     if (full) {
@@ -6149,7 +6150,7 @@ void Interface_Draw(PlayState* play) {
             gSP1Quadrangle(OVERLAY_DISP++, 0, 2, 3, 1, 0);
 
 #ifdef COMBO_BUILD
-            if (Combo_BombArrowsEquipPending() && (pauseCtx->equipTargetItem == ITEM_BOW)) {
+            if (Combo_BombArrowsEquipPending() && Combo_BombArrowsIsBowItem(pauseCtx->equipTargetItem)) {
                 Interface_ComboDrawBombArrowEquipBadge(play, &pauseCtx->cursorVtx[16]);
             }
 #endif

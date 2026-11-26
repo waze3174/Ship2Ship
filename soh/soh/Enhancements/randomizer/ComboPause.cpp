@@ -219,6 +219,7 @@ int sEasyEquipItem = ITEM_NONE;  // 2S2H Easy Mask Equip: the foreign id picked 
 constexpr const char* kEasyMaskEquipCVar = "gEnhancements.Masks.EasyMaskEquip";
 constexpr const char* kPersistentBunnyHoodCVar = "gEnhancements.Masks.PersistentBunnyHood.Enabled";
 bool sPersistentBunnyHood = false;       // 2S2H Persistent Bunny Hood: the hood's state, kept for the session
+constexpr int kMmItemPageSlotCount = 24; // MM items[]: the item page, slots 0-23
 constexpr int kMmMaskPageFirstSlot = 24; // MM items[]: the mask page, slots 24-47
 constexpr int kMmMaskPageSlotCount = 24;
 
@@ -424,6 +425,22 @@ extern "C" int Combo_PauseResolveEquip(int item, unsigned char* outItem, unsigne
     *outSlot = (unsigned char)item;
     Log("equip MM item 0x%02X (MM slot %d) as foreign id 0x%02X", mm, ComboPause_OotDecode(item), item);
     return 0;
+}
+
+extern "C" int Combo_PauseHasNativeTwin(int foreignId) {
+    const int mm = LiveMmItem(foreignId);
+    uint8_t ootItem = ITEM_NONE;
+    return (mm >= 0) && (NativeSlotFor((uint8_t)mm, &ootItem) != SLOT_NONE);
+}
+
+extern "C" int Combo_PauseMmItemForeignId(int mmItem) {
+    if (!Snapshot())
+        return ITEM_NONE;
+    for (int slot = 0; slot < kMmItemPageSlotCount; slot++) {
+        if (sMmItems[slot] == mmItem)
+            return ComboPause_OotEncode(slot);
+    }
+    return ITEM_NONE;
 }
 
 extern "C" int Combo_PauseOnButton(int item) {
