@@ -1,6 +1,6 @@
 // combo/gui/ComboBothGames.h
 //
-// ComboShip: the "Both games" group of Settings. One control per setting both games own; changing it sets the
+// ComboShip: the "Both games" tab. One control per setting both games own; changing it sets the
 // setting in Ocarina of Time and in Majora's Mask. The per-game tabs keep their own controls and change one game.
 //   * exact matches: the same CVar in both games (gCheats.NoClip, ...). One CVar, so the games always agree.
 //   * linked pairs: two CVars, listed in ComboLinkRows.h. The control is OOT's (MM's when OOT has none); a change
