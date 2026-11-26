@@ -739,8 +739,10 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
             continue;
         }
         gui->StartDraw();
-        benFast3dWindow->StartFrame();
-        benFast3dWindow->RunGuiOnly();
+        // The context's window: benFast3dWindow in a standalone boot, the shared one in a combo boot, where
+        // benFast3dWindow is never created.
+        wnd->StartFrame();
+        wnd->RunGuiOnly();
         if (extractionTask.has_value()) {
             auto status = extractionTask->wait_for(std::chrono::milliseconds(0));
             if (status == std::future_status::ready) {
@@ -777,7 +779,7 @@ void OTRGlobals::RunExtract(int argc, char* argv[]) {
             }
         }
         gui->EndDraw();
-        benFast3dWindow->EndFrame();
+        wnd->EndFrame();
         ImGui::PopStyleColor(2);
     }
 
@@ -3271,6 +3273,19 @@ static std::atomic<bool> gComboMMExtractDone{ false };
 static std::atomic<bool> gComboMMExtractSuccess{ false };
 static std::future<void> gComboMMExtractFuture;
 static std::string gComboMMExtractRomPath;
+
+// ComboShip: RunExtract's outdated-archive check (an mm.o2r from another COMBO_EPOCH), for the launcher to run before
+// its ROM Setup. In a combo boot RunExtract only runs inside MM's eager boot, where ROM Setup can't be offered. Needs
+// no Context. 1 = outdated (removed unless the file system refused), 0 = current or absent.
+extern "C" COMBO_EXPORT int MM_RemoveOutdatedRomArchive(void) {
+    if (!VerifyArchiveVersion(DetectArchiveVersion("mm.o2r", true))) {
+        return 0;
+    }
+    if (!RemoveArchiveAcrossAppDirs("mm.o2r")) {
+        SPDLOG_ERROR("[ComboShip] an outdated mm.o2r could not be removed; delete it by hand");
+    }
+    return 1;
+}
 
 extern "C" COMBO_EXPORT int MM_ValidateRom(const char* romPath) {
     if (!romPath) {
