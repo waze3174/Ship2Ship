@@ -40,6 +40,7 @@ typedef struct EnArrow {
     // ComboShip: 2S2H's bomb arrows (z_en_arrow_combo_bomb.c). Zero (unused) on every other arrow.
     u8 comboBombArrow;       // this arrow carries a bomb: fuse, flash, blast
     u8 comboBombSpent;       // the shot's bomb has been taken from the bag
+    u8 comboBombBowItem;     // the bow it was nocked from: ITEM_BOW, or MM's bow (a foreign id) with MM's bags
     s16 comboBombFuse;       // frames left on the fuse
     s16 comboBombFlashSpeed; // EnBom.flashSpeedScale
     f32 comboBombFlash;      // EnBom.flashIntensity

@@ -15,8 +15,6 @@ void ArmsHook_Wait(ArmsHook* this, PlayState* play);
 void ArmsHook_Shoot(ArmsHook* this, PlayState* play);
 
 #ifdef COMBO_BUILD
-s32 Combo_HookshotIsMm(void); // z_player.c: the hookshot in Link's hand is MM's (a foreign item on its button)
-
 // ComboShip: 2S2H's Faster Hookshot (mm/2s2h/Enhancements/Player/FasterHookshot.cpp, MM's own CVar, one shared CVar
 // store) for MM's own hookshot in Hyrule, which flies as OOT's Longshot. Twice the speed over half the frames reaches
 // as far as before, and the hook comes back twice as fast. OOT's own hookshot is not MM's item and is left alone.
@@ -101,8 +99,7 @@ void ArmsHook_Wait(ArmsHook* this, PlayState* play) {
     if (this->actor.parent == NULL) {
         Player* player = GET_PLAYER(play);
         // get correct timer length for hookshot or longshot
-        s32 length = ((player->heldItemAction == PLAYER_IA_HOOKSHOT) ? 13 : 26) *
-                     CVarGetFloat(CVAR_CHEAT("HookshotReachMultiplier"), 1.0f);
+        s32 length = ((player->heldItemAction == PLAYER_IA_HOOKSHOT) ? 13 : 26) * Combo_HookshotReachMultiplier();
         f32 speed = 20.0f;
 
 #ifdef COMBO_BUILD

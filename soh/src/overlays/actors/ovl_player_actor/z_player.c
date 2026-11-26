@@ -4350,6 +4350,12 @@ s32 Combo_HookshotIsMm(void) {
     return sComboHookshotIsMm;
 }
 
+// SoH's Hookshot Reach Multiplier cheat is for OOT's own Hookshot and Longshot. MM's hookshot, which flies as the
+// Longshot, keeps its own reach.
+f32 Combo_HookshotReachMultiplier(void) {
+    return sComboHookshotIsMm ? 1.0f : CVarGetFloat(CVAR_CHEAT("HookshotReachMultiplier"), 1.0f);
+}
+
 static void Combo_NoteHookshotOrigin(s32 item, s32 itemAction) {
     if ((itemAction == PLAYER_IA_HOOKSHOT) || (itemAction == PLAYER_IA_LONGSHOT)) {
         sComboHookshotIsMm = Combo_PauseIsForeign(item);

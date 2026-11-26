@@ -7,11 +7,12 @@
  * reading 2S2H's own CVar through ComboBombArrows.cpp. The pause menu, the flag and the HUD are there and in
  * z_kaleido_item.c / z_parameter.c.
  *
- * A shot from a bomb-arrow button spends one arrow, as every shot does, and one bomb at the release: OOT's own bag
- * (Inventory_ChangeAmmo), which the shared-consumables tick, if on, carries to MM. The arrow burns a 70-frame fuse from
- * the nock, flashing as a bomb does. It goes off where it hits an enemy or a wall, or in Link's hand when the fuse runs
- * out while he still holds it (spending the arrow he never shot), as a plain OOT bomb with its fuse at 0. An arrow that
- * flies out without hitting anything is gone with its bomb.
+ * A shot from a bomb-arrow button spends one arrow, as every shot does, and one bomb at the release, from the bags of
+ * the bow's game: OOT's own for OOT's bow, MM's for MM's bow in Hyrule (the shared-consumables tick, if on, carries the
+ * counts to the other game). The arrow burns a 70-frame fuse from the nock, flashing as a bomb does. It goes off where
+ * it hits an enemy or a wall, or in Link's hand when the fuse runs out while he still holds it (spending the arrow he
+ * never shot), as a plain OOT bomb with its fuse at 0. An arrow that flies out without hitting anything is gone with
+ * its bomb.
  *
  * The bomb on the tip is OOT's own bomb model (the cap and the body, flashing the way EnBom flashes them).
  */
@@ -45,10 +46,10 @@ static s32 EnArrow_ComboBombArrowType(s32 arrowType) {
 
 // The shot's bomb: 2S2H TryConsumeBombAmmo. One per shot; with none left the arrow flies as any arrow.
 static void EnArrow_ComboBombArrowSpendBomb(EnArrow* this) {
-    if (this->comboBombSpent || (AMMO(ITEM_BOMB) <= 0)) {
+    if (this->comboBombSpent || (Combo_BombArrowsBombAmmo(this->comboBombBowItem) <= 0)) {
         return;
     }
-    Inventory_ChangeAmmo(ITEM_BOMB, -1);
+    Combo_BombArrowsSpendBomb(this->comboBombBowItem);
     this->comboBombSpent = true;
 }
 
@@ -110,11 +111,15 @@ void EnArrow_ComboBombArrowTag(EnArrow* this, PlayState* play, s32 heldItemButto
         !Combo_BombArrowsButtonActive(heldItemButton - hudButtonOfFirstC)) {
         return;
     }
+    const s32 bowItem = gSaveContext.equips.buttonItems[heldItemButton];
+
     // The two minigames count their own arrows and have no use for a bomb.
-    if ((AMMO(ITEM_BOMB) <= 0) || (gSaveContext.minigameState == 1) || (play->shootingGalleryStatus != 0)) {
+    if ((Combo_BombArrowsBombAmmo(bowItem) <= 0) || (gSaveContext.minigameState == 1) ||
+        (play->shootingGalleryStatus != 0)) {
         return;
     }
     this->comboBombArrow = true;
+    this->comboBombBowItem = bowItem;
     this->comboBombFuse = BOMB_ARROW_FUSE_FRAMES;
     this->comboBombFlashSpeed = BOMB_ARROW_FLASH_SPEED;
 }
@@ -137,7 +142,8 @@ s32 EnArrow_ComboBombArrowUpdate(EnArrow* this, PlayState* play) {
     }
     if (this->comboBombFuse <= 0) {
         if (this->actor.parent != NULL) {
-            Inventory_ChangeAmmo(ITEM_BOW, -1); // the arrow Link never shot (2S2H TryConsumeArrowOnHeldExpiry)
+            // the arrow Link never shot (2S2H TryConsumeArrowOnHeldExpiry)
+            Combo_BombArrowsSpendArrow(this->comboBombBowItem);
         }
         EnArrow_ComboBombArrowDetonate(this, play);
         return true;

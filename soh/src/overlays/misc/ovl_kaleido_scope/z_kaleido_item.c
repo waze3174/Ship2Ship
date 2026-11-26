@@ -374,14 +374,15 @@ static void KaleidoScope_ComboHandleBombArrowCycle(PlayState* play) {
 
 // The badge on the middle of the bomb slot's icon while it shows the bow (MM DrawBombArrowSlotIcon), or on the preview
 // of the bow under the slot while it shows the bombs (MM DrawBombArrowCycleExtras: the preview rests 15 units below, at
-// 0.325 scale, with its icon 32 to the right of the slot's middle).
-static void KaleidoScope_ComboDrawBombArrowBadge(PlayState* play, u8 onPreview) {
+// 0.325 scale, with its icon 32 to the right of the slot's middle). `slot` is the bomb slot of the page drawn: OOT's
+// own, or the one of MM's page (z_kaleido_combo.c).
+void KaleidoScope_ComboDrawBombArrowBadge(PlayState* play, u8 slot, u8 onPreview) {
     PauseContext* pauseCtx = &play->pauseCtx;
-    Vtx* itemTopLeft = &pauseCtx->itemVtx[SLOT_BOMB * 4];
+    Vtx* itemTopLeft = &pauseCtx->itemVtx[slot * 4];
     Vtx* itemBottomRight = &itemTopLeft[3];
     const s16 halfX = (itemBottomRight->v.ob[0] - itemTopLeft->v.ob[0]) / 2;
     const s16 halfY = (itemBottomRight->v.ob[1] - itemTopLeft->v.ob[1]) / 2;
-    const u8 hovered = (pauseCtx->cursorSlot[PAUSE_ITEM] == SLOT_BOMB) && (pauseCtx->pageIndex == PAUSE_ITEM) &&
+    const u8 hovered = (pauseCtx->cursorSlot[PAUSE_ITEM] == slot) && (pauseCtx->pageIndex == PAUSE_ITEM) &&
                        (pauseCtx->unk_1E4 == 0) && (pauseCtx->cursorSpecialPos == 0);
 
     OPEN_DISPS(play->state.gfxCtx);
@@ -416,7 +417,7 @@ static void KaleidoScope_ComboDrawBombArrowCycle(PlayState* play) {
 
     KaleidoScope_DrawItemCycleExtras(play, SLOT_BOMB, canCycle, ITEM_NONE, showsBow ? ITEM_BOMB : ITEM_BOW);
     if (canCycle) {
-        KaleidoScope_ComboDrawBombArrowBadge(play, !showsBow);
+        KaleidoScope_ComboDrawBombArrowBadge(play, SLOT_BOMB, !showsBow);
     }
 }
 #endif
@@ -1388,7 +1389,8 @@ void KaleidoScope_UpdateItemEquip(PlayState* play) {
             Interface_LoadItemIcon1(play, targetButtonIndex);
 #ifdef COMBO_BUILD
             Combo_BombArrowsSetFlag(pauseCtx->equipTargetCBtn,
-                                    Combo_BombArrowsEquipPending() && (pauseCtx->equipTargetItem == ITEM_BOW));
+                                    Combo_BombArrowsEquipPending() &&
+                                        Combo_BombArrowsIsBowItem(pauseCtx->equipTargetItem));
 #endif
 
             pauseCtx->unk_1E4 = 0;
