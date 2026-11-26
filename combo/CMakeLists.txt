@@ -205,6 +205,11 @@ target_include_directories(comboSharedHealthTest PRIVATE
 )
 target_link_libraries(comboSharedHealthTest PRIVATE nlohmann_json::nlohmann_json)
 
+# Unit tests for the launcher's log buffer (ComboLauncherLog.h): header code, no game DLL. Build with
+# `cmake --build <dir> --target comboLauncherLogTest`, then run the exe.
+add_executable(comboLauncherLogTest EXCLUDE_FROM_ALL tests/ComboLauncherLogTest.cpp)
+target_include_directories(comboLauncherLogTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 # Windows-specific settings
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
     # Icon + version info for Ship2Ship.exe; the version is SHIP2SHIP_VERSION padded to 4 parts.
