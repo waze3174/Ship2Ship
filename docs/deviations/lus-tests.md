@@ -40,3 +40,16 @@ checks that the call succeeds and that the key now resolves to the new factory (
 protected `GetFactory`). Upstream's test is kept unchanged in the `#else` branch.
 
 **The game:** not affected; the test now checks what the game relies on.
+
+## Combo menu serializer: expect ABI v2 (2026-11-26)
+
+**Fixed:** `ComboMenuExport.FlattensInDeterministicOrderWithStableIndices`.
+
+**Why:** `combo_menu_export_tests.cpp` is our own test (no upstream copy). It was written for `CwMenu` version 1
+(`53f025c01`). `ebc3587b7` moved `ComboMenuExport::Build` to version 2 when it added `CwWidget.column`, and the test was
+not updated; nothing ran `lus_tests` until 2026-11-26.
+
+**`libultraship/tests/combo_menu_export_tests.cpp`:** expects version 2 and checks each widget's `column` (A, B in
+column 0, C in column 1 of the two-column sidebar), the field the bump added.
+
+**The game:** not affected. Nothing reads `CwMenu::version`; the serializer was right and the test was stale.
