@@ -204,6 +204,12 @@ add_executable(comboOracleServerTest EXCLUDE_FROM_ALL tests/ComboOracleServerTes
 target_include_directories(comboOracleServerTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(comboOracleServerTest PRIVATE nlohmann_json::nlohmann_json)
 
+# Unit tests for the cross-game playthrough walk and the requiredness pare-down (ComboPlaythrough.h) against fake logic
+# oracles: header code, no game DLL. Build with `cmake --build <dir> --target comboPlaythroughTest`, then run the exe.
+add_executable(comboPlaythroughTest EXCLUDE_FROM_ALL tests/ComboPlaythroughTest.cpp)
+target_include_directories(comboPlaythroughTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(comboPlaythroughTest PRIVATE nlohmann_json::nlohmann_json)
+
 # Unit tests for which slot each game's shared health state belongs to (ComboSharedHealthSlots.h): header code, no
 # game DLL. Build with `cmake --build <dir> --target comboSharedHealthSlotsTest`, then run the exe.
 add_executable(comboSharedHealthSlotsTest EXCLUDE_FROM_ALL tests/ComboSharedHealthSlotsTest.cpp)

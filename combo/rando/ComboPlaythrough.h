@@ -59,6 +59,16 @@ inline void ApplySharedMirror(uint32_t sharedMask, const std::vector<std::string
     }
 }
 
+// Both Shared Items mirrors, applied before a sphere's searches. The pooled mirror also runs MM -> OOT, so a copy
+// found on the MM side (an MM bottle, even one in an OOT temple) must already be in the next OOT search's owned set.
+// Mirrored after that search, it is lost whenever the sphere opens nothing else.
+inline void ApplyMirrorsBeforeSearch(uint32_t sharedMask, std::vector<std::string>& ootOwned,
+                                     std::vector<std::string>& mmOwned, size_t (&sharedGiven)[SF_COUNT],
+                                     PooledMirrorState& pooledGiven) {
+    ApplySharedMirror(sharedMask, ootOwned, mmOwned, sharedGiven);
+    ApplyPooledMirror(sharedMask, ootOwned, mmOwned, pooledGiven);
+}
+
 // A single placed item, parsed from a combined-fill spoiler (see ParseSpoilerPlacements). Shared by
 // RunPlaythrough and PareDownPlaythrough so both traverse the identical placement set.
 struct CwPlacedItem {
@@ -325,12 +335,11 @@ inline RequirednessResult PareDownPlaythrough(const std::string& spoilerJson, co
         size_t sharedGiven[SF_COUNT] = { 0 };
         PooledMirrorState pooledGiven;
         for (;;) {
+            // Shared Items: before either search, as in RunPlaythrough (see ApplyMirrorsBeforeSearch).
+            ApplyMirrorsBeforeSearch(sharedMask, ootOwned, mmOwned, sharedGiven, pooledGiven);
             auto ootQ = QueryReachableMemo(ootOracle, ootOwned, ootMemo);
             ootReach = ootQ.reach;
             portalOpen = portalOpen || ootQ.portalOpen;
-            // Shared Items: same mirror as the fill and RunPlaythrough.
-            ApplySharedMirror(sharedMask, ootOwned, mmOwned, sharedGiven);
-            ApplyPooledMirror(sharedMask, ootOwned, mmOwned, pooledGiven);
             uint32_t mmCrossOut = 0;
             std::vector<std::string> mmDoors;
             if (portalOpen || HasMmCrossArrival(mmOwned)) {
@@ -505,11 +514,11 @@ inline PlaythroughResult RunPlaythrough(const std::string& spoilerJson, const Or
     CrossWarpLatch crossLatch;    // cross-game teleport
     CrossEntranceLatch doorLatch; // cross-game entrances
     for (int sphere = 0; sphere < kMaxSpheres; ++sphere) {
+        // What earlier spheres found counts in both games before this sphere searches either.
+        ApplyMirrorsBeforeSearch(sharedMask, ownedOot, ownedMm, sharedGiven, pooledGiven);
         auto ootReach = queryReachable(ootOracle, ownedOot);
         // Portal bit belongs to the OOT query just made; read it before crediting any MM check.
         portalOpen = portalOpen || OraclePortalOpen(ootOracle);
-        ApplySharedMirror(sharedMask, ownedOot, ownedMm, sharedGiven);
-        ApplyPooledMirror(sharedMask, ownedOot, ownedMm, pooledGiven);
         uint32_t ootCrossOut = OracleCrossOut(ootOracle);
         std::vector<std::string> ootDoors = ReadOotCrossExits(), mmDoors;
         auto queryMm = [&]() {
@@ -593,10 +602,11 @@ inline PlaythroughResult RunPlaythrough(const std::string& spoilerJson, const Or
     std::vector<std::string> allOot, allMm = SharedStartingMmFromSpoiler(spoilerJson);
     for (auto& p : placements)
         (p.itemGame == GAME_OOT ? allOot : allMm).push_back(p.item);
+    size_t everSharedGiven[SF_COUNT] = { 0 };
+    PooledMirrorState everPooledGiven;
+    ApplyMirrorsBeforeSearch(sharedMask, allOot, allMm, everSharedGiven, everPooledGiven);
     auto everReachOot = queryReachable(ootOracle, allOot);
     bool everPortalOpen = OraclePortalOpen(ootOracle) || mmStart;
-    size_t everSharedGiven[SF_COUNT] = { 0 };
-    ApplySharedMirror(sharedMask, allOot, allMm, everSharedGiven);
     uint32_t everOotCrossOut = OracleCrossOut(ootOracle);
     std::vector<std::string> everOotDoors = ReadOotCrossExits(), everMmDoors;
     auto everQueryMm = [&]() {

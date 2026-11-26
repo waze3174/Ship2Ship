@@ -2326,6 +2326,13 @@ idempotent, and mirrored copies never count as "found" on the side that received
 (`CrossWorldRando.h`, no trim for pooled), the playthrough and the pare-down (`ComboPlaythrough.h`) all call it.
 (WomboComboShip unit-tested it in `coop_tests`; those tests are not carried here.)
 
+**Mirror before the searches (fixed 2026-11-26):** the playthrough and the pare-down ran the mirror after each
+round's OOT search. A copy found on the MM side (an MM bottle, even one in an OOT temple) then reached OOT logic only
+in the next round, and when that round opened nothing else the walk stopped one bottle short: seed `shared`/1009 from
+the Archipelago fill rate stuck at sphere 8 with OOT's only bottle mirrored but never searched. Both now mirror before
+the OOT search (`ApplyMirrorsBeforeSearch`), and the full-inventory pass, which never ran the pooled mirror, does too.
+`combo/tests/ComboPlaythroughTest.cpp` covers it.
+
 **Runtime:** each game keeps its native slots (OOT 4, MM 6) as the working set; bottles past them wait on a
 **Bottle Shelf**: `soh/soh/Enhancements/randomizer/ComboBottleShelf.cpp` and
 `mm/2s2h/Rando/MiscBehavior/ComboBottleShelf.cpp` (new, combo-owned). Neither save format changes: the shelf and

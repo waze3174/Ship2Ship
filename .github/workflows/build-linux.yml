@@ -105,6 +105,12 @@ jobs:
           cmake --build build-cmake --target comboOracleServerTest -j 4
           ./build-cmake/combo/comboOracleServerTest
 
+      # The playthrough walk and the requiredness pare-down against fake logic oracles: pure header code.
+      - name: Playthrough unit tests (comboPlaythroughTest)
+        run: |
+          cmake --build build-cmake --target comboPlaythroughTest -j 4
+          ./build-cmake/combo/comboPlaythroughTest
+
       # Which slot each game's shared health state belongs to: pure header code.
       - name: Shared health slot unit tests (comboSharedHealthSlotsTest)
         run: |
