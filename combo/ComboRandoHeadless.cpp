@@ -43,6 +43,7 @@
 #include <string>
 #include <vector>
 
+#include "rando/ComboAttempt.h"
 #include "rando/ComboLostWoodsLink.h"
 #include "rando/CrossWorldRando.h"
 #include "rando/CrossEntrance.h"
@@ -327,6 +328,75 @@ static int Run(int argc, char** argv) {
             SOH_SetComboMirrorStart(unified ? ComboRando::MirrorStartMaskFromMmSettings(mmSettings) : 0u);
     };
     auto SOH_ReadComboSharedCVars = Sym<uint32_t (*)(void)>(soh, "SOH_ReadComboSharedCVars");
+
+    // The setup in front of every fill attempt, and in front of every oracle session: the seed's settings into both
+    // games, both pool dumps, the forced placements and the entrance layouts. The order matches RunComboFill.
+    auto beginAttempt = [&](const ComboRando::AttemptConfig& cfg, uint32_t masterSeed, bool mmStart,
+                            ComboRando::AttemptSetup& setup) {
+        setup = ComboRando::AttemptSetup{};
+        if (SOH_SetSeed)
+            SOH_SetSeed(masterSeed);
+        if (!cfg.storedMasterQuest.is_null())
+            pushMasterQuestDungeons(cfg.storedMasterQuest);
+        if (MM_SetSeed)
+            MM_SetSeed(masterSeed);
+        // Before the dumps: the goal shapes OOT's wincon placement and MM's hunt pool.
+        if (SOH_SetComboGoal)
+            SOH_SetComboGoal(cfg.goal.hunt ? 1 : 0, cfg.goal.required,
+                             ComboRando::CwOotPieces(cfg.goal.total, cfg.games));
+        if (MM_SetComboGoal)
+            MM_SetComboGoal(cfg.goal.hunt ? 1 : 0, cfg.goal.required,
+                            ComboRando::CwMmPieces(cfg.goal.total, cfg.games));
+        // Same reason (#135): an MM start forces OOT's age/forest/exclusions.
+        if (SOH_SetComboStartingGame)
+            SOH_SetComboStartingGame(mmStart ? 1 : 0);
+        // Shared Items: shapes OOT's wallet-force before the dump (settings.cpp reads gComboSharedMask).
+        if (SOH_SetComboSharedItems)
+            SOH_SetComboSharedItems(cfg.sharedMask);
+        if (SOH_SetComboUnifiedInventory)
+            SOH_SetComboUnifiedInventory(cfg.unified ? 1 : 0);
+        pushFormLogicCredit(cfg.formLogicCredit);
+        pushLostWoodsLink(cfg.lostWoodsLink);
+        {
+            nlohmann::json mmLive = nlohmann::json::object();
+            try {
+                mmLive = nlohmann::json::parse(MM_DumpSettings ? MM_DumpSettings() : "{}");
+            } catch (...) {}
+            pushMirrorStart(cfg.unified, mmLive);
+        }
+        setup.sohDump = SOH_Dump();
+        setup.mmDump = MM_Dump();
+        if (cfg.goal.hunt) {
+            const int pieces = ComboRando::CountPoolTriforcePieces(setup.sohDump, setup.mmDump, cfg.games);
+            if (pieces < cfg.goal.required) {
+                std::cerr << "[comborando] Triforce Hunt needs " << cfg.goal.required << " pieces but only " << pieces
+                          << " are in the combined pool — raise --triforce-total / the Combo pool total\n";
+                return ComboRando::AttemptStatus::Fatal;
+            }
+        }
+        setup.forced = SOH_GetForced ? SOH_GetForced(masterSeed) : "";
+        // Same placement as RunComboFill: after the dump/forced read, before the fill, so logic
+        // validates the shuffled world. No-op when the entrance options are off.
+        undoCross(); // §B2: the previous attempt's crossed doors go back before OOT reshuffles
+        if (SOH_ShuffleEntrances && !SOH_ShuffleEntrances(masterSeed)) {
+            std::cerr << "[comborando] seed " << masterSeed << ": entrance shuffle found no valid layout\n";
+            return ComboRando::AttemptStatus::OotShuffleFailed;
+        }
+        setup.entResult = ComboRando::ShuffleMmEntrancesForAttempt(MM_DumpEntranceGraphFn, MM_SetEntranceOverridesFn,
+                                                                   cfg.entMm, masterSeed);
+        if (setup.entResult.ok)
+            setup.crossResult = ComboRando::ShuffleCrossEntrancesForAttempt(
+                SOH_DumpEntranceGraphFn, SOH_SetCrossEntrancesFn, MM_DumpEntranceGraphFn, MM_SetCrossEntrancesFn,
+                SOH_GetCrossExitsFn, MM_GetCrossExitsFn, setup.entResult.overrides, cfg.entCross, masterSeed);
+        if (!setup.entResult.ok || !setup.crossResult.ok) {
+            std::cerr << "[comborando] seed " << masterSeed << ": "
+                      << (!setup.entResult.ok ? setup.entResult.error : setup.crossResult.error) << "\n";
+            if (MM_Restore)
+                MM_Restore();
+            return ComboRando::AttemptStatus::EntranceShuffleFailed;
+        }
+        return ComboRando::AttemptStatus::Ready;
+    };
 
     ComboRando::OracleFns oot{ Sym<FnOracleVoid>(soh, "Combo_SOH_Rando_Reset"),
                                Sym<FnOracleSetItems>(soh, "Combo_SOH_Rando_SetOwnedItems"),
@@ -834,7 +904,6 @@ static int Run(int argc, char** argv) {
                     nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("mm", nlohmann::json::object()));
             } catch (...) {}
         }
-        ComboRando::MmEntranceAttempt entResult;
         ComboRando::CrossSettings entCross;
         if (!crossArg.empty()) {
             if (crossArg != "off") {
@@ -853,7 +922,16 @@ static int Run(int argc, char** argv) {
                     nlohmann::json::parse(SOH_ReadComboEntranceCVarsFn()).value("cross", nlohmann::json::object()));
             } catch (...) {}
         }
-        ComboRando::CrossAttempt crossResult;
+        ComboRando::AttemptConfig attemptCfg;
+        attemptCfg.goal = goal;
+        attemptCfg.games = games;
+        attemptCfg.sharedMask = sharedMask;
+        attemptCfg.unified = unified;
+        attemptCfg.formLogicCredit = formLogicCredit;
+        attemptCfg.lostWoodsLink = lostWoodsLink;
+        attemptCfg.entMm = entMm;
+        attemptCfg.entCross = entCross;
+        ComboRando::AttemptSetup setup;
         const int kFillAttempts =
             (entMm.Any() || entCross.Any()) ? ComboRando::kEntranceFillAttempts : ComboRando::kFillAttempts;
         bool pinStartOot = false, resolvedMmStart = false; // #135: Random falls back to OOT after a failure
@@ -861,65 +939,21 @@ static int Run(int argc, char** argv) {
             masterSeed = base + attempt * 0x9E3779B9u;
             const bool mmStart = !pinStartOot && !(startCfg == 2 && attempt + 1 == kFillAttempts) &&
                                  ResolveStartingGameMM(startCfg, masterSeed);
-            if (SOH_SetSeed)
-                SOH_SetSeed(masterSeed);
-            if (MM_SetSeed)
-                MM_SetSeed(masterSeed);
-            // Before the dumps: the goal shapes OOT's wincon placement and MM's hunt pool.
-            if (SOH_SetComboGoal)
-                SOH_SetComboGoal(goal.hunt ? 1 : 0, goal.required, ComboRando::CwOotPieces(goal.total, games));
-            if (MM_SetComboGoal)
-                MM_SetComboGoal(goal.hunt ? 1 : 0, goal.required, ComboRando::CwMmPieces(goal.total, games));
-            // Same reason (#135): an MM start forces OOT's age/forest/exclusions.
-            if (SOH_SetComboStartingGame)
-                SOH_SetComboStartingGame(mmStart ? 1 : 0);
-            // Shared Items: shapes OOT's wallet-force before the dump (settings.cpp reads gComboSharedMask).
-            if (SOH_SetComboSharedItems)
-                SOH_SetComboSharedItems(sharedMask);
-            if (SOH_SetComboUnifiedInventory)
-                SOH_SetComboUnifiedInventory(unified ? 1 : 0);
-            pushFormLogicCredit(formLogicCredit);
-            pushLostWoodsLink(lostWoodsLink);
-            {
-                nlohmann::json mmLive = nlohmann::json::object();
-                try {
-                    mmLive = nlohmann::json::parse(MM_DumpSettings ? MM_DumpSettings() : "{}");
-                } catch (...) {}
-                pushMirrorStart(unified, mmLive);
-            }
-            sohDump = SOH_Dump();
-            mmDump = MM_Dump();
-            if (goal.hunt) {
-                const int pieces = ComboRando::CountPoolTriforcePieces(sohDump, mmDump, games);
-                if (pieces < goal.required) {
-                    std::cerr << "[comborando] Triforce Hunt needs " << goal.required << " pieces but only " << pieces
-                              << " are in the combined pool — raise --triforce-total / the Combo pool total\n";
+            switch (beginAttempt(attemptCfg, masterSeed, mmStart, setup)) {
+                case ComboRando::AttemptStatus::Fatal:
                     return 2;
-                }
+                case ComboRando::AttemptStatus::OotShuffleFailed:
+                    if (mmStart && startCfg == 2)
+                        pinStartOot = true;
+                    continue;
+                case ComboRando::AttemptStatus::EntranceShuffleFailed:
+                    continue;
+                case ComboRando::AttemptStatus::Ready:
+                    break;
             }
-            std::string forced = SOH_GetForced ? SOH_GetForced(masterSeed) : "";
-            // Same placement as RunComboFill: after the dump/forced read, before the fill, so logic
-            // validates the shuffled world. No-op when the entrance options are off.
-            undoCross(); // §B2: the previous attempt's crossed doors go back before OOT reshuffles
-            if (SOH_ShuffleEntrances && !SOH_ShuffleEntrances(masterSeed)) {
-                std::cerr << "[comborando] seed " << masterSeed << ": entrance shuffle found no valid layout\n";
-                if (mmStart && startCfg == 2)
-                    pinStartOot = true;
-                continue;
-            }
-            entResult = ComboRando::ShuffleMmEntrancesForAttempt(MM_DumpEntranceGraphFn, MM_SetEntranceOverridesFn,
-                                                                 entMm, masterSeed);
-            if (entResult.ok)
-                crossResult = ComboRando::ShuffleCrossEntrancesForAttempt(
-                    SOH_DumpEntranceGraphFn, SOH_SetCrossEntrancesFn, MM_DumpEntranceGraphFn, MM_SetCrossEntrancesFn,
-                    SOH_GetCrossExitsFn, MM_GetCrossExitsFn, entResult.overrides, entCross, masterSeed);
-            if (!entResult.ok || !crossResult.ok) {
-                std::cerr << "[comborando] seed " << masterSeed << ": "
-                          << (!entResult.ok ? entResult.error : crossResult.error) << "\n";
-                if (MM_Restore)
-                    MM_Restore();
-                continue;
-            }
+            sohDump = setup.sohDump;
+            mmDump = setup.mmDump;
+            const std::string& forced = setup.forced;
             ComboRando::OotAccess ootAccess = ComboRando::OotAccessFromDump(sohDump);
             r = ComboRando::CrossWorldCombinedFill(sohDump, mmDump, masterSeed, oot, mmO, nullptr, forced, ootAccess,
                                                    goal, mmStart ? ComboRando::GAME_MM : ComboRando::GAME_OOT,
@@ -977,7 +1011,7 @@ static int Run(int argc, char** argv) {
             } catch (...) {}
             std::cout << "[comborando]   seed " << tag << " (" << masterSeed << ") PASS (" << foreign
                       << " cross-game placements) fingerprint="
-                      << HexU64(fillFingerprint(r, entResult, crossResult, sohDump, mmDump)) << "\n";
+                      << HexU64(fillFingerprint(r, setup.entResult, setup.crossResult, sohDump, mmDump)) << "\n";
             // For a single-seed run, emit a consolidated spoiler (settings + placements) so it can be fed
             // straight back to --playthrough. Mirrors ComboShip.cpp's consolidated shape.
             if (count == 1 && SOH_DumpSettings && MM_DumpSettings) {
@@ -1048,14 +1082,14 @@ static int Run(int argc, char** argv) {
                         }
                         consolidated["entrances"] = { { "oot", std::move(ootEnt) } };
                         if (entMm.Any()) { // §B1: stored, applied from the seed (never re-derived)
-                            consolidated["entrances"]["mm"] = entResult.overrides;
+                            consolidated["entrances"]["mm"] = setup.entResult.overrides;
                             consolidated["entranceSettings"]["mm"] = entMm.ToJson();
-                            consolidated["entranceSpoiler"]["mm"] = entResult.spoiler;
+                            consolidated["entranceSpoiler"]["mm"] = setup.entResult.spoiler;
                         }
                         if (entCross.Any()) { // §B2
-                            consolidated["entrances"]["cross"] = crossResult.runtime;
+                            consolidated["entrances"]["cross"] = setup.crossResult.runtime;
                             consolidated["entranceSettings"]["cross"] = entCross.ToJson();
-                            consolidated["entranceSpoiler"]["cross"] = crossResult.spoiler;
+                            consolidated["entranceSpoiler"]["cross"] = setup.crossResult.spoiler;
                         }
                     }
                     // Cross-hint generation (mirrors RunComboFill) — enables the headless determinism check.

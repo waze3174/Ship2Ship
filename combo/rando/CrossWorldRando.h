@@ -46,6 +46,99 @@ constexpr int kEntranceFillAttempts = 12;
 constexpr int kMaxPasses = 3;      // passes within one fill
 constexpr int kMaxPrereqTries = 4; // Tier-1 repicks of just the portal prerequisites
 
+// MM resolves its junk placeholder at pickup from finalSeed + the MM check id, and a check in OOT has none, so a
+// cross-placed one is baked here into a real item from MM's own rotation set; every surface then agrees (see the
+// deviations doc). Own RNG stream, seeded per check: never draws from the fill's, never depends on order.
+inline void BakeCrossPlacedMmJunk(CrossWorldSession& session, std::vector<CwPlacement>& placements) {
+    std::vector<std::string>& mmJunkNames = session.mmJunkNames;
+    const uint32_t masterSeed = session.masterSeed;
+    std::sort(mmJunkNames.begin(), mmJunkNames.end());
+    mmJunkNames.erase(std::unique(mmJunkNames.begin(), mmJunkNames.end()), mmJunkNames.end());
+    size_t unbaked = 0;
+    for (auto& p : placements) {
+        if (p.check.game != GAME_OOT || p.item.game != GAME_MM || p.item.name != kMmJunkName)
+            continue;
+        if (mmJunkNames.empty()) {
+            ++unbaked;
+            continue;
+        }
+        CwRng jr((static_cast<uint64_t>(masterSeed) << 32) ^ CwHashName(p.check.name) ^ 0x4A554E4BULL);
+        p.item.name = mmJunkNames[jr.below(static_cast<uint32_t>(mmJunkNames.size()))];
+    }
+    if (unbaked > 0)
+        std::cout << "[ComboShip] junk bake skipped for " << unbaked
+                  << " cross placements: 2ship.dll reported no junkPool" << std::endl;
+}
+
+// The fill's spoiler, same shape as the no-logic generator: every placement by game, the cross-game markers and what
+// the pools looked like. `mode` names who made the placements.
+inline nlohmann::json BuildFillSpoiler(const CrossWorldSession& session, const std::vector<CwPlacement>& placements,
+                                       int passesUsed, const char* mode = "combined-logic assumed-fill") {
+    const uint32_t masterSeed = session.masterSeed;
+    const bool mmStart = session.mmStart;
+    const auto& advItems = session.advItems;
+    const auto& junkItems = session.junkItems;
+    const auto& allChecks = session.allChecks;
+    const auto& forcedPlacements = session.forcedPlacements;
+    const uint32_t effectiveSharedMask = session.effectiveSharedMask;
+    const auto& sharedStartingMm = session.sharedStartingMm;
+    const size_t trimmedTotal = session.trimmedTotal, paddedTotal = session.paddedTotal;
+    nlohmann::json spoiler;
+    spoiler["masterSeed"] = masterSeed;
+    spoiler["mode"] = mode;
+    spoiler["startingGame"] = mmStart ? "MM" : "OOT"; // #135
+    // poolTrimmed/poolPadded let a shipped spoiler self-report that it came from a balanced fill.
+    spoiler["fillStats"] = { { "advancementItems", static_cast<uint32_t>(advItems.size()) },
+                             { "junkItems", static_cast<uint32_t>(junkItems.size()) },
+                             { "poolTrimmed", static_cast<uint32_t>(trimmedTotal) },
+                             { "poolPadded", static_cast<uint32_t>(paddedTotal) },
+                             { "checks", static_cast<uint32_t>(allChecks.size()) },
+                             { "passes", passesUsed } };
+    spoiler["sharedItems"] = SharedKeysFromMask(effectiveSharedMask);
+    if (!sharedStartingMm.empty())
+        spoiler["sharedStartingMm"] = sharedStartingMm;
+
+    nlohmann::json ootPlacements = nlohmann::json::object();
+    nlohmann::json mmPlacements = nlohmann::json::object();
+    nlohmann::json foreignMarkers = nlohmann::json::array();
+
+    for (const auto& p : placements) {
+        if (p.check.game == GAME_OOT) {
+            ootPlacements[p.check.name] = p.item.name;
+        } else {
+            mmPlacements[p.check.name] = p.item.name;
+        }
+        if (p.check.game != p.item.game) {
+            nlohmann::json marker = { { "checkGame", p.check.game == GAME_OOT ? "oot" : "mm" },
+                                      { "checkName", p.check.name },
+                                      { "itemGame", p.item.game == GAME_OOT ? "oot" : "mm" },
+                                      { "itemName", p.item.name },
+                                      // Propagate advancement so foreign checks holding an important item
+                                      // still play the held-up pickup animation (else defaulted to junk).
+                                      { "advancement", p.item.advancement } };
+            // Native item category, so CMC/CSMC can dress the container as the real item instead of
+            // the junk sentinel. UNKNOWN is omitted so consumers use the advancement fallback.
+            if (p.item.cat != CwCat::UNKNOWN)
+                marker["category"] = CwCatName(p.item.cat);
+            foreignMarkers.push_back(std::move(marker));
+        }
+    }
+
+    spoiler["ootCount"] = static_cast<uint32_t>(ootPlacements.size());
+    spoiler["oot"] = ootPlacements;
+    spoiler["mmCount"] = static_cast<uint32_t>(mmPlacements.size());
+    spoiler["mm"] = mmPlacements;
+    spoiler["foreign"] = foreignMarkers;
+    // Forced placements (e.g. Link's Pocket) are owned at start, so hints must never target them —
+    // the dump's fixed[] skips forced checks, so the spoiler names them for CrossHints instead.
+    nlohmann::json startKnown = nlohmann::json::array();
+    for (const auto& fp : forcedPlacements)
+        startKnown.push_back(
+            { { "checkGame", fp.check.game == GAME_OOT ? "oot" : "mm" }, { "checkName", fp.check.name } });
+    spoiler["startKnown"] = std::move(startKnown);
+    return spoiler;
+}
+
 // MM access is gated on the OOT->MM portal region (Happy Mask Shop, or the Lost Woods hub in a seed with the Lost
 // Woods link) via ootOracle.GetPortalOpen.
 // progress: optional thread-safe progress struct polled by the UI. May be nullptr.
@@ -79,9 +172,6 @@ CrossWorldCombinedFill(const std::string& sohDumpJson, const std::string& mmDump
     auto& junkItems = session.junkItems;
     auto& lockedPlacements = session.lockedPlacements;
     auto& forcedPlacements = session.forcedPlacements;
-    auto& mmJunkNames = session.mmJunkNames;
-    auto& effectiveSharedMask = session.effectiveSharedMask;
-    auto& sharedStartingMm = session.sharedStartingMm;
     auto& trimmedTotal = session.trimmedTotal;
     auto& paddedTotal = session.paddedTotal;
     auto& ootStats = session.ootStats;
@@ -657,83 +747,8 @@ CrossWorldCombinedFill(const std::string& sohDumpJson, const std::string& mmDump
         progress->total.store(0);
     }
 
-    // --- Bake cross-placed MM junk into a real item ---
-    // MM resolves its junk placeholder at pickup from finalSeed + the MM check id, and a check in OOT
-    // has none — so pick from MM's own rotation set here and every surface agrees (see the deviations
-    // doc). Own RNG stream, seeded per check: never draws from the fill's, never depends on order.
-    {
-        std::sort(mmJunkNames.begin(), mmJunkNames.end());
-        mmJunkNames.erase(std::unique(mmJunkNames.begin(), mmJunkNames.end()), mmJunkNames.end());
-        size_t unbaked = 0;
-        for (auto& p : placements) {
-            if (p.check.game != GAME_OOT || p.item.game != GAME_MM || p.item.name != kMmJunkName)
-                continue;
-            if (mmJunkNames.empty()) {
-                ++unbaked;
-                continue;
-            }
-            CwRng jr((static_cast<uint64_t>(masterSeed) << 32) ^ CwHashName(p.check.name) ^ 0x4A554E4BULL);
-            p.item.name = mmJunkNames[jr.below(static_cast<uint32_t>(mmJunkNames.size()))];
-        }
-        if (unbaked > 0)
-            std::cout << "[ComboShip] junk bake skipped for " << unbaked
-                      << " cross placements: 2ship.dll reported no junkPool" << std::endl;
-    }
-
-    // --- Build spoiler (same shape as the no-logic generator) ---
-    nlohmann::json spoiler;
-    spoiler["masterSeed"] = masterSeed;
-    spoiler["mode"] = "combined-logic assumed-fill";
-    spoiler["startingGame"] = mmStart ? "MM" : "OOT"; // #135
-    // poolTrimmed/poolPadded let a shipped spoiler self-report that it came from a balanced fill.
-    spoiler["fillStats"] = { { "advancementItems", static_cast<uint32_t>(advItems.size()) },
-                             { "junkItems", static_cast<uint32_t>(junkItems.size()) },
-                             { "poolTrimmed", static_cast<uint32_t>(trimmedTotal) },
-                             { "poolPadded", static_cast<uint32_t>(paddedTotal) },
-                             { "checks", static_cast<uint32_t>(allChecks.size()) },
-                             { "passes", passesUsed } };
-    spoiler["sharedItems"] = SharedKeysFromMask(effectiveSharedMask);
-    if (!sharedStartingMm.empty())
-        spoiler["sharedStartingMm"] = sharedStartingMm;
-
-    nlohmann::json ootPlacements = nlohmann::json::object();
-    nlohmann::json mmPlacements = nlohmann::json::object();
-    nlohmann::json foreignMarkers = nlohmann::json::array();
-
-    for (const auto& p : placements) {
-        if (p.check.game == GAME_OOT) {
-            ootPlacements[p.check.name] = p.item.name;
-        } else {
-            mmPlacements[p.check.name] = p.item.name;
-        }
-        if (p.check.game != p.item.game) {
-            nlohmann::json marker = { { "checkGame", p.check.game == GAME_OOT ? "oot" : "mm" },
-                                      { "checkName", p.check.name },
-                                      { "itemGame", p.item.game == GAME_OOT ? "oot" : "mm" },
-                                      { "itemName", p.item.name },
-                                      // Propagate advancement so foreign checks holding an important item
-                                      // still play the held-up pickup animation (else defaulted to junk).
-                                      { "advancement", p.item.advancement } };
-            // Native item category, so CMC/CSMC can dress the container as the real item instead of
-            // the junk sentinel. UNKNOWN is omitted so consumers use the advancement fallback.
-            if (p.item.cat != CwCat::UNKNOWN)
-                marker["category"] = CwCatName(p.item.cat);
-            foreignMarkers.push_back(std::move(marker));
-        }
-    }
-
-    spoiler["ootCount"] = static_cast<uint32_t>(ootPlacements.size());
-    spoiler["oot"] = ootPlacements;
-    spoiler["mmCount"] = static_cast<uint32_t>(mmPlacements.size());
-    spoiler["mm"] = mmPlacements;
-    spoiler["foreign"] = foreignMarkers;
-    // Forced placements (e.g. Link's Pocket) are owned at start, so hints must never target them —
-    // the dump's fixed[] skips forced checks, so the spoiler names them for CrossHints instead.
-    nlohmann::json startKnown = nlohmann::json::array();
-    for (const auto& fp : forcedPlacements)
-        startKnown.push_back(
-            { { "checkGame", fp.check.game == GAME_OOT ? "oot" : "mm" }, { "checkName", fp.check.name } });
-    spoiler["startKnown"] = std::move(startKnown);
+    BakeCrossPlacedMmJunk(session, placements);
+    const nlohmann::json spoiler = BuildFillSpoiler(session, placements, passesUsed);
 
     // --- Commit placements to oracles (for save consumption) ---
     for (const auto& p : placements) {

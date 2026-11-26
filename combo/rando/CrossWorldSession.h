@@ -704,7 +704,6 @@ struct CrossWorldSession {
     // `placements` are the placements made so far: the fill passes its own, the oracle only the confined ones.
     CwFixResult ReachableFixpoint(const std::vector<CwPlacement>& placements, const std::vector<std::string>& ootBase,
                                   const std::vector<std::string>& mmBase) {
-        using FixResult = CwFixResult;
         auto queryReachable = [&](const OracleFns& oracle, const std::vector<std::string>& owned) {
             return Query(oracle, owned);
         };
