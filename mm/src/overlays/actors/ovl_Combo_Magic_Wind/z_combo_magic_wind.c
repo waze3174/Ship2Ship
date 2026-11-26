@@ -12,7 +12,10 @@
  */
 
 #include "z_combo_magic_wind.h"
+#include "2s2h/BenPort.h"
 #include "2s2h/Rando/MiscBehavior/ComboOotItems.h"
+
+#include <stdio.h>
 
 #define FLAGS (ACTOR_FLAG_UPDATE_CULLING_DISABLED | ACTOR_FLAG_UPDATE_DURING_OCARINA)
 
@@ -46,6 +49,55 @@ static u8 sAlphaUpdVals[] = {
 #define OOT_SKEL() ((CurveSkeletonHeader*)Combo_MmOotRawResource("overlays/ovl_Magic_Wind/sSkel"))
 #define OOT_ANIM() ((CurveAnimationHeader*)Combo_MmOotRawResource("overlays/ovl_Magic_Wind/sAnim"))
 
+// OOT's skeleton: a root and the two cylinders.
+#define ROUTED_SKEL_LIMB_MAX 3
+#define ROUTED_DL_PATH_MAX 128
+#define OTR_PATH_PREFIX_LEN 7 // "__OTR__"
+
+static SkelCurveLimb sRoutedLimbs[ROUTED_SKEL_LIMB_MAX];
+static SkelCurveLimb* sRoutedLimbTable[ROUTED_SKEL_LIMB_MAX];
+static char sRoutedDLPaths[ROUTED_SKEL_LIMB_MAX][ARRAY_COUNT(sRoutedLimbs[0].dList)][ROUTED_DL_PATH_MAX];
+static CurveSkeletonHeader sRoutedSkel;
+
+// A copy of OOT's curve skeleton whose limb models carry the "@oot:" route. OOT's skeleton names them as plain
+// "__OTR__" paths, which MM's gSPDisplayList looks up in MM's archive when recorded, and MM has no ovl_Magic_Wind.
+// Built once; NULL when OOT's skeleton is missing or not the shape above.
+static CurveSkeletonHeader* ComboMagicWind_RoutedSkel(CurveSkeletonHeader* ootSkel) {
+    s32 i;
+    s32 j;
+
+    if (sRoutedSkel.limbs != NULL) {
+        return &sRoutedSkel;
+    }
+    if ((ootSkel == NULL) || (ootSkel->limbs == NULL) || (ootSkel->limbCount > ROUTED_SKEL_LIMB_MAX)) {
+        return NULL;
+    }
+    for (i = 0; i < ootSkel->limbCount; i++) {
+        SkelCurveLimb* limb = ootSkel->limbs[i];
+
+        if (limb == NULL) {
+            return NULL;
+        }
+        sRoutedLimbs[i] = *limb;
+        for (j = 0; j < ARRAY_COUNT(limb->dList); j++) {
+            char* path = (char*)limb->dList[j];
+
+            if ((path == NULL) || !ResourceMgr_OTRSigCheck(path)) {
+                continue; // no model, or raw OOT data: the draw's "oot" bracket covers it
+            }
+            if (snprintf(sRoutedDLPaths[i][j], ROUTED_DL_PATH_MAX, "__OTR__@oot:%s", path + OTR_PATH_PREFIX_LEN) >=
+                ROUTED_DL_PATH_MAX) {
+                return NULL;
+            }
+            sRoutedLimbs[i].dList[j] = (Gfx*)sRoutedDLPaths[i][j];
+        }
+        sRoutedLimbTable[i] = &sRoutedLimbs[i];
+    }
+    sRoutedSkel.limbCount = ootSkel->limbCount;
+    sRoutedSkel.limbs = sRoutedLimbTable;
+    return &sRoutedSkel;
+}
+
 static void ComboMagicWind_SetupAction(ComboMagicWind* this, ComboMagicWindFunc actionFunc) {
     this->actionFunc = actionFunc;
 }
@@ -53,7 +105,7 @@ static void ComboMagicWind_SetupAction(ComboMagicWind* this, ComboMagicWindFunc 
 void ComboMagicWind_Init(Actor* thisx, PlayState* play) {
     ComboMagicWind* this = (ComboMagicWind*)thisx;
     Player* player = GET_PLAYER(play);
-    CurveSkeletonHeader* skel = OOT_SKEL();
+    CurveSkeletonHeader* skel = ComboMagicWind_RoutedSkel(OOT_SKEL());
     CurveAnimationHeader* anim = OOT_ANIM();
 
     if ((skel == NULL) || (anim == NULL) || !SkelCurve_Init(play, &this->skelCurve, skel, anim)) {
@@ -183,7 +235,7 @@ void ComboMagicWind_Draw(Actor* thisx, PlayState* play) {
 
     if (this->actionFunc != ComboMagicWind_WaitForTimer) {
         POLY_XLU_DISP = Gfx_SetupDL(POLY_XLU_DISP, SETUPDL_25);
-        // OOT's curve skeleton's limb models are OOT paths: resolve them against OOT's ResourceManager.
+        // The limb models are routed (ComboMagicWind_RoutedSkel); the bracket covers raw OOT data in the skeleton.
         gSPComboRMPush(POLY_OPA_DISP++, "oot");
         gSPComboRMPush(POLY_XLU_DISP++, "oot");
         SkelCurve_Draw(thisx, play, &this->skelCurve, ComboMagicWind_OverrideLimbDraw, NULL, 1, thisx);
