@@ -333,7 +333,7 @@ void Anchor::HandlePacket_UpdateTeamState(nlohmann::json payload) {
                     loc->GetPlacedRandomizerGet() == RG_COMBO_FOREIGN) {
                     const std::string checkName = Rando::StaticData::GetLocation((RandomizerCheck)i)->GetName();
                     const ComboRando::ForeignItem* fi = OOT_LookupForeign(gSaveContext.fileNum, checkName);
-                    if (fi && gComboCrossDeliver) {
+                    if (fi && !fi->ap && gComboCrossDeliver) {
                         gComboCrossDeliver((int)fi->itemGame, fi->itemName.c_str(), checkName.c_str());
                     }
                 }

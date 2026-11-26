@@ -46,6 +46,7 @@
 #define SDL_MAIN_HANDLED
 #include <SDL2/SDL_net.h>
 
+#include "rando/ComboApSeed.h"
 #include "rando/ComboCrossGate.h"
 #include "rando/ComboLostWoodsLink.h"
 #include "rando/ComboMode.h"
@@ -4484,6 +4485,14 @@ static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, cons
         ComboLog::Warn() << "[ComboShip] seed apply: skipped — a generation is in flight\n";
         return 2; // busy, not failed (Combo_OnReloadRequest checks this itself first)
     }
+    if (ComboRando::IsApSeed(j)) {
+        const std::string problem = ComboRando::ApSeedProblem(j);
+        if (!problem.empty()) {
+            ComboLog::Error() << "[ComboShip] seed apply: refusing the Archipelago seed " << file << ": " << problem
+                              << "\n";
+            return 0;
+        }
+    }
     try {
         uint32_t masterSeed = j.value("masterSeed", 0u);
         ResetCrossItemDedupForSeed(masterSeed);
@@ -4672,7 +4681,7 @@ static void Combo_ClearComboRando() {
 static void Combo_EraseSeedAndSharedState(int fileNum) {
     std::lock_guard<std::mutex> lk(g_containerMutex);
     auto& c = LoadOrCreateContainer(fileNum);
-    for (const char* key : { "rando", "completion", "health", "bottleShelf", "link" })
+    for (const char* key : { "rando", "completion", "health", "bottleShelf", "link", ComboRando::kApKey })
         c["combo"].erase(key);
     FlushContainer(fileNum);
 }
@@ -4810,6 +4819,10 @@ static void Combo_OnOOTSaveInit(int fileNum) {
             auto& c = LoadOrCreateContainer(fileNum);
             if (!seed.is_null())
                 c["combo"]["rando"] = seed;
+            // An Archipelago seed also marks the save as one; any other seed leaves nothing of an earlier file's.
+            c["combo"].erase(ComboRando::kApKey);
+            if (ComboRando::IsApSeed(seed))
+                c["combo"][ComboRando::kApKey] = ComboRando::ApSaveRecord(seed);
             // A rebaked slot is a NEW seed: a completed prior one must not instantly finish this hunt
             // (or report both bosses already dead). Hint read state is already cleared above.
             if (c.contains("combo") && c["combo"].is_object())

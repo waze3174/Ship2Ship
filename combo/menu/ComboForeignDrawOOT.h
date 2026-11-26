@@ -80,7 +80,8 @@ inline ComboForeignResolve ComboFillForeignDrawInfoByName(const char* drawName, 
 inline ComboForeignResolve ComboFillForeignDrawInfo(RandomizerCheck rc, int slot, ComboForeignDrawInfo& info) {
     const std::string checkName = Rando::StaticData::GetLocation(rc)->GetName();
     const ComboRando::ForeignItem* fi = OOT_LookupForeign(slot, checkName);
-    if (fi == nullptr || fi->itemGame != ComboRando::GAME_MM) {
+    // Another player's item (Archipelago) has no model of either game: the sentinel's blue rupee stands in.
+    if (fi == nullptr || fi->ap || fi->itemGame != ComboRando::GAME_MM) {
         return ComboForeignResolve::Unknown;
     }
 

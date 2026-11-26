@@ -90,7 +90,8 @@ enum class ComboForeignResolveOOT { Ok, Unknown, NotReady };
 
 inline ComboForeignResolveOOT ComboFillForeignDrawInfoOOT(RandoCheckId rc, ComboForeignDrawInfoOOT& info) {
     const ComboRando::ForeignItem* fi = Rando::MiscBehavior::MM_LookupForeign(rc);
-    if (fi == nullptr || fi->itemGame != ComboRando::GAME_OOT) {
+    // Another player's item (Archipelago) has no model of either game: the sentinel's blue rupee stands in.
+    if (fi == nullptr || fi->ap || fi->itemGame != ComboRando::GAME_OOT) {
         return ComboForeignResolveOOT::Unknown;
     }
 

@@ -73,7 +73,11 @@ void Rando::MiscBehavior::SendForeignCheck(RandoCheckId rc) {
     // dump emits and the fill/foreign array carry. Must match foreign[].checkName exactly.
     const std::string checkName = Rando::StaticData::GetCheckDisplayName(rc);
     auto it = g_mmForeignMap.find(checkName);
-    if (it != g_mmForeignMap.end()) {
+    if (it != g_mmForeignMap.end() && it->second.ap) {
+        // Another player's item: nothing to grant here, and the obtained check is what the Archipelago client reports.
+        Notification::Emit({ .message = "Archipelago:", .suffix = it->second.displayName });
+        SPDLOG_INFO("[ComboShip] MM found {} at check '{}'", it->second.displayName, checkName);
+    } else if (it != g_mmForeignMap.end()) {
         // Grant straight into the dormant target game's resident save (and persist it there), then
         // share with networked teammates. Replaces the old JSON mailbox + per-frame drain.
         if (gMMComboCrossDeliver)

@@ -557,7 +557,11 @@ void OOT_DeliverForeign(RandomizerCheck rc) {
     const std::string checkName = Rando::StaticData::GetLocation(rc)->GetName();
     const ComboRando::ForeignItem* fi = OOT_LookupForeign(slot, checkName);
 
-    if (fi && fi->trap) {
+    if (fi && fi->ap) {
+        // Another player's item: nothing to grant here, and the obtained check is what the Archipelago client reports.
+        Notification::Emit({ .message = "Archipelago:", .suffix = fi->displayName });
+        SPDLOG_INFO("[ComboShip] OOT found {} at check '{}'", fi->displayName, checkName);
+    } else if (fi && fi->trap) {
         // A foreign trap fires on the FINDER; each game springs its own flavour, so an MM trap becomes
         // OOT's freeze. Deferred exactly like a native ice trap: VB_SHORT_CIRCUIT_GIVE_ITEM_PROCESS is
         // checked from the per-frame Player_ActionHandler_2, so this springs once the get-item

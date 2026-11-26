@@ -7,6 +7,7 @@
 #include "ComboPresetPanels.h"    // Settings > Presets and Import settings panels
 #include "ComboBackToBackPanel.h"
 #include "ComboExport.h"
+#include "ComboFilePicker.h" // native Browse dialog for Load seed file
 #include "ComboRelease.h"
 #include "ComboMenuModel.h"
 #include "ComboWidgetRender.h"
@@ -22,6 +23,7 @@
 #include "ComboDiscordPanel.h"      // Settings > Discord: Rich Presence switches
 #include "rando/CrossForeign.h"     // ComboRando::ContainerPath — anchored save-container location
 #include "rando/ComboPlaythrough.h" // plando: ParseSpoilerPlacements + Suffix/BuildForeignArray + slot paths
+#include "rando/ComboApSeed.h"      // plando refuses an Archipelago seed
 #include "rando/ComboGames.h"       // Games (OoT only / MM only / Combo)
 #include "rando/ComboLostWoodsLink.h"
 #include "rando/ComboSeedFileType.h"
@@ -1035,6 +1037,11 @@ void PlandoLoad() {
         sPlando.statusError = true;
         return;
     }
+    if (ComboRando::IsApSeed(j)) {
+        sPlando.status = "An Archipelago seed is fixed by its multiworld and cannot be edited.";
+        sPlando.statusError = true;
+        return;
+    }
     if (!ComboRando::IsSeedFileType(j.value("fileType", std::string()))) {
         sPlando.status = "Not a Ship2Ship seed (regenerate with this build).";
         sPlando.statusError = true;
@@ -1737,6 +1744,16 @@ void ComboMenu::DrawGamePanel(const char* gameKey) {
     }
     ImGui::EndChild();
 }
+// A seed file chosen by hand reaches the file select the way a file dropped on the game window does.
+static void ChooseSeedFile() {
+    const std::string path =
+        ComboFilePicker::PickFile("Select a Ship2Ship seed file", "Seed files (*.json)\0*.json\0All Files (*.*)\0*.*\0",
+                                  { "Seed files", "*.json", "All files", "*" });
+    if (!path.empty()) {
+        CVarSetString("gGeneral.ComboDroppedFile", path.c_str());
+    }
+}
+
 void ComboMenu::DrawComboPanel() {
     ResolveComboGenSyms();
     ImGui::TextWrapped("Generate a cross-world randomizer seed spanning OoT and MM. "
@@ -2117,6 +2134,16 @@ void ComboMenu::DrawComboPanel() {
         sTrigger(); // non-blocking: launcher spawns the worker; the main loop keeps running
     }
     if (!canGenerate)
+        ImGui::EndDisabled();
+
+    // A seed made elsewhere: a friend's, or an Archipelago slot's .ship2ship.json.
+    ImGui::SameLine();
+    const bool canLoadSeed = onFileSelect && !running;
+    if (!canLoadSeed)
+        ImGui::BeginDisabled();
+    if (ImGui::Button("Load seed file..."))
+        ChooseSeedFile();
+    if (!canLoadSeed)
         ImGui::EndDisabled();
 
     if (!sTrigger) {

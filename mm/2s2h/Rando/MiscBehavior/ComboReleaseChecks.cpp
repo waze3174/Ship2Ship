@@ -45,7 +45,7 @@ void MarkCollected(RandoSaveCheck& check) {
 }
 
 // A check holding an Ocarina of Time item: the item goes to OoT's save like any pickup's, and to teammates. A trap is
-// never sent.
+// never sent, and another player's item (Archipelago) has nothing to give: the collected check is what reports it.
 void ReleaseForeign(RandoCheckId rc) {
     const std::string& checkName = Rando::StaticData::GetCheckDisplayName(rc);
     const ComboRando::ForeignItem* foreign = Rando::MiscBehavior::MM_LookupForeign(rc);
@@ -53,7 +53,7 @@ void ReleaseForeign(RandoCheckId rc) {
         SPDLOG_WARN("[ComboShip] release: MM foreign sentinel at '{}' has no foreign-map entry; dropping", checkName);
         return;
     }
-    if (foreign->trap) {
+    if (foreign->trap || foreign->ap) {
         return;
     }
     if (gMMComboCrossDeliver != nullptr) {

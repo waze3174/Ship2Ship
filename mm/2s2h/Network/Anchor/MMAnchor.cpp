@@ -1268,7 +1268,7 @@ void MMAnchor::HandlePacket_UpdateTeamState(nlohmann::json& payload) {
             continue;
         }
         const ComboRando::ForeignItem* fi = Rando::MiscBehavior::MM_LookupForeign(rc);
-        if (fi && gMMComboCrossDeliver) {
+        if (fi && !fi->ap && gMMComboCrossDeliver) {
             std::string checkName = Rando::StaticData::GetCheckDisplayName(rc);
             gMMComboCrossDeliver((int)fi->itemGame, fi->itemName.c_str(), checkName.c_str());
         }

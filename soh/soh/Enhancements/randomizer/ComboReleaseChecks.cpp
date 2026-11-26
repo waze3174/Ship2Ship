@@ -145,7 +145,7 @@ bool SpendWorldPickup(RandomizerCheck rc) {
 }
 
 // A check holding a Majora's Mask item: the item goes to MM's save like any pickup's, and to teammates. A trap is never
-// sent.
+// sent, and another player's item (Archipelago) has nothing to give: the collected check is what reports it.
 void ReleaseForeign(RandomizerCheck rc) {
     const std::string& checkName = Rando::StaticData::GetLocation(rc)->GetName();
     const ComboRando::ForeignItem* foreign = OOT_LookupForeign(gSaveContext.fileNum, checkName);
@@ -153,7 +153,7 @@ void ReleaseForeign(RandomizerCheck rc) {
         SPDLOG_WARN("[ComboShip] release: OOT foreign sentinel at '{}' has no foreign-map entry; dropping", checkName);
         return;
     }
-    if (foreign->trap) {
+    if (foreign->trap || foreign->ap) {
         return;
     }
     if (gComboCrossDeliver != nullptr) {
