@@ -212,6 +212,28 @@ introduces it, with the understanding that the asset must never be submitted cro
 route marker. Upstream merges are the main source of new collisions, so expect the gate to fire on
 merge PRs — treat each hit as a real review decision, not noise to baseline away.
 
+## Standing policy: string-keyed tables and saves are gated
+
+`build-artifacts.yml`'s `gate` job runs these beside the asset-collision and ROM-archive gates. Each is a Python
+script run with `python3 -I`. A merge pass has to work through whatever they report, and re-record where noted.
+
+- `scripts/check-launcher-exports.py` — every name the launcher, comboui, the games and `comborando` resolve by string
+  (`GetSym`, `Combo_ResolveSym`, `Sym<>`) is a `COMBO_EXPORT` definition in the module it names (soh/, mm/, combo/).
+  Catches the lookup aimed at the wrong DLL, which Linux and macOS cannot see. No record to update.
+- `scripts/check-save-version.py` — the enums that saves index by (SoH's `randomizerEnums/` headers and 2Ship's
+  `Rando/Types.h`) changed, so `COMBO_RELEASE_VERSION` needs a minor bump. After the bump, `--update` records the new
+  enumerators in `scripts/save-version-inputs.json`. Same pattern as the ROM-archive gate. An upstream merge that
+  inserts into these enums trips it.
+- `scripts/check-cvar-tables.py` — every CVar in `combo/gui/ComboLinkRows.h` and `kSharedItems`, and every section or
+  sidebar label the menu filters in `combo/gui/ComboMenu*.cpp` test with `strcmp`, still exists in its game. An upstream
+  rename drops a row silently otherwise. Fix the table; there is no record. One shared item is MM-only by design and is
+  listed in the script.
+- `scripts/check-vendor-deviations.py` — every vendored `soh/` and `mm/` file that differs from the pristine upstream of
+  the merge pin (the `vendor: <key> develop <sha>` commit, an ancestor of the branch) is named in `docs/deviations/`.
+  The files that were never named when the gate arrived are in `scripts/undocumented-deviations.json`; the gate fails on
+  a new unnamed one, and on a recorded one that is named or unmodified by now. Name the file in `docs/deviations/`, then
+  `--update`. After a merge pass moves the pins, `--update` again. It needs the full history, hence `fetch-depth: 0`.
+
 ## Standing policy: `main` = release track
 
 `main`'s vendored `libultraship/`, `soh/` and `mm/` move **only to upstream release pins**, via the

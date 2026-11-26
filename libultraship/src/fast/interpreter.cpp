@@ -4229,6 +4229,16 @@ bool gfx_set_timg_handler_rdp(F3DGfx** cmd0) {
     return false;
 }
 
+// ComboShip: names the texture and logs once per path — a missing one is hit every frame its model is on screen.
+// See docs/deviations/resource-mgmt.md.
+static void ReportNullTextureOnce(const char* handler, const char* fileName) {
+    static std::unordered_set<std::string> sReportedNullTextures;
+    const std::string path = (fileName != nullptr) ? fileName : "(no path)";
+    if (sReportedNullTextures.insert(path).second) {
+        SPDLOG_ERROR("{}: Texture is null ({})", handler, path);
+    }
+}
+
 bool gfx_set_timg_otr_hash_handler_custom(F3DGfx** cmd0) {
     uintptr_t addr = (*cmd0)->words.w1;
     (*cmd0)++;
@@ -4284,11 +4294,7 @@ bool gfx_set_timg_otr_hash_handler_custom(F3DGfx** cmd0) {
             gfx->GfxDpSetTextureImage(fmt, size, width, fileName, texFlags, rawTexMetadata, tex);
         }
     } else {
-        // ComboShip: name it and log once per path — this fires every frame the model is on screen.
-        static std::unordered_set<std::string> sReportedNullTextures;
-        if (sReportedNullTextures.insert(fileName).second) {
-            SPDLOG_ERROR("G_SETTIMG_OTR_HASH: Texture is null ({})", fileName);
-        }
+        ReportNullTextureOnce("G_SETTIMG_OTR_HASH", fileName);
     }
 
     (*cmd0)++;
@@ -4321,7 +4327,7 @@ bool gfx_set_timg_otr_filepath_handler_custom(F3DGfx** cmd0) {
         gfx->GfxDpSetTextureImage(fmt, size, width, fileName, texFlags, rawTexMetadata,
                                   reinterpret_cast<char*>(texture->ImageData));
     } else {
-        SPDLOG_ERROR("G_SETTIMG_OTR_FILEPATH: Texture is null");
+        ReportNullTextureOnce("G_SETTIMG_OTR_FILEPATH", fileName);
     }
     return false;
 }

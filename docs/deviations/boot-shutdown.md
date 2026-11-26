@@ -875,3 +875,26 @@ its real health.
 LUS `fast/lus_gbi.h` and `libultra/gbi.h` both define `GIMMCMD`. After the soh merge its slimmer
 includes reach `lus_gbi.h` first, so the second define warned under `/WX`. `libultra/gbi.h` `#undef`s it
 first under `COMBO_BUILD`; the resulting definition is the same.
+
+## The launcher's log, and fatal boot errors (2026-11-26)
+
+**Why:** the launcher owns the saves, the handoffs between the games, seed loading and co-op, but its messages went to
+a console that the Windows release build does not have, and 12 `catch (...)` blocks dropped errors without a word. A fatal
+start-up error showed nothing at all.
+
+**`combo/ComboLauncherLog.h` + `combo/ComboShip.cpp`:** every launcher message is written to the console and, tagged
+`[Launcher]`, to the game's log through the new export `SOH_LauncherLog` (`soh/soh/Enhancements/combo/ComboLauncherLog.cpp`,
+combo-owned, no vendored file touched). The game's logger exists only after `SOH_Init`, so lines wait in a bounded
+buffer until it takes them; the link is closed (`ComboCloseLauncherLog`) before `SOH_Deinit` destroys the Context, and
+lines it never took go to `logs/launcher-boot.log`. Teardown-time messages (`ShutdownStage`, the watchdog,
+`Combo_FinishSaveWrites`, the terminate handler) stay on the console and in `logs/shutdown-watchdog.log` on purpose:
+the game's logger is gone by then.
+
+**Fatal boot errors** (a library that fails to load, missing required exports, an outdated ROM archive that could not be
+removed, `SOH_Init` throwing) show a message box: `MessageBoxW` on Windows, `SDL_ShowSimpleMessageBox` elsewhere. If an
+outdated `oot.o2r`, `oot-mq.o2r` or `mm.o2r` is still there after the removal call, the launcher exits with that
+message instead of booting on the old archive, which would crash on the first renamed resource.
+
+**Every `catch (...)` that swallowed an error** now names what failed (`ComboLauncherLog::Caught`). Code that runs every
+frame logs it once. The one exception: SoH's notes migration treats a missing `oot` section as "nothing to migrate" and
+logs only other errors.

@@ -73,6 +73,8 @@ The file-select screen labels each slot with its mode: `S2S`, `COMBO`, `OOTR`, `
 
 1. Download the build for your system from [Releases](../../releases): Windows (zip), Linux / Steam Deck
    (AppImage) or macOS (dmg).
+   - **macOS is untested.** It compiles and passes the seed-generation check in CI, but nobody has played it on a
+     Mac yet. Reports are welcome.
 2. Have your own legally dumped ROMs ready:
    - an Ocarina of Time ROM that Ship of Harkinian supports
    - a Majora's Mask ROM that 2 Ship 2 Harkinian supports
