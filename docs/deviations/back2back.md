@@ -264,7 +264,7 @@ The locks (`combo/rando/ComboBackToBackLocks.h`, pure rules with `combo/tests/Co
 | Goron and Zora masks | never locked (see below) |
 | Din's, Farore's, Nayru's, Boomerang, Slingshot, Hammer | its switch is on |
 | Tunics and boots | the Tunics / Boots switch is on |
-| Everything else OoT alone has (trade items, Ruto's letter, Skull / Spooky / Gerudo masks, Roc's Feather) | both games are beaten |
+| Everything else OoT alone has (trade items, Ruto's letter, Skull / Spooky / Gerudo masks, Roc's Feather) | never locked: they are in Termina from the start. The three masks are worn as plain masks (`Combo_MmOotMaskIsPlain`); the other items are there to carry and trade, and "can't use" on a button |
 
 **Waits that are not settings.** Each has a technical reason.
 - The quiver, bomb bag, Deku stick and Deku nut levels wait for MM's bow, bombs, sticks and nuts (stage D).

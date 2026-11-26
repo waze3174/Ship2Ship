@@ -19,7 +19,7 @@ namespace B2B = ComboRando::BackToBack;
 namespace Gate = ComboRando::CrossGate;
 using ComboRando::ComboMode;
 
-constexpr int kOotUnlistedItem = 0x2C; // an item OoT alone has that no switch names
+constexpr int kOotUnlistedItem = 0x2C; // an item OoT alone has that no switch names (the Sold Out sign)
 constexpr int kOotMaskSkull = 0x25;
 constexpr int kLastOotItem = 0x9D;
 constexpr int kLegacyOptionBits = 13; // the bits of the layout before the early-use switches: 0 to 12
@@ -31,6 +31,29 @@ bool Locked(B2B::OptionBits options, int ootItem, bool mmHolds) {
 
 bool IsTransformMask(int ootItem) {
     return ootItem == B2B::OotItem::kOotMaskGoron || ootItem == B2B::OotItem::kOotMaskZora;
+}
+
+// The items no switch covers and no wait applies to: OoT's trade items, the letters, the masks MM has no copy of, and
+// the two transformation masks (worn plain or transforming, decided where they are worn).
+bool NeverLocked(int ootItem) {
+    constexpr int kWeirdEgg = 0x21;
+    constexpr int kZeldasLetter = 0x23;
+    constexpr int kMaskSpooky = 0x26;
+    constexpr int kMaskGerudo = 0x2A;
+    constexpr int kRocsFeather = 0x9D;
+    switch (ootItem) {
+        case B2B::OotItem::kOotLetterRuto:
+        case kWeirdEgg:
+        case kZeldasLetter:
+        case kOotMaskSkull:
+        case kMaskSpooky:
+        case kMaskGerudo:
+        case kOotUnlistedItem:
+        case kRocsFeather:
+            return true;
+        default:
+            return IsTransformMask(ootItem);
+    }
 }
 
 // The lock rules of the layout before the early-use switches, written out item by item: what a file that stored an
@@ -172,8 +195,8 @@ void TestStoredOptionsFromTheFirstLayout() {
         CHECK(((options & B2B::kEarlyGoronMask) != 0) == ((stored & B2B::kSongsCarry) != 0));
         CHECK(((options & B2B::kEarlyZoraMask) != 0) == ((stored & B2B::kSongsCarry) != 0));
         for (int item = 0; item <= kLastOotItem; item++) {
-            if (IsTransformMask(item))
-                continue; // the Goron and Zora masks are never locked now, whatever an older file chose
+            if (B2B::ClassifyOotItem(item).kind == B2B::LockKind::Free)
+                continue; // the items no switch covers are never locked now, whatever an older file chose
             for (bool mmHolds : { false, true })
                 CHECK(Locked(options, item, mmHolds) == LegacyLocked(stored, item, mmHolds));
         }
@@ -283,7 +306,7 @@ void TestBottles() {
         CHECK(Locked(0, item, true));                                  // not carried: they stay in Hyrule
         CHECK(Locked(B2B::kEarlyBottles, item, true));                 // skipping the wait does not carry them
     }
-    CHECK(Locked(kCarriedAndEarly, kOotLetterRuto, true)); // Ruto's letter is OoT's alone
+    CHECK(!Locked(0, kOotLetterRuto, false)); // Ruto's letter is OoT's alone: no bottle rule, never locked
 }
 
 void TestTransformationMasks() {
@@ -297,7 +320,17 @@ void TestTransformationMasks() {
             CHECK(!Locked(options, item, true));
         }
     }
-    CHECK(Locked(B2B::kEarlyUseMasks, kOotMaskSkull, false)); // the Skull Mask is OoT's alone: no mask switch covers it
+}
+
+// The items only OoT has and no switch names are in Termina from the start, with the locks in force.
+void TestItemsWithNoSwitchAreNeverLocked() {
+    using namespace B2B::OotItem;
+    for (int item : { kOotLetterRuto, 0x21, 0x23, kOotMaskSkull, 0x26, 0x2A, kOotUnlistedItem, 0x9D }) {
+        CHECK(NeverLocked(item));
+        CHECK(B2B::ClassifyOotItem(item).kind == B2B::LockKind::Free);
+        for (B2B::OptionBits options : { B2B::OptionBits{ 0 }, B2B::DefaultOptions(), ~B2B::OptionBits{ 0 } })
+            CHECK(!Locked(options, item, false));
+    }
 }
 
 void TestOotOnlyItems() {
@@ -314,8 +347,6 @@ void TestOotOnlyItems() {
         CHECK(!Locked(row.option, row.item, false));
         CHECK(Locked(~row.option, row.item, true)); // another switch does not unlock it
     }
-    CHECK(Locked(0, kOotUnlistedItem, true));
-    CHECK(Locked(~B2B::OptionBits{ 0 }, kOotUnlistedItem, true)); // no switch: locked until both games are beaten
 }
 
 void TestGear() {
@@ -336,8 +367,9 @@ void TestPostGameUnlocksEverything() {
         const B2B::ItemLock lock = B2B::ClassifyOotItem(item);
         CHECK(!B2B::LockedInTermina(bothBeaten, 0, lock, false));
         CHECK(!B2B::LockedInTermina(rando, 0, lock, false));
-        // With nothing chosen and nothing found, all are locked but the Goron and Zora masks (plain masks).
-        CHECK(B2B::LockedInTermina(ganonOnly, 0, lock, false) == !IsTransformMask(item));
+        // With nothing chosen and nothing found, all are locked but the items nothing locks.
+        CHECK(B2B::LockedInTermina(ganonOnly, 0, lock, false) == (lock.kind != B2B::LockKind::Free));
+        CHECK(!NeverLocked(item) || lock.kind == B2B::LockKind::Free);
     }
     CHECK(!B2B::LockedInTermina(bothBeaten, 0, B2B::GearLock(true), false));
     CHECK(!B2B::LockedInTermina(bothBeaten, 0, B2B::GearLock(false), false));
@@ -358,6 +390,7 @@ int main() {
     TestItemsWithAnMmCounterpart();
     TestBottles();
     TestTransformationMasks();
+    TestItemsWithNoSwitchAreNeverLocked();
     TestOotOnlyItems();
     TestGear();
     TestPostGameUnlocksEverything();

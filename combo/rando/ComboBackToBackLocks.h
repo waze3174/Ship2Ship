@@ -17,8 +17,8 @@ enum class LockKind {
     UntilMmHolds, // MM has the item too: locked until MM's own copy is found, unless its early-use switch is on
     Bottle,       // an OoT bottle or what is in it: needs the Bottles switch, and waits for MM's first bottle
     Option,       // OoT only: locked unless its switch is on
-    Free,         // never locked (the Goron and Zora masks: worn plain, or transforming, as their early switch says)
-    Closed,       // OoT only and no switch: locked until both games are beaten
+    Free, // never locked: OoT only with no switch (trade items, letters, Skull / Spooky / Gerudo masks), and the
+          // Goron and Zora masks, which are worn plain or transforming as their early switch says
 };
 
 struct ItemLock {
@@ -112,7 +112,7 @@ inline ItemLock ClassifyOotItem(int ootItem) {
     }
     if (ootItem >= OotItem::kOotBottleFirst && ootItem <= OotItem::kOotBottleLast && ootItem != OotItem::kOotLetterRuto)
         return { LockKind::Bottle, 0 };
-    return { LockKind::Closed, 0 };
+    return { LockKind::Free, 0 };
 }
 
 // OoT's tunics and boots, which have no inventory slot.
@@ -131,8 +131,6 @@ inline bool Locked(OptionBits options, ItemLock lock, bool mmHoldsCounterpart) {
             return (options & lock.option) == 0;
         case LockKind::Free:
             return false;
-        case LockKind::Closed:
-            return true;
     }
     return true;
 }
