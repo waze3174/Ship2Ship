@@ -73,6 +73,45 @@ inline nlohmann::json ApplyPayloadFromConsolidated(const nlohmann::json& consoli
     return apply;
 }
 
+// How another player's Archipelago item is drawn: the Archipelago logo in one of three looks (ApModelPath).
+enum class ApLook : uint8_t { Junk, Useful, Progression };
+
+// The class names a seed's Archipelago entry carries ("apClass").
+inline constexpr const char* kApClassProgression = "progression";
+inline constexpr const char* kApClassUseful = "useful";
+inline constexpr const char* kApClassFiller = "filler";
+inline constexpr const char* kApClassTrap = "trap";
+
+// The look of an item of this class. A seed without the class (or with one this build does not know) falls back to
+// the item's importance: progression when it was advancement, junk otherwise.
+inline ApLook ApLookFromClass(const std::string& apClass, bool advancement) {
+    if (apClass == kApClassProgression) {
+        return ApLook::Progression;
+    }
+    if (apClass == kApClassUseful) {
+        return ApLook::Useful;
+    }
+    if (apClass == kApClassFiller || apClass == kApClassTrap) {
+        return ApLook::Junk;
+    }
+    return advancement ? ApLook::Progression : ApLook::Junk;
+}
+
+// The Archipelago item model's display lists live in OoT's archive (soh.o2r); MM reaches them as "__OTR__@oot:" +
+// this path. The scale is the model's own (Shipwright_archipellago Randomizer_DrawArchipelagoItem).
+inline const char* ApModelPath(ApLook look) {
+    switch (look) {
+        case ApLook::Progression:
+            return "objects/object_archipelago_item/gArchipelagoProgressiveDL";
+        case ApLook::Useful:
+            return "objects/object_archipelago_item/gArchipelagoItemDL";
+        case ApLook::Junk:
+            break;
+    }
+    return "objects/object_archipelago_item/gArchipelagoJunkDL";
+}
+inline constexpr float kApModelScale = 0.035f;
+
 struct ForeignItem {
     GameId itemGame;          // the game the item belongs to / must be delivered to
     std::string itemName;     // friendly item name in itemGame (bare; resolved by that game's map)
@@ -92,9 +131,10 @@ struct ForeignItem {
     bool shared = false;
     // Archipelago: the check holds another player's item (ComboApSeed.h). itemGame is the check's own game, itemName
     // is the item's Archipelago name and displayName already reads "<Player>'s <Item>". Never granted, never sent to
-    // the other game, never drawn as a model of either game.
+    // the other game; drawn as the Archipelago item model (apLook).
     bool ap = false;
     std::string apPlayer;
+    ApLook apLook = ApLook::Junk; // which Archipelago model the item is drawn as
     bool HasDisguise() const {
         return !fakeItemName.empty();
     }
@@ -538,6 +578,7 @@ inline std::unordered_map<std::string, ForeignItem> LoadForeignForGame(int slot,
             // Absent in every seed but an Archipelago slot's.
             fi.ap = fm.value("ap", false);
             fi.apPlayer = fm.value("apPlayer", "");
+            fi.apLook = ApLookFromClass(fm.value("apClass", ""), fi.advancement);
             // Absent in pre-category saves -> empty -> consumers fall back to advancement.
             fi.category = fm.value("category", "");
             // Absent in pre-disguise saves -> empty -> every consumer falls back to the true name.

@@ -186,10 +186,13 @@ void TestFinalizeNeedsEveryReachableLocation() {
     CHECK(!Call(server, { { "cmd", "finalize" }, { "placements", placements } })["ok"].get<bool>());
     placements.push_back(place("oot", "Key Chest", "mm", "Odolwa's Remains"));
     placements.push_back(place("mm", "MM Chest", "oot", "Master Sword"));
-    placements.push_back(
-        { { "game", "mm" },
-          { "check", "Remains Chest" },
-          { "other", { { "player", "Zelda" }, { "name", "Hookshot (OoT)" }, { "advancement", true } } } });
+    placements.push_back({ { "game", "mm" },
+                           { "check", "Remains Chest" },
+                           { "other",
+                             { { "player", "Zelda" },
+                               { "name", "Hookshot (OoT)" },
+                               { "advancement", false },
+                               { "class", "useful" } } } });
     CHECK(!Call(server, { { "cmd", "finalize" }, { "placements", placements } })["ok"].get<bool>());
     const json done = Call(server, { { "cmd", "finalize" },
                                      { "placements", placements },
@@ -201,7 +204,18 @@ void TestFinalizeNeedsEveryReachableLocation() {
     CHECK(done["seed"]["foreign"].size() == 1);
     CHECK(done["seed"]["foreign"][0]["displayName"] == "Zelda's Hookshot");
     CHECK(done["seed"]["foreign"][0]["ap"] == true);
+    CHECK(done["seed"]["archipelago"][kApOthersKey][0]["class"] == "useful"); // passed through as the apworld sent it
+    CHECK(done["seed"]["foreign"][0][kApForeignClassKey] == "useful" &&
+          done["seed"]["foreign"][0]["category"] == "lesser");
     CHECK(done["seed"]["file_hash"].size() == 5);
+    placements.back()["other"].erase("class"); // an apworld that sends no class: the look follows the importance
+    placements.back()["other"]["advancement"] = true;
+    const json classless = Call(server, { { "cmd", "finalize" },
+                                          { "placements", placements },
+                                          { "archipelago", { { "slotName", "Link" }, { "seedName", "AP_123" } } } });
+    CHECK(classless["ok"].get<bool>());
+    CHECK(!classless["seed"]["archipelago"][kApOthersKey][0].contains("class"));
+    CHECK(classless["seed"]["foreign"][0][kApForeignClassKey] == "progression");
     CHECK(!Call(server, { { "cmd", "finalize" },
                           { "placements", placements },
                           { "archipelago", { { "slotName", "Link" } } } })["ok"]

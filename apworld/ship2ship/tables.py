@@ -70,6 +70,16 @@ def item_class_of(category: str, advancement: bool, trap: bool) -> str:
     return CLASS_FILLER if category == JUNK_CATEGORY else CLASS_USEFUL
 
 
+def foreign_item_class(advancement: bool, useful: bool, trap: bool) -> str:
+    """The class another player's item is drawn as, from Archipelago's classification flags: the progression flag
+    wins, then useful; a trap or an item with no flag is filler-like (the game draws both as junk)."""
+    if advancement:
+        return CLASS_PROGRESSION
+    if useful:
+        return CLASS_USEFUL
+    return CLASS_TRAP if trap else CLASS_FILLER
+
+
 def strongest_class(first: str, second: str) -> str:
     return min(first, second, key=CLASS_ORDER.index)
 

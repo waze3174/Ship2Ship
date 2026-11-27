@@ -374,11 +374,20 @@ class SeedOutputTest(unittest.TestCase):
         self.assertEqual(seedout.decode_seed(data["seed"]), {"a": 1})
 
     def test_placement_shapes(self):
-        self.assertEqual(seedout.other_placement("mm", "Check", "Slot 2", "Sword", True),
+        self.assertEqual(seedout.other_placement("mm", "Check", "Slot 2", "Sword", True, "progression"),
                          {"game": "mm", "check": "Check",
-                          "other": {"player": "Slot 2", "name": "Sword", "advancement": True}})
+                          "other": {"player": "Slot 2", "name": "Sword", "advancement": True,
+                                    "class": "progression"}})
         self.assertEqual(seedout.other_players_items({"archipelago": {"otherPlayersItems": [1]}}), [1])
         self.assertEqual(seedout.other_players_items({}), [])
+
+    def test_the_class_follows_the_classification_flags_progression_first(self):
+        # (advancement, useful, trap) -> class; Archipelago sets progression and useful together on some items
+        expected = {(True, True, False): "progression", (True, False, False): "progression",
+                    (False, True, False): "useful", (False, True, True): "useful", (False, False, True): "trap",
+                    (False, False, False): "filler"}
+        for flags, name in expected.items():
+            self.assertEqual(tables.foreign_item_class(*flags), name, flags)
 
     def test_the_finalize_request_names_the_slot_and_the_room_only_when_asked(self):
         placements = [seedout.own_placement("oot", "L0", "oot", "Key")]

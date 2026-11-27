@@ -3272,9 +3272,9 @@ did.
   release and the Anchor catch-up skip the entry. The check is obtained like any other, so the obtained-check lists
   (`Combo_SOH_GetObtainedChecks`, `Combo_MM_GetObtainedChecks`) already say which locations to send
   (`ApSentLocations`); no sent list is saved.
-- **The look.** The sentinel's own blue rupee, the same fallback a cross-game item with no model gets
-  (`ComboFillForeignDrawInfo` and its MM twin return Unknown for an `ap` entry). Progression and filler differ only by
-  the container category, which Container Matches Contents and the skip-animation setting already read.
+- **The look.** The Archipelago item model, in both games (see the next section). The container category, which
+  Container Matches Contents and the skip-animation setting read, is `major` for progression, `lesser` for useful and
+  `junk` for filler and trap.
 - **Loading.** `Combo_ApplySeedJson` refuses an Archipelago seed that `ApSeedProblem` rejects (another format, no slot,
   an item at a check its game does not have, the foreign entries and the list disagreeing). The seed arrives like any
   other: dropped on the game window at the file select, found in the Randomizer folder, or chosen with the new "Load seed
@@ -3282,3 +3282,30 @@ did.
   stores `combo.archipelago` (`slotName`, `seedName`, `receivedIndex` 0). The Plandomizer refuses an Archipelago seed.
 - **The playthrough** (`ComboPlaythrough.h`) skips `ap` entries: the check holds native junk for the walk, as before.
 
+## Archipelago item model and safe names (Ship2Ship 0.3.0)
+
+Another player's item is drawn as the Archipelago logo instead of the sentinel's blue rupee, in both games, in three
+looks: `gArchipelagoProgressiveDL` (the logo with a gold arrow) for progression, `gArchipelagoItemDL` for useful and
+`gArchipelagoJunkDL` (the same geometry in greyed colours) for filler and traps.
+
+- **The models** are by aMannus, from `jeromkiller/Shipwright_archipellago`, tag `Client_1.4.2` (`30fe440dd`), folder
+  `soh/assets/custom/objects/object_archipelago_item/`, copied unchanged into ours (87 files: the three display lists,
+  their `_vtx_`/`_tri_` parts and the materials; the Blender sources and the notification icons are not taken). They are
+  display-list resources with no textures, so MM draws them through the existing `__OTR__@oot:` routing from
+  `soh.o2r`, with no conversion and no copy in `mm/assets/custom` (a copy would be a path collision). They are used under
+  Ship of Harkinian's `ASSETS-LICENSE.md` permission for Ship projects; see `CREDITS.md`.
+- **The draw** is the client's `Randomizer_DrawArchipelagoItem` (`soh/soh/Enhancements/randomizer/draw.cpp:1396` at that
+  tag), re-expressed as a SIMPLE recipe of the foreign draw code: the opaque setup, scale 0.035 (`kApModelScale`), one
+  display list picked by `ApModelPath(look)`. `ComboFillApDrawInfo` (`ComboForeignDrawOOT.h`) and
+  `ComboFillApDrawInfoOOT` (`ComboForeignDrawMM.h`) answer before the `itemGame` tests that used to refuse an `ap` entry,
+  so every draw site that already draws foreign items (shop shelves, held-up item, chests, freestanding items, and
+  MM's `Rando::DrawItem`) shows it. The client's code itself is not copied (it has no license).
+- **The class.** The apworld sends the item's Archipelago classification as `other.class` (progression flag first, then
+  useful, then trap, else filler); `finalize` passes it into `otherPlayersItems` and the foreign entry's `apClass`.
+  `ApLookFromClass` maps it: progression, useful, or junk (filler and trap). A seed without a class (stage 3's) looks by
+  `advancement`: progression, otherwise junk. `formatVersion` stays 1; nothing was released.
+- **Safe names.** The games' message text reads `%` (colours), `^`, `&`, `@`, `#`, `$`, `|`, `[[`, `]]` and
+  `{{`/`}}` as codes, and MM reads byte values from 0x80 up (0xBF ends the message). `SafeApText` turns the codes and
+  control characters into spaces, any non-ASCII character into one `?`, collapses space runs and cuts at 64
+  characters; an empty name becomes "Someone" or "an item". `ApShownName` uses it, and `Combo_ApplySeedJson` runs
+  `ApSanitizeSeed` on every Archipelago seed it loads, so a hand-made file cannot put a code into `displayName`.

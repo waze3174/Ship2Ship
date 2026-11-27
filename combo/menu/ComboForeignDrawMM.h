@@ -88,10 +88,24 @@ inline const char* ComboInternRoutedPathOOT(const std::string& s) {
 // not resident, OOT's rando context null while dormant), which must NEVER be negative-cached.
 enum class ComboForeignResolveOOT { Ok, Unknown, NotReady };
 
+// Another player's item (Archipelago) is drawn as the Archipelago item model, one opaque display list at its own
+// scale (Shipwright_archipellago Randomizer_DrawArchipelagoItem). The model lives in OoT's archive, so it is routed
+// like any OoT item.
+inline ComboForeignResolveOOT ComboFillApDrawInfoOOT(ComboRando::ApLook look, ComboForeignDrawInfoOOT& info) {
+    info.dls[0] = ComboInternRoutedPathOOT(std::string("__OTR__@oot:") + ComboRando::ApModelPath(look));
+    info.count = 1;
+    info.xluStart = -1;
+    info.scale = ComboRando::kApModelScale;
+    info.ok = true;
+    return ComboForeignResolveOOT::Ok;
+}
+
 inline ComboForeignResolveOOT ComboFillForeignDrawInfoOOT(RandoCheckId rc, ComboForeignDrawInfoOOT& info) {
     const ComboRando::ForeignItem* fi = Rando::MiscBehavior::MM_LookupForeign(rc);
-    // Another player's item (Archipelago) has no model of either game: the sentinel's blue rupee stands in.
-    if (fi == nullptr || fi->ap || fi->itemGame != ComboRando::GAME_OOT) {
+    if (fi != nullptr && fi->ap) {
+        return ComboFillApDrawInfoOOT(fi->apLook, info);
+    }
+    if (fi == nullptr || fi->itemGame != ComboRando::GAME_OOT) {
         return ComboForeignResolveOOT::Unknown;
     }
 

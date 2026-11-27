@@ -19,7 +19,8 @@ from .reach import ReachCache, count_pieces
 from .relevance import logic_relevant_names
 from .seedout import (SEED_FILE_EXTENSION, finalize_request, other_placement, own_placement, slot_data_for)
 from .tables import (CLASS_FILLER, CLASS_PROGRESSION, CLASS_TRAP, CLASS_USEFUL, MM, OOT,
-                     STATIC_FILLER_NAMES, ap_name, split_ap_name, static_tables, strongest_class)
+                     STATIC_FILLER_NAMES, ap_name, foreign_item_class, split_ap_name, static_tables,
+                     strongest_class)
 
 GAME_NAME = "Ship2Ship"
 VICTORY = "Victory"
@@ -356,4 +357,5 @@ class Ship2ShipWorld(World):
             item_game, native = split_ap_name(item.name)
             if (item_game, native) in self.pool_items:
                 return own_placement(game, check, item_game, native)
-        return other_placement(game, check, self.multiworld.get_player_name(item.player), item.name, item.advancement)
+        return other_placement(game, check, self.multiworld.get_player_name(item.player), item.name, item.advancement,
+                               foreign_item_class(item.advancement, item.useful, item.trap))

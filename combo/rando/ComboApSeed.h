@@ -5,14 +5,19 @@
 // The seed is the consolidated seed of ComboSeedFileType.h with three differences:
 //   - fileType is kApSeedFileType, which a build without this file refuses as "not a Ship2Ship seed".
 //   - "archipelago" holds the format version, the slot and room names, and "otherPlayersItems": the checks that hold
-//     another player's item ({game, check, player, item, advancement}).
-//   - "foreign" carries one more entry per such check, flagged "ap": itemName is the item's Archipelago name and
-//     displayName is "<Player>'s <Item>". The check itself stays native junk in the placements; the loaders put the
-//     foreign sentinel there, as for the cross-game items. Nothing is ever granted for an "ap" entry.
+//     another player's item ({game, check, player, item, advancement, class}). "class" is the item's Archipelago
+//     classification: progression, useful, filler or trap. A seed without it falls back to "advancement".
+//   - "foreign" carries one more entry per such check, flagged "ap": itemName is the item's Archipelago name,
+//     displayName is "<Player>'s <Item>" and apClass the item's class. The check itself stays native junk in the
+//     placements; the loaders put the foreign sentinel there, as for the cross-game items. Nothing is ever granted
+//     for an "ap" entry, and it is drawn as the Archipelago item model (ApLook in CrossForeign.h).
+//   - displayName and apPlayer are safe to put into either game's message text (SafeApText): the seed loader
+//     rewrites them (ApSanitizeSeed), whatever file it was given.
 //
 // Which checks were sent is not stored: the obtained-check lists of both games say it (ApSentLocations).
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <set>
 #include <string>
@@ -34,10 +39,13 @@ inline constexpr const char* kApSlotNameKey = "slotName";
 inline constexpr const char* kApSeedNameKey = "seedName";
 inline constexpr const char* kApOthersKey = "otherPlayersItems";
 inline constexpr const char* kApReceivedIndexKey = "receivedIndex";
+inline constexpr const char* kApClassKey = "class";
+inline constexpr const char* kApForeignClassKey = "apClass";
 
 // Category names the games' foreign-item code already reads (CrossForeign.h): they decide the container look and
 // whether skipping get-item animations treats the item as important.
 inline constexpr const char* kApMajorCategory = "major";
+inline constexpr const char* kApMinorCategory = "lesser";
 inline constexpr const char* kApJunkCategory = "junk";
 
 // Archipelago names carry the game as " (OoT)" or " (MM)"; an item of any other game has no tag.
@@ -53,8 +61,86 @@ inline std::string StripApGameTag(std::string name) {
     return StripGameSuffix(std::move(name));
 }
 
+// What the games' message text systems read as a code instead of a letter: OoT's colour (%), box break (^), newline
+// (&), player name (@), colour pair (#), altar icon ($) and singular/plural (|) marks, the [[d]] number slot of both
+// games' templates, and MM's {{item}} slot.
+inline constexpr const char* kApMessageCodeChars = "%^&@#$|{}[]";
+inline constexpr size_t kApTextMaxLength = 64;
+inline constexpr const char* kApUnknownPlayer = "Someone";
+inline constexpr const char* kApUnknownItem = "an item";
+inline constexpr char kApUnrenderableChar = '?';
+
+inline bool IsApMessageCode(unsigned char c) {
+    return c < 0x20 || c == 0x7F || std::strchr(kApMessageCodeChars, c) != nullptr;
+}
+
+// True when every character of `text` is printable ASCII and none is a message code: what SafeApText returns, and
+// what a name must hold to go into a message as it is.
+inline bool IsApTextSafe(const std::string& text) {
+    return std::none_of(text.begin(), text.end(),
+                        [](char c) { return static_cast<unsigned char>(c) >= 0x80 || IsApMessageCode(c); });
+}
+
+// A name that is safe to put into either game's message text: printable ASCII only, no message code, no run of
+// spaces, at most kApTextMaxLength characters. Control characters and the codes above become spaces; any other
+// character (neither game's font draws it, and MM reads a byte of one as a code) becomes one '?'. An empty result
+// is `fallback`.
+inline std::string SafeApText(const std::string& raw, const char* fallback) {
+    std::string out;
+    bool inForeignChar = false;
+    for (const char ch : raw) {
+        const unsigned char c = static_cast<unsigned char>(ch);
+        if (c >= 0x80) {
+            const bool continuation = (c & 0xC0) == 0x80;
+            if (!(continuation && inForeignChar)) {
+                out.push_back(kApUnrenderableChar);
+            }
+            inForeignChar = true;
+            continue;
+        }
+        inForeignChar = false;
+        const char safe = IsApMessageCode(c) ? ' ' : ch;
+        if (safe != ' ' || (!out.empty() && out.back() != ' ')) {
+            out.push_back(safe);
+        }
+    }
+    if (out.size() > kApTextMaxLength) {
+        out.resize(kApTextMaxLength);
+    }
+    while (!out.empty() && out.back() == ' ') {
+        out.pop_back();
+    }
+    return out.empty() ? std::string(fallback) : out;
+}
+
 inline std::string ApShownName(const std::string& player, const std::string& item) {
-    return player + "'s " + StripApGameTag(item);
+    return SafeApText(player, kApUnknownPlayer) + "'s " + SafeApText(StripApGameTag(item), kApUnknownItem);
+}
+
+inline bool IsApClassName(const std::string& name) {
+    return name == kApClassProgression || name == kApClassUseful || name == kApClassFiller || name == kApClassTrap;
+}
+
+// The class of one of otherPlayersItems: its own, or for a seed without one the item's importance.
+inline std::string ApClassOf(const nlohmann::json& other) {
+    const std::string given = other.value(kApClassKey, std::string());
+    if (IsApClassName(given)) {
+        return given;
+    }
+    return other.value("advancement", false) ? kApClassProgression : kApClassFiller;
+}
+
+// The container look of an item of this look: progression reads as a major item, useful as a lesser one.
+inline const char* ApCategoryForLook(ApLook look) {
+    switch (look) {
+        case ApLook::Progression:
+            return kApMajorCategory;
+        case ApLook::Useful:
+            return kApMinorCategory;
+        case ApLook::Junk:
+            break;
+    }
+    return kApJunkCategory;
 }
 
 inline std::string ApLocationName(GameId game, const std::string& check) {
@@ -67,6 +153,7 @@ inline nlohmann::json ApForeignEntry(const nlohmann::json& other) {
     const std::string player = other.value("player", std::string());
     const std::string item = other.value("item", std::string());
     const bool advancement = other.value("advancement", false);
+    const std::string apClass = ApClassOf(other);
     nlohmann::json entry = { { "checkGame", game },
                              { "checkName", other.value("check", std::string()) },
                              { "itemGame", game },
@@ -74,7 +161,8 @@ inline nlohmann::json ApForeignEntry(const nlohmann::json& other) {
                              { "displayName", ApShownName(player, item) },
                              { "ap", true },
                              { "apPlayer", player },
-                             { "category", advancement ? kApMajorCategory : kApJunkCategory } };
+                             { kApForeignClassKey, apClass },
+                             { "category", ApCategoryForLook(ApLookFromClass(apClass, advancement)) } };
     if (advancement) {
         entry["advancement"] = true;
     }
@@ -177,6 +265,9 @@ inline std::string ApSeedProblem(const nlohmann::json& seed) {
         if (ApSeedDetail::GameKeyIfValid(game) == nullptr || check.empty()) {
             return "another player's item names no game or check";
         }
+        if (other.contains(kApClassKey) && !(other[kApClassKey].is_string() && IsApClassName(other[kApClassKey]))) {
+            return "another player's item at '" + check + "' has an unknown class";
+        }
         if (!ApSeedDetail::HasPlacement(seed, game, check)) {
             return "another player's item is at '" + check + "', which is not a " + game + " check of this seed";
         }
@@ -195,11 +286,33 @@ inline std::string ApSeedProblem(const nlohmann::json& seed) {
             !flagged.insert(ApSeedDetail::CheckKey(game, check)).second) {
             return "the foreign entry for '" + check + "' is not one of another player's items";
         }
+        if (entry.contains(kApForeignClassKey) &&
+            !(entry[kApForeignClassKey].is_string() && IsApClassName(entry[kApForeignClassKey]))) {
+            return "the foreign entry for '" + check + "' has an unknown class";
+        }
     }
     if (flagged != listed) {
         return std::string("the seed's foreign entries and its ") + kApOthersKey + " list disagree";
     }
     return "";
+}
+
+// Rewrites the text the games show for another player's item so it is safe in message text, whoever wrote the file:
+// the foreign entries' "<Player>'s <Item>" and the player. itemName stays the item's Archipelago name, which no game
+// shows; the rest of the seed, including otherPlayersItems, is untouched.
+inline void ApSanitizeSeed(nlohmann::json& seed) {
+    const auto foreign = seed.find("foreign");
+    if (foreign == seed.end() || !foreign->is_array()) {
+        return;
+    }
+    for (auto& entry : *foreign) {
+        if (!entry.is_object() || !entry.value("ap", false)) {
+            continue;
+        }
+        const std::string player = entry.value("apPlayer", std::string());
+        entry["displayName"] = ApShownName(player, entry.value("itemName", std::string()));
+        entry["apPlayer"] = SafeApText(player, kApUnknownPlayer);
+    }
 }
 
 // The save's record of an Archipelago seed (combo.archipelago). The received index counts the server's items already

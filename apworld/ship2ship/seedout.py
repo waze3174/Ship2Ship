@@ -18,10 +18,12 @@ def own_placement(game: str, check: str, item_game: str, item: str) -> Dict[str,
     return {"game": game, "check": check, "item": {"game": item_game, "name": item}}
 
 
-def other_placement(game: str, check: str, player: str, item: str, advancement: bool) -> Dict[str, Any]:
+def other_placement(game: str, check: str, player: str, item: str, advancement: bool,
+                    classification: str) -> Dict[str, Any]:
     """Another player's item (or one the oracle's pool does not hold): the check holds native junk in the placements
     and an Archipelago foreign entry in the seed; the game shows "<Player>'s <Item>" and grants nothing."""
-    return {"game": game, "check": check, "other": {"player": player, "name": item, "advancement": advancement}}
+    return {"game": game, "check": check,
+            "other": {"player": player, "name": item, "advancement": advancement, "class": classification}}
 
 
 def finalize_request(placements: Iterable[Mapping[str, Any]], slot_name: Optional[str] = None,

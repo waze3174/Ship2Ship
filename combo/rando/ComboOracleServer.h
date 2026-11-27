@@ -23,8 +23,10 @@
 //   reach     items {oot: {name: count}, mm: {name: count}}. Returns mask (hex, locations[i] is bit i), fixedMask (the
 //             same over `fixed` then `forced`, for tests), win {ganon, majora, pieces, won} and unknown (names the pool
 //             does not hold, which the oracle still owned).
-//   finalize  placements [{game, check, item: {game, name}} or {game, check, other: {player, name, advancement}}], and
-//             archipelago {slotName, seedName}, which another player's item requires. Every location that is not
+//   finalize  placements [{game, check, item: {game, name}} or {game, check, other: {player, name, advancement,
+//   class}}], and
+//             archipelago {slotName, seedName}, which another player's item requires. "class" is the item's Archipelago
+//             classification (progression, useful, filler or trap), optional. Every location that is not
 //             neverReachable needs a placement. Returns the consolidated seed ("seed"), or writes it to "out" when
 //             given. Nothing else is ever written to disk. With "archipelago" the seed is the slot's Archipelago seed
 //             (ComboApSeed.h); without it, the plain one.
@@ -451,11 +453,15 @@ class OracleServer {
                            " pool has no junk to stand in for another player's item";
                 own[bit] = *pad;
                 filledBy[bit] = 2;
-                others.push_back({ { "game", OracleGameTag(game) },
-                                   { "check", check },
-                                   { "player", o.value("player", std::string()) },
-                                   { "item", o.value("name", std::string()) },
-                                   { "advancement", o.value("advancement", false) } });
+                nlohmann::json other = { { "game", OracleGameTag(game) },
+                                         { "check", check },
+                                         { "player", o.value("player", std::string()) },
+                                         { "item", o.value("name", std::string()) },
+                                         { "advancement", o.value("advancement", false) } };
+                if (o.contains(kApClassKey)) {
+                    other[kApClassKey] = o[kApClassKey];
+                }
+                others.push_back(std::move(other));
                 continue;
             }
             GameId itemGame;

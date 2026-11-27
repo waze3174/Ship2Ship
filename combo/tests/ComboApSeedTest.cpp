@@ -15,35 +15,42 @@ using namespace ComboRando;
 
 constexpr uint32_t kDisplaySeed = 123456789;
 
-json Other(const char* game, const char* check, const char* player, const char* item, bool advancement) {
-    return {
+json Other(const char* game, const char* check, const char* player, const char* item, bool advancement,
+           const char* apClass = nullptr) {
+    json other = {
         { "game", game }, { "check", check }, { "player", player }, { "item", item }, { "advancement", advancement }
     };
+    if (apClass != nullptr) {
+        other[kApClassKey] = apClass;
+    }
+    return other;
 }
 
 // A finished consolidated seed of two games, the shape comborando's finalize writes before it is stamped: a native
 // cross-game item is already in "foreign"; the checks that will hold other players' items hold native junk.
 json PlainSeed() {
-    return {
-        { "fileType", kSeedFileType },
-        { "seed", "AP_1" },
-        { "masterSeed", 1 },
-        { "oot",
-          { { "placements",
-              { { "Kokiri Chest", "Blue Rupee" }, { "Deku Reward", "Red Rupee" }, { "Link Gift", "Deku Stick" } } } } },
-        { "mm", { { "placements", { { "Clock Town Chest", "Junk" }, { "Moon Pot", "Junk" } } } } },
-        { "foreign", json::array({ { { "checkGame", "oot" },
-                                     { "checkName", "Link Gift" },
-                                     { "itemGame", "mm" },
-                                     { "itemName", "Hookshot" },
-                                     { "displayName", "Hookshot (MM)" },
-                                     { "advancement", true } } }) }
-    };
+    return { { "fileType", kSeedFileType },
+             { "seed", "AP_1" },
+             { "masterSeed", 1 },
+             { "oot",
+               { { "placements",
+                   { { "Kokiri Chest", "Blue Rupee" },
+                     { "Deku Reward", "Red Rupee" },
+                     { "Link Gift", "Deku Stick" },
+                     { "Zora Chest", "Green Rupee" } } } } },
+             { "mm", { { "placements", { { "Clock Town Chest", "Junk" }, { "Moon Pot", "Junk" } } } } },
+             { "foreign", json::array({ { { "checkGame", "oot" },
+                                          { "checkName", "Link Gift" },
+                                          { "itemGame", "mm" },
+                                          { "itemName", "Hookshot" },
+                                          { "displayName", "Hookshot (MM)" },
+                                          { "advancement", true } } }) } };
 }
 
 json TwoOthers() {
-    return json::array({ Other("oot", "Kokiri Chest", "Zelda", "Progressive Hookshot (OoT)", true),
-                         Other("mm", "Moon Pot", "Impa", "Rupees (50)", false) });
+    return json::array({ Other("oot", "Kokiri Chest", "Zelda", "Progressive Hookshot (OoT)", true, "progression"),
+                         Other("mm", "Moon Pot", "Impa", "Rupees (50)", false, "filler"),
+                         Other("oot", "Zora Chest", "Sheik", "Magic Meter (OoT)", false, "useful") });
 }
 
 json ApSeed() {
@@ -81,11 +88,47 @@ void TestTheForeignEntryDescribesTheOtherPlayersItem() {
     CHECK(progression["displayName"] == "Zelda's Progressive Hookshot");
     CHECK(progression["advancement"] == true);
     CHECK(progression["category"] == kApMajorCategory);
+    CHECK(progression[kApForeignClassKey] == kApClassProgression);
+
+    const json useful = ApForeignEntry(Other("oot", "Zora Chest", "Sheik", "Magic Meter (OoT)", false, "useful"));
+    CHECK(!useful.contains("advancement"));
+    CHECK(useful["category"] == kApMinorCategory && useful[kApForeignClassKey] == kApClassUseful);
 
     const json filler = ApForeignEntry(Other("mm", "Moon Pot", "Impa", "Rupees (50)", false));
     CHECK(!filler.contains("advancement"));
     CHECK(filler["category"] == kApJunkCategory);
     CHECK(filler["displayName"] == "Impa's Rupees (50)");
+
+    const json trap = ApForeignEntry(Other("mm", "Moon Pot", "Impa", "Bomb Trap", false, "trap"));
+    CHECK(trap["category"] == kApJunkCategory && trap[kApForeignClassKey] == kApClassTrap);
+    CHECK(!trap.contains("trap")); // nothing is granted for another player's item, so no trap fires here
+}
+
+void TestAnItemWithNoClassTakesItsLookFromItsImportance() {
+    const json important = ApForeignEntry(Other("oot", "Kokiri Chest", "Zelda", "Hookshot", true));
+    CHECK(important[kApForeignClassKey] == kApClassProgression && important["category"] == kApMajorCategory);
+    const json minor = ApForeignEntry(Other("oot", "Kokiri Chest", "Zelda", "Hookshot", false));
+    CHECK(minor[kApForeignClassKey] == kApClassFiller && minor["category"] == kApJunkCategory);
+    // A class this build does not know is ignored the same way.
+    const json unknown = ApForeignEntry(Other("oot", "Kokiri Chest", "Zelda", "Hookshot", true, "legendary"));
+    CHECK(unknown[kApForeignClassKey] == kApClassProgression);
+}
+
+void TestEachClassHasItsModelAndContainerLook() {
+    CHECK(ApLookFromClass(kApClassProgression, false) == ApLook::Progression);
+    CHECK(ApLookFromClass(kApClassUseful, true) == ApLook::Useful); // the class wins over the flag
+    CHECK(ApLookFromClass(kApClassFiller, true) == ApLook::Junk);
+    CHECK(ApLookFromClass(kApClassTrap, true) == ApLook::Junk);
+    CHECK(ApLookFromClass("", true) == ApLook::Progression); // a stage 3 seed has no class
+    CHECK(ApLookFromClass("", false) == ApLook::Junk);
+    CHECK(ApLookFromClass("legendary", false) == ApLook::Junk);
+
+    CHECK(std::string(ApModelPath(ApLook::Progression)) == "objects/object_archipelago_item/gArchipelagoProgressiveDL");
+    CHECK(std::string(ApModelPath(ApLook::Useful)) == "objects/object_archipelago_item/gArchipelagoItemDL");
+    CHECK(std::string(ApModelPath(ApLook::Junk)) == "objects/object_archipelago_item/gArchipelagoJunkDL");
+    CHECK(std::string(ApCategoryForLook(ApLook::Progression)) == kApMajorCategory);
+    CHECK(std::string(ApCategoryForLook(ApLook::Useful)) == kApMinorCategory);
+    CHECK(std::string(ApCategoryForLook(ApLook::Junk)) == kApJunkCategory);
 }
 
 void TestStampingMakesTheSlotsSeed() {
@@ -96,8 +139,8 @@ void TestStampingMakesTheSlotsSeed() {
     CHECK(!IsApSeedFileType(kSeedFileType));
     CHECK(seed[kApKey][kApFormatKey] == kApSeedFormat);
     CHECK(seed[kApKey][kApSlotNameKey] == "Link" && seed[kApKey][kApSeedNameKey] == "AP_42");
-    CHECK(seed[kApKey][kApOthersKey].size() == 2);
-    CHECK(seed["foreign"].size() == 3); // the cross-game item stays, one entry per other player's item follows
+    CHECK(seed[kApKey][kApOthersKey].size() == 3);
+    CHECK(seed["foreign"].size() == 4); // the cross-game item stays, one entry per other player's item follows
     CHECK(seed["foreign"][0]["itemGame"] == "mm" && !seed["foreign"][0].contains("ap"));
     CHECK(seed["displaySeed"] == kDisplaySeed);
     CHECK(seed["file_hash"] == json::array({ 1, 23, 45, 67, 89 })); // ten digits, zero-padded: 01 23 45 67 89
@@ -127,18 +170,22 @@ void TestTheLoaderReadsTheForeignKind() {
     Combo_SetForeignJson(ApSeed().dump().c_str());
     const auto oot = LoadForeignForGame(0, GAME_OOT);
     const auto mm = LoadForeignForGame(0, GAME_MM);
-    CHECK(oot.size() == 2 && mm.size() == 1); // the cross-game item, and one of the other players' items per game
+    CHECK(oot.size() == 3 && mm.size() == 1); // the cross-game item, and one of the other players' items per game
 
     const ForeignItem& hookshot = oot.at("Kokiri Chest");
     CHECK(hookshot.ap && hookshot.apPlayer == "Zelda");
     CHECK(hookshot.advancement && hookshot.category == kApMajorCategory && !hookshot.trap && !hookshot.HasDisguise());
+    CHECK(hookshot.apLook == ApLook::Progression);
     CHECK(hookshot.itemGame == GAME_OOT); // the check's own game: nothing for the other game to draw or take
     CHECK(hookshot.displayName == "Zelda's Progressive Hookshot");
     CHECK(ShownForeignName(hookshot, nullptr) == "Zelda's Progressive Hookshot");
     CHECK(ShownForeignName(hookshot, "Hookshot") == "Zelda's Progressive Hookshot"); // a model's tier name never wins
 
     const ForeignItem& rupees = mm.at("Moon Pot");
-    CHECK(rupees.ap && !rupees.advancement && rupees.category == kApJunkCategory);
+    CHECK(rupees.ap && !rupees.advancement && rupees.category == kApJunkCategory && rupees.apLook == ApLook::Junk);
+
+    const ForeignItem& magic = oot.at("Zora Chest");
+    CHECK(magic.ap && !magic.advancement && magic.category == kApMinorCategory && magic.apLook == ApLook::Useful);
 
     const ForeignItem& cross = oot.at("Link Gift");
     CHECK(!cross.ap && cross.itemGame == GAME_MM && ShownForeignName(cross, nullptr) == "Hookshot (MM)");
@@ -155,8 +202,85 @@ void TestEachGameApplySeesTheSentinelAtTheOtherPlayersChecks() {
     CHECK(oot["Kokiri Chest"] == kForeignSentinelNameOOT);
     CHECK(oot["Link Gift"] == kForeignSentinelNameOOT);
     CHECK(oot["Deku Reward"] == "Red Rupee"); // an own item is untouched
+    CHECK(oot["Zora Chest"] == kForeignSentinelNameOOT);
     CHECK(mm["Moon Pot"] == kForeignSentinelNameMM);
     CHECK(mm["Clock Town Chest"] == "Junk");
+}
+
+void TestASeedFromBeforeTheClassesStillLoadsAndLooksByImportance() {
+    json seed = ApSeed();
+    for (auto& other : seed[kApKey][kApOthersKey]) {
+        other.erase(kApClassKey);
+    }
+    for (auto& entry : seed["foreign"]) {
+        entry.erase(kApForeignClassKey);
+    }
+    CHECK(ApSeedProblem(seed).empty());
+    Combo_SetForeignJson(seed.dump().c_str());
+    const auto oot = LoadForeignForGame(0, GAME_OOT);
+    CHECK(oot.at("Kokiri Chest").apLook == ApLook::Progression); // it was advancement
+    CHECK(oot.at("Zora Chest").apLook == ApLook::Junk);          // the useful bit was never sent
+    Combo_SetForeignJson(nullptr);
+}
+
+void TestUnsafeTextBecomesSafeText() {
+    CHECK(SafeApText("Zelda", "x") == "Zelda");
+    CHECK(SafeApText("100% Zelda", "x") == "100 Zelda"); // the colour code mark goes, the gap closes
+    CHECK(SafeApText("%rRed^&text@#c#$0|", "x") == "rRed text c 0");
+    CHECK(SafeApText("[[d]] {{item}}", "x") == "d item");
+    CHECK(SafeApText("a\nb\tc\x01\x1F"
+                     "d\x7F",
+                     "x") == "a b c d");
+    CHECK(SafeApText("  Two   Spaces  ", "x") == "Two Spaces");
+    CHECK(SafeApText("Caf\xC3\xA9", "x") == "Caf?"); // one character, one '?'
+    CHECK(SafeApText("\xE3\x83\x9E\xE3\x83\xAA\xE3\x82\xAA", "x") == "???");
+    CHECK(SafeApText("a\xBF"
+                     "b",
+                     "x") == "a?b"); // a stray byte MM would read as its end-of-message code
+    CHECK(SafeApText("%^&", "fallback") == "fallback");
+    CHECK(SafeApText("", "fallback") == "fallback");
+    CHECK(SafeApText(std::string(200, 'a'), "x").size() == kApTextMaxLength);
+    CHECK(SafeApText(std::string(63, 'a') + " b", "x") == std::string(63, 'a')); // no dangling space after the cut
+    for (const char* hostile : { "%r^&@#$|{}[]", "\x01\x02\xBF\xFF", "[[d]]{{item}}" }) {
+        CHECK(IsApTextSafe(SafeApText(hostile, "x")));
+    }
+    CHECK(!IsApTextSafe("a%b") && !IsApTextSafe("caf\xC3\xA9") && !IsApTextSafe("a\nb") && IsApTextSafe("Zelda's Key"));
+    const std::string once = SafeApText("A%B\xC3\xA9 [[d]]", "x");
+    CHECK(SafeApText(once, "x") == once);
+}
+
+void TestTheShownNameIsSafeWhateverThePlayerAndItemAreCalled() {
+    CHECK(ApShownName("%rLink^", "Boss Key (MM)") == "rLink's Boss Key");
+    CHECK(ApShownName("", "") == "Someone's an item");
+    CHECK(ApShownName("Z", " (OoT)") == "Z's (OoT)"); // a name that is only the tag is kept, as StripApGameTag does
+    const json entry = ApForeignEntry(Other("oot", "Kokiri Chest", "&@Evil#", "%gKey^[[d]]", true));
+    CHECK(IsApTextSafe(entry["displayName"]) && entry["displayName"] == "Evil's gKey d");
+}
+
+void TestTheLoaderRewritesWhatAHandMadeFileSays() {
+    json seed = ApSeed();
+    json& entry = seed["foreign"][1];
+    CHECK(entry["ap"] == true);
+    entry["displayName"] = "%rCheater^@";
+    entry["apPlayer"] = "Ca\xC3\xA9\n[[d]]";
+    entry["itemName"] = "%gKey (OoT)";
+    ApSanitizeSeed(seed);
+    CHECK(entry["apPlayer"] == "Ca? d");
+    CHECK(entry["displayName"] == "Ca? d's gKey");
+    CHECK(entry["itemName"] == "%gKey (OoT)");           // the item's own name is never shown, so it is not rewritten
+    CHECK(seed["foreign"][0] == ApSeed()["foreign"][0]); // the cross-game item is untouched
+    CHECK(seed[kApKey] == ApSeed()[kApKey]);             // so is the record of the generation
+    const json again = seed;
+    ApSanitizeSeed(seed);
+    CHECK(seed == again);
+
+    json plain = PlainSeed();
+    const json before = plain;
+    ApSanitizeSeed(plain);
+    CHECK(plain == before);
+    json notAnArray = { { "foreign", 3 } };
+    ApSanitizeSeed(notAnArray);
+    CHECK(notAnArray == json({ { "foreign", 3 } }));
 }
 
 void TestSeedsThatCannotBePlayedAreRefused() {
@@ -177,6 +301,9 @@ void TestAnotherPlayersItemNeedsARealCheckOfItsGame() {
     CHECK(!ProblemAfter([](json& s) { s[kApKey][kApOthersKey][0]["check"] = "Nowhere"; }).empty());
     CHECK(!ProblemAfter([](json& s) { s[kApKey][kApOthersKey][0]["game"] = "mm"; }).empty()); // Kokiri Chest is OoT's
     CHECK(!ProblemAfter([](json& s) { s[kApKey][kApOthersKey][0]["game"] = "n64"; }).empty());
+    CHECK(!ProblemAfter([](json& s) { s[kApKey][kApOthersKey][0][kApClassKey] = "legendary"; }).empty());
+    CHECK(!ProblemAfter([](json& s) { s[kApKey][kApOthersKey][0][kApClassKey] = 3; }).empty());
+    CHECK(!ProblemAfter([](json& s) { s["foreign"][1][kApForeignClassKey] = "legendary"; }).empty());
     CHECK(!ProblemAfter([](json& s) { s[kApKey][kApOthersKey][1] = s[kApKey][kApOthersKey][0]; }).empty());
     CHECK(!ProblemAfter([](json& s) { s["oot"]["placements"].erase("Kokiri Chest"); }).empty());
 }
@@ -210,11 +337,17 @@ void TestSentLocationsFollowTheObtainedChecksIncludingTheOtherPlayersItems() {
 int main() {
     TestNamesDropTheGameTag();
     TestTheForeignEntryDescribesTheOtherPlayersItem();
+    TestAnItemWithNoClassTakesItsLookFromItsImportance();
+    TestEachClassHasItsModelAndContainerLook();
+    TestUnsafeTextBecomesSafeText();
+    TestTheShownNameIsSafeWhateverThePlayerAndItemAreCalled();
+    TestTheLoaderRewritesWhatAHandMadeFileSays();
     TestStampingMakesTheSlotsSeed();
     TestASeedWithNoOtherPlayersStillBelongsToItsSlot();
     TestStampingNeedsTheSlotAndTheRoom();
     TestTheLoaderReadsTheForeignKind();
     TestEachGameApplySeesTheSentinelAtTheOtherPlayersChecks();
+    TestASeedFromBeforeTheClassesStillLoadsAndLooksByImportance();
     TestSeedsThatCannotBePlayedAreRefused();
     TestAnotherPlayersItemNeedsARealCheckOfItsGame();
     TestTheForeignEntriesAndTheListAgree();

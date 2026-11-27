@@ -4412,7 +4412,7 @@ static std::filesystem::path FindNewestComboSeed(nlohmann::json& out) {
 }
 
 enum class SeedApplyMode { SilentAutoLoad, ExplicitDrop };
-static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, const std::string& file);
+static int Combo_ApplySeedJson(const nlohmann::json& loaded, SeedApplyMode mode, const std::string& file);
 
 // ComboShip: reload a consolidated seed file (the remembered pending file when path is null/empty, or
 // a dropped file) and make it playable WITHOUT regenerating. Runs synchronously on the MAIN thread
@@ -4479,20 +4479,25 @@ static int Combo_OnReloadRequest(const char* path) {
 // ComboShip: the apply half of a seed reload, split out of Combo_OnReloadRequest. MAIN THREAD ONLY.
 //   SilentAutoLoad — the remembered seed at boot: user's rando settings restored afterwards.
 //   ExplicitDrop   — a dropped file: its settings become the persisted baseline.
-static int Combo_ApplySeedJson(const nlohmann::json& j, SeedApplyMode mode, const std::string& file) {
+static int Combo_ApplySeedJson(const nlohmann::json& loaded, SeedApplyMode mode, const std::string& file) {
     const bool isSilentAutoLoad = mode != SeedApplyMode::ExplicitDrop; // "restore the user's settings"
     if (g_GenerateBusy.load() || g_ComboPendingFinalize.load()) {
         ComboLog::Warn() << "[ComboShip] seed apply: skipped — a generation is in flight\n";
         return 2; // busy, not failed (Combo_OnReloadRequest checks this itself first)
     }
-    if (ComboRando::IsApSeed(j)) {
-        const std::string problem = ComboRando::ApSeedProblem(j);
+    // An Archipelago seed's texts are rewritten to be safe in the games' message text before anything uses them.
+    nlohmann::json apSeed;
+    if (ComboRando::IsApSeed(loaded)) {
+        const std::string problem = ComboRando::ApSeedProblem(loaded);
         if (!problem.empty()) {
             ComboLog::Error() << "[ComboShip] seed apply: refusing the Archipelago seed " << file << ": " << problem
                               << "\n";
             return 0;
         }
+        apSeed = loaded;
+        ComboRando::ApSanitizeSeed(apSeed);
     }
+    const nlohmann::json& j = apSeed.is_null() ? loaded : apSeed;
     try {
         uint32_t masterSeed = j.value("masterSeed", 0u);
         ResetCrossItemDedupForSeed(masterSeed);

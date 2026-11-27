@@ -77,11 +77,26 @@ enum class ComboForeignResolve { Ok, Unknown, NotReady };
 
 inline ComboForeignResolve ComboFillForeignDrawInfoByName(const char* drawName, ComboForeignDrawInfo& info);
 
+// Another player's item (Archipelago) is drawn as the Archipelago item model, one opaque display list at its own
+// scale (Shipwright_archipellago Randomizer_DrawArchipelagoItem). The model lives in OoT's archive, so the path
+// needs no routing here.
+inline ComboForeignResolve ComboFillApDrawInfo(ComboRando::ApLook look, ComboForeignDrawInfo& info) {
+    static constexpr char kOtrPrefix[] = "__OTR__";
+    info.dls[0] = ComboInternRoutedPath(kOtrPrefix + std::string(ComboRando::ApModelPath(look)));
+    info.count = 1;
+    info.xluStart = -1;
+    info.scale = ComboRando::kApModelScale;
+    info.ok = true;
+    return ComboForeignResolve::Ok;
+}
+
 inline ComboForeignResolve ComboFillForeignDrawInfo(RandomizerCheck rc, int slot, ComboForeignDrawInfo& info) {
     const std::string checkName = Rando::StaticData::GetLocation(rc)->GetName();
     const ComboRando::ForeignItem* fi = OOT_LookupForeign(slot, checkName);
-    // Another player's item (Archipelago) has no model of either game: the sentinel's blue rupee stands in.
-    if (fi == nullptr || fi->ap || fi->itemGame != ComboRando::GAME_MM) {
+    if (fi != nullptr && fi->ap) {
+        return ComboFillApDrawInfo(fi->apLook, info);
+    }
+    if (fi == nullptr || fi->itemGame != ComboRando::GAME_MM) {
         return ComboForeignResolve::Unknown;
     }
 

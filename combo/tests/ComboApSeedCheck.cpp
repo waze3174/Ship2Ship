@@ -22,6 +22,7 @@ constexpr int kExitUsage = 2;
 struct SeedCounts {
     size_t others = 0;
     size_t progression = 0;
+    size_t useful = 0;
 };
 
 // "" or why the loaders do not give the seed's other-player items back.
@@ -44,6 +45,10 @@ std::string LoaderProblem(const json& seed, SeedCounts& counts) {
             problem = "'" + check + "' shows '" + found->second.displayName + "'";
         } else if (found->second.advancement != other.value("advancement", false)) {
             problem = "'" + check + "' loses its progression flag";
+        } else if (found->second.apLook != ApLookFromClass(ApClassOf(other), other.value("advancement", false))) {
+            problem = "'" + check + "' loses its class";
+        } else if (!IsApTextSafe(found->second.displayName)) {
+            problem = "'" + check + "' shows text that is not safe in a message";
         } else if (found->second.itemGame != game) {
             problem = "'" + check + "' belongs to the other game";
         } else if (payloads[game].value(check, std::string()) != sentinels[game]) {
@@ -53,7 +58,8 @@ std::string LoaderProblem(const json& seed, SeedCounts& counts) {
             break;
         }
         ++counts.others;
-        counts.progression += found->second.advancement ? 1 : 0;
+        counts.progression += found->second.apLook == ApLook::Progression ? 1 : 0;
+        counts.useful += found->second.apLook == ApLook::Useful ? 1 : 0;
     }
     Combo_SetForeignJson(nullptr);
     return problem;
@@ -78,7 +84,7 @@ bool CheckSeedFile(const std::string& path) {
     const json record = ApSaveRecord(seed);
     std::cout << path << ": ok, slot '" << record[kApSlotNameKey].get<std::string>() << "', "
               << seed.value("foreign", json::array()).size() << " foreign entries, " << counts.others
-              << " other players' items (" << counts.progression << " progression)\n";
+              << " other players' items (" << counts.progression << " progression, " << counts.useful << " useful)\n";
     return true;
 }
 
