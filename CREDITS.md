@@ -32,6 +32,10 @@ projects.
 - **The Ocarina of Time and Majora's Mask decompilations** by [zeldaret](https://github.com/zeldaret).
 - **[OoTMM](https://github.com/OoTMM/OoTMM)**: the original Ocarina of Time + Majora's Mask combo randomizer.
   Ship2Ship's goal and its "Games" setting (both games, or one) follow OoTMM's.
+- **Archipelago item models** by aMannus, from the Archipelago client for Ship of Harkinian
+  ([jeromkiller/Shipwright_archipellago](https://github.com/jeromkiller/Shipwright_archipellago), `30fe440dd`): the
+  three display lists another player's item is drawn as. They are used under Ship of Harkinian's `ASSETS-LICENSE.md`
+  permission for Ship projects.
 - **[MMRecompRando](https://github.com/RecompRando/MMRecompRando)**: the idea of walking back out of the Clock Tower
   to the Lost Woods. Only the idea is used; no code from it is included.
 
