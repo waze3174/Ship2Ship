@@ -24,6 +24,7 @@
 #include "soh/Enhancements/randomizer/randomizer.h"
 #ifdef COMBO_BUILD
 #include "rando/CrossForeign.h" // ComboShip: cross-world foreign-item marker map
+#include "rando/ComboApSeed.h"  // ComboShip: the "Sent <Item> to <Player>" text of another player's item
 // ComboShip (issue #3): immediate cross-game delivery. gComboCrossDeliver (defined in OTRGlobals.cpp)
 // routes a foreign item to the OTHER game's resident save NOW; Anchor_BroadcastCrossItem shares it
 // with networked teammates (no-op when Anchor is inactive).
@@ -559,7 +560,8 @@ void OOT_DeliverForeign(RandomizerCheck rc) {
 
     if (fi && fi->ap) {
         // Another player's item: nothing to grant here, and the obtained check is what the Archipelago client reports.
-        Notification::Emit({ .message = "Archipelago:", .suffix = fi->displayName });
+        const ComboRando::ApToastText sent = ComboRando::ApSentToast(fi->itemName, fi->apPlayer);
+        Notification::Emit({ .prefix = sent.prefix, .message = sent.message, .suffix = sent.suffix });
         SPDLOG_INFO("[ComboShip] OOT found {} at check '{}'", fi->displayName, checkName);
     } else if (fi && fi->trap) {
         // A foreign trap fires on the FINDER; each game springs its own flavour, so an MM trap becomes

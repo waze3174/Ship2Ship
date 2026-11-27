@@ -59,6 +59,8 @@
 #include "rando/ComboSeedFileType.h"
 #include "net/ComboAnchorOutbox.h"   // co-op outbox rules (pure logic, unit-tested in combo/tests)
 #include "net/ComboAnchorDelivery.h" // packet ids + dedup, ack markers, team-state request gate (ditto)
+#include "net/ComboArchipelago.h"    // the Archipelago online client (its bookkeeping, ComboApSync.h, is unit-tested)
+#include "gui/ComboApMenuApi.h"
 #include "gui/ComboGenProgress.h"
 #include "ComboExtract.h"
 #include "ComboLauncherLog.h"
@@ -1645,6 +1647,8 @@ typedef uint32_t (*FnComboUIDiscordSettings)(void);
 static FnComboUIDiscordSettings ComboUI_GetDiscordSettings = nullptr;
 static std::atomic<bool> g_discordSnapshotDue{ true };
 
+static bool Combo_ApFileLoaded(); // defined with the Archipelago client below: co-op is off in its files
+
 namespace ComboAnchor {
 static std::thread sThread;
 static std::atomic<bool> sEnabled{ false };
@@ -2424,6 +2428,11 @@ static void ReceiveLoop() {
 static void Connect(const char* host, uint16_t port) {
     if (sEnabled)
         return;
+    if (Combo_ApFileLoaded()) {
+        ComboLog::Warn() << "[ComboShip] Anchor: not connecting, the loaded file is an Archipelago file";
+        Toast("Co-op", "is off in Archipelago files", "", nullptr);
+        return;
+    }
     static bool sNetInit = false;
     if (!sNetInit) {
         SDLNet_Init();
@@ -2786,6 +2795,286 @@ static bool DormantSiblingHoldsLoadedSlot() {
            g_MmSaveInMemorySlot == g_comboCompletionSlot;
 }
 
+// ---- Archipelago: the launcher's half of the online client (combo/net/ComboArchipelago.h) ----
+//
+// One connection for the whole launcher. It syncs the loaded file when that file is an Archipelago file (its container
+// has combo.archipelago) and the connection was made for the same slot and room. Checks are read from both games'
+// obtained lists (Combo_SOH_GetObtainedChecks, Combo_MM_GetObtainedChecks) and sent as the difference from what the
+// server holds; items come in the server's order and are granted through DeliverCrossItem, which also reaches the
+// dormant game. items_handling is 0b101: the file's own items are granted by its own pickups, so the server sends only
+// what other players found and the start inventory.
+
+// The loaded file's record, read when its slot loads and kept current as items are given. Own mutex; take
+// g_containerMutex first when both are needed.
+static std::mutex g_apRecordMutex;
+static ComboRando::ApFileRecord g_apRecord;
+static int g_apRecordSlot = -1;         // the slot the record is of, -1 when the loaded file is not an Archipelago file
+static std::string g_apSessionPassword; // memory only: never saved anywhere
+static std::mutex g_apPasswordMutex;
+
+typedef const char* (*FnGetObtainedChecks)(void);
+static FnGetObtainedChecks SOH_GetObtainedChecks = nullptr;
+static FnGetObtainedChecks MM_GetObtainedChecks = nullptr;
+typedef void (*FnSetAnchorEnabled)(int);
+static FnSetAnchorEnabled SOH_Anchor_SetEnabled = nullptr;
+
+static bool Combo_ApFileLoaded() {
+    std::lock_guard<std::mutex> lock(g_apRecordMutex);
+    return g_apRecordSlot >= 0;
+}
+
+// The played game is in play, the file's slot is loaded and the other game's save of that slot is resident.
+static bool Combo_ApReady() {
+    if (!ComboIsValidSlot(g_comboCompletionSlot) || !DormantSiblingHoldsLoadedSlot())
+        return false;
+    const ComboDiscordGetStateFn playedState =
+        ComboAnchor::sActiveGame.load() == 1 ? MM_DiscordGetState : SOH_DiscordGetState;
+    ComboDiscordGameState played;
+    return playedState != nullptr && playedState(&played, 1) != 0 && played.inPlay != 0;
+}
+
+class LauncherApGame final : public ComboArchipelago::GameLayer {
+  public:
+    ComboArchipelago::SaveRecord LoadedRecord() override {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        ComboArchipelago::SaveRecord record;
+        record.valid = g_apRecordSlot >= 0 && g_apRecordSlot == g_comboCompletionSlot;
+        record.fileKey = g_apRecordSlot;
+        record.slotName = g_apRecord.slotName;
+        record.seedName = g_apRecord.seedName;
+        record.receivedIndex = g_apRecord.receivedIndex;
+        return record;
+    }
+
+    bool Ready() override {
+        return Combo_ApReady();
+    }
+
+    std::vector<std::string> ObtainedLocations() override {
+        const char* oot = SOH_GetObtainedChecks ? SOH_GetObtainedChecks() : nullptr;
+        const std::string ootChecks = oot ? oot : "[]"; // copied: each game's list is a buffer of its own
+        const char* mm = MM_GetObtainedChecks ? MM_GetObtainedChecks() : nullptr;
+        return ComboRando::ApSentLocations(ootChecks, mm ? mm : "[]");
+    }
+
+    bool GoalReached() override {
+        return g_comboTriforceDone || ComboBossesComplete(g_comboCompletion);
+    }
+
+    // The grants and the new count are saved together: both games write their saves once when the batch closes, and the
+    // container the count lives in is the same one those writes carry.
+    bool GrantBatch(const std::vector<ComboArchipelago::Grant>& grants, int newReceivedIndex) override try {
+        const int slot = g_comboCompletionSlot;
+        {
+            const SaveBatchGuard ootSaves(SOH_ComboSaveBatchBegin, SOH_ComboSaveBatchEnd);
+            const SaveBatchGuard mmSaves(MM_ComboSaveBatchBegin, MM_ComboSaveBatchEnd);
+            for (const ComboArchipelago::Grant& grant : grants)
+                DeliverCrossItem(static_cast<int>(grant.game), grant.nativeName.c_str(), "");
+            std::lock_guard<std::mutex> container(g_containerMutex);
+            ComboRando::ApStoreReceivedIndex(LoadOrCreateContainer(slot)["combo"], newReceivedIndex);
+            FlushContainer(slot);
+        }
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        g_apRecord.receivedIndex = newReceivedIndex;
+        return true;
+    } catch (const std::exception& e) {
+        ComboLog::Error() << "[ComboShip] Archipelago: giving items threw: " << e.what();
+        return false;
+    } catch (...) {
+        ComboLog::Error() << "[ComboShip] Archipelago: giving items threw a non-std exception";
+        return false;
+    }
+
+    void Toast(const ComboApSync::ToastText& toast) override {
+        ComboAnchor::Toast(toast.prefix.c_str(), toast.message.c_str(), toast.suffix.c_str(), nullptr);
+    }
+
+    void Log(ComboArchipelago::LogLevel level, const std::string& line) override {
+        switch (level) {
+            case ComboArchipelago::LogLevel::kError:
+                ComboLog::Error() << line;
+                break;
+            case ComboArchipelago::LogLevel::kWarn:
+                ComboLog::Warn() << line;
+                break;
+            case ComboArchipelago::LogLevel::kInfo:
+                ComboLog::Info() << line;
+                break;
+        }
+    }
+};
+
+static LauncherApGame g_apGame;
+static std::atomic<ComboArchipelago::Client*> g_apClient{ nullptr };
+static std::unique_ptr<ComboArchipelago::Client> g_apClientOwner;
+static std::mutex g_apClientCreateMutex;
+static std::mutex g_apTickMutex;
+
+// The client is created when the first Archipelago file loads, so a launcher that never sees one runs no thread.
+static ComboArchipelago::Client& Combo_ApClient() {
+    std::lock_guard<std::mutex> lock(g_apClientCreateMutex);
+    if (g_apClientOwner == nullptr) {
+        ComboArchipelago::Config config;
+        config.cacheDirectory = (ComboRando::DataDir() / "archipelago").string();
+        g_apClientOwner = std::make_unique<ComboArchipelago::Client>(g_apGame, config);
+        g_apClient.store(g_apClientOwner.get());
+    }
+    return *g_apClientOwner;
+}
+
+static void Combo_ApTick() {
+    ComboArchipelago::Client* client = g_apClient.load();
+    if (client == nullptr)
+        return;
+    std::unique_lock<std::mutex> lock(g_apTickMutex, std::try_to_lock);
+    if (lock.owns_lock())
+        client->Tick();
+}
+
+// Called with g_containerMutex held when a slot loads: `combo` is that slot's combo block.
+static void Combo_ApRefreshRecord(int slot, const nlohmann::json& combo) {
+    const ComboRando::ApFileRecord record = ComboRando::ApFileRecordOf(combo);
+    std::lock_guard<std::mutex> lock(g_apRecordMutex);
+    g_apRecord = record;
+    g_apRecordSlot = record.valid ? slot : -1;
+}
+
+static ComboArchipelago::Target Combo_ApTargetOf(const ComboRando::ApFileRecord& record, const std::string& password) {
+    return { record.server, record.connectSlot, password, record.seedName };
+}
+
+// A file loaded: an Archipelago file turns Anchor co-op off and reconnects to the server it was last connected to; any
+// other file closes the connection.
+static void Combo_ApOnFileLoaded() {
+    ComboRando::ApFileRecord record;
+    {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        if (g_apRecordSlot >= 0)
+            record = g_apRecord;
+    }
+    if (!record.valid) {
+        if (ComboArchipelago::Client* client = g_apClient.load())
+            client->Disconnect();
+        return;
+    }
+    if (ComboAnchor::sEnabled && SOH_Anchor_SetEnabled) {
+        SOH_Anchor_SetEnabled(0);
+        ComboAnchor::Toast("Co-op", "is off in Archipelago files", "", nullptr);
+        ComboLog::Info() << "[ComboShip] Archipelago file loaded: Anchor co-op switched off";
+    }
+    ComboArchipelago::Client& client = Combo_ApClient();
+    if (!record.autoConnect || record.server.empty())
+        return;
+    std::string password;
+    {
+        std::lock_guard<std::mutex> lock(g_apPasswordMutex);
+        password = g_apSessionPassword;
+    }
+    const ComboArchipelago::Target wanted = Combo_ApTargetOf(record, password);
+    const ComboArchipelago::Target current = client.GetTarget();
+    const std::string wantedServer =
+        ComboApSync::NormalizeServerAddress(wanted.server, ComboArchipelago::Client::TlsAvailable());
+    const bool alreadyConnecting = client.GetStatus().phase != ComboArchipelago::Phase::kOff &&
+                                   current.slotName == wanted.slotName && current.seedName == wanted.seedName &&
+                                   current.server == wantedServer;
+    if (!alreadyConnecting)
+        client.Connect(wanted);
+}
+
+static void Combo_ApMenuGetState(ComboApMenuState* out) {
+    if (out == nullptr)
+        return;
+    *out = ComboApMenuState{};
+    ComboRando::ApFileRecord record;
+    {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        if (g_apRecordSlot >= 0)
+            record = g_apRecord;
+    }
+    out->fileLoaded = record.valid ? 1 : 0;
+    out->tlsAvailable = ComboArchipelago::Client::TlsAvailable() ? 1 : 0;
+    snprintf(out->server, sizeof(out->server), "%s", record.server.c_str());
+    snprintf(out->slot, sizeof(out->slot), "%s", record.connectSlot.c_str());
+    snprintf(out->fileSlot, sizeof(out->fileSlot), "%s", record.slotName.c_str());
+    ComboArchipelago::Client* client = g_apClient.load();
+    if (client == nullptr)
+        return;
+    const ComboArchipelago::Status status = client->GetStatus();
+    out->phase = static_cast<int32_t>(status.phase);
+    out->receivedIndex = status.receivedIndex;
+    out->itemsWaiting = status.itemsWaiting;
+    out->checksKnown = status.checksKnown;
+    out->checksUnmapped = status.checksUnmapped;
+    snprintf(out->status, sizeof(out->status), "%s", status.text.c_str());
+}
+
+// Saves what the player entered with the file, then connects. The password stays in memory.
+static void Combo_ApMenuConnect(const char* server, const char* slot, const char* password) {
+    if (server == nullptr || slot == nullptr)
+        return;
+    int fileSlot = -1;
+    ComboRando::ApFileRecord record;
+    {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        fileSlot = g_apRecordSlot;
+        record = g_apRecord;
+    }
+    if (fileSlot < 0 || !record.valid)
+        return;
+    record.server = ComboApSync::TrimmedAddress(server);
+    record.connectSlot = ComboApSync::TrimmedAddress(slot);
+    record.autoConnect = true;
+    {
+        std::lock_guard<std::mutex> container(g_containerMutex);
+        ComboRando::ApStoreConnection(LoadOrCreateContainer(fileSlot)["combo"], record.server, record.connectSlot,
+                                      true);
+        FlushContainer(fileSlot);
+    }
+    {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        g_apRecord.server = record.server;
+        g_apRecord.connectSlot = record.connectSlot;
+        g_apRecord.autoConnect = true;
+    }
+    const std::string pass = password ? password : "";
+    {
+        std::lock_guard<std::mutex> lock(g_apPasswordMutex);
+        g_apSessionPassword = pass;
+    }
+    Combo_ApClient().Connect(Combo_ApTargetOf(record, pass));
+}
+
+static void Combo_ApMenuDisconnect() {
+    int fileSlot = -1;
+    ComboRando::ApFileRecord record;
+    {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        fileSlot = g_apRecordSlot;
+        record = g_apRecord;
+    }
+    if (ComboArchipelago::Client* client = g_apClient.load())
+        client->Disconnect();
+    if (fileSlot < 0)
+        return;
+    {
+        std::lock_guard<std::mutex> container(g_containerMutex);
+        ComboRando::ApStoreConnection(LoadOrCreateContainer(fileSlot)["combo"], record.server, record.connectSlot,
+                                      false);
+        FlushContainer(fileSlot);
+    }
+    std::lock_guard<std::mutex> lock(g_apRecordMutex);
+    g_apRecord.autoConnect = false;
+}
+
+static_assert(static_cast<int>(ComboArchipelago::Phase::kOff) == COMBO_AP_PHASE_OFF &&
+              static_cast<int>(ComboArchipelago::Phase::kConnecting) == COMBO_AP_PHASE_CONNECTING &&
+              static_cast<int>(ComboArchipelago::Phase::kConnected) == COMBO_AP_PHASE_CONNECTED &&
+              static_cast<int>(ComboArchipelago::Phase::kRefused) == COMBO_AP_PHASE_REFUSED &&
+              static_cast<int>(ComboArchipelago::Phase::kWrongRoom) == COMBO_AP_PHASE_WRONG_ROOM);
+static ComboApMenuApi g_apMenuApi = { Combo_ApMenuGetState, Combo_ApMenuConnect, Combo_ApMenuDisconnect };
+typedef void (*FnComboUISetArchipelagoApi)(const ComboApMenuApi*);
+static FnComboUISetArchipelagoApi ComboUI_SetArchipelagoApi = nullptr;
+
 // A6: invoked each frame BY the active game (via the registered pump seam). Applies queued
 // save-affecting co-op packets to the DORMANT game on the caller's (game) thread, so a teammate's
 // collection registers in the dormant game's save live instead of only on next entry.
@@ -2878,10 +3167,12 @@ static void LoadComboCompletion(int slot) {
             !ComboRando::ComboGamesSolo(g_comboGames) &&
             rando.value(ComboRando::LostWoodsLink::kSeedKey, ComboRando::LostWoodsLink::kPlayedWhenSeedLacksKey);
         g_loadedMasterSeed.store(rando.value("masterSeed", 0u)); // co-op outbox scope
+        Combo_ApRefreshRecord(slot, combo);
         // A back-to-back slot has no seed: its link always exists, and the cross gate decides when it is open.
         if (g_activeMode.IsBackToBack())
             g_lostWoodsLink = true;
     }
+    Combo_ApOnFileLoaded(); // outside the container lock: it may save the file's connection
     // Push outside the container lock — the DLL setters must never re-enter the sidecar.
     PushComboGames(g_comboGames);
     Combo_PushLostWoodsLink(g_lostWoodsLink);
@@ -3363,6 +3654,7 @@ static void Combo_DiscordTick() {
 
 // Per-frame drain seam (SOH_/MM_SetSharedTickCb). Gated on both saves resident.
 static void Combo_SharedTick() try {
+    Combo_ApTick();
     Combo_DrainBossRelease();
     Combo_DrainReleaseCollect();
     Combo_DiscordTick();
@@ -5465,6 +5757,9 @@ int main(int argc, char** argv) {
     MM_Anchor_PumpDormant = (FnVoidArgless)GetSym(mmModule, "MM_Anchor_PumpDormant");
     SOH_Anchor_DiscardDormant = (FnVoidArgless)GetSym(sohModule, "SOH_Anchor_DiscardDormant");
     MM_Anchor_DiscardDormant = (FnVoidArgless)GetSym(mmModule, "MM_Anchor_DiscardDormant");
+    SOH_GetObtainedChecks = (FnGetObtainedChecks)GetSym(sohModule, "Combo_SOH_GetObtainedChecks");
+    MM_GetObtainedChecks = (FnGetObtainedChecks)GetSym(mmModule, "Combo_MM_GetObtainedChecks");
+    SOH_Anchor_SetEnabled = (FnSetAnchorEnabled)GetSym(sohModule, "SOH_Anchor_SetEnabled");
     SOH_ComboToast = (FnComboToast)GetSym(sohModule, "SOH_ComboToast");
     MM_ComboToast = (FnComboToast)GetSym(mmModule, "MM_ComboToast");
 
@@ -5870,6 +6165,9 @@ int main(int argc, char** argv) {
         ComboUI_CosmeticsSyncGateEnabled = (FnComboUIGate)GetSym(comboUIModule, "ComboUI_CosmeticsSyncGateEnabled");
         ComboUI_ClaimGenRollSeed = (FnClaimGenRollSeed)GetSym(comboUIModule, "ComboUI_ClaimGenRollSeed");
         ComboUI_GetDiscordSettings = (FnComboUIDiscordSettings)GetSym(comboUIModule, "ComboUI_GetDiscordSettings");
+        ComboUI_SetArchipelagoApi = (FnComboUISetArchipelagoApi)GetSym(comboUIModule, "ComboUI_SetArchipelagoApi");
+        if (ComboUI_SetArchipelagoApi)
+            ComboUI_SetArchipelagoApi(&g_apMenuApi);
         if (ComboUI_Register) {
             ComboUI_Register();
             ComboLog::Info() << "[ComboShip] comboui registered (unified menu installed).";

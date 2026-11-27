@@ -9,6 +9,7 @@
 #include "Traps.h"
 #ifdef COMBO_BUILD
 #include "rando/CrossForeign.h"           // ComboShip: cross-world foreign-item marker map
+#include "rando/ComboApSeed.h"            // ComboShip: the "Sent <Item> to <Player>" text of another player's item
 #include "2s2h/SaveManager/SaveManager.h" // ComboShip: persist delivered cross items into the MM save
 // ComboShip: Anchor shared-progression co-op — broadcast a locally-obtained check to teammates.
 extern "C" void MMAnchor_BroadcastCheckItem(int randoCheckId, int randoItemId);
@@ -75,7 +76,8 @@ void Rando::MiscBehavior::SendForeignCheck(RandoCheckId rc) {
     auto it = g_mmForeignMap.find(checkName);
     if (it != g_mmForeignMap.end() && it->second.ap) {
         // Another player's item: nothing to grant here, and the obtained check is what the Archipelago client reports.
-        Notification::Emit({ .message = "Archipelago:", .suffix = it->second.displayName });
+        const ComboRando::ApToastText sent = ComboRando::ApSentToast(it->second.itemName, it->second.apPlayer);
+        Notification::Emit({ .prefix = sent.prefix, .message = sent.message, .suffix = sent.suffix });
         SPDLOG_INFO("[ComboShip] MM found {} at check '{}'", it->second.displayName, checkName);
     } else if (it != g_mmForeignMap.end()) {
         // Grant straight into the dormant target game's resident save (and persist it there), then

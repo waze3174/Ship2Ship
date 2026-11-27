@@ -21,6 +21,7 @@
 #include "ComboHintTracker.h"       // combo-owned unified Hint Tracker (#164)
 #include "ComboTimersWindow.h"      // combo-owned overlay timers (#173)
 #include "ComboDiscordPanel.h"      // Settings > Discord: Rich Presence switches
+#include "ComboArchipelagoPanel.h"  // Settings > Online > Archipelago
 #include "rando/CrossForeign.h"     // ComboRando::ContainerPath — anchored save-container location
 #include "rando/ComboPlaythrough.h" // plando: ParseSpoilerPlacements + Suffix/BuildForeignArray + slot paths
 #include "rando/ComboApSeed.h"      // plando refuses an Archipelago seed
@@ -682,6 +683,12 @@ void DrawNetworkSharedPanel() {
 
     ImGui::TextWrapped("Play OoT and MM online with teammates: items and flags are shared per team, with "
                        "live presence and same-game teleport. Set a host, room, and name, then Enable.");
+    const bool archipelagoFile = ArchipelagoFileLoaded();
+    if (archipelagoFile) {
+        ImGui::TextColored(ImVec4(0.95f, 0.85f, 0.4f, 1.0f),
+                           "Co-op is off in Archipelago files. Connect to the multiworld in Settings > Online > "
+                           "Archipelago instead.");
+    }
 
     // Widgets in the first cell of a 2-col stretch table, so they're half-width like the other panels.
     const ImGuiTableFlags anchorTableFlags = ImGuiTableFlags_SizingStretchSame | ImGuiTableFlags_NoSavedSettings;
@@ -778,7 +785,7 @@ void DrawNetworkSharedPanel() {
     // --- Enable/Disable (gated by form validity, mirroring soh's isFormValid) ---
     ImGui::Spacing();
     bool formValid = host[0] != '\0' && port > 1024 && port < 65535 && roomId[0] != '\0' && name[0] != '\0';
-    ImGui::BeginDisabled(!formValid || sSohAnchorSetEnabled == nullptr);
+    ImGui::BeginDisabled(!formValid || sSohAnchorSetEnabled == nullptr || (archipelagoFile && !enabled));
     const ImVec4 red = { 0.66f, 0.13f, 0.13f, 1.0f };
     const ImVec4 green = { 0.15f, 0.55f, 0.20f, 1.0f };
     ComboRando::ComboMenu_PushButton(enabled ? red : green);
@@ -1592,6 +1599,9 @@ void ComboMenu::DrawHubEntry(const HubEntry& entry) {
             break;
         case HubEntry::COMBO_DISCORD:
             DrawDiscordSharedPanel();
+            break;
+        case HubEntry::COMBO_ARCHIPELAGO:
+            DrawArchipelagoSharedPanel();
             break;
         case HubEntry::COMBO_BACK_TO_BACK:
             DrawBackToBackSharedPanel();

@@ -152,6 +152,8 @@ std::vector<HubGroup> SettingsGroups(const ComboMenuModel& model) {
     online.push_back(MakeEntry(scope, kGroupOnline, "Discord", HubEntry::COMBO_DISCORD,
                                "rich presence show on discord area name checks collected form age hearts day time "
                                "co-op player count session timer play time"));
+    online.push_back(MakeEntry(scope, kGroupOnline, "Archipelago", HubEntry::COMBO_ARCHIPELAGO,
+                               "multiworld server slot password connect disconnect items checks randomizer online"));
     AddGroup(groups, kGroupOnline, std::move(online));
     return groups;
 }

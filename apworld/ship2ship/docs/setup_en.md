@@ -37,7 +37,22 @@ kept.
 
 ## Playing your slot's seed
 
-Until the Archipelago client arrives, a slot's seed plays offline. Start Ship2Ship, go to the file select and either drop
-`AP_<seed>_P<n>_<name>.ship2ship.json` on the game window or open Combo > Randomizer and press "Load seed file...". Then
-start a new Randomizer file as for any seed. A check that holds another player's item shows "<Player>'s <Item>" and
-gives nothing; the other player's items, and your own items found by them, are not delivered yet.
+Start Ship2Ship, go to the file select and either drop `AP_<seed>_P<n>_<name>.ship2ship.json` on the game window or open
+Combo > Randomizer and press "Load seed file...". Then start a new Randomizer file as for any seed. A check that holds
+another player's item shows "<Player>'s <Item>" and gives nothing; opening it sends the check to the server and shows
+"Sent <Item> to <Player>".
+
+## Connecting
+
+Load the file, then open Settings > Online > Archipelago. Enter the server (`host:port`, for example `localhost:38281`),
+the slot name (the file's own slot is filled in) and the password if the room has one, and press Connect. The server and
+slot are saved with the file, so it reconnects when it loads; the password is never saved.
+
+- The checks you open are sent as you open them. Ones you opened while offline are sent when you connect.
+- Items other players find for you, and your start inventory, are given in the order the server lists them, in whichever
+  game they belong to. Closing the game, losing the connection or restarting the server never gives an item twice or
+  loses one: the file counts how many of the server's items it has been given.
+- A file only syncs with the room it was generated for, as its own slot.
+- The goal (both final bosses, or the Triforce Piece count) is reported to the server once it is reached.
+- Anchor co-op is off in an Archipelago file.
+- `ws://` works. `wss://` (archipelago.gg rooms) needs a build with TLS support; the panel says when this build has none.

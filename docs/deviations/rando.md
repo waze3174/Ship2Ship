@@ -3309,3 +3309,53 @@ looks: `gArchipelagoProgressiveDL` (the logo with a gold arrow) for progression,
   control characters into spaces, any non-ASCII character into one `?`, collapses space runs and cuts at 64
   characters; an empty name becomes "Someone" or "an item". `ApShownName` uses it, and `Combo_ApplySeedJson` runs
   `ApSanitizeSeed` on every Archipelago seed it loads, so a hand-made file cannot put a code into `displayName`.
+
+## Archipelago online client (Ship2Ship 0.3.0, stage 4)
+
+The launcher connects to an Archipelago server for a file made from an Archipelago seed (`combo.archipelago` in its
+container, stage 3). Anchor co-op is off in such a file: loading one switches it off, the launcher's Anchor connect
+refuses, and Settings > Online > Anchor co-op says so.
+
+- **Code.** `combo/net/ComboArchipelago.{h,cpp}` is the client: its own translation unit, the only one that includes
+  apclientpp, wswrap, websocketpp, asio and valijson (WinSock2 first, `/bigobj`, no precompiled header;
+  `combo/CMake/ComboArchipelago.cmake`, an OBJECT library the launcher and the test harness link). Two threads: the worker
+  owns the connection and talks to the rest through an event queue and a command queue; the game thread calls `Tick` from
+  the launcher's per-frame seam (`Combo_SharedTick`). The worker never calls the game.
+- **The bookkeeping is pure** (`combo/net/ComboApSync.h`, `comboApSyncTest`): `SendLedger` (which obtained checks the server
+  lacks), `ReceiveLedger` (which received items to give, by index against `receivedIndex`), the room check, the item to
+  game and native name, the server address, the toast text.
+- **What is sent.** Every 0.5 s while the games can take work, the obtained checks of both games
+  (`Combo_SOH_GetObtainedChecks`, `Combo_MM_GetObtainedChecks`, mapped by `ApSentLocations`) minus what the server holds:
+  the server's own checked list read on connect, plus what this connection sent. Nothing about "sent" is saved, so a
+  restart, a reconnect or a server restart resends exactly what the server never got. A check that holds another player's
+  item is obtained like any other. Obtained checks that are not Archipelago locations (pre-placed items) are counted and
+  not sent.
+- **What is received.** `items_handling` is 0b101: other worlds' items and the start inventory. The file's own items are
+  granted by its own pickups (stage 3 leaves nothing to grant for another player's item), so 0b010 would grant them
+  twice. The server sends one list per slot, start inventory first, and resends all of it on every connect, so the count
+  of items given (`combo.archipelago.receivedIndex`) alone tells what is new. Items are given in order, 8 per frame at
+  most, through `DeliverCrossItem` (which also reaches the dormant game), once the played game is in play and the other
+  game's save of the slot is resident; an item that cannot be given stays next. The count is written in the same save
+  batch as the grant. An item whose name is not a Ship2Ship item is skipped and logged, and counted given.
+- **Rooms.** A file syncs only with the room whose seed name its record holds (checked from `RoomInfo`, before the slot is
+  even asked for) and as the slot it was generated for. A mismatch, a refused slot or a password error stops the
+  connection and says why; it is not retried.
+- **The goal.** Evaluated every tick from the persisted completion (both final bosses, or the Triforce Piece count) and
+  sent as `StatusUpdate` goal once per connection, so a goal reached while offline is reported on the next connect.
+  `Combo_OnFinalBossDefeated` and `Combo_OnTriforceProgress` already persist that completion; the client does not need a
+  second call from them.
+- **Notifications.** Received: "<Item> from <Player>", at most 4 per batch and one summary line; none for start inventory.
+  Sent: "Sent <Item> to <Player>" replaces stage 3's "Archipelago:" toast in `OOT_DeliverForeign` and
+  `Rando::MiscBehavior::SendForeignCheck` (`ApSentToast`, `ComboApSeed.h`). Every name goes through `SafeApText`.
+- **Menu.** Settings > Online > Archipelago (`combo/gui/ComboArchipelagoPanel.cpp`) reaches the launcher through
+  `ComboApMenuApi.h`. The server and slot are saved in the file (`server`, `connectSlot`, `autoConnect`); the file
+  reconnects when it loads. The password is typed each session and kept in memory only.
+- **Transport.** `ws://` works. `wss://` is built only with `SHIP2SHIP_AP_TLS` (OpenSSL); without it a bare `host:port` is
+  taken as `ws://` and `wss://` is refused with a message.
+- **Libraries**, pinned to junkx420's commits: apclientpp 7f33a38 (MIT), wswrap d0505e0 (MIT), websocketpp bce2586
+  (BSD-3-Clause), asio 1-30-2 (BSL-1.0), valijson 1.0.6 (BSD-2-Clause). The data package of each room is cached under
+  `archipelago/` in Ship2Ship's data folder.
+- **Tests.** `comboApSyncTest` (unit). `scripts/ap/client_e2e.py` drives the real client over a fake game
+  (`comboApClientHarness`) against Archipelago's own `MultiServer.py` on 127.0.0.1: connect, send, receive in order, start
+  inventory once, reconnect, restart, server restart, wrong room and slot, the goal, with a second websocket client
+  recording what the server itself delivered.

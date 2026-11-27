@@ -41,6 +41,7 @@ struct HubEntry {
         COMBO_BOTH_GAMES,
         COMBO_CROSS_GAME,
         COMBO_DISCORD,
+        COMBO_ARCHIPELAGO,
         COMBO_BACK_TO_BACK
     };
     std::string label; // the page's name; its sidebar text goes through DisplayName
