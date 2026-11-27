@@ -53,6 +53,7 @@ set(COMBOUI_SOURCES
     gui/ComboConfigImportPanel.cpp
     gui/ComboBottleShelfWindow.cpp
     gui/ComboDiscordPanel.cpp
+    gui/ComboArchipelagoPanel.cpp
 )
 add_library(comboui SHARED ${COMBOUI_SOURCES})
 set_target_properties(comboui PROPERTIES PREFIX "")
@@ -108,8 +109,12 @@ else()
     list(APPEND COMBO_SOURCES discord/DiscordIpcPosix.cpp)
 endif()
 
+# The Archipelago client's network libraries and its one translation unit (net/ComboArchipelago.cpp), as an object library.
+include(CMake/ComboArchipelago.cmake)
+
 # Create executable
 add_executable(Ship2Ship ${COMBO_SOURCES})
+target_link_libraries(Ship2Ship PRIVATE ship2ship_apclient)
 
 # Portable relative-include fix: MSVC VS generator implicitly adds the source file's directory,
 # but Ninja/Unix builds do not. Explicitly add the combo source dir so that includes like
@@ -214,6 +219,18 @@ target_link_libraries(comboApSeedTest PRIVATE nlohmann_json::nlohmann_json)
 add_executable(comboApSeedCheck EXCLUDE_FROM_ALL tests/ComboApSeedCheck.cpp)
 target_include_directories(comboApSeedCheck PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(comboApSeedCheck PRIVATE nlohmann_json::nlohmann_json)
+
+# Unit tests for the Archipelago client's bookkeeping (net/ComboApSync.h): header code, no game DLL and no network. Build
+# with `cmake --build <dir> --target comboApSyncTest`, then run the exe.
+add_executable(comboApSyncTest EXCLUDE_FROM_ALL tests/ComboApSyncTest.cpp)
+target_include_directories(comboApSyncTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(comboApSyncTest PRIVATE nlohmann_json::nlohmann_json)
+
+# The real Archipelago client over a fake game, for scripts/ap/client_e2e.py (a local Archipelago server): `comboApClientHarness
+# --slot <name> --seed-name <room>`, commands on stdin. See tests/ComboApClientHarness.cpp.
+add_executable(comboApClientHarness EXCLUDE_FROM_ALL tests/ComboApClientHarness.cpp)
+target_include_directories(comboApClientHarness PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(comboApClientHarness PRIVATE ship2ship_apclient)
 
 # Unit tests for the cross-game playthrough walk and the requiredness pare-down (ComboPlaythrough.h) against fake logic
 # oracles: header code, no game DLL. Build with `cmake --build <dir> --target comboPlaythroughTest`, then run the exe.

@@ -36,6 +36,15 @@ projects.
   ([jeromkiller/Shipwright_archipellago](https://github.com/jeromkiller/Shipwright_archipellago), `30fe440dd`): the
   three display lists another player's item is drawn as. They are used under Ship of Harkinian's `ASSETS-LICENSE.md`
   permission for Ship projects.
+- **The Archipelago online client** ([`combo/net/ComboArchipelago.cpp`](combo/net/ComboArchipelago.cpp)) is built on
+  [apclientpp](https://github.com/black-sliver/apclientpp) and [wswrap](https://github.com/black-sliver/wswrap) by
+  black-sliver and contributors (MIT), [websocketpp](https://github.com/zaphoyd/websocketpp) by Peter Thorson
+  (BSD-3-Clause), [asio](https://github.com/chriskohlhoff/asio) by Christopher Kohlhoff (Boost Software License 1.0)
+  and [valijson](https://github.com/tristanpenman/valijson) by Tristan Penman (BSD-2-Clause). The way each game's
+  client receives items and sends checks follows junkx420's Archipelago clients,
+  [Updated-2S2H-Archipelago](https://github.com/junkx420/Updated-2S2H-Archipelago) (`client` branch, `69cc318`, CC0) and
+  [Updated-SoH-Archipelago](https://github.com/junkx420/Updated-SoH-Archipelago) (`client` branch, `c0e2cc3`, no license
+  file, so only read for the protocol: none of its code is included). The same versions of the libraries are pinned.
 - **[MMRecompRando](https://github.com/RecompRando/MMRecompRando)**: the idea of walking back out of the Clock Tower
   to the Lost Woods. Only the idea is used; no code from it is included.
 

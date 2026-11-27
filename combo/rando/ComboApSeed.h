@@ -39,6 +39,10 @@ inline constexpr const char* kApSlotNameKey = "slotName";
 inline constexpr const char* kApSeedNameKey = "seedName";
 inline constexpr const char* kApOthersKey = "otherPlayersItems";
 inline constexpr const char* kApReceivedIndexKey = "receivedIndex";
+// What the player entered in Settings > Online > Archipelago for this file. The password is never saved.
+inline constexpr const char* kApServerKey = "server";
+inline constexpr const char* kApConnectSlotKey = "connectSlot";
+inline constexpr const char* kApAutoConnectKey = "autoConnect";
 inline constexpr const char* kApClassKey = "class";
 inline constexpr const char* kApForeignClassKey = "apClass";
 
@@ -113,8 +117,29 @@ inline std::string SafeApText(const std::string& raw, const char* fallback) {
     return out.empty() ? std::string(fallback) : out;
 }
 
+// The three parts of a notification (prefix, message and suffix, in the games' toast window).
+struct ApToastText {
+    std::string prefix;
+    std::string message;
+    std::string suffix;
+};
+
+inline std::string ApShownItem(const std::string& item) {
+    return SafeApText(StripApGameTag(item), kApUnknownItem);
+}
+
+// "<Item> from <Player>".
+inline ApToastText ApReceivedToast(const std::string& item, const std::string& player) {
+    return { ApShownItem(item), "from", SafeApText(player, kApUnknownPlayer) };
+}
+
+// "Sent <Item> to <Player>": one of this slot's checks held another player's item.
+inline ApToastText ApSentToast(const std::string& item, const std::string& player) {
+    return { "Sent", ApShownItem(item) + " to", SafeApText(player, kApUnknownPlayer) };
+}
+
 inline std::string ApShownName(const std::string& player, const std::string& item) {
-    return SafeApText(player, kApUnknownPlayer) + "'s " + SafeApText(StripApGameTag(item), kApUnknownItem);
+    return SafeApText(player, kApUnknownPlayer) + "'s " + ApShownItem(item);
 }
 
 inline bool IsApClassName(const std::string& name) {
@@ -322,6 +347,58 @@ inline nlohmann::json ApSaveRecord(const nlohmann::json& seed) {
     return { { kApSlotNameKey, block.value(kApSlotNameKey, std::string()) },
              { kApSeedNameKey, block.value(kApSeedNameKey, std::string()) },
              { kApReceivedIndexKey, 0 } };
+}
+
+// The save's record read back: the room the file belongs to, how many of the server's items it has been given, and the
+// connection its player last asked for.
+struct ApFileRecord {
+    bool valid = false; // the save has an Archipelago record with its slot and room
+    std::string slotName;
+    std::string seedName;
+    int receivedIndex = 0;
+    std::string server;
+    std::string connectSlot; // the slot name to connect as; the file's own when none was entered
+    bool autoConnect = false;
+};
+
+inline ApFileRecord ApFileRecordOf(const nlohmann::json& combo) {
+    ApFileRecord record;
+    const auto block = combo.find(kApKey);
+    if (block == combo.end() || !block->is_object()) {
+        return record;
+    }
+    record.slotName = block->value(kApSlotNameKey, std::string());
+    record.seedName = block->value(kApSeedNameKey, std::string());
+    record.valid = !record.slotName.empty() && !record.seedName.empty();
+    const auto index = block->find(kApReceivedIndexKey);
+    if (index != block->end() && index->is_number_integer()) {
+        record.receivedIndex = std::max(0, index->get<int>());
+    }
+    record.server = block->value(kApServerKey, std::string());
+    record.connectSlot = block->value(kApConnectSlotKey, record.slotName);
+    if (record.connectSlot.empty()) {
+        record.connectSlot = record.slotName;
+    }
+    record.autoConnect = block->value(kApAutoConnectKey, false);
+    return record;
+}
+
+// Writes into the save's record; both do nothing for a save that has none.
+inline void ApStoreReceivedIndex(nlohmann::json& combo, int index) {
+    const auto block = combo.find(kApKey);
+    if (block != combo.end() && block->is_object()) {
+        (*block)[kApReceivedIndexKey] = std::max(0, index);
+    }
+}
+
+inline void ApStoreConnection(nlohmann::json& combo, const std::string& server, const std::string& connectSlot,
+                              bool autoConnect) {
+    const auto block = combo.find(kApKey);
+    if (block != combo.end() && block->is_object()) {
+        (*block)[kApServerKey] = server;
+        (*block)[kApConnectSlotKey] = connectSlot;
+        (*block)[kApAutoConnectKey] = autoConnect;
+    }
 }
 
 // Every obtained check of both games under its Archipelago location name (the obtained lists are JSON arrays of check

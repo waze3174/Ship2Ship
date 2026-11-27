@@ -111,6 +111,12 @@ jobs:
           cmake --build build-cmake --target comboApSeedTest -j 4
           ./build-cmake/combo/comboApSeedTest
 
+      # The Archipelago client's bookkeeping (which checks to send, which items to give): pure header code.
+      - name: Archipelago client bookkeeping unit tests (comboApSyncTest)
+        run: |
+          cmake --build build-cmake --target comboApSyncTest -j 4
+          ./build-cmake/combo/comboApSyncTest
+
       # The playthrough walk and the requiredness pare-down against fake logic oracles: pure header code.
       - name: Playthrough unit tests (comboPlaythroughTest)
         run: |

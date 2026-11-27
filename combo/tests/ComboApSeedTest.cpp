@@ -323,6 +323,40 @@ void TestTheSaveRecordNamesTheSlotAndStartsAtNothingReceived() {
     CHECK(record.size() == 3);
 }
 
+void TestTheFileRecordReadsBackWhatWasStored() {
+    json combo = { { kApKey, ApSaveRecord(ApSeed()) } };
+    ApFileRecord record = ApFileRecordOf(combo);
+    CHECK(record.valid && record.slotName == "Link" && record.seedName == "AP_42" && record.receivedIndex == 0);
+    CHECK(record.server.empty() && record.connectSlot == "Link" && !record.autoConnect);
+
+    ApStoreReceivedIndex(combo, 17);
+    ApStoreConnection(combo, "localhost:38281", "Link2", true);
+    record = ApFileRecordOf(combo);
+    CHECK(record.receivedIndex == 17 && record.server == "localhost:38281" && record.connectSlot == "Link2" &&
+          record.autoConnect);
+    CHECK(combo[kApKey][kApSlotNameKey] == "Link"); // the file's own slot is never rewritten
+
+    ApStoreConnection(combo, "localhost:38281", "", false);
+    CHECK(ApFileRecordOf(combo).connectSlot == "Link" && !ApFileRecordOf(combo).autoConnect);
+}
+
+void TestAFileWithoutARecordOrWithABadOneHasNone() {
+    json combo = json::object();
+    CHECK(!ApFileRecordOf(combo).valid);
+    ApStoreReceivedIndex(combo, 5); // nothing to write into
+    ApStoreConnection(combo, "a", "b", true);
+    CHECK(combo.empty());
+
+    combo[kApKey] = { { kApSlotNameKey, "Link" }, { kApSeedNameKey, "AP_1" }, { kApReceivedIndexKey, -4 } };
+    CHECK(ApFileRecordOf(combo).valid && ApFileRecordOf(combo).receivedIndex == 0);
+    combo[kApKey][kApReceivedIndexKey] = "many";
+    CHECK(ApFileRecordOf(combo).receivedIndex == 0);
+    combo[kApKey] = { { kApSlotNameKey, "Link" } };
+    CHECK(!ApFileRecordOf(combo).valid);
+    combo[kApKey] = 3;
+    CHECK(!ApFileRecordOf(combo).valid);
+}
+
 void TestSentLocationsFollowTheObtainedChecksIncludingTheOtherPlayersItems() {
     // Collecting "Kokiri Chest" (another player's item) marks it obtained like any check, so it is reported.
     const auto sent = ApSentLocations(R"(["Kokiri Chest","Deku Reward"])", R"(["Moon Pot"])");
@@ -352,6 +386,8 @@ int main() {
     TestAnotherPlayersItemNeedsARealCheckOfItsGame();
     TestTheForeignEntriesAndTheListAgree();
     TestTheSaveRecordNamesTheSlotAndStartsAtNothingReceived();
+    TestTheFileRecordReadsBackWhatWasStored();
+    TestAFileWithoutARecordOrWithABadOneHasNone();
     TestSentLocationsFollowTheObtainedChecksIncludingTheOtherPlayersItems();
     if (ComboTest::gFailures != 0) {
         std::cerr << ComboTest::gFailures << " of " << ComboTest::gChecks << " checks failed\n";

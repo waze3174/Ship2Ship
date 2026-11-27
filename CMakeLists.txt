@@ -180,6 +180,11 @@ endif()
 
 vcpkg_bootstrap()
 vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile)
+# Ship2Ship: wss:// in the Archipelago client needs OpenSSL (combo/CMake/ComboArchipelago.cmake); off unless asked for.
+option(SHIP2SHIP_AP_TLS "Archipelago client: wss:// through OpenSSL" OFF)
+if (SHIP2SHIP_AP_TLS)
+vcpkg_install_packages(openssl)
+endif()
 endif()
 
 ################################################################################
