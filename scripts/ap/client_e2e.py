@@ -28,10 +28,16 @@ import zipfile
 
 import websockets
 
+PHASE_OFF = 0
 PHASE_CONNECTED = 2
 PHASE_REFUSED = 3
 PHASE_WRONG_ROOM = 4
 ITEMS_HANDLING = 0b101
+# The console's colours (combo/net/ComboApConsole.h; Archipelago's own palette), as 0xAARRGGBB.
+COLOR_SELF = 0xFFEE00EE  # magenta
+COLOR_PLAYER = 0xFFFAFAD2  # yellow
+COLOR_LOCATION = 0xFF00FF7F  # green
+ITEM_COLORS = {0xFFAF99EF, 0xFF6D8BE8, 0xFFFA8072, 0xFF00EEEE}  # progression, useful, trap, filler
 TAGS = {"oot": " (OoT)", "mm": " (MM)"}
 TIMEOUT = 30
 SERVER_START_TIMEOUT = 90
@@ -100,6 +106,7 @@ class Harness:
         if password:
             self.cmd += ["--password", password]
         self.lines = queue.Queue()
+        self.console_dumps = queue.Queue()
         self.log_lines = []
         self.process = subprocess.Popen(self.cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                         stderr=subprocess.STDOUT, text=True, bufsize=1)
@@ -110,6 +117,8 @@ class Harness:
             line = line.rstrip("\n")
             if line.startswith("STATE "):
                 self.lines.put(json.loads(line[6:]))
+            elif line.startswith("CONSOLE "):
+                self.console_dumps.put(json.loads(line[8:])["lines"])
             else:
                 self.log_lines.append(line)
 
@@ -125,6 +134,30 @@ class Harness:
             return self.lines.get(timeout=10)
         except queue.Empty:
             raise RuntimeError(f"{self.slot}: no state; log tail: {self.log_lines[-5:]}")
+
+    def say(self, text):
+        """A line typed into the console: chat, a "!" server command or a "/" client command."""
+        self.send("say " + text)
+
+    def console(self):
+        """The console's lines, each {"text": ..., "spans": [{"color": ..., "text": ...}]}."""
+        while not self.console_dumps.empty():
+            self.console_dumps.get_nowait()
+        self.send("console")
+        try:
+            return self.console_dumps.get(timeout=10)
+        except queue.Empty:
+            raise RuntimeError(f"{self.slot}: no console; log tail: {self.log_lines[-5:]}")
+
+    def console_texts(self):
+        return [line["text"] for line in self.console()]
+
+    def console_has(self, needle):
+        """The first console line that holds `needle` and is not the echo of what was typed, or None."""
+        for line in self.console():
+            if needle in line["text"] and not line["text"].startswith("> "):
+                return line
+        return None
 
     def granted(self):
         return [g["name"] + TAGS[g["game"]] for g in self.dump()["game"]["granted"]]
@@ -360,6 +393,132 @@ def test_two_slots(args, ids, check, work):
         server.stop()
 
 
+def test_console(args, ids, check, work):
+    """The Archipelago console: what the server prints arrives rendered and coloured, "!" commands and chat reach the
+    server, "/" commands answer from the client's own state."""
+    room = Room(args.two, work / "console", ids)
+    server = Server(args.python, args.ap_core, room.multidata, args.port, work / "console-server.log",
+                    ("--hint_cost", "0"))
+    started = []
+    try:
+        server.start()
+        one, _ = new_harness(args.harness, room, "One", args.port, work, "console")
+        two, _ = new_harness(args.harness, room, "Two", args.port, work, "console")
+        started += [one, two]
+        check("both clients connect", wait_until(lambda: one.phase() == PHASE_CONNECTED and
+                                                  two.phase() == PHASE_CONNECTED))
+        texts = one.console_texts()
+        check("the console starts with its welcome line", texts and "/help" in texts[0], str(texts[:2]))
+        check("it says the client connected as the slot", any(t.startswith("connected as One") for t in texts),
+              str(texts))
+        two.send("disconnect")
+        check("it shows another player leaving", wait_until(lambda: one.console_has("Two (Team #1) has left")),
+              str(one.console_texts()[-3:]))
+        two.send("connect")
+        check("and joining", wait_until(lambda: one.console_has("Two (Team #1) playing Ship2Ship has joined")),
+              str(one.console_texts()[-3:]))
+        check("both reconnect", wait_until(lambda: two.phase() == PHASE_CONNECTED))
+
+        # chat from a second client appears in our log
+        two.say("hello from two")
+        line = wait_until(lambda: one.console_has("hello from two"))
+        check("chat from another client appears in the log", line and line["text"].startswith("Two: hello from two"),
+              str(one.console_texts()[-3:]))
+
+        # an item hint is rendered with names resolved and coloured
+        to_one = room.other_checks("Two", "One")
+        item = to_one[0][1]
+        one.say("!hint " + item)
+        hint = wait_until(lambda: one.console_has("[Hint]:"))
+        check("!hint returns a rendered Hint", hint and item in hint["text"] and "'s World" in hint["text"], str(hint))
+        if hint:
+            by_text = {span["text"]: span["color"] for span in hint["spans"]}
+            check("the hint's item is coloured by its class", by_text.get(item) in ITEM_COLORS, str(by_text))
+            check("our own slot in the hint is magenta", by_text.get("One") == COLOR_SELF, str(by_text))
+            check("the hint's location is green", any(c == COLOR_LOCATION for c in by_text.values()), str(by_text))
+        check("the typed command is echoed", any(t == "> !hint " + item for t in one.console_texts()))
+
+        # a server command's answer
+        one.say("!remaining")
+        answer = wait_until(lambda: one.console_has("emaining"))
+        check("!remaining returns a CommandResult", answer is not None, str(one.console_texts()[-3:]))
+
+        # items received are listed with their sender and place
+        two.send("open " + "|".join(o[0] for o in to_one[:3]))
+        wait_until(lambda: len(one.granted()) == 3)
+        one.say("/received")
+        listed = wait_until(lambda: one.console_has("3 received items"))
+        check("/received counts the items", listed is not None, str(one.console_texts()[-5:]))
+        texts = one.console_texts()
+        names = [re.sub(r" \((OoT|MM)\)$", "", o[1]) for o in to_one[:3]]
+        rows = [t for t in texts if re.match(r"\d+\. ", t) and " by Two" in t]
+        check("each received item is listed with where it was found and who sent it",
+              len(rows) == 3 and all(any(n in r for r in rows) for n in names) and all(" from " in r for r in rows),
+              str(rows))
+        one.say("/received " + names[0].split()[0])
+        first = next(line for line in one.console() if re.match(r"1\. ", line["text"]))
+        by_text = {span["text"]: span["color"] for span in first["spans"]}
+        check("a received row colours the item by class, the place green and the sender yellow",
+              any(c in ITEM_COLORS for t, c in by_text.items() if t.endswith(("(OoT)", "(MM)")))
+              and by_text.get("Two") == COLOR_PLAYER and COLOR_LOCATION in by_text.values(), str(by_text))
+        check("a filter narrows /received", wait_until(lambda: any(
+            re.match(r"[12] received items, sorted by time:", t) for t in one.console_texts())))
+
+        # missing and checked come from the client's own record of the slot
+        mine = [o[0] for o in room.other_checks("One", "Two")[5:7]]
+        one.send("open " + "|".join(mine))
+        wait_until(lambda: one.dump()["status"]["checksKnown"] >= 2)
+        one.say("/checked")
+        done = wait_until(lambda: any(t.startswith("Checked locations (") for t in one.console_texts()))
+        check("/checked lists the checks opened", done and all(m in one.console_texts() for m in mine),
+              str(one.console_texts()[-6:]))
+        one.say("/missing")
+        wait_until(lambda: any(t.startswith("Missing locations (") for t in one.console_texts()))
+        texts = one.console_texts()
+        at = max(i for i, t in enumerate(texts) if t.startswith("Missing locations ("))
+        check("/missing never lists a checked location", all(m not in texts[at:] for m in mine), texts[at])
+        counts = [int(re.search(r"\((\d+)\)", t).group(1)) for t in (
+            texts[at], [t for t in texts if t.startswith("Checked locations (")][-1])]
+        check("checked and missing together are the slot's locations", sum(counts) > 100, str(counts))
+
+        one.say("/items hookshot")
+        check("/items lists this game's item names", wait_until(
+            lambda: any("Hookshot" in t and not t.startswith(">") and "Item names" not in t
+                        for t in one.console_texts())))
+        one.say("/locations")
+        check("/locations lists its location names", wait_until(
+            lambda: any(t.startswith("Location names for Ship2Ship (") for t in one.console_texts())))
+
+        one.say("/help")
+        check("/help lists the commands", wait_until(lambda: one.console_has("/received")))
+        one.say("/frobnicate")
+        check("an unknown / command points at /help", wait_until(lambda: one.console_has("Unknown command /frobnicate")))
+
+        one.say("/ready")
+        check("/ready answers", wait_until(lambda: one.console_has("Readied up.")))
+
+        # disconnected: only the connection commands work
+        one.say("/disconnect")
+        check("/disconnect disconnects", wait_until(lambda: one.phase() == PHASE_OFF))
+        check("and says so", wait_until(lambda: one.console_has("Disconnected.")))
+        one.say("hello nobody")
+        check("chat while disconnected is refused with a hint", wait_until(lambda: one.console_has("Not connected")))
+        one.say("/connect")
+        check("/connect connects again", wait_until(lambda: one.phase() == PHASE_CONNECTED))
+        one.say("/received")
+        check("the received list survives a reconnect", wait_until(lambda: any(
+            t.startswith("3 received items") for t in one.console_texts()[-12:])))
+
+        # /clear empties the log
+        one.say("/clear")
+        wait_until(lambda: len(one.console_texts()) <= 1)
+        check("/clear empties the console", len(one.console_texts()) <= 1, str(one.console_texts()))
+    finally:
+        for h in started:
+            h.quit()
+        server.stop()
+
+
 def test_start_inventory(args, ids, check, work):
     room = Room(args.start_inventory, work / "start", ids)
     server = Server(args.python, args.ap_core, room.multidata, args.port, work / "start-server.log")
@@ -469,6 +628,7 @@ def main():
     suites = []
     if args.two:
         suites.append(("two Ship2Ship slots", test_two_slots))
+        suites.append(("console", test_console))
     if args.start_inventory:
         suites.append(("start inventory", test_start_inventory))
     if args.mixed:

@@ -102,6 +102,7 @@ constexpr const char* kDeniedPrefixes[] = {
     "gCombo.Debug.",            // debug switches
     "gCombo.Anchor.",           // room window open state, toast timing
     "gCombo.BottleShelf.",      // window open state
+    "gCombo.Archipelago.",      // console window open state
     "gCombo.Discord.",          // what the player shares on their profile is theirs, not a play preference
     "gCombo.Rando.GenRollSeed", // per-run seed roll
     "gCombo.DpadEquips.Init",   // one-shot init markers

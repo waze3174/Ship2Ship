@@ -8,6 +8,7 @@
 #include <imgui.h>
 
 #include "ComboApMenuApi.h"
+#include "ComboArchipelagoConsole.h"
 #include "ComboExport.h"
 #include "ComboWidgetStyle.h"
 
@@ -84,6 +85,10 @@ void DrawStatus(const ComboApMenuState& state) {
 
 } // namespace
 
+const ComboApMenuApi* ArchipelagoApi() {
+    return sApi;
+}
+
 bool ArchipelagoFileLoaded() {
     if (sApi == nullptr || sApi->getState == nullptr) {
         return false;
@@ -147,6 +152,7 @@ void DrawArchipelagoSharedPanel() {
     ImGui::EndDisabled();
 
     DrawStatus(state);
+    DrawArchipelagoConsoleSection(*sApi, state.phase == COMBO_AP_PHASE_CONNECTED);
 }
 
 } // namespace ComboRando

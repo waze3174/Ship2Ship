@@ -5,9 +5,14 @@
 // reaches it through ComboApMenuApi (ComboApMenuApi.h), which the launcher registers with ComboUI_SetArchipelagoApi.
 #pragma once
 
+#include "ComboApMenuApi.h"
+
 namespace ComboRando {
 
 void DrawArchipelagoSharedPanel();
+
+// The launcher's client, as it registered itself; null before that.
+const ComboApMenuApi* ArchipelagoApi();
 
 // True while the loaded file is an Archipelago file: Anchor co-op is off then.
 bool ArchipelagoFileLoaded();

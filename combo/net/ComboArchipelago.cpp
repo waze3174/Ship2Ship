@@ -13,14 +13,18 @@
 
 #include "ComboArchipelago.h"
 
+#include "ComboApConsoleInput.h"
+
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <deque>
 #include <filesystem>
 #include <fstream>
 #include <functional>
 #include <map>
 #include <mutex>
+#include <optional>
 #include <random>
 #include <set>
 #include <thread>
@@ -40,6 +44,7 @@ constexpr auto kTickInterval = 100ms;
 constexpr auto kLocationPollInterval = 500ms;
 constexpr auto kGrantRetryInterval = 3s; // after a grant the game could not make
 constexpr auto kWorkerStep = 20ms;
+constexpr size_t kMaxQueuedInputs = 64; // lines typed into the console and not run yet
 
 // The room's data package, kept per game and checksum so a room already visited costs no download.
 class FileDataPackageStore final : public APDataPackageStore {
@@ -56,10 +61,15 @@ class FileDataPackageStore final : public APDataPackageStore {
             return false;
         }
         data = json::parse(in, nullptr, false);
-        return !data.is_discarded() && data.is_object();
+        const bool usable = !data.is_discarded() && data.is_object();
+        if (usable) {
+            NoteGame(game, data);
+        }
+        return usable;
     }
 
     bool save(const std::string& game, const json& data) override {
+        NoteGame(game, data);
         if (directory_.empty()) {
             return false;
         }
@@ -70,7 +80,23 @@ class FileDataPackageStore final : public APDataPackageStore {
         return out.good();
     }
 
+    // The item names of Ship2Ship's own game, as the data package last handed over or loaded them (for /items).
+    const std::vector<std::string>& ItemNames() const {
+        return itemNames_;
+    }
+
   private:
+    void NoteGame(const std::string& game, const json& data) {
+        const auto names = data.find("item_name_to_id");
+        if (game != ComboApSync::kShip2ShipGame || names == data.end() || !names->is_object()) {
+            return;
+        }
+        itemNames_.clear();
+        for (const auto& entry : names->items()) {
+            itemNames_.push_back(entry.key());
+        }
+    }
+
     std::filesystem::path PathFor(const std::string& game, const std::string& checksum) const {
         std::string name;
         for (const char c : game) {
@@ -82,12 +108,14 @@ class FileDataPackageStore final : public APDataPackageStore {
     }
 
     std::string directory_;
+    std::vector<std::string> itemNames_;
 };
 
 // What the worker saw.
 struct LogEvent {
     LogLevel level;
     std::string line;
+    bool toConsole; // the console shows it too (some lines only repeat a status)
 };
 struct PhaseEvent {
     Phase phase;
@@ -95,6 +123,8 @@ struct PhaseEvent {
 };
 struct ConnectedEvent {
     std::set<std::string> serverChecked;
+    std::vector<std::string> allLocations; // every location of the slot, by name
+    std::vector<std::string> itemNames;    // every item name of the slot's game
 };
 struct ItemsEvent {
     std::vector<ReceivedItem> items;
@@ -106,8 +136,11 @@ struct ClosedEvent {};
 struct UnmappedEvent {
     int count;
 };
-using EventBody =
-    std::variant<LogEvent, PhaseEvent, ConnectedEvent, ItemsEvent, CheckedEvent, ClosedEvent, UnmappedEvent>;
+struct ConsoleEvent {
+    std::vector<ComboApConsole::Line> lines; // a PrintJSON message, already rendered
+};
+using EventBody = std::variant<LogEvent, PhaseEvent, ConnectedEvent, ItemsEvent, CheckedEvent, ClosedEvent,
+                               UnmappedEvent, ConsoleEvent>;
 struct Event {
     uint64_t session;
     EventBody body;
@@ -121,7 +154,10 @@ struct StatusCommand {
     APClient::ClientStatus status;
 };
 struct SyncCommand {};
-using Command = std::variant<SendCommand, StatusCommand, SyncCommand>;
+struct SayCommand {
+    std::string text;
+};
+using Command = std::variant<SendCommand, StatusCommand, SyncCommand, SayCommand>;
 
 std::string RefusalText(const std::list<std::string>& errors, const std::string& slotName) {
     std::string text;
@@ -151,6 +187,56 @@ std::string RandomUuid() {
     return buffer;
 }
 
+// The room's names for the console's renderer.
+class RoomNames final : public ComboApConsole::NameSource {
+  public:
+    explicit RoomNames(const APClient& client) : client_(client) {
+    }
+
+    std::optional<std::string> PlayerName(int slot) const override {
+        return Known(client_.get_player_alias(slot));
+    }
+    std::optional<std::string> ItemName(int64_t id, int ownerSlot) const override {
+        const std::string& game = client_.get_player_game(ownerSlot);
+        return game.empty() ? std::nullopt : Known(client_.get_item_name(id, game));
+    }
+    std::optional<std::string> LocationName(int64_t id, int ownerSlot) const override {
+        const std::string& game = client_.get_player_game(ownerSlot);
+        return game.empty() ? std::nullopt : Known(client_.get_location_name(id, game));
+    }
+    bool ConcernsSelf(int slot) const override {
+        return client_.slot_concerns_self(slot);
+    }
+
+  private:
+    // apclientpp answers "Unknown" for an id or slot it has no name for.
+    static std::optional<std::string> Known(const std::string& name) {
+        return name == "Unknown" ? std::nullopt : std::optional<std::string>(name);
+    }
+
+    const APClient& client_;
+};
+
+// The game thread's view of the console's own text: the tag the launcher's log lines carry is left off.
+constexpr const char* kLogTag = "[Archipelago] ";
+
+ComboApConsole::Level ConsoleLevel(LogLevel level) {
+    switch (level) {
+        case LogLevel::kError:
+            return ComboApConsole::Level::kError;
+        case LogLevel::kWarn:
+            return ComboApConsole::Level::kWarn;
+        case LogLevel::kInfo:
+            break;
+    }
+    return ComboApConsole::Level::kInfo;
+}
+
+std::string WithoutLogTag(const std::string& line) {
+    const size_t tag = std::strlen(kLogTag);
+    return line.compare(0, tag, kLogTag) == 0 ? line.substr(tag) : line;
+}
+
 } // namespace
 
 // ---- the shared state and the game-thread half ----
@@ -172,8 +258,12 @@ struct Client::Impl {
     Status status;
     std::string baseText;
 
+    std::deque<std::string> inputs; // typed into the console, not run yet
+
     std::thread worker;
     std::atomic<bool> quit{ false };
+
+    ComboApConsole::Log console;
 
     // Game thread only.
     uint64_t seenSession = 0;
@@ -186,6 +276,11 @@ struct Client::Impl {
     enum class Reported { kNone, kPlaying, kGoal } reported = Reported::kNone;
     int unmapped = 0;
     std::set<std::string> warnedItems;
+    std::vector<std::string> allLocations; // the slot's locations by name, sorted
+    std::vector<std::string> itemNames;
+    std::map<int, ReceivedItem> receivedList; // everything the server has sent, by index, for /received
+    std::string lastPhaseNote;
+    bool readyAsked = false;
     Clock::time_point lastTick{};
     Clock::time_point lastLocationPoll{};
     Clock::time_point grantRetryAt{};
@@ -198,6 +293,12 @@ struct Client::Impl {
     }
     void Tick();
     void DrainEvents();
+    void DrainInputs();
+    void RunInput(const std::string& text);
+    void RunClientCommand(const ComboApConsole::ParsedInput& input);
+    void ListReceived(const std::string& filter);
+    void Report(LogLevel level, const std::string& text);
+    void Show(LogLevel level, const std::string& taggedLine);
     void Apply(const EventBody& body);
     bool RecordMatchesTarget(const SaveRecord& record);
     void TrackRecord(const SaveRecord& record);
@@ -228,7 +329,7 @@ class Session {
         store_ = std::make_unique<FileDataPackageStore>(config.cacheDirectory);
         ap_ = std::make_unique<APClient>(RandomUuid(), ComboApSync::kShip2ShipGame, address, config.certStorePath,
                                          store_.get());
-        ap_->set_socket_connected_handler([this] { Log(LogLevel::kInfo, "socket connected"); });
+        ap_->set_socket_connected_handler([this] { Log(LogLevel::kInfo, "socket connected", false); });
         ap_->set_socket_error_handler([this](const std::string& message) { OnSocketError(message); });
         ap_->set_socket_disconnected_handler([this] { OnSocketClosed(); });
         ap_->set_room_info_handler([this] { OnRoomInfo(); });
@@ -236,6 +337,9 @@ class Session {
         ap_->set_slot_refused_handler([this](const std::list<std::string>& errors) { OnRefused(errors); });
         ap_->set_items_received_handler([this](const std::list<APClient::NetworkItem>& items) { OnItems(items); });
         ap_->set_location_checked_handler([this](const std::list<int64_t>& ids) { OnLocationsChecked(ids); });
+        ap_->set_print_json_handler(std::function<void(const APClient::PrintJSONArgs&)>(
+            [this](const APClient::PrintJSONArgs& args) { OnPrintJson(args); }));
+        ap_->set_print_handler([this](const std::string& text) { OnPrint(text); });
         Announce(Phase::kConnecting, "Connecting to " + address + "...");
     }
 
@@ -265,8 +369,8 @@ class Session {
     void Push(EventBody body) {
         owner_.PushEvent(id_, std::move(body));
     }
-    void Log(LogLevel level, const std::string& line) {
-        Push(LogEvent{ level, "[Archipelago] " + line });
+    void Log(LogLevel level, const std::string& line, bool toConsole = true) {
+        Push(LogEvent{ level, kLogTag + line, toConsole });
     }
     void Announce(Phase phase, const std::string& text) {
         Push(PhaseEvent{ phase, text });
@@ -307,11 +411,14 @@ class Session {
             for (const int64_t id : *ids) {
                 const std::string name = ap_->get_location_name(id, ap_->get_game());
                 locationIds_.emplace(name, id);
+                connected.allLocations.push_back(name);
                 if (ids == &checked) {
                     connected.serverChecked.insert(name);
                 }
             }
         }
+        std::sort(connected.allLocations.begin(), connected.allLocations.end());
+        connected.itemNames = store_->ItemNames();
         Log(LogLevel::kInfo, "connected as " + target_.slotName + ": " + std::to_string(locationIds_.size()) +
                                  " locations, " + std::to_string(checked.size()) + " already checked");
         Push(std::move(connected));
@@ -328,7 +435,7 @@ class Session {
         }
         lastError_ = message;
         Announce(Phase::kConnecting, "Cannot reach the server (" + message + "); retrying");
-        Log(LogLevel::kWarn, "socket error: " + message);
+        Log(LogLevel::kWarn, "socket error: " + message, false);
     }
 
     void OnSocketClosed() {
@@ -348,6 +455,9 @@ class Session {
                                       ? ComboApSync::kServerPlayerName
                                       : ap_->get_player_alias(item.player);
             received.location = item.location;
+            received.locationName = item.location == ComboApSync::kStartInventoryLocation
+                                        ? std::string()
+                                        : ap_->get_location_name(item.location, ap_->get_player_game(item.player));
             received.flags = item.flags;
             event.items.push_back(std::move(received));
         }
@@ -362,9 +472,26 @@ class Session {
         Push(std::move(event));
     }
 
+    // A PrintJSON message of any type (item sends, hints, chat, joins, command results, ...): every one is parts to
+    // render, so the type itself changes nothing.
+    void OnPrintJson(const APClient::PrintJSONArgs& args) {
+        std::vector<ComboApConsole::Part> parts;
+        for (const APClient::TextNode& node : args.data) {
+            parts.push_back({ node.type, node.text, node.color, node.player, node.flags, node.hintStatus });
+        }
+        Push(ConsoleEvent{ ComboApConsole::RenderParts(parts, RoomNames(*ap_)) });
+    }
+
+    // The older plain-text message.
+    void OnPrint(const std::string& text) {
+        Push(ConsoleEvent{ ComboApConsole::Normalize(ComboApConsole::PlainLine(text)) });
+    }
+
     void Run(const Command& command) {
         if (const auto* send = std::get_if<SendCommand>(&command)) {
             SendLocations(send->names);
+        } else if (const auto* say = std::get_if<SayCommand>(&command)) {
+            ap_->Say(say->text);
         } else if (const auto* status = std::get_if<StatusCommand>(&command)) {
             ap_->StatusUpdate(status->status);
         } else {
@@ -443,22 +570,56 @@ void Client::Impl::WorkerMain() {
 
 // ---- the game-thread half ----
 
+// One line for the launcher's log and for the console.
+void Client::Impl::Show(LogLevel level, const std::string& taggedLine) {
+    game.Log(level, taggedLine);
+    console.Append(ComboApConsole::NoticeLine(ConsoleLevel(level), WithoutLogTag(taggedLine)));
+}
+
+void Client::Impl::Report(LogLevel level, const std::string& text) {
+    Show(level, kLogTag + text);
+}
+
 void Client::Impl::Apply(const EventBody& body) {
     if (const auto* log = std::get_if<LogEvent>(&body)) {
-        game.Log(log->level, log->line);
+        if (log->toConsole) {
+            Show(log->level, log->line);
+        } else {
+            game.Log(log->level, log->line);
+        }
     } else if (const auto* phase = std::get_if<PhaseEvent>(&body)) {
-        std::lock_guard<std::mutex> lock(mutex);
-        status.phase = phase->phase;
-        baseText = phase->text;
+        {
+            std::lock_guard<std::mutex> lock(mutex);
+            status.phase = phase->phase;
+            baseText = phase->text;
+        }
+        // A refusal and a join are also logged, with more detail.
+        const bool saidElsewhere =
+            phase->phase == Phase::kRefused || phase->phase == Phase::kWrongRoom || phase->phase == Phase::kConnected;
+        if (!saidElsewhere && phase->text != lastPhaseNote) {
+            console.Append(ComboApConsole::NoticeLine(ComboApConsole::Level::kInfo, phase->text));
+        }
+        lastPhaseNote = phase->text;
     } else if (const auto* joined = std::get_if<ConnectedEvent>(&body)) {
         connected = true;
         sends.ResetForConnection(joined->serverChecked);
+        allLocations = joined->allLocations;
+        itemNames = joined->itemNames;
+        receivedList.clear();
+        readyAsked = false;
         receives.DropBuffered();
         reported = Reported::kNone;
         unmapped = 0;
         askSync = false;
     } else if (const auto* items = std::get_if<ItemsEvent>(&body)) {
         receives.Accept(items->items);
+        for (const ReceivedItem& item : items->items) {
+            if (item.index >= 0) {
+                receivedList.emplace(item.index, item);
+            }
+        }
+    } else if (const auto* printed = std::get_if<ConsoleEvent>(&body)) {
+        console.Append(printed->lines);
     } else if (const auto* checked = std::get_if<CheckedEvent>(&body)) {
         sends.NoteServerChecked(checked->names);
     } else if (std::holds_alternative<ClosedEvent>(body)) {
@@ -483,11 +644,86 @@ void Client::Impl::DrainEvents() {
         unmapped = 0;
         receives.DropBuffered();
         askSync = false;
+        lastPhaseNote.clear();
     }
     for (const Event& event : taken) {
         if (event.session == current) {
             Apply(event.body);
         }
+    }
+}
+
+void Client::Impl::DrainInputs() {
+    std::deque<std::string> taken;
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        taken.swap(inputs);
+    }
+    for (const std::string& text : taken) {
+        RunInput(text);
+    }
+}
+
+// One line the player typed: echoed when it is a command, then run or refused.
+void Client::Impl::RunInput(const std::string& text) {
+    using namespace ComboApConsole;
+    const ParsedInput input = ParseInput(text);
+    if (input.kind == InputKind::kEmpty) {
+        return;
+    }
+    if (input.kind == InputKind::kClient || input.say[0] == '!') {
+        console.Append(PlainLine("> " + (input.kind == InputKind::kClient ? Trimmed(text) : input.say), kEchoColor));
+    }
+    if (!connected && !WorksOffline(input)) {
+        console.Append(
+            NoticeLine(Level::kWarn, "Not connected. Use /connect [address] first; /help lists the commands."));
+        return;
+    }
+    if (input.kind == InputKind::kSay) {
+        QueueCommand(SayCommand{ input.say });
+        return;
+    }
+    RunClientCommand(input);
+}
+
+void Client::Impl::ListReceived(const std::string& filter) {
+    std::vector<ComboApConsole::ReceivedEntry> entries;
+    for (const auto& [index, item] : receivedList) {
+        entries.push_back({ index, item.itemName, item.flags, item.locationName, item.playerName });
+    }
+    console.Append(ComboApConsole::FormatReceived(entries, filter));
+}
+
+// The "/" commands, after Archipelago's CommonClient.py.
+void Client::Impl::RunClientCommand(const ComboApConsole::ParsedInput& input) {
+    using namespace ComboApConsole;
+    const std::string& name = input.command;
+    if (name == "help") {
+        console.Append(FormatHelp());
+    } else if (name == "connect") {
+        const auto [address, password] = SplitWord(input.args);
+        const std::string problem = game.ConsoleConnect(address, password);
+        if (!problem.empty()) {
+            console.Append(NoticeLine(Level::kWarn, problem));
+        }
+    } else if (name == "disconnect") {
+        game.ConsoleDisconnect();
+    } else if (name == "received") {
+        ListReceived(input.args);
+    } else if (name == "missing" || name == "checked") {
+        console.Append(FormatChecks(name == "checked", allLocations, sends.known(), input.args));
+    } else if (name == "items") {
+        console.Append(FormatNames("Item names for Ship2Ship", itemNames, input.args, "/items", kCyan));
+    } else if (name == "locations") {
+        console.Append(FormatNames("Location names for Ship2Ship", allLocations, input.args, "/locations", kGreen));
+    } else if (name == "ready") {
+        readyAsked = !readyAsked;
+        QueueCommand(StatusCommand{ readyAsked ? APClient::ClientStatus::READY : APClient::ClientStatus::CONNECTED });
+        console.Append(NoticeLine(Level::kInfo, readyAsked ? "Readied up." : "Unreadied."));
+    } else if (name == "clear") {
+        console.Clear();
+    } else {
+        console.Append(NoticeLine(Level::kWarn, "Unknown command /" + name + ". /help lists the commands."));
     }
 }
 
@@ -533,13 +769,12 @@ void Client::Impl::GrantItems(Clock::time_point now) {
         if (grantTarget.valid) {
             grants.push_back({ grantTarget.game, grantTarget.nativeName });
         } else if (warnedItems.insert(item.itemName).second) {
-            game.Log(LogLevel::kWarn, "[Archipelago] '" + item.itemName + "' is not a Ship2Ship item; skipped");
+            Report(LogLevel::kWarn, "'" + item.itemName + "' is not a Ship2Ship item; skipped");
         }
     }
     const int newIndex = receives.granted() + static_cast<int>(items.size());
     if (!game.GrantBatch(grants, newIndex)) {
-        game.Log(LogLevel::kWarn,
-                 "[Archipelago] could not give " + std::to_string(items.size()) + " received items; trying again");
+        Report(LogLevel::kWarn, "could not give " + std::to_string(items.size()) + " received items; trying again");
         grantRetryAt = now + kGrantRetryInterval;
         return;
     }
@@ -547,9 +782,9 @@ void Client::Impl::GrantItems(Clock::time_point now) {
     for (const ComboApSync::ToastText& toast : ComboApSync::PlanToasts(items)) {
         game.Toast(toast);
     }
-    game.Log(LogLevel::kInfo, "[Archipelago] gave " + std::to_string(grants.size()) + " items, now at " +
-                                  std::to_string(receives.granted()) +
-                                  (items.front().IsStartInventory() ? " (start inventory)" : ""));
+    Report(LogLevel::kInfo, "gave " + std::to_string(grants.size()) + " items, now at " +
+                                std::to_string(receives.granted()) +
+                                (items.front().IsStartInventory() ? " (start inventory)" : ""));
 }
 
 void Client::Impl::SendChecks(Clock::time_point now) {
@@ -568,7 +803,7 @@ void Client::Impl::ReportStatus() {
         if (reported != Reported::kGoal) {
             reported = Reported::kGoal;
             QueueCommand(StatusCommand{ APClient::ClientStatus::GOAL });
-            game.Log(LogLevel::kInfo, "[Archipelago] goal reached; telling the server");
+            Report(LogLevel::kInfo, "goal reached; telling the server");
         }
     } else if (reported == Reported::kNone) {
         reported = Reported::kPlaying;
@@ -593,6 +828,7 @@ void Client::Impl::PublishStatus() {
 
 void Client::Impl::Tick() {
     DrainEvents();
+    DrainInputs();
     const Clock::time_point now = Clock::now();
     if (now - lastTick < kTickInterval) {
         return;
@@ -632,6 +868,8 @@ void Client::Impl::Tick() {
 // ---- the public face ----
 
 Client::Client(GameLayer& game, Config config) : impl_(std::make_unique<Impl>(game, std::move(config))) {
+    impl_->console.Append(
+        ComboApConsole::NoticeLine(ComboApConsole::Level::kInfo, "Archipelago console. Type /help for the commands."));
     impl_->worker = std::thread([this] { impl_->WorkerMain(); });
 }
 
@@ -658,6 +896,9 @@ void Client::Connect(const Target& target) {
 
 void Client::Disconnect() {
     std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->wanted) {
+        impl_->console.Append(ComboApConsole::NoticeLine(ComboApConsole::Level::kInfo, "Disconnected."));
+    }
     impl_->wanted = false;
     ++impl_->session;
     impl_->events.clear();
@@ -668,6 +909,17 @@ void Client::Disconnect() {
 
 void Client::Tick() {
     impl_->Tick();
+}
+
+ComboApConsole::Log& Client::Console() {
+    return impl_->console;
+}
+
+void Client::SubmitInput(const std::string& text) {
+    std::lock_guard<std::mutex> lock(impl_->mutex);
+    if (impl_->inputs.size() < kMaxQueuedInputs) {
+        impl_->inputs.push_back(text);
+    }
 }
 
 Status Client::GetStatus() const {

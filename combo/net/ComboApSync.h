@@ -131,6 +131,10 @@ class SendLedger {
         return known_.size();
     }
 
+    const std::set<std::string>& known() const {
+        return known_;
+    }
+
   private:
     std::set<std::string> known_;
 };
@@ -150,10 +154,11 @@ std::vector<std::vector<T>> SplitIntoPackets(const std::vector<T>& all, size_t p
 // ---- receive ----
 
 struct ReceivedItem {
-    int index = -1;         // its place in this slot's list on the server, from 0
-    std::string itemName;   // the Archipelago name, e.g. "Progressive Hookshot (OoT)"
-    std::string playerName; // who found it
-    int64_t location = 0;   // where, or kStartInventoryLocation
+    int index = -1;           // its place in this slot's list on the server, from 0
+    std::string itemName;     // the Archipelago name, e.g. "Progressive Hookshot (OoT)"
+    std::string playerName;   // who found it
+    int64_t location = 0;     // where, or kStartInventoryLocation
+    std::string locationName; // the name of that location in the finder's game; "" for the start inventory
     unsigned flags = 0;
 
     bool IsStartInventory() const {

@@ -71,7 +71,7 @@ jobs:
         run: |
           $tests = 'combo_anchor_tests', 'comboDiscordTest', 'comboBackToBackTest', 'comboSharedHealthSlotsTest',
                    'comboSharedHealthTest', 'comboLauncherLogTest', 'comboOracleServerTest', 'comboPlaythroughTest',
-                   'comboApSeedTest', 'comboApSyncTest'
+                   'comboApSeedTest', 'comboApSyncTest', 'comboApConsoleTest'
           foreach ($test in $tests) {
             cmake --build build/x64 --target $test --config Release
             if ($LASTEXITCODE -ne 0) { throw "Building $test failed" }

@@ -50,7 +50,8 @@
 #endif
 
 namespace ComboRando {
-void RegisterBottleShelfWindow(); // ComboBottleShelfWindow.cpp
+void RegisterBottleShelfWindow();        // ComboBottleShelfWindow.cpp
+void RegisterArchipelagoConsoleWindow(); // ComboArchipelagoConsole.cpp
 } // namespace ComboRando
 
 namespace {
@@ -2222,6 +2223,7 @@ extern "C" COMBO_EXPORT void ComboUI_Register(void) {
     // Combo-native floating Anchor room window (toggled from the Anchor panel).
     ComboRando::RegisterAnchorRoomWindow();
     ComboRando::RegisterBottleShelfWindow(); // shared bottles: the Bottle Shelf
+    ComboRando::RegisterArchipelagoConsoleWindow();
 
     // (The "done once" flag is a sibling key, never "gCombo.DpadEquips.Init": a leaf and a subtree under one name can't
     // both exist in the nested config, and that clash silently stopped every config save.)

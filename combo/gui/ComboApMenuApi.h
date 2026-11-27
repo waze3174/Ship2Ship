@@ -37,12 +37,37 @@ typedef struct ComboApMenuState {
     char fileSlot[COMBO_AP_TEXT_MAX]; // the slot the file was generated for
 } ComboApMenuState;
 
+// The console's scrollback, one line at a time (combo/net/ComboApConsole.h). `color` is 0xAARRGGBB, or 0 for the
+// window's own text colour; the strings are valid only during the visit.
+typedef struct ComboApConsoleSpan {
+    uint32_t color;
+    const char* text;
+} ComboApConsoleSpan;
+
+typedef struct ComboApConsoleLine {
+    uint64_t sequence; // grows with every line added
+    int32_t spanCount;
+    const ComboApConsoleSpan* spans;
+} ComboApConsoleLine;
+
+typedef void (*ComboApConsoleVisitFn)(void* user, const ComboApConsoleLine* line);
+
 typedef struct ComboApMenuApi {
     void (*getState)(ComboApMenuState* out);
     // Saves the server and slot in the loaded file and connects. The password is used for this connection only.
     void (*connect)(const char* server, const char* slot, const char* password);
     // Disconnects and stops reconnecting when the file loads next time.
     void (*disconnect)(void);
+
+    // Changes whenever the console gained lines or was cleared.
+    uint64_t (*consoleRevision)(void);
+    // Calls `visit` for every line numbered after `afterSequence` (0 for all), oldest first, with the launcher's
+    // console locked: copy what you need. Returns 1 when lines already numbered `afterSequence` or less were cleared:
+    // drop them.
+    int32_t (*consoleVisit)(uint64_t afterSequence, ComboApConsoleVisitFn visit, void* user);
+    // A line the player typed: "!..." and chat go to the server, "/..." is a client command.
+    void (*consoleSubmit)(const char* text);
+    void (*consoleClear)(void);
 } ComboApMenuApi;
 
 #ifdef __cplusplus

@@ -3359,3 +3359,14 @@ refuses, and Settings > Online > Anchor co-op says so.
   (`comboApClientHarness`) against Archipelago's own `MultiServer.py` on 127.0.0.1: connect, send, receive in order, start
   inventory once, reconnect, restart, server restart, wrong room and slot, the goal, with a second websocket client
   recording what the server itself delivered.
+- **Console.** Settings > Online > Archipelago has a console like Archipelago's own text client
+  (`combo/gui/ComboArchipelagoConsole.cpp`; the text model is `combo/net/ComboApConsole.h` and `ComboApConsoleInput.h`,
+  unit-tested by `comboApConsoleTest`). Every `PrintJSON` message (and the older `Print`) is rendered on the worker thread
+  with the ids resolved through the data package, coloured as NetUtils.JSONtoTextParser colours them (own slot magenta,
+  other players yellow, items by flags plum, slate blue, salmon, cyan, locations green, entrances blue, `color` parts), made
+  safe (`SafeText`: controls, escape sequences, C1 and text-direction overrides) and handed to the game thread through the
+  event queue. The scrollback keeps 2000 lines. The input line sends `!` commands and chat as a `Say`; `/` commands
+  (`/help /connect /disconnect /received /missing /checked /items /locations /ready /clear`, after CommonClient.py) run on
+  the game thread in `Tick`. While disconnected only the connection commands work. The "Pop out" button opens the same
+  console as a window of its own; its state is the CVar `gCombo.Archipelago.ConsolePopOut` (not part of presets). The
+  password is never stored.

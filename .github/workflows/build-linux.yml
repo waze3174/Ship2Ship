@@ -117,6 +117,13 @@ jobs:
           cmake --build build-cmake --target comboApSyncTest -j 4
           ./build-cmake/combo/comboApSyncTest
 
+      # The Archipelago console's text model (server messages as coloured lines, the scrollback, wrapping, typed input):
+      # pure header code.
+      - name: Archipelago console unit tests (comboApConsoleTest)
+        run: |
+          cmake --build build-cmake --target comboApConsoleTest -j 4
+          ./build-cmake/combo/comboApConsoleTest
+
       # The playthrough walk and the requiredness pare-down against fake logic oracles: pure header code.
       - name: Playthrough unit tests (comboPlaythroughTest)
         run: |

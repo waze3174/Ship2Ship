@@ -2833,6 +2833,9 @@ static bool Combo_ApReady() {
     return playedState != nullptr && playedState(&played, 1) != 0 && played.inPlay != 0;
 }
 
+static std::string Combo_ApConsoleConnect(const std::string& address, const std::string& password);
+static void Combo_ApMenuDisconnect();
+
 class LauncherApGame final : public ComboArchipelago::GameLayer {
   public:
     ComboArchipelago::SaveRecord LoadedRecord() override {
@@ -2887,6 +2890,14 @@ class LauncherApGame final : public ComboArchipelago::GameLayer {
 
     void Toast(const ComboApSync::ToastText& toast) override {
         ComboAnchor::Toast(toast.prefix.c_str(), toast.message.c_str(), toast.suffix.c_str(), nullptr);
+    }
+
+    std::string ConsoleConnect(const std::string& address, const std::string& password) override {
+        return Combo_ApConsoleConnect(address, password);
+    }
+
+    void ConsoleDisconnect() override {
+        Combo_ApMenuDisconnect();
     }
 
     void Log(ComboArchipelago::LogLevel level, const std::string& line) override {
@@ -3066,12 +3077,70 @@ static void Combo_ApMenuDisconnect() {
     g_apRecord.autoConnect = false;
 }
 
+// The console's /connect: the file's saved server unless an address is given, the file's slot, and the password given
+// here or the one typed in the menu this session.
+static std::string Combo_ApConsoleConnect(const std::string& address, const std::string& password) {
+    ComboRando::ApFileRecord record;
+    {
+        std::lock_guard<std::mutex> lock(g_apRecordMutex);
+        if (g_apRecordSlot >= 0)
+            record = g_apRecord;
+    }
+    if (!record.valid)
+        return "No Archipelago file is loaded.";
+    const std::string server = address.empty() ? record.server : address;
+    if (server.empty())
+        return "No server is saved with this file: use /connect <address>.";
+    std::string pass = password;
+    if (pass.empty()) {
+        std::lock_guard<std::mutex> lock(g_apPasswordMutex);
+        pass = g_apSessionPassword;
+    }
+    const std::string slot = record.connectSlot.empty() ? record.slotName : record.connectSlot;
+    Combo_ApMenuConnect(server.c_str(), slot.c_str(), pass.c_str());
+    return "";
+}
+
+static uint64_t Combo_ApConsoleRevision() {
+    ComboArchipelago::Client* client = g_apClient.load();
+    return client != nullptr ? client->Console().Revision() : 0;
+}
+
+static int32_t Combo_ApConsoleVisit(uint64_t afterSequence, ComboApConsoleVisitFn visit, void* user) {
+    ComboArchipelago::Client* client = g_apClient.load();
+    if (client == nullptr || visit == nullptr)
+        return 0;
+    const bool dropped =
+        client->Console().Visit(afterSequence, [&](uint64_t sequence, const ComboApConsole::Line& line) {
+            std::vector<ComboApConsoleSpan> spans;
+            spans.reserve(line.spans.size());
+            for (const ComboApConsole::Span& span : line.spans)
+                spans.push_back({ span.color, span.text.c_str() });
+            const ComboApConsoleLine out = { sequence, static_cast<int32_t>(spans.size()), spans.data() };
+            visit(user, &out);
+        });
+    return dropped ? 1 : 0;
+}
+
+static void Combo_ApConsoleSubmit(const char* text) {
+    ComboArchipelago::Client* client = g_apClient.load();
+    if (client != nullptr && text != nullptr)
+        client->SubmitInput(text);
+}
+
+static void Combo_ApConsoleClear() {
+    if (ComboArchipelago::Client* client = g_apClient.load())
+        client->Console().Clear();
+}
+
 static_assert(static_cast<int>(ComboArchipelago::Phase::kOff) == COMBO_AP_PHASE_OFF &&
               static_cast<int>(ComboArchipelago::Phase::kConnecting) == COMBO_AP_PHASE_CONNECTING &&
               static_cast<int>(ComboArchipelago::Phase::kConnected) == COMBO_AP_PHASE_CONNECTED &&
               static_cast<int>(ComboArchipelago::Phase::kRefused) == COMBO_AP_PHASE_REFUSED &&
               static_cast<int>(ComboArchipelago::Phase::kWrongRoom) == COMBO_AP_PHASE_WRONG_ROOM);
-static ComboApMenuApi g_apMenuApi = { Combo_ApMenuGetState, Combo_ApMenuConnect, Combo_ApMenuDisconnect };
+static ComboApMenuApi g_apMenuApi = { Combo_ApMenuGetState,    Combo_ApMenuConnect,  Combo_ApMenuDisconnect,
+                                      Combo_ApConsoleRevision, Combo_ApConsoleVisit, Combo_ApConsoleSubmit,
+                                      Combo_ApConsoleClear };
 typedef void (*FnComboUISetArchipelagoApi)(const ComboApMenuApi*);
 static FnComboUISetArchipelagoApi ComboUI_SetArchipelagoApi = nullptr;
 

@@ -10,7 +10,9 @@
 //   failgrants 0|1             make the next grants fail, as a game that cannot take them
 //   file <key>                 load another file: its saved count is then the harness's state of that key
 //   connect | disconnect       the menu's buttons
+//   say <text>                 a line typed into the console: chat, a "!" server command or a "/" client command
 //   dump                       print one STATE line: the save, the grants and the client's status as JSON
+//   console                    print one CONSOLE line: the console's scrollback, each line as its coloured spans
 //   quit
 //
 // The fake save is a JSON file (--state), written with each grant exactly as the launcher writes the received index
@@ -101,6 +103,20 @@ class FakeGame final : public GameLayer {
         File()["toasts"].push_back(toast.prefix + " " + toast.message + " " + toast.suffix);
         std::cout << "TOAST " << toast.prefix << " " << toast.message << " " << toast.suffix << std::endl;
     }
+    std::string ConsoleConnect(const std::string& address, const std::string& password) override {
+        Target target = target_;
+        if (!address.empty()) {
+            target.server = address;
+        }
+        if (!password.empty()) {
+            target.password = password;
+        }
+        client_->Connect(target);
+        return "";
+    }
+    void ConsoleDisconnect() override {
+        client_->Disconnect();
+    }
     void Log(LogLevel level, const std::string& line) override {
         std::cout << "LOG "
                   << (level == LogLevel::kError  ? "error "
@@ -120,6 +136,11 @@ class FakeGame final : public GameLayer {
     }
     void SetFile(int key) {
         fileKey_ = key;
+    }
+    // The client and target the console's /connect and /disconnect act on.
+    void Attach(Client* client, const Target& target) {
+        client_ = client;
+        target_ = target;
     }
     void SetReady(bool ready) {
         ready_.store(ready);
@@ -160,6 +181,8 @@ class FakeGame final : public GameLayer {
     }
 
     Options options_;
+    Client* client_ = nullptr;
+    Target target_;
     json state_;
     int fileKey_ = 0;
     std::atomic<bool> ready_{ true };
@@ -183,6 +206,19 @@ json StatusJson(const Status& status) {
     return { { "phase", static_cast<int>(status.phase) }, { "text", status.text },
              { "receivedIndex", status.receivedIndex },   { "itemsWaiting", status.itemsWaiting },
              { "checksKnown", status.checksKnown },       { "checksUnmapped", status.checksUnmapped } };
+}
+
+// The console's scrollback as JSON: each line's plain text and its coloured spans.
+json ConsoleJson(Client& client) {
+    json lines = json::array();
+    client.Console().Visit(0, [&](uint64_t, const ComboApConsole::Line& line) {
+        json spans = json::array();
+        for (const ComboApConsole::Span& span : line.spans) {
+            spans.push_back({ { "color", span.color }, { "text", span.text } });
+        }
+        lines.push_back({ { "text", line.PlainText() }, { "spans", spans } });
+    });
+    return { { "lines", lines } };
 }
 
 bool ParseOptions(int argc, char** argv, Options& options) {
@@ -231,6 +267,7 @@ int main(int argc, char** argv) {
     config.certStorePath = options.certStorePath;
     Client client(game, config);
     const Target target{ options.server, options.slot, options.password, options.seedName };
+    game.Attach(&client, target);
     if (options.connectAtStart) {
         client.Connect(target);
     }
@@ -273,6 +310,11 @@ int main(int argc, char** argv) {
                 client.Connect(target);
             } else if (verb == "disconnect") {
                 client.Disconnect();
+            } else if (verb == "say") {
+                client.SubmitInput(rest);
+            } else if (verb == "console") {
+                std::cout << "CONSOLE " << ConsoleJson(client).dump(-1, ' ', false, json::error_handler_t::replace)
+                          << std::endl;
             } else if (verb == "dump") {
                 json out = { { "game", game.Dump() }, { "status", StatusJson(client.GetStatus()) } };
                 std::cout << "STATE " << out.dump() << std::endl;

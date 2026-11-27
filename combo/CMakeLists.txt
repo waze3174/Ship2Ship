@@ -54,6 +54,7 @@ set(COMBOUI_SOURCES
     gui/ComboBottleShelfWindow.cpp
     gui/ComboDiscordPanel.cpp
     gui/ComboArchipelagoPanel.cpp
+    gui/ComboArchipelagoConsole.cpp
 )
 add_library(comboui SHARED ${COMBOUI_SOURCES})
 set_target_properties(comboui PROPERTIES PREFIX "")
@@ -225,6 +226,12 @@ target_link_libraries(comboApSeedCheck PRIVATE nlohmann_json::nlohmann_json)
 add_executable(comboApSyncTest EXCLUDE_FROM_ALL tests/ComboApSyncTest.cpp)
 target_include_directories(comboApSyncTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 target_link_libraries(comboApSyncTest PRIVATE nlohmann_json::nlohmann_json)
+
+# Unit tests for the Archipelago console's text model (net/ComboApConsole.h, net/ComboApConsoleInput.h): how server messages
+# render, the scrollback, wrapping, typed input. Header code, no game DLL and no network. Build with
+# `cmake --build <dir> --target comboApConsoleTest`, then run the exe.
+add_executable(comboApConsoleTest EXCLUDE_FROM_ALL tests/ComboApConsoleTest.cpp)
+target_include_directories(comboApConsoleTest PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 # The real Archipelago client over a fake game, for scripts/ap/client_e2e.py (a local Archipelago server): `comboApClientHarness
 # --slot <name> --seed-name <room>`, commands on stdin. See tests/ComboApClientHarness.cpp.

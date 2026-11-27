@@ -18,6 +18,7 @@
 #include <string>
 #include <vector>
 
+#include "ComboApConsole.h"
 #include "ComboApSync.h"
 
 namespace ComboArchipelago {
@@ -70,6 +71,12 @@ class GameLayer {
 
     virtual void Toast(const ComboApSync::ToastText& toast) = 0;
     virtual void Log(LogLevel level, const std::string& line) = 0;
+
+    // The console's /connect and /disconnect: the game side saves the connection with the file and calls
+    // Client::Connect or Disconnect, as the menu's buttons do. `address` is empty to use the one saved with the file.
+    // Returns why it could not connect, or "".
+    virtual std::string ConsoleConnect(const std::string& address, const std::string& password) = 0;
+    virtual void ConsoleDisconnect() = 0;
 };
 
 enum class Phase {
@@ -108,6 +115,13 @@ class Client {
 
     // Once per game frame, on the game thread: cheap between its own intervals.
     void Tick();
+
+    // The console's scrollback: what the server prints and what the client says. Thread-safe.
+    ComboApConsole::Log& Console();
+
+    // A line the player typed into the console ("!hint Bow", chat, or a "/" command). Thread-safe; it is run by the
+    // next Tick, on the game thread.
+    void SubmitInput(const std::string& text);
 
     Status GetStatus() const;
     Target GetTarget() const;

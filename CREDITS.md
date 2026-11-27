@@ -45,6 +45,10 @@ projects.
   [Updated-2S2H-Archipelago](https://github.com/junkx420/Updated-2S2H-Archipelago) (`client` branch, `69cc318`, CC0) and
   [Updated-SoH-Archipelago](https://github.com/junkx420/Updated-SoH-Archipelago) (`client` branch, `c0e2cc3`, no license
   file, so only read for the protocol: none of its code is included). The same versions of the libraries are pinned.
+- **The Archipelago console** ([`combo/net/ComboApConsole.h`](combo/net/ComboApConsole.h),
+  [`combo/net/ComboApConsoleInput.h`](combo/net/ComboApConsoleInput.h)) follows the text client of
+  [Archipelago](https://github.com/ArchipelagoMW/Archipelago) (MIT; `NetUtils.py`, `kvui.py` and `CommonClient.py` at the
+  pinned core `2c64ef4`): the message colours and their palette, and the `/` commands. No code is copied.
 - **[MMRecompRando](https://github.com/RecompRando/MMRecompRando)**: the idea of walking back out of the Clock Tower
   to the Lost Woods. Only the idea is used; no code from it is included.
 
