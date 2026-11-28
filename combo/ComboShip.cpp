@@ -2921,12 +2921,28 @@ static std::unique_ptr<ComboArchipelago::Client> g_apClientOwner;
 static std::mutex g_apClientCreateMutex;
 static std::mutex g_apTickMutex;
 
+// The CA roots shipped for wss:// (combo/net/ComboApTls.h): beside the exe, or in a macOS app's Resources folder.
+// Empty when they are not there; the system's roots are then all there is.
+static std::string Combo_ApBundledRootsPath() {
+    constexpr const char* kFileName = "cacert.pem";
+    const std::filesystem::path exeDir = ComboExeDir();
+    std::error_code ec;
+    for (const std::filesystem::path& candidate :
+         { exeDir / kFileName, exeDir.parent_path() / "Resources" / kFileName }) {
+        if (!exeDir.empty() && std::filesystem::is_regular_file(candidate, ec)) {
+            return candidate.string();
+        }
+    }
+    return {};
+}
+
 // The client is created when the first Archipelago file loads, so a launcher that never sees one runs no thread.
 static ComboArchipelago::Client& Combo_ApClient() {
     std::lock_guard<std::mutex> lock(g_apClientCreateMutex);
     if (g_apClientOwner == nullptr) {
         ComboArchipelago::Config config;
         config.cacheDirectory = (ComboRando::DataDir() / "archipelago").string();
+        config.certStorePath = Combo_ApBundledRootsPath();
         g_apClientOwner = std::make_unique<ComboArchipelago::Client>(g_apGame, config);
         g_apClient.store(g_apClientOwner.get());
     }
@@ -5640,7 +5656,24 @@ static void ComboReportFatalBootError(const std::string& message) {
     ComboShowMessageBox(message);
 }
 
+// `Ship2Ship --ap-tls-probe <host:port> [--verify-host <name>]`: one TLS handshake with the Archipelago client's own
+// certificate checks, its result on stdout and as the exit code (ComboArchipelago::RunTlsProbe), without starting the
+// games. The CI runs it on the packaged build, so the shipped OpenSSL and CA roots are what is tested.
+static bool Combo_RunTlsProbeFlag(int argc, char** argv, int& exitCode) {
+    constexpr const char* kProbeFlag = "--ap-tls-probe";
+    constexpr const char* kVerifyHostFlag = "--verify-host";
+    if (argc < 3 || std::string(argv[1]) != kProbeFlag) {
+        return false;
+    }
+    const std::string verifyHost = argc >= 5 && std::string(argv[3]) == kVerifyHostFlag ? argv[4] : "";
+    exitCode = ComboArchipelago::RunTlsProbe(argv[2], verifyHost, Combo_ApBundledRootsPath(), std::cout);
+    return true;
+}
+
 int main(int argc, char** argv) {
+    if (int probeExitCode = 0; Combo_RunTlsProbeFlag(argc, argv, probeExitCode)) {
+        return probeExitCode;
+    }
     ComboLog::Info() << "Ship2Ship Launcher - Starting...";
 
 #ifdef _WIN32

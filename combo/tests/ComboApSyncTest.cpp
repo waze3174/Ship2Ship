@@ -256,6 +256,16 @@ void TestAnAddressThatCannotBeUsedSaysWhy() {
     CHECK(ServerAddressProblem("localhost:38281", true).empty());
 }
 
+void TestACertificateRefusalIsRecognisedAndShortened() {
+    const std::string refusal = std::string(kCertificateRefusalPrefix) + ": self-signed certificate" +
+                                kTrustedRootsNote + "the Windows certificate store, cacert.pem)";
+    CHECK(IsCertificateRefusal(refusal));
+    CHECK(CertificateRefusalReason(refusal) == "certificate could not be verified: self-signed certificate");
+    CHECK(!IsCertificateRefusal("TLS handshake failed"));
+    CHECK(!IsCertificateRefusal(""));
+    CHECK(CertificateRefusalReason("certificate could not be verified") == "certificate could not be verified");
+}
+
 // ---- toasts ----
 
 void TestToastsNameTheItemAndThePlayerSafely() {
@@ -316,6 +326,7 @@ int main() {
     TestAnItemsGameAndNativeNameComeFromItsTag();
     TestABareAddressIsPlainUnlessTlsIsBuiltIn();
     TestAnAddressThatCannotBeUsedSaysWhy();
+    TestACertificateRefusalIsRecognisedAndShortened();
     TestToastsNameTheItemAndThePlayerSafely();
     TestABurstShowsAFewToastsAndASummary();
     TestTheStartInventoryShowsNoToasts();

@@ -3,9 +3,10 @@
   client_e2e.py --ap-core <Archipelago folder> --harness <comboApClientHarness.exe> --ids <ids.json> --work <folder>
                 [--two <AP_x.zip of two Ship2Ship slots>] [--start-inventory <AP_x.zip of a solo slot with a start
                 inventory>] [--mixed <AP_x.zip of Ship2Ship + APQuest>] [--port 38299]
+                [--wss [--openssl openssl]]
 
 Run it with the Python of the Archipelago venv (it needs the `websockets` package). The server is Archipelago's own
-MultiServer.py, bound to 127.0.0.1 only and stopped when the script ends. Each Ship2Ship slot is the real client
+MultiServer.py, bound to the loopback range (127.x.x.x) only and stopped when the script ends. Each Ship2Ship slot is the real client
 (combo/net/ComboArchipelago.cpp) over a fake game (combo/tests/ComboApClientHarness.cpp); an extra websocket client
 connects as the same slot and records what the server itself delivered, so the harness is checked against the server's
 own list and not only against itself.
@@ -66,12 +67,13 @@ def wait_until(predicate, timeout=TIMEOUT, interval=0.1):
 
 
 class Server:
-    """Archipelago's MultiServer on 127.0.0.1, one multidata, with a savefile so it can be restarted."""
+    """Archipelago's MultiServer on a loopback address, one multidata, with a savefile so it can be restarted."""
 
-    def __init__(self, python, core, multidata, port, log, extra=()):
-        self.cmd = [python, "MultiServer.py", "--host", "127.0.0.1", "--port", str(port), *extra, str(multidata)]
+    def __init__(self, python, core, multidata, port, log, extra=(), host="127.0.0.1"):
+        self.cmd = [python, "MultiServer.py", "--host", host, "--port", str(port), *extra, str(multidata)]
         self.core = core
         self.log = pathlib.Path(log)
+        self.host = host
         self.port = port
         self.process = None
 
@@ -79,7 +81,7 @@ class Server:
         self.log.parent.mkdir(parents=True, exist_ok=True)
         out = open(self.log, "ab")
         self.process = subprocess.Popen(self.cmd, cwd=self.core, stdout=out, stderr=subprocess.STDOUT)
-        listening = f"server listening on 127.0.0.1:{self.port}"
+        listening = f"server listening on {self.host}:{self.port}"
         if not wait_until(lambda: listening in self.log.read_text(errors="replace"), SERVER_START_TIMEOUT, 0.5):
             raise RuntimeError("the server did not start; see " + str(self.log))
 
@@ -576,13 +578,24 @@ def test_mixed(args, ids, check, work):
         server.stop()
 
 
+def make_certificate(openssl, folder, name, address):
+    """A self-signed certificate for the IP address `address` (and its key): (certificate path, key path)."""
+    folder = pathlib.Path(folder)
+    folder.mkdir(parents=True, exist_ok=True)
+    cert, key = folder / f"{name}.pem", folder / f"{name}.key"
+    subprocess.run([openssl, "req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", str(key), "-out", str(cert),
+                    "-days", "2", "-subj", f"/CN={name}", "-addext", f"subjectAltName=IP:{address}"],
+                   check=True, capture_output=True)
+    return cert, key
+
+
 def test_wss(args, ids, check, work):
     """wss:// against MultiServer's own TLS support, with a throwaway certificate.
 
     wswrap does not verify the certificate of a loopback address (localhost, 127.0.0.1, ::1), so this proves the TLS
-    handshake and the protocol over it, not the certificate check."""
+    handshake and the protocol over it, not the certificate check (test_wss_verification does)."""
     room = Room(args.start_inventory, work / "wss", ids)
-    cert, key = pathlib.Path(args.tls_cert), pathlib.Path(args.tls_key)
+    cert, key = make_certificate(args.openssl, work / "wss-certs", "loopback", "127.0.0.1")
     server = Server(args.python, args.ap_core, room.multidata, args.port, work / "wss-server.log",
                     ("--cert", str(cert), "--cert_key", str(key)))
     slot = next(iter(room.seeds))
@@ -606,6 +619,45 @@ def test_wss(args, ids, check, work):
         server.stop()
 
 
+def test_wss_verification(args, ids, check, work):
+    """The certificate checks of a wss:// connection to a server that is not "localhost".
+
+    The server is bound to 127.0.0.2, which wswrap does not treat as this machine, so the real client verifies the chain
+    and the host exactly as it does for archipelago.gg. Three servers: a certificate for 127.0.0.2 that the client has
+    been given, one it has not been given, and a trusted certificate that is for another address."""
+    room = Room(args.start_inventory, work / "wss-verify", ids)
+    slot = next(iter(room.seeds))
+    address, other_address = "127.0.0.2", "127.0.0.3"
+    cases = (
+        ("a certificate the client trusts and that is for the address", address, True, PHASE_CONNECTED, None),
+        ("a certificate nothing trusts", address, False, None, "self-signed certificate"),
+        ("a trusted certificate that is for another address", other_address, True, None, "it is not for " + address),
+    )
+    for index, (name, certificate_address, trusted, wanted_phase, wanted_reason) in enumerate(cases):
+        cert, key = make_certificate(args.openssl, work / "wss-certs", f"verify-{index}", certificate_address)
+        server = Server(args.python, args.ap_core, room.multidata, args.port, work / f"wss-verify-{index}.log",
+                        ("--cert", str(cert), "--cert_key", str(key)), host=address)
+        extra = ("--cert-store", str(cert)) if trusted else ()
+        client = None
+        try:
+            server.start()
+            client = Harness(args.harness, slot, room.seed_name, f"wss://{address}:{args.port}",
+                             work / f"wss-verify-{index}.json", work / "cache", extra=extra)
+            if wanted_phase is not None:
+                check(f"connects with {name}", wait_until(lambda: client.phase() == wanted_phase),
+                      str(client.dump()["status"]))
+                continue
+            shown = wait_until(lambda: wanted_reason in client.dump()["status"]["text"], 20)
+            check(f"is refused with {name}, and the status says why", shown, str(client.dump()["status"]))
+            check("and the certificate message is in the console",
+                  client.console_has("certificate could not be verified"))
+            check("and it stops there, without a plain ws:// retry", client.phase() == PHASE_REFUSED)
+        finally:
+            if client:
+                client.quit()
+            server.stop()
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--ap-core", required=True)
@@ -616,8 +668,9 @@ def main():
     parser.add_argument("--start-inventory", help="the zip of one slot whose start inventory is Lens of Truth and the "
                                                   "Progressive Hookshot")
     parser.add_argument("--mixed")
-    parser.add_argument("--tls-cert", help="a PEM certificate (and --tls-key its key) for the wss:// suite")
-    parser.add_argument("--tls-key")
+    parser.add_argument("--wss", action="store_true",
+                        help="also run the wss:// suites (they need --start-inventory); certificates are made with openssl")
+    parser.add_argument("--openssl", default="openssl")
     parser.add_argument("--port", type=int, default=38299)
     parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
@@ -633,8 +686,9 @@ def main():
         suites.append(("start inventory", test_start_inventory))
     if args.mixed:
         suites.append(("Ship2Ship with another game", test_mixed))
-    if args.tls_cert and args.tls_key and args.start_inventory:
+    if args.wss and args.start_inventory:
         suites.append(("wss://", test_wss))
+        suites.append(("wss:// certificate checks", test_wss_verification))
     for name, suite in suites:
         print(f"== {name}", flush=True)
         try:

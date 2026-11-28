@@ -37,7 +37,7 @@ STAGE="$OUT/stage"
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
 cp -L "$DEPLOY/Ship2Ship" "$DEPLOY/comborando" "$DEPLOY/comboui.so" "$DEPLOY/libsoh.so" \
-      "$DEPLOY/lib2ship.so" "$DEPLOY/libultraship.so" "$STAGE/"
+      "$DEPLOY/lib2ship.so" "$DEPLOY/libultraship.so" "$DEPLOY/cacert.pem" "$STAGE/"
 cp -r "$DEPLOY/assets" "$STAGE/"
 for d in mods presets randomizer; do
     if [ -d "$DEPLOY/$d" ]; then cp -r "$DEPLOY/$d" "$STAGE/"; fi

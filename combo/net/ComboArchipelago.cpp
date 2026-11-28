@@ -14,6 +14,9 @@
 #include "ComboArchipelago.h"
 
 #include "ComboApConsoleInput.h"
+#ifdef SHIP2SHIP_AP_TLS
+#include "ComboApTls.h"
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -45,6 +48,13 @@ constexpr auto kLocationPollInterval = 500ms;
 constexpr auto kGrantRetryInterval = 3s; // after a grant the game could not make
 constexpr auto kWorkerStep = 20ms;
 constexpr size_t kMaxQueuedInputs = 64; // lines typed into the console and not run yet
+constexpr auto kTlsProbeTimeout = 15s;
+// Exit codes of the TLS probe (RunTlsProbe), which the CI scripts read.
+constexpr int kProbeVerified = 0;
+constexpr int kProbeRefused = 1;
+constexpr int kProbeUnreachable = 2;
+constexpr int kProbeUsage = 3;
+constexpr int kProbeNotBuilt = 4;
 
 // The room's data package, kept per game and checksum so a room already visited costs no download.
 class FileDataPackageStore final : public APDataPackageStore {
@@ -429,11 +439,26 @@ class Session {
         Halt(Phase::kRefused, "Refused: " + RefusalText(errors, target_.slotName));
     }
 
+    // A certificate that is not accepted ends the attempt: retrying would only ask the same server again, and
+    // apclientpp's next try for an address without a scheme is plain ws://, which would send the password unencrypted
+    // to whoever answered. The status says why; the console has the full reason, with the roots that were trusted.
+    void RefuseCertificate(const std::string& message) {
+        halted_ = true;
+        Announce(Phase::kRefused,
+                 "The server's " + ComboApSync::CertificateRefusalReason(message) + ". Not connecting.");
+        Log(LogLevel::kError,
+            "The server's " + message + ". Not connecting: type ws:// before the address to connect without TLS.");
+    }
+
     void OnSocketError(const std::string& message) {
         if (message == lastError_) {
             return;
         }
         lastError_ = message;
+        if (ComboApSync::IsCertificateRefusal(message)) {
+            RefuseCertificate(message);
+            return;
+        }
         Announce(Phase::kConnecting, "Cannot reach the server (" + message + "); retrying");
         Log(LogLevel::kWarn, "socket error: " + message, false);
     }
@@ -932,6 +957,35 @@ Target Client::GetTarget() const {
     Target copy = impl_->target;
     copy.password.clear();
     return copy;
+}
+
+int RunTlsProbe(const std::string& hostPort, const std::string& verifyHost, const std::string& bundledRoots,
+                std::ostream& out) {
+#ifdef SHIP2SHIP_AP_TLS
+    const size_t colon = hostPort.rfind(':');
+    if (colon == std::string::npos || colon == 0 || colon + 1 == hostPort.size()) {
+        out << "usage: <host>:<port>\n";
+        return kProbeUsage;
+    }
+    const ComboApTls::ProbeResult result = ComboApTls::Probe(hostPort.substr(0, colon), hostPort.substr(colon + 1),
+                                                             bundledRoots, verifyHost, kTlsProbeTimeout);
+    switch (result.outcome) {
+        case ComboApTls::ProbeOutcome::kVerified:
+            out << "TLS OK: " << result.text << "\n";
+            return kProbeVerified;
+        case ComboApTls::ProbeOutcome::kRefused:
+            out << "TLS REFUSED: " << result.text << "\n";
+            return kProbeRefused;
+        case ComboApTls::ProbeOutcome::kUnreachable:
+            break;
+    }
+    out << "TLS UNREACHABLE: " << result.text << "\n";
+    return kProbeUnreachable;
+#else
+    (void)hostPort, (void)verifyHost, (void)bundledRoots;
+    out << "this build has no TLS support\n";
+    return kProbeNotBuilt;
+#endif
 }
 
 bool Client::TlsAvailable() {

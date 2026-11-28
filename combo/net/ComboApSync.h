@@ -101,6 +101,21 @@ inline std::string ServerAddressProblem(const std::string& normalized, bool tlsA
     return "";
 }
 
+// ---- a refused certificate ----
+
+// What a wss:// connection says when the server's certificate is not accepted: "<prefix>: <reason><roots note><roots>)"
+// (written by combo/net/ComboApTls.h). The status line shows the reason; the console has the whole text.
+inline constexpr const char* kCertificateRefusalPrefix = "certificate could not be verified";
+inline constexpr const char* kTrustedRootsNote = " (trusted roots: ";
+
+inline bool IsCertificateRefusal(const std::string& socketError) {
+    return socketError.rfind(kCertificateRefusalPrefix, 0) == 0;
+}
+
+inline std::string CertificateRefusalReason(const std::string& refusal) {
+    return refusal.substr(0, refusal.find(kTrustedRootsNote));
+}
+
 // ---- send ----
 
 class SendLedger {

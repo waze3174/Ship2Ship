@@ -15,6 +15,7 @@
 
 #include <cstdint>
 #include <memory>
+#include <ostream>
 #include <string>
 #include <vector>
 
@@ -98,7 +99,7 @@ struct Status {
 
 struct Config {
     std::string cacheDirectory; // the data packages of the rooms visited are kept here
-    std::string certStorePath;  // a CA bundle for wss://; empty uses the system's
+    std::string certStorePath;  // a CA bundle trusted for wss:// in addition to the system's roots (ComboApTls.h)
 };
 
 class Client {
@@ -134,5 +135,13 @@ class Client {
   private:
     std::unique_ptr<Impl> impl_;
 };
+
+// One TLS handshake with `hostPort` ("archipelago.gg:443"), checking the certificate chain and the host name the way a
+// wss:// connection does, with the same roots (the system's and `bundledRoots`). `verifyHost`, when not empty, is the
+// name the certificate must be valid for instead of the host connected to (a deliberately wrong one makes the probe
+// fail). Writes one line to `out` and returns the exit code the CI scripts read: 0 verified, 1 certificate refused, 2
+// no answer (no network), 3 bad argument, 4 this build has no TLS.
+int RunTlsProbe(const std::string& hostPort, const std::string& verifyHost, const std::string& bundledRoots,
+                std::ostream& out);
 
 } // namespace ComboArchipelago

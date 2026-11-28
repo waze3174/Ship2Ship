@@ -309,6 +309,11 @@ else()
     )
 endif()
 
+# The CA roots wss:// falls back on (combo/net/ComboApTls.h) sit beside the exe, where the launcher looks for them.
+add_custom_command(TARGET Ship2Ship POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different ${SHIP2SHIP_CA_BUNDLE} $<TARGET_FILE_DIR:Ship2Ship>/cacert.pem
+)
+
 # The exe and every game module land in one deploy dir (x64/<config> on Windows via the output-dir
 # pinning above; the combo build dir elsewhere via the module copies above), so only the asset
     # tree and the PORT/custom .o2r archives need deploying. $<TARGET_FILE_DIR:Ship2Ship> == x64/<config>,
@@ -412,6 +417,7 @@ endif()
 # drop a duplicate copy into Contents/Resources (CPack's Bundle install prefix).
 if(NOT APPLE)
     install(TARGETS Ship2Ship DESTINATION . COMPONENT combo)
+    install(FILES "${SHIP2SHIP_CA_BUNDLE}" DESTINATION . COMPONENT combo)
     # The Archipelago world's oracle (`comborando --oracle`) runs from the install folder. OPTIONAL: it is built on
     # request (EXCLUDE_FROM_ALL), and a package made without it is the game as before.
     install(TARGETS comborando DESTINATION . COMPONENT combo OPTIONAL)

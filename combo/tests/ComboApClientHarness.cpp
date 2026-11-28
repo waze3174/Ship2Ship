@@ -15,6 +15,9 @@
 //   console                    print one CONSOLE line: the console's scrollback, each line as its coloured spans
 //   quit
 //
+// `comboApClientHarness --tls-probe <host:port> [--verify-host <name>] [--cert-store ca.pem]` instead runs one TLS
+// handshake with the client's own certificate checks (RunTlsProbe) and exits with its code: the CI's certificate test.
+//
 // The fake save is a JSON file (--state), written with each grant exactly as the launcher writes the received index
 // with a grant, so a second run of the harness on the same file is a restart of the game.
 #include "net/ComboArchipelago.h"
@@ -49,6 +52,8 @@ struct Options {
     std::string statePath;
     std::string cacheDirectory;
     std::string certStorePath;
+    std::string tlsProbe;
+    std::string verifyHost;
     bool connectAtStart = true;
 };
 
@@ -239,6 +244,10 @@ bool ParseOptions(int argc, char** argv, Options& options) {
             options.cacheDirectory = next();
         } else if (arg == "--cert-store") {
             options.certStorePath = next();
+        } else if (arg == "--tls-probe") {
+            options.tlsProbe = next();
+        } else if (arg == "--verify-host") {
+            options.verifyHost = next();
         } else if (arg == "--no-connect") {
             options.connectAtStart = false;
         } else {
@@ -246,9 +255,11 @@ bool ParseOptions(int argc, char** argv, Options& options) {
             return false;
         }
     }
-    if (options.slot.empty()) {
-        std::cerr << "usage: comboApClientHarness --slot <name> --seed-name <room> [--server ws://127.0.0.1:38281] "
-                     "[--state file] [--cache dir] [--password p] [--cert-store ca.pem] [--no-connect]\n";
+    if (options.slot.empty() && options.tlsProbe.empty()) {
+        std::cerr
+            << "usage: comboApClientHarness --slot <name> --seed-name <room> [--server ws://127.0.0.1:38281] "
+               "[--state file] [--cache dir] [--password p] [--cert-store ca.pem] [--no-connect]\n"
+               "       comboApClientHarness --tls-probe <host:port> [--verify-host <name>] [--cert-store ca.pem]\n";
         return false;
     }
     return true;
@@ -260,6 +271,9 @@ int main(int argc, char** argv) {
     Options options;
     if (!ParseOptions(argc, argv, options)) {
         return 2;
+    }
+    if (!options.tlsProbe.empty()) {
+        return RunTlsProbe(options.tlsProbe, options.verifyHost, options.certStorePath, std::cout);
     }
     FakeGame game(options);
     Config config;
