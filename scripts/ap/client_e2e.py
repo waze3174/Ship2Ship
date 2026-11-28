@@ -675,7 +675,8 @@ def main():
     parser.add_argument("--python", default=sys.executable)
     args = parser.parse_args()
     ids = json.loads(pathlib.Path(args.ids).read_text())
-    work = pathlib.Path(args.work)
+    # The server runs from the Archipelago folder, so every path handed to it (multidata, certificates) must be absolute.
+    work = pathlib.Path(args.work).resolve()
     work.mkdir(parents=True, exist_ok=True)
     check = Check()
     suites = []
