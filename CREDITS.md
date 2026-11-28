@@ -44,7 +44,13 @@ projects.
   client receives items and sends checks follows junkx420's Archipelago clients,
   [Updated-2S2H-Archipelago](https://github.com/junkx420/Updated-2S2H-Archipelago) (`client` branch, `69cc318`, CC0) and
   [Updated-SoH-Archipelago](https://github.com/junkx420/Updated-SoH-Archipelago) (`client` branch, `c0e2cc3`, no license
-  file, so only read for the protocol: none of its code is included). The same versions of the libraries are pinned.
+  file, so only read for the protocol: none of its code is included). The same versions of the libraries are pinned,
+  except wswrap, whose copy in [`combo/net/wswrap`](combo/net/wswrap) (commit `d0505e0`) is changed to verify the server's
+  certificate and host name.
+- **`wss://` connections** (rooms on archipelago.gg) use [OpenSSL](https://www.openssl.org/) (Apache-2.0), and trust the
+  system's certificate roots plus [`combo/net/cacert/cacert.pem`](combo/net/cacert/cacert.pem): the CA list that
+  [curl](https://curl.se/docs/caextract.html) extracts from Mozilla's, under the Mozilla Public License 2.0 (Mozilla data as
+  of 2026-11-05, SHA-256 `427c064216761a1e72a8b30f0d954d08cb6e4435a82091fb865afd20c8497285`), shipped unchanged.
 - **The Archipelago console** ([`combo/net/ComboApConsole.h`](combo/net/ComboApConsole.h),
   [`combo/net/ComboApConsoleInput.h`](combo/net/ComboApConsoleInput.h)) follows the text client of
   [Archipelago](https://github.com/ArchipelagoMW/Archipelago) (MIT; `NetUtils.py`, `kvui.py` and `CommonClient.py` at the

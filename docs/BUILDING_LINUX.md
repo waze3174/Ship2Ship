@@ -43,13 +43,16 @@ sudo apt-get install -y \
     libusb-dev libusb-1.0-0-dev libsdl2-dev libsdl2-net-dev libpng-dev libglew-dev \
     nlohmann-json3-dev libtinyxml2-dev libspdlog-dev \
     libogg-dev libopus-dev opus-tools libopusfile-dev libvorbis-dev \
-    libzip-dev zipcmp zipmerge ziptool
+    libzip-dev zipcmp zipmerge ziptool libssl-dev
 ```
+
+`libssl-dev` is for the Archipelago client's `wss://` support; its static libraries are linked into `Ship2Ship`, so the
+built game does not depend on the host's libssl. Configure with `-DSHIP2SHIP_AP_TLS=OFF` to build without it.
 
 Ubuntu 22.04 (jammy) is not supported: the build expects noble's SDL 2.30.x and
 tinyxml2 10.x. Other distros need the equivalent `-dev` packages (SDL2 ≥ 2.30,
 tinyxml2 10, spdlog, fmt, GLEW, libzip, nlohmann-json, ogg/opus/opusfile/vorbis,
-libpng, libusb).
+libpng, libusb, OpenSSL).
 
 ### Build
 

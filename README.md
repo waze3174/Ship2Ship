@@ -69,7 +69,9 @@ The file-select screen labels each slot with its mode: `S2S`, `COMBO`, `OOTR`, `
 - Discord status: the game, area, checks and co-op room, shown through the Discord desktop app. It's on by default,
   and you can turn it off in Settings > Online > Discord.
 
-**Not yet:** Archipelago (being built for 0.3.0), and WomboComboShip's synced co-op enemies.
+- **Archipelago**, including rooms on archipelago.gg. See [Archipelago](#archipelago) below.
+
+**Not yet:** WomboComboShip's synced co-op enemies.
 
 ## Getting started
 
@@ -94,6 +96,44 @@ The file-select screen labels each slot with its mode: `S2S`, `COMBO`, `OOTR`, `
 - **Linux AppImage and Steam Deck:** a `Ship2Ship-data/` folder next to the AppImage, which holds the saves,
   settings, mods and game archives. Run `chmod +x` on the AppImage first. To keep the data somewhere else, set
   `SHIP_HOME`.
+
+## Archipelago
+
+Ship2Ship is an [Archipelago](https://archipelago.gg/) game: one slot plays both games, with the cross-game logic of the
+randomizer. Items other players find for you arrive in either game, and the checks you open are sent to the room.
+
+1. **Get the world.** Every release has `ship2ship.apworld`. Put it in the `custom_worlds` folder of your
+   Archipelago install. Generating needs Archipelago 0.6.9 or newer.
+2. **Tell Archipelago where Ship2Ship is.** Open Archipelago's `host.yaml` and set the path of `comborando`, which sits
+   in the Ship2Ship folder next to the game libraries (on Linux, run the AppImage once with `--appimage-extract` and use
+   the `comborando` in `squashfs-root/usr/bin`):
+
+   ```yaml
+   ship2ship_options:
+     comborando_path: C:/Ship2Ship/comborando.exe
+   ```
+
+3. **Generate** as for any Archipelago game, with a `Ship2Ship.yaml` from "Generate Template Options". Generating
+   starts `comborando`, so it happens on a machine that has Ship2Ship, and takes a few minutes per Ship2Ship slot. No ROMs
+   are needed to generate. The result can be hosted on archipelago.gg or run on your own server.
+4. **Load your slot's seed.** The output has `AP_<seed>_P<n>_<slot>.ship2ship.json`. In Ship2Ship, drop it on the window or
+   use Combo > Randomizer > Load seed file..., then start a new Randomizer file.
+5. **Connect.** Open Settings > Online > Archipelago, enter the server (`archipelago.gg:12345`, or `localhost:38281`),
+   your slot name and the password if the room has one, and press Connect. The server and slot are saved with the file;
+   the password is not.
+
+The same section has the console: the room's chat and messages in Archipelago's colours, `!` commands such as `!hint`,
+and a pop-out window.
+
+`wss://` (archipelago.gg) is checked properly: the server's certificate has to chain to a trusted root and be valid for the
+address you typed, or the client says "certificate could not be verified" and why, in the console and on the status line,
+and stops, with no plain `ws://` fallback. Roots come from your system (Windows' store; Linux's bundle, or `SSL_CERT_FILE` /
+`SSL_CERT_DIR`) and from `cacert.pem` beside the game, which is all macOS has. A server on your own machine
+(`localhost`, `127.0.0.1`) is not checked, as a self-hosted one has a certificate of its own making. To test a build:
+`Ship2Ship --ap-tls-probe archipelago.gg:443` does one handshake and exits with 0 when the certificate is accepted.
+
+More in [`apworld/ship2ship/docs/setup_en.md`](apworld/ship2ship/docs/setup_en.md) and
+[`docs/deviations/archipelago.md`](docs/deviations/archipelago.md).
 
 ## Building it yourself
 

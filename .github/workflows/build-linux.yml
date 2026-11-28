@@ -49,7 +49,7 @@ jobs:
             libusb-dev libusb-1.0-0-dev libsdl2-dev libsdl2-net-dev libpng-dev libglew-dev \
             nlohmann-json3-dev libtinyxml2-dev libspdlog-dev ninja-build \
             libogg-dev libopus-dev opus-tools libopusfile-dev libvorbis-dev \
-            libzip-dev zipcmp zipmerge ziptool
+            libzip-dev zipcmp zipmerge ziptool libssl-dev
 
       # ~2600 objects across lus/soh/2ship/combo: ccache is the difference between ~90 min cold
       # and a few minutes warm. Cache is only saved on branch pushes so PR runs can't pollute it.
@@ -148,6 +148,14 @@ jobs:
           cmake --build build-cmake --target comboLauncherLogTest -j 4
           ./build-cmake/combo/comboLauncherLogTest
 
+      # wss:// to archipelago.gg (libssl-dev's static OpenSSL, the host's CA bundle and the bundled cacert.pem): a handshake
+      # with full verification that must pass, and must be refused for another host name. Skipped with a warning when the
+      # runner has no network. The AppImage runs the same probe below.
+      - name: Certificate probe (archipelago.gg), test harness
+        run: |
+          cmake --build build-cmake --target comboApClientHarness -j 4
+          python3 -I scripts/ap/tls_probe.py --ca-bundle combo/net/cacert/cacert.pem --ca-flag=--cert-store -- build-cmake/combo/comboApClientHarness --tls-probe
+
       # Same order as the Windows pipeline: libultraship -> soh (Torch) -> 2ship (OTRExporter/ZAPD),
       # then the combo targets. -j 4 caps peak memory: some soh/2ship TUs are
       # >1 GB each at peak, and the 16 GB standard runner OOMs before Ninja's default parallelism
@@ -223,6 +231,20 @@ jobs:
         run: >
           python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core
           --comborando "$PWD/build-cmake/combo/comborando" --work ap-run
+      # The real client (comboApClientHarness) over a fake game, against Archipelago's own MultiServer on this machine: the
+      # start inventory arrives, then wss:// (a loopback address, whose certificate is not checked) and the certificate
+      # checks on 127.0.0.2 (a trusted certificate connects; an untrusted one, and a trusted one for another address, are
+      # refused with a message that names the reason). Everything is bound to 127.x.x.x; nothing leaves the runner.
+      - name: Archipelago client end to end, over wss://
+        timeout-minutes: 25
+        env:
+          SKIP_REQUIREMENTS_UPDATE: '1'
+        run: |
+          python3 -I scripts/ap/ap_generate.py --ap-root archipelago-core --comborando "$PWD/build-cmake/combo/comborando" \
+            --work ap-e2e-gen --cases start-inventory
+          python3 -I scripts/ap/client_e2e.py --ap-core archipelago-core --harness "$PWD/build-cmake/combo/comboApClientHarness" \
+            --ids apworld/ship2ship/data/ids.json --work ap-e2e --wss \
+            --start-inventory ap-e2e-gen/start-inventory/out/AP_*.zip
       - name: Upload the Archipelago generation logs
         if: always()
         uses: actions/upload-artifact@v4
@@ -233,7 +255,16 @@ jobs:
             ap-run/**/players/*.yaml
             ap-run/*/out/*.zip
             ap-run/fill-rate.json
+            ap-e2e/**/*.log
           if-no-files-found: ignore
+
+      # The apworld a release attaches: the zip Archipelago loads from custom_worlds.
+      - name: Upload the Ship2Ship apworld
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ship2Ship-apworld
+          path: ap-build/ship2ship.apworld
+          if-no-files-found: error
 
       # Stages the runnable tree (binaries + assets + port o2rs; game archives oot.o2r / mm.o2r
       # are ROM-extracted by the user and never built or shipped here) and packages it as a
@@ -241,6 +272,19 @@ jobs:
       # recreates the launcher's portable cwd layout in a writable data dir at run time.
       - name: Stage Linux package + build AppImage
         run: ./scripts/linux/make-appimage.sh build-cmake _packages
+
+      # The AppImage's own OpenSSL and CA lookup: the launcher's hidden --ap-tls-probe, run through AppRun. It must find its
+      # bundled cacert.pem by itself, and OpenSSL must be inside the executable, not a library of the host.
+      - name: Certificate probe through the AppImage
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: '1'
+        run: |
+          if ldd build-cmake/combo/Ship2Ship | grep -E 'libssl|libcrypto'; then
+            echo "OpenSSL is a shared library of Ship2Ship: it must be linked statically" >&2
+            exit 1
+          fi
+          appimage=$(ls _packages/Ship2Ship-*-linux-x86_64.AppImage | head -1)
+          python3 -I scripts/ap/tls_probe.py --expect-bundled -- "$PWD/$appimage" --ap-tls-probe
 
       - name: Upload Ship2Ship-linux artifact
         uses: actions/upload-artifact@v4

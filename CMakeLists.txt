@@ -20,7 +20,7 @@ set(COMBO_RELEASE_VERSION "0.4.0" CACHE STRING "Combo release version (manual; g
 
 # Ship2Ship product version: display only (the in-game banner and the AppImage file name). Not tied to the
 # combosave gate above or to the o2r archive version (the project VERSION).
-set(SHIP2SHIP_VERSION "0.2.3" CACHE STRING "Ship2Ship release version (display only)" FORCE)
+set(SHIP2SHIP_VERSION "0.3.0" CACHE STRING "Ship2Ship release version (display only)" FORCE)
 
 set(COMBO_PINS "${CMAKE_CURRENT_SOURCE_DIR}/upstream-pins.json")
 # Reconfigure whenever the pins change so the derived version stays in sync.
@@ -159,6 +159,14 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
 endif()
 
 ################################################################################
+# Ship2Ship: wss:// in the Archipelago client (rooms on archipelago.gg) needs OpenSSL; see combo/CMake/ComboArchipelago.cmake.
+# Windows gets it from vcpkg below; Linux and macOS link the system's static OpenSSL. OFF builds a client with ws:// only.
+################################################################################
+option(SHIP2SHIP_AP_TLS "Archipelago client: wss:// through OpenSSL" ON)
+# The CA roots shipped beside the game: the macOS trust, and a fallback on the other systems (see combo/net/ComboApTls.h).
+set(SHIP2SHIP_CA_BUNDLE "${CMAKE_SOURCE_DIR}/combo/net/cacert/cacert.pem")
+
+################################################################################
 # VCPKG dependencies for Windows
 ################################################################################
 if (CMAKE_SYSTEM_NAME STREQUAL "Windows")
@@ -180,8 +188,6 @@ endif()
 
 vcpkg_bootstrap()
 vcpkg_install_packages(zlib bzip2 libzip libpng sdl2 sdl2-net glew glfw3 nlohmann-json tinyxml2 spdlog libogg libvorbis opus opusfile)
-# Ship2Ship: wss:// in the Archipelago client needs OpenSSL (combo/CMake/ComboArchipelago.cmake); off unless asked for.
-option(SHIP2SHIP_AP_TLS "Archipelago client: wss:// through OpenSSL" OFF)
 if (SHIP2SHIP_AP_TLS)
 vcpkg_install_packages(openssl)
 endif()
@@ -534,6 +540,7 @@ if(APPLE)
     install(FILES "${CMAKE_SOURCE_DIR}/soh/soh.o2r" "${CMAKE_SOURCE_DIR}/mm/2ship.o2r"
             DESTINATION . COMPONENT combo)
     install(FILES "${CMAKE_SOURCE_DIR}/gamecontrollerdb.txt" DESTINATION . COMPONENT combo)
+    install(FILES "${SHIP2SHIP_CA_BUNDLE}" DESTINATION . COMPONENT combo)
 
     # Extractor assets, merged flat exactly as the runtime deploy does: soh's Torch ymls and mm's
     # ZAPD extractor + xml dirs.

@@ -3,7 +3,8 @@
 ## What you need to generate
 
 - Archipelago 0.6.9 or newer, from source or installed.
-- `ship2ship.apworld` in the `custom_worlds` folder (or `worlds` for a source checkout).
+- `ship2ship.apworld`, which every Ship2Ship release has, in the `custom_worlds` folder (or `worlds` for a source
+  checkout). To build it from the source tree: `python -I scripts/ap/pack_apworld.py --out ship2ship.apworld`.
 - The generator pack or a Ship2Ship install. It contains `comborando` next to the two game libraries. No ROMs are
   needed to generate.
 
@@ -55,4 +56,18 @@ slot are saved with the file, so it reconnects when it loads; the password is ne
 - A file only syncs with the room it was generated for, as its own slot.
 - The goal (both final bosses, or the Triforce Piece count) is reported to the server once it is reached.
 - Anchor co-op is off in an Archipelago file.
-- `ws://` works. `wss://` (archipelago.gg rooms) needs a build with TLS support; the panel says when this build has none.
+- `ws://` and `wss://` both work. A server on `localhost` or `127.0.0.1` is trusted as it is: a room of your own
+  usually has a self-signed certificate. For anything else, such as an archipelago.gg room (`archipelago.gg:12345`), the
+  certificate has to chain to a trusted root and be valid for the host you typed. If it is not, the status line and the
+  console say "certificate could not be verified" and the reason (the certificate has expired, is self-signed, is
+  not for that host, or no trusted root was found), and the client stops there: it does not retry, and it does not fall back to a plain `ws://`
+  connection, which it would try next for an address typed without `ws://` or `wss://`. Press Connect to try again; type
+  `ws://` before the address to connect to a server that has no TLS. The panel says when a build has no TLS
+  support (one made with `-DSHIP2SHIP_AP_TLS=OFF`).
+- **Where the trusted roots come from.** Windows: the system's root store. Linux: the system's bundle
+  (`/etc/ssl/certs/ca-certificates.crt` and the usual places of other distributions), or `SSL_CERT_FILE` /
+  `SSL_CERT_DIR` when they are set. macOS: the roots in `cacert.pem` only. On every system `cacert.pem` beside the game
+  (Mozilla's CA list, as published by curl) is trusted too, so a machine with missing roots still reaches archipelago.gg.
+- **Testing it.** `Ship2Ship --ap-tls-probe archipelago.gg:443` makes one TLS handshake with these checks and exits with 0
+  (verified), 1 (certificate refused) or 2 (no answer). From the AppImage: `Ship2Ship.AppImage --ap-tls-probe
+  archipelago.gg:443`. Add `--verify-host example.org` to see the refusal for a wrong host name.

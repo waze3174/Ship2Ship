@@ -117,7 +117,18 @@ Use a fresh file for each pass, and keep an OoT-100% test file for passes that s
 - [ ] Kill the network mid-session: held packets survive (the outbox) and send on reconnect.
 - [ ] A vanilla or back-to-back file does not try to sync.
 
-## 8. Platforms
+## 8. Archipelago
+
+- [ ] A slot's seed loads (drop or Load seed file), a new Randomizer file starts, and Settings > Online > Archipelago
+      connects to a room on `localhost` (`ws://`): items arrive in both games, opened checks are sent.
+- [ ] **A room on archipelago.gg** (`archipelago.gg:<port>`, no scheme) connects over `wss://`, on Windows, Linux and macOS.
+- [ ] `Ship2Ship --ap-tls-probe archipelago.gg:443` prints `TLS OK` and exits 0; with `--verify-host example.org` it prints
+      `TLS REFUSED` and exits 1.
+- [ ] A server whose certificate is not trusted (a self-signed one on another machine's address) is refused, once, with
+      "certificate could not be verified" and the reason on the status line and in the console, and no `ws://` retry.
+- [ ] The console shows the room's messages, `!hint` works, and the pop-out window opens.
+
+## 9. Platforms
 
 - [ ] **Windows:** the zip runs from any folder; the log is written next to the exe.
 - [ ] **Linux / Steam Deck:** the AppImage runs after `chmod +x`; data goes to `Ship2Ship-data/`; ROM Setup works

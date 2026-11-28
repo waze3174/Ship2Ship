@@ -79,6 +79,18 @@ jobs:
             if ($LASTEXITCODE -ne 0) { throw "$test failed" }
           }
 
+      # wss:// to archipelago.gg: the Archipelago client's own TLS setup (vcpkg's OpenSSL, the Windows certificate store and
+      # the bundled cacert.pem) does a handshake with full verification, and must refuse the same certificate for another
+      # host name. Skipped with a warning when the runner has no network. The first run builds OpenSSL (about 12 minutes
+      # on a PC); the cached vcpkg tree above keeps it from rebuilding.
+      - name: Certificate probe (archipelago.gg)
+        shell: pwsh
+        run: |
+          cmake --build build/x64 --target comboApClientHarness --config Release
+          if ($LASTEXITCODE -ne 0) { throw "Building comboApClientHarness failed" }
+          python -I scripts/ap/tls_probe.py --ca-bundle combo/net/cacert/cacert.pem --ca-flag=--cert-store -- build/x64/combo/Release/comboApClientHarness.exe --tls-probe
+          if ($LASTEXITCODE -ne 0) { throw "the certificate probe failed" }
+
       # Order matters: libultraship -> soh -> 2ship (2ship builds ZAPD/OTRExporter; soh builds Torch).
       # comboui + Ship2Ship pull the rest of the runtime in as dependencies.
       - name: Build libultraship
@@ -146,6 +158,21 @@ jobs:
           Expand-Archive -Path $zip.FullName -DestinationPath _packages/stage -Force
           # The Archipelago world runs `comborando --oracle` from the install folder.
           if (-not (Test-Path _packages/stage/comborando.exe)) { throw "comborando.exe is not in the package" }
+          if (-not (Test-Path _packages/stage/cacert.pem)) { throw "cacert.pem is not in the package" }
+
+      # The packaged Ship2Ship.exe has no console window, so the probe's result is its exit code: 0 verified, 1 refused,
+      # 2 no answer (no network: skipped).
+      - name: Certificate probe through the packaged Ship2Ship.exe
+        shell: pwsh
+        run: |
+          $exe = (Resolve-Path _packages/stage/Ship2Ship.exe).Path
+          $verified = Start-Process $exe -ArgumentList '--ap-tls-probe', 'archipelago.gg:443' -Wait -PassThru
+          $wrongHost = Start-Process $exe -ArgumentList '--ap-tls-probe', 'archipelago.gg:443', '--verify-host', 'example.org' -Wait -PassThru
+          if ($verified.ExitCode -eq 2 -or $wrongHost.ExitCode -eq 2) {
+            Write-Warning "no network: the packaged certificate probe was skipped"
+          } elseif ($verified.ExitCode -ne 0 -or $wrongHost.ExitCode -ne 1) {
+            throw "the packaged certificate probe gave $($verified.ExitCode) for archipelago.gg (want 0) and $($wrongHost.ExitCode) for the wrong host (want 1)"
+          }
 
       - name: Upload Ship2Ship artifact
         uses: actions/upload-artifact@v4

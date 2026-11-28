@@ -29,7 +29,7 @@ jobs:
       - name: Install dependencies
         run: >
           brew install ninja libpng glew tinyxml2 nlohmann-json libzip
-          opusfile libvorbis libogg opus spdlog glfw
+          opusfile libvorbis libogg opus spdlog glfw openssl@3
 
       - name: Cache SDL2
         id: sdl2-cache
@@ -78,6 +78,7 @@ jobs:
           -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           -DCMAKE_PREFIX_PATH="$PREFIX"
           -DSDL2_DIR="$PREFIX/lib/cmake/SDL2" -DSDL2_net_DIR="$PREFIX/lib/cmake/SDL2_net"
+          -DOPENSSL_ROOT_DIR="$(brew --prefix openssl@3)"
 
       # Same order as the Windows/Linux pipelines. -j 3 matches the runner's cores and keeps peak
       # memory inside its 7 GB (some soh/2ship TUs are >1 GB each at peak).
@@ -93,6 +94,20 @@ jobs:
         run: cmake --build build-cmake --target comboui -j 3
       - name: Build Ship2Ship
         run: cmake --build build-cmake --target Ship2Ship -j 3
+
+      # wss:// to archipelago.gg. OpenSSL cannot read the macOS Keychain, so the bundled cacert.pem is the whole trust here:
+      # the test harness is given it, and the launcher (--ap-tls-probe) must find the copy beside it by itself. OpenSSL is
+      # linked statically (brew's libssl.a), so the app needs nothing from Homebrew. Skipped with a warning when the runner
+      # has no network.
+      - name: Certificate probe (archipelago.gg)
+        run: |
+          cmake --build build-cmake --target comboApClientHarness -j 3
+          if otool -L build-cmake/combo/Ship2Ship | grep -E 'libssl|libcrypto'; then
+            echo "OpenSSL is a shared library of Ship2Ship: it must be linked statically" >&2
+            exit 1
+          fi
+          python3 -I scripts/ap/tls_probe.py --ca-bundle combo/net/cacert/cacert.pem --ca-flag=--cert-store -- build-cmake/combo/comboApClientHarness --tls-probe
+          python3 -I scripts/ap/tls_probe.py --expect-bundled -- build-cmake/combo/Ship2Ship --ap-tls-probe
 
       # Port asset archives (--norom). The .app's install rules copy them from the source tree
       # (where these targets write), and fail the package if they are missing.
@@ -118,6 +133,20 @@ jobs:
         run: |
           sudo mdutil -a -i off || true
           cd build-cmake && cpack
+
+      # The same probe through the packaged app. Not yet a gate: nobody has run this image on a Mac, so a failure here is a
+      # warning to read until it has passed once.
+      - name: Certificate probe through the packaged app
+        continue-on-error: true
+        run: |
+          mount=$(mktemp -d)
+          hdiutil attach _packages/*.dmg -mountpoint "$mount" -nobrowse -readonly
+          app=$(ls -d "$mount"/*.app | head -1)
+          test -f "$app/Contents/Resources/cacert.pem"
+          status=0
+          python3 -I scripts/ap/tls_probe.py --expect-bundled -- "$app/Contents/MacOS/Ship2Ship" --ap-tls-probe || status=$?
+          hdiutil detach "$mount" || true
+          exit $status
 
       - name: Upload Ship2Ship-macos artifact
         uses: actions/upload-artifact@v4
