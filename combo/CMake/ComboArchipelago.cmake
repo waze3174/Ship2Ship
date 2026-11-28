@@ -51,6 +51,9 @@ if(SHIP2SHIP_AP_TLS)
         set(OPENSSL_USE_STATIC_LIBS ON)
     endif()
     find_package(OpenSSL REQUIRED)
+    # The headers must match the library that was found: on macOS, /opt/homebrew/include can hold a newer OpenSSL
+    # than the openssl@3 being linked, and it comes earlier in the search path through other packages.
+    target_include_directories(ship2ship_apclient SYSTEM BEFORE PRIVATE ${OPENSSL_INCLUDE_DIR})
     target_link_libraries(ship2ship_apclient PUBLIC OpenSSL::SSL OpenSSL::Crypto)
     target_compile_definitions(ship2ship_apclient PRIVATE SHIP2SHIP_AP_TLS)
 else()

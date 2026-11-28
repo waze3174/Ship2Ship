@@ -31,6 +31,10 @@ jobs:
           brew install ninja libpng glew tinyxml2 nlohmann-json libzip
           opusfile libvorbis libogg opus spdlog glfw openssl@3
 
+      # Diagnostic only: which OpenSSL headers are where (a newer one in /opt/homebrew/include once shadowed openssl@3).
+      - name: Show OpenSSL headers
+        run: grep -H "define OPENSSL_VERSION_STR" /opt/homebrew/include/openssl/opensslv.h "$(brew --prefix openssl@3)/include/openssl/opensslv.h" || true
+
       - name: Cache SDL2
         id: sdl2-cache
         uses: actions/cache@v4
